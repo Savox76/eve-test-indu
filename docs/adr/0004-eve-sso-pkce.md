@@ -1,0 +1,39 @@
+# ADR-004: EVE SSO mit PKCE, Systembrowser und Betriebssystem-Schlüsselbund
+
+- **Status:** Angenommen
+- **Datum:** 7. September 2026
+- **Entscheider:** Projektverantwortlicher
+
+## Kontext
+
+Eine ausgelieferte Desktop-Anwendung kann ein Client Secret nicht vertraulich halten. Gleichzeitig benötigen einzelne Funktionen autorisierten ESI-Zugriff pro Charakter. Anmeldung und Tokenablage sind deshalb eine zentrale Sicherheitsgrenze.
+
+## Entscheidung
+
+New Eden Foundry nutzt EVE SSO mit Authorization Code und PKCE (`S256`) als öffentlicher Client.
+
+- Die Anwendung liefert kein Client Secret aus.
+- Anmeldung erfolgt im Systembrowser direkt bei EVE.
+- Pro Anmeldeversuch werden ein kryptografischer `state`-Wert und ein neuer PKCE-Verifier erzeugt und nach einmaliger Nutzung verworfen.
+- Es gibt genau eine fest registrierte Loopback-Callback-URI. Sie ist vom dynamischen Port der internen Sidecar-API getrennt.
+- Die exakte URI wird vor Implementierung mit der tatsächlich akzeptierten Registrierung abgeglichen und anschließend identisch in Portal, Konfiguration, Tests und Dokumentation geführt.
+- Callback mit falschem `state`, verspäteter Callback, Abbruch und bereits verwendeter Code werden abgewiesen.
+- Endpunkte werden aus der offiziellen OAuth-Metadatenadresse bezogen und angemessen gecacht.
+- Access Tokens werden anhand von Signatur/JWKS, Issuer, erwarteter Audience, Ablauf und Charakterbindung validiert.
+- Refresh Tokens liegen pro Charakter im Betriebssystem-Schlüsselbund. Rotation wird atomar gespeichert; erst danach wird der alte Wert verworfen.
+- Scopes werden als kleinste funktionsbezogene Pakete und erst bei Aktivierung angefordert.
+- Tokens und Authorization Codes erscheinen nie in Logs, Diagnosepaketen oder Repository-Daten.
+
+## Folgen
+
+Eine nutzbare Client-ID und exakte Callback-URI müssen im EVE Developers Portal registriert werden. Schlüsselbundzugriff benötigt plattformspezifische Tests. Ein Charakter kann verbunden bleiben, obwohl einzelne optionale Scopepakete fehlen; die UI muss diesen Zustand erklären.
+
+## Verifikation
+
+Tests decken PKCE-Vektor, `state`, Callback-Bindung, Timeout, JWT-Fehler, Scope-Differenz und atomare Refresh-Token-Rotation ab. Ein Golden-Pfad funktioniert ohne Client Secret in Paket oder Prozessumgebung.
+
+## Referenzen
+
+- [EVE Developer Documentation – SSO](https://developers.eveonline.com/docs/services/sso/)
+- [OAuth 2.0 Authorization Server Metadata](https://login.eveonline.com/.well-known/oauth-authorization-server)
+- [RFC 8252 – OAuth 2.0 for Native Apps](https://www.rfc-editor.org/rfc/rfc8252)
