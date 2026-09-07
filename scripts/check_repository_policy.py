@@ -36,7 +36,7 @@ REQUIRED_ADRS = tuple(
         "0002-tauri-python-sidecar.md",
         "0003-sqlite-persistence.md",
         "0004-eve-sso-pkce.md",
-        "0005-central-private-repository-and-releases.md",
+        "0005-central-public-repository-and-releases.md",
         "0006-cache-first-sync.md",
         "0007-decimal-and-golden-tests.md",
         "0008-jita-first-market-adapters.md",

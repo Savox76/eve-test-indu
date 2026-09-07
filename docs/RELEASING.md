@@ -53,6 +53,6 @@ Die Notes beschreiben Nutzerwirkung und notwendige Handlungen. Reine Commitliste
 
 ## Release-Dateien
 
-Erlaubt sind ausschließlich Dateien, die zur Installation, Signaturprüfung oder zum Update der freigegebenen Anwendung benötigt werden. Quellcode-Snapshots, Debug-Dumps, echte Nutzerdaten und beliebige CI-Zwischenstände werden nicht als zusätzliche Release-Dateien hochgeladen.
+Als selbst hochgeladene Release-Dateien sind ausschließlich Dateien erlaubt, die zur Installation, Signaturprüfung oder zum Update der freigegebenen Anwendung benötigt werden. Debug-Dumps, echte Nutzerdaten und beliebige CI-Zwischenstände werden nicht hochgeladen.
 
-Bis zu einer anderslautenden ADR-Entscheidung bleiben Repository und Releases privat.
+Das Repository und seine Release-Seiten sind öffentlich. GitHub ergänzt bei jedem Release automatisch ZIP- und Tarball-Links auf den Quellcode des Tags. Diese automatisch bereitgestellten Quellcodearchive sind keine GitHub-Actions-Artefakte und können für ein öffentliches Repository nicht als geheimer Vertriebsweg behandelt werden.

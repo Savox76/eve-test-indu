@@ -21,7 +21,7 @@ Der lebende Projektplan steht in [docs/MASTERPLAN.md](docs/MASTERPLAN.md). Archi
 
 ## Repository
 
-`Savox76/eve-test-indu` ist die einzige Projektfläche für Quellcode, Dokumentation, Issues, GitHub Actions und Releases. Das Repository bleibt privat. Eine öffentliche Verteilung ist ohne neue Architekturentscheidung nicht vorgesehen.
+`Savox76/eve-test-indu` ist die einzige öffentliche Projektfläche für Quellcode, Dokumentation, Issues, GitHub Actions und Releases. Quellcode, Entwicklungshistorie und veröffentlichte Releases sind damit öffentlich einsehbar.
 
 ## Mitwirken
 

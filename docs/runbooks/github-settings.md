@@ -22,9 +22,9 @@ Da das Projekt derzeit solo geführt wird, wird zunächst keine Fremdfreigabe al
 - Standardberechtigungen des `GITHUB_TOKEN`: nur Lesen; Schreibrechte nur jobweise und minimal
 - Releases nur aus bewusst ausgelöstem, freigegebenem Workflow
 
-## Aktueller Blocker
+## Aktueller Status
 
-Beim Start von Arbeitspaket 01 meldete GitHub für Rulesets dieses privaten persönlichen Repositorys, dass dafür GitHub Pro oder ein öffentliches Repository erforderlich ist. Das Repository bleibt gemäß ADR-005 privat. Bis der Plan die Schutzfunktion unterstützt und die obigen Regeln aktiv sind, gilt Arbeitspaket 01 nicht als vollständig abgenommen und der vorbereitende Pull Request bleibt ungemergt.
+Das Repository wurde am 7. September 2026 öffentlich gemacht. GitHub-Free-Branchschutz ist damit verfügbar, wurde für `main` aber noch nicht aktiviert. Bis die obigen Regeln aktiv sind, gilt Arbeitspaket 01 nicht als vollständig abgenommen und der vorbereitende Pull Request bleibt ungemergt.
 
 ## Prüfung
 

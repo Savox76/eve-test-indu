@@ -108,7 +108,7 @@ Der SDE-Import ist versioniert und atomar. Typen, Gruppen, Kategorien, Blueprint
 
 ## 9. Repository- und Releasevertrag
 
-`Savox76/eve-test-indu` ist das einzige private Repository für Quellcode, Dokumentation, Issues, Pull Requests, GitHub Actions und Releases. Die frühere Annahme getrennter Source-, Release- und Website-Repositories ist aufgehoben; [ADR-005](adr/0005-central-private-repository-and-releases.md) dokumentiert die Entscheidung.
+`Savox76/eve-test-indu` ist das einzige öffentliche Repository für Quellcode, Dokumentation, Issues, Pull Requests, GitHub Actions und Releases. Die frühere Annahme getrennter Source-, Release- und Website-Repositories ist aufgehoben; [ADR-005](adr/0005-central-public-repository-and-releases.md) dokumentiert die Entscheidung.
 
 - Arbeit erfolgt auf kurzen Feature-Branches und über Pull Requests.
 - `main` soll vor Direktänderung, Löschung und Force Push geschützt sein.
@@ -116,6 +116,7 @@ Der SDE-Import ist versioniert und atomar. Typen, Gruppen, Kategorien, Blueprint
 - GitHub Actions speichert **keine** Workflow-Artefakte; `upload-artifact` und `download-artifact` sind untersagt.
 - Build-Ausgaben bleiben innerhalb eines Workflows flüchtig.
 - Freigegebene Installer, Signaturen und Update-Manifeste dürfen ausschließlich direkt an das zugehörige GitHub Release angehängt werden.
+- GitHub stellt bei jedem Release automatisch Quellcodearchive des zugehörigen Tags bereit; diese sind keine Actions-Artefakte.
 - Jedes Release beschreibt: neu hinzugefügt, geändert, behobene Fehler, bekannte Einschränkungen sowie Update und Datenbankmigration.
 - Ein Release entsteht nur aus einem bewusst freigegebenen Tag nach vollständig grünen Pflichtprüfungen.
 

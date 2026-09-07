@@ -10,7 +10,8 @@ Alle bemerkenswerten Änderungen an New Eden Foundry werden hier festgehalten. D
 
 ### Geändert
 
-- Das zentrale private Repository `Savox76/eve-test-indu` übernimmt Quellcode, Dokumentation, Issues, Actions und Releases.
+- Das zentrale öffentliche Repository `Savox76/eve-test-indu` übernimmt Quellcode, Dokumentation, Issues, Actions und Releases.
+- Die öffentliche Sichtbarkeit ermöglicht Branchschutz auf GitHub Free; Quellcode und Release-Seiten sind dadurch öffentlich zugänglich.
 
 ### Behobene Fehler
 
@@ -19,7 +20,7 @@ Alle bemerkenswerten Änderungen an New Eden Foundry werden hier festgehalten. D
 ### Bekannte Einschränkungen
 
 - Noch keine ausführbare Anwendung.
-- Schutzregeln für `main` benötigen eine unterstützte GitHub-Plan- beziehungsweise Repository-Konfiguration.
+- Schutzregeln für `main` sind noch nicht aktiviert.
 
 ### Update und Datenbankmigration
 
