@@ -1,0 +1,17 @@
+[package]
+name = "new-eden-foundry"
+version = "0.0.1-preview.1"
+description = "Local-first EVE Online industry planning desktop application"
+authors = ["New Eden Foundry contributors"]
+edition = "2021"
+repository = "https://github.com/Savox76/eve-test-indu"
+
+[lib]
+name = "new_eden_foundry_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
