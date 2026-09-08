@@ -45,6 +45,26 @@ REQUIRED_ADRS = tuple(
     )
 )
 
+REQUIRED_BACKEND_FILES = tuple(
+    ROOT / path
+    for path in (
+        "backend/new_eden_foundry_backend/__main__.py",
+        "backend/new_eden_foundry_backend/database.py",
+        "backend/new_eden_foundry_backend/version.py",
+        "backend/tests/test_database.py",
+        "backend/tests/test_foundation_status.py",
+    )
+)
+
+REQUIRED_SQLITE_MARKERS = (
+    "PRAGMA foreign_keys = ON",
+    "PRAGMA journal_mode = WAL",
+    "PRAGMA busy_timeout",
+    "PRAGMA quick_check",
+    "PRAGMA foreign_key_check",
+    "BEGIN IMMEDIATE",
+)
+
 
 def relative(path: Path) -> str:
     return path.relative_to(ROOT).as_posix()
@@ -182,11 +202,40 @@ def check_application_release(errors: list[str]) -> None:
         errors.append("The versioned UI demo data must explicitly contain synthetic: true.")
 
 
+def check_backend_foundation(errors: list[str]) -> None:
+    for path in REQUIRED_BACKEND_FILES:
+        if not path.is_file():
+            errors.append(f"Missing backend foundation file: {relative(path)}")
+
+    database_source = ROOT / "backend" / "new_eden_foundry_backend" / "database.py"
+    if database_source.is_file():
+        content = database_source.read_text(encoding="utf-8")
+        for marker in REQUIRED_SQLITE_MARKERS:
+            if marker not in content:
+                errors.append(f"SQLite foundation is missing required marker: {marker}")
+
+    package_path = ROOT / "package.json"
+    if not package_path.is_file():
+        return
+
+    scripts = json.loads(package_path.read_text(encoding="utf-8")).get("scripts", {})
+    for script in ("test:frontend", "test:backend", "check:backend"):
+        if not isinstance(scripts.get(script), str) or not scripts[script].strip():
+            errors.append(f"package.json must define the {script} script.")
+
+    combined_test = scripts.get("test")
+    if not isinstance(combined_test, str) or not all(
+        script in combined_test for script in ("test:frontend", "test:backend")
+    ):
+        errors.append("The npm test script must run both frontend and backend tests.")
+
+
 def main() -> int:
     errors: list[str] = []
     check_workflows(errors)
     check_documentation(errors)
     check_application_release(errors)
+    check_backend_foundation(errors)
 
     if errors:
         print("Repository policy violations:", file=sys.stderr)

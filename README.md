@@ -4,9 +4,9 @@ New Eden Foundry wird eine lokale Desktop-Anwendung für nachvollziehbare EVE-On
 
 ## Projektstatus
 
-**Design Preview – `v0.0.1-preview.2`.** Die Windows-Vorschau zeigt die geplante visuelle Sprache, Navigation und Informationsarchitektur mit vollständig synthetischen Daten. Sie steht sowohl als Installer als auch als portable ZIP bereit. EVE SSO, ESI, SDE, Sidecar, Datenbank und fachliche Berechnungen sind ausdrücklich noch nicht angeschlossen.
+**Technische Preview – `v0.0.2-preview.1`.** Die Windows-Vorschau behält die freigegebene Gestaltung bei und ergänzt den ersten lokalen Kern: Die Tauri-Schale meldet ihren echten Laufzeitstatus über IPC, während das Python-Backend eine versionierte SQLite-Grundlage mit Integritätsprüfung bereitstellt. Installer und portable ZIP bleiben beide verfügbar.
 
-Die Vorschau ist als Prerelease unter [GitHub Releases](https://github.com/Savox76/eve-test-indu/releases) vorgesehen. Sie dient dazu, das Erscheinungsbild früh zu beurteilen; die erste technische Alpha entsteht erst nach dem vertikalen Architektur-Durchstich.
+Die SQLite-Grundlage wird in dieser Version noch nicht von der Oberfläche gestartet oder für Nutzerdaten verwendet. Auch FastAPI-Sidecar, EVE SSO, ESI, SDE und fachliche Berechnungen sind noch nicht angeschlossen. Die Vorschau ist als Prerelease unter [GitHub Releases](https://github.com/Savox76/eve-test-indu/releases) vorgesehen; die erste technische Alpha entsteht erst nach dem vollständigen vertikalen Architektur-Durchstich.
 
 ## Verbindliche Grundlagen
 
@@ -49,6 +49,12 @@ npm run typecheck
 npm test
 npm run build
 python scripts/check_repository_policy.py
+```
+
+Ein lokaler Selbsttest der neuen SQLite-Grundlage lässt sich zusätzlich ausführen mit:
+
+```powershell
+python -m backend.new_eden_foundry_backend --database .\foundry-development.sqlite3
 ```
 
 ## Repository

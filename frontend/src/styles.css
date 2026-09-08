@@ -254,6 +254,17 @@ input:focus-visible {
   background: var(--teal-soft);
 }
 
+.local-status--preview .local-status__icon,
+.local-status--checking .local-status__icon {
+  color: var(--gold);
+  background: var(--gold-soft);
+}
+
+.local-status--unavailable .local-status__icon {
+  color: var(--coral);
+  background: var(--coral-soft);
+}
+
 .local-status strong,
 .local-status span {
   display: block;

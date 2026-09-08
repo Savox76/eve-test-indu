@@ -1,17 +1,21 @@
 {
   "name": "new-eden-foundry",
   "private": true,
-  "version": "0.0.1-preview.2",
+  "version": "0.0.2-preview.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "npm run test:frontend && npm run test:backend",
+    "test:frontend": "vitest run",
+    "test:backend": "cd backend && python -m unittest discover -s tests -v",
     "test:watch": "vitest",
+    "check:backend": "python -m compileall -q backend/new_eden_foundry_backend backend/tests",
     "tauri": "tauri"
   },
   "dependencies": {
+    "@tauri-apps/api": "2.11.1",
     "lucide-react": "1.43.0",
     "react": "19.2.8",
     "react-dom": "19.2.8"

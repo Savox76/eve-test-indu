@@ -28,4 +28,10 @@ describe("New Eden Foundry design preview", () => {
     expect(screen.getByText("Good morning, pilot.")).toBeInTheDocument();
     expect(screen.getByText(/synthetic data/i)).toBeInTheDocument();
   });
+
+  it("does not claim that the native desktop core is active in a browser", async () => {
+    render(<App />);
+
+    expect(await screen.findByText("Desktop-Kern nur in der App")).toBeInTheDocument();
+  });
 });
