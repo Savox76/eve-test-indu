@@ -88,6 +88,21 @@ def check_workflows(errors: list[str]) -> None:
                     f"{relative(workflow)} must explicitly disable Gitleaks artifact upload."
                 )
 
+    release_workflow = WORKFLOW_DIR / "release.yml"
+    if not release_workflow.is_file():
+        errors.append("Missing generic Windows release workflow: .github/workflows/release.yml")
+    else:
+        release_content = release_workflow.read_text(encoding="utf-8")
+        for marker in (
+            "scripts/package_portable.ps1",
+            "_x64-portable.zip",
+            "Get-FileHash -Algorithm SHA256",
+        ):
+            if marker not in release_content:
+                errors.append(
+                    f"{relative(release_workflow)} is missing portable release marker: {marker}"
+                )
+
 
 def check_documentation(errors: list[str]) -> None:
     for adr in REQUIRED_ADRS:
@@ -107,6 +122,15 @@ def check_documentation(errors: list[str]) -> None:
     for heading in REQUIRED_RELEASE_HEADINGS:
         if heading not in content:
             errors.append(f"docs/RELEASING.md is missing required heading: {heading}")
+
+    portable_script = ROOT / "scripts" / "package_portable.ps1"
+    portable_readme = ROOT / "docs" / "portable" / "README-DE-EN.txt"
+    if not portable_script.is_file():
+        errors.append("Missing portable packaging script.")
+    if not portable_readme.is_file():
+        errors.append("Missing portable package usage notes.")
+    if "portable ZIP" not in content:
+        errors.append("docs/RELEASING.md must require a portable ZIP.")
 
 
 def check_application_release(errors: list[str]) -> None:

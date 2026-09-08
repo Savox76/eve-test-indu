@@ -75,11 +75,43 @@ jobs:
       - name: Build ephemeral NSIS package
         run: npm run tauri build -- --bundles nsis
 
-      - name: Verify package output
+      - name: Build ephemeral portable package
         shell: pwsh
         run: |
+          $version = node --print "require('./package.json').version"
+          ./scripts/package_portable.ps1 -Version $version -Architecture x64
+
+      - name: Verify installer and portable package
+        shell: pwsh
+        run: |
+          $version = node --print "require('./package.json').version"
           $installers = @(Get-ChildItem "src-tauri/target/release/bundle/nsis/*.exe")
           if ($installers.Count -ne 1) {
             throw "Expected exactly one NSIS installer, found $($installers.Count)."
           }
-          Write-Output "Validated $($installers[0].Name); workflow output remains ephemeral."
+
+          $portablePath = "src-tauri/target/release/bundle/New.Eden.Foundry_${version}_x64-portable.zip"
+          if (-not (Test-Path -LiteralPath $portablePath -PathType Leaf)) {
+            throw "Missing portable package: $portablePath"
+          }
+
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $resolvedPortablePath = (Resolve-Path -LiteralPath $portablePath).Path
+          $archive = [IO.Compression.ZipFile]::OpenRead($resolvedPortablePath)
+          try {
+            $folder = "New Eden Foundry $version/"
+            $entries = @($archive.Entries | ForEach-Object { $_.FullName.Replace('\', '/') })
+            foreach ($expected in @(
+              "${folder}New Eden Foundry.exe",
+              "${folder}PORTABLE-README-DE-EN.txt"
+            )) {
+              if ($expected -notin $entries) {
+                throw "Portable package is missing: $expected"
+              }
+            }
+          }
+          finally {
+            $archive.Dispose()
+          }
+
+          Write-Output "Validated installer and portable ZIP; workflow output remains ephemeral."
