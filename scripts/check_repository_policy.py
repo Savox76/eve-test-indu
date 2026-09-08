@@ -58,6 +58,17 @@ def check_workflows(errors: list[str]) -> None:
 
     for workflow in workflows:
         content = workflow.read_text(encoding="utf-8")
+        for line_number, line in enumerate(content.splitlines(), start=1):
+            stripped = line.lstrip()
+            if not stripped.startswith("if: "):
+                continue
+            value = stripped.removeprefix("if: ")
+            if ": " in value and not value.startswith(("'", '"')):
+                errors.append(
+                    f"{relative(workflow)}:{line_number} must quote an if expression "
+                    "that contains a YAML colon."
+                )
+
         for reference in ACTION_REFERENCE.findall(content):
             if reference.startswith("./"):
                 continue

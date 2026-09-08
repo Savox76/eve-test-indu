@@ -15,7 +15,7 @@ concurrency:
 jobs:
   release-preflight:
     name: release-preflight
-    if: startsWith(github.event.head_commit.message, 'release: v0.0.1-preview.1')
+    if: "${{ startsWith(github.event.head_commit.message, 'release: v0.0.1-preview.1') }}"
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
@@ -52,7 +52,7 @@ jobs:
 
   windows-preview:
     name: windows-preview-installer
-    if: startsWith(github.event.head_commit.message, 'release: v0.0.1-preview.1')
+    if: "${{ startsWith(github.event.head_commit.message, 'release: v0.0.1-preview.1') }}"
     needs: release-preflight
     runs-on: windows-2025
     timeout-minutes: 40
