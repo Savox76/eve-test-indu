@@ -39,6 +39,7 @@ import {
   modulePreview,
   productionStages,
 } from "./demo";
+import { initialRuntimeStatus, loadDesktopRuntimeStatus } from "./runtime";
 
 type Locale = "de" | "en";
 type ModuleId = "overview" | keyof typeof modulePreview;
@@ -75,8 +76,24 @@ const copy = {
     refresh: "Datenstand simuliert aktualisieren",
     notices: "Hinweise anzeigen",
     settings: "Einstellungen",
-    connected: "Lokaler Arbeitsbereich",
-    connectedDetail: "Bereit · nur dieses Gerät",
+    runtimeStatus: {
+      checking: {
+        title: "Desktop-Kern",
+        detail: "Status wird geprüft …",
+      },
+      ready: {
+        title: "Desktop-Kern aktiv",
+        detail: "Native Windows-Schale verbunden",
+      },
+      preview: {
+        title: "Designvorschau",
+        detail: "Desktop-Kern nur in der App",
+      },
+      unavailable: {
+        title: "Desktop-Kern gestört",
+        detail: "Statusabfrage nicht möglich",
+      },
+    },
     syntheticPilot: "Mara Venn",
     syntheticCorp: "Kestrel Foundry · Demo",
     preview: "Design Preview",
@@ -163,7 +180,7 @@ const copy = {
     },
     planned: "Geplant",
     previewOnly: "Noch ohne Live-Funktion",
-    footerVersion: "v0.0.1-preview.2",
+    footerVersion: "v0.0.2-preview.1",
   },
   en: {
     nav: {
@@ -185,8 +202,24 @@ const copy = {
     refresh: "Simulate data refresh",
     notices: "Show notices",
     settings: "Settings",
-    connected: "Local workspace",
-    connectedDetail: "Ready · this device only",
+    runtimeStatus: {
+      checking: {
+        title: "Desktop core",
+        detail: "Checking status …",
+      },
+      ready: {
+        title: "Desktop core active",
+        detail: "Native Windows shell connected",
+      },
+      preview: {
+        title: "Design preview",
+        detail: "Desktop core available in the app",
+      },
+      unavailable: {
+        title: "Desktop core unavailable",
+        detail: "Status request failed",
+      },
+    },
     syntheticPilot: "Mara Venn",
     syntheticCorp: "Kestrel Foundry · Demo",
     preview: "Design Preview",
@@ -273,7 +306,7 @@ const copy = {
     },
     planned: "Planned",
     previewOnly: "No live function yet",
-    footerVersion: "v0.0.1-preview.2",
+    footerVersion: "v0.0.2-preview.1",
   },
 } as const;
 
@@ -323,11 +356,22 @@ export function App() {
   const [query, setQuery] = useState("");
   const [searchFocused, setSearchFocused] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [runtimeStatus, setRuntimeStatus] = useState(initialRuntimeStatus);
   const t = copy[locale];
 
   useEffect(() => {
     document.documentElement.lang = locale;
   }, [locale]);
+
+  useEffect(() => {
+    let active = true;
+    void loadDesktopRuntimeStatus().then((status) => {
+      if (active) setRuntimeStatus(status);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const searchResults = useMemo(() => {
     const normalized = query.trim().toLocaleLowerCase(locale);
@@ -385,13 +429,13 @@ export function App() {
 
         <div className="sidebar-spacer" />
 
-        <div className="local-status">
+        <div className={`local-status local-status--${runtimeStatus.state}`} role="status">
           <div className="local-status__icon">
             <ShieldCheck size={17} />
           </div>
           <div>
-            <strong>{t.connected}</strong>
-            <span>{t.connectedDetail}</span>
+            <strong>{t.runtimeStatus[runtimeStatus.state].title}</strong>
+            <span>{t.runtimeStatus[runtimeStatus.state].detail}</span>
           </div>
         </div>
 

@@ -71,6 +71,7 @@ jobs:
       - name: Validate release source
         run: |
           python scripts/check_repository_policy.py
+          npm run check:backend
           npm run typecheck
           npm test
           npm run build
@@ -119,6 +120,7 @@ jobs:
         shell: pwsh
         run: |
           python scripts/check_repository_policy.py
+          npm run check:backend
           npm run typecheck
           npm test
 

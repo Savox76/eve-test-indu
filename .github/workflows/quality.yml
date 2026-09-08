@@ -37,10 +37,13 @@ jobs:
       - name: Check release metadata
         run: python scripts/check_repository_policy.py
 
+      - name: Compile-check Python backend
+        run: npm run check:backend
+
       - name: Check TypeScript
         run: npm run typecheck
 
-      - name: Run UI tests
+      - name: Run frontend and backend tests
         run: npm test
 
       - name: Build frontend

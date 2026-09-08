@@ -1,10 +1,10 @@
 # Masterplan – New Eden Foundry
 
-**Fassung:** 1.1 (lebendes Repository-Dokument)
+**Fassung:** 1.2 (lebendes Repository-Dokument)
 
 **Stand:** 8. September 2026
 
-**Status:** In Umsetzung – Phase 0 mit ausführbarer Design Preview
+**Status:** In Umsetzung – Phase 1 mit erster lokaler Kern-Grundlage
 
 **Geltungsbereich:** `Savox76/eve-test-indu`
 
@@ -184,9 +184,11 @@ Die Reihenfolge ist verbindlicher als eine Kalenderangabe.
 ### Aktueller Stand
 
 - **In Arbeit:** 01 – ADR-Set und Repo-Schutz; der dokumentarische und technische Grundschutz steht, der Branchschutz auf GitHub ist noch offen.
-- **Vorbereitend umgesetzt:** eine ausdrücklich nicht-funktionale Tauri-/React-Designvorschau und ein synthetischer UI-Datensatz für die frühe Gestaltungsabnahme. Dies erfüllt weder Arbeitspaket 02 noch Architektur-Gate A0.
-- **Nicht begonnen:** die fachlichen und infrastrukturellen Abnahmekriterien aus 02–22.
-- Breite Fachentwicklung beginnt erst nach Freigabe der Phase-0-Grundlage und erfolgreichem Architektur-Gate A0.
+- **Teilweise umgesetzt:** 02 – Tauri und Frontend bauen bereits in CI; Frontend und Python-Backend werden gemeinsam getestet und lesen ihre Produktversion aus `package.json`. Der gebündelte Backend-Build fehlt noch.
+- **Vorbereitend umgesetzt:** 03 – die freigegebene Tauri-/React-Gestaltung verwendet weiterhin ausschließlich einen synthetischen UI-Datensatz.
+- **Abgeschlossen:** 07 – die SQLite-Grundlage aktiviert und prüft Foreign Keys, WAL und `busy_timeout`, wendet eine versionierte Basismigration an und führt automatisierte Integritäts- sowie Parallelzugriffstests aus.
+- **Als Nächstes:** 04–06 – Single Instance, gebündelter Sidecar und geschützter Loopback-Handshake vervollständigen den vertikalen Startpfad.
+- Architektur-Gate A0 ist noch nicht erfüllt; breite Fachentwicklung beginnt erst nach seinem erfolgreichen Abschluss.
 
 ## 13. Entscheidungs- und Quellenrang
 
