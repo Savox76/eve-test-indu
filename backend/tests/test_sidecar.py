@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import json
 import queue
 import sqlite3
@@ -125,7 +126,7 @@ class SidecarIntegrationTests(unittest.TestCase):
 
             database_path = program_directory / "data" / "foundry.sqlite3"
             self.assertTrue(database_path.is_file())
-            with sqlite3.connect(database_path) as connection:
+            with contextlib.closing(sqlite3.connect(database_path)) as connection:
                 self.assertEqual(connection.execute("PRAGMA quick_check").fetchone()[0], "ok")
 
             process.stdin.write('{"command":"shutdown"}\n')

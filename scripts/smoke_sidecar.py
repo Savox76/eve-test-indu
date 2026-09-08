@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import queue
 import secrets
@@ -125,7 +126,7 @@ def main() -> int:
             database_path = program_directory / "data" / "foundry.sqlite3"
             if not database_path.is_file():
                 raise RuntimeError("The database was not created inside the program directory.")
-            with sqlite3.connect(database_path) as connection:
+            with contextlib.closing(sqlite3.connect(database_path)) as connection:
                 if connection.execute("PRAGMA quick_check").fetchone()[0] != "ok":
                     raise RuntimeError("The created SQLite database failed quick_check.")
 
