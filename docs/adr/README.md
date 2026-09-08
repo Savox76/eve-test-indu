@@ -1,0 +1,16 @@
+# Architecture Decision Records
+
+ADRs halten Entscheidungen fest, die Architektur, Sicherheit, Datenmodell, Betrieb oder Produktgrenzen dauerhaft beeinflussen. Angenommene ADRs werden nicht stillschweigend umgeschrieben. Ändert sich eine Entscheidung, ersetzt ein neues ADR das alte und nennt die Auswirkungen.
+
+| ADR | Entscheidung | Status |
+|---|---|---|
+| [001](0001-desktop-local-first.md) | Desktop-first, Einzelplatz und local-first | Angenommen |
+| [002](0002-tauri-python-sidecar.md) | Tauri-Schale mit Python-Sidecar und abgesicherter Loopback-API | Angenommen |
+| [003](0003-sqlite-persistence.md) | SQLite mit Foreign Keys, WAL, Wartezeit und Migrations-Backups | Angenommen |
+| [004](0004-eve-sso-pkce.md) | EVE SSO mit PKCE, Systembrowser und Betriebssystem-Schlüsselbund | Angenommen |
+| [005](0005-central-public-repository-and-releases.md) | Zentrales öffentliches Repository ohne Actions-Artefakte | Angenommen |
+| [006](0006-cache-first-sync.md) | Cache-first-Synchronisierung mit sichtbarer Datenalterung | Angenommen |
+| [007](0007-decimal-and-golden-tests.md) | Decimal- und Golden-Test-Pflicht für wirtschaftliche Berechnungen | Angenommen |
+| [008](0008-jita-first-market-adapters.md) | Jita-first mit austauschbaren Marktadaptern | Angenommen |
+
+Neue ADRs verwenden vierstellige laufende Nummern und die Abschnitte **Kontext**, **Entscheidung**, **Folgen**, **Verifikation** und **Referenzen**.

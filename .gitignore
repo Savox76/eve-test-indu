@@ -1,0 +1,55 @@
+# Editors and operating systems
+.idea/
+.vscode/
+*.swp
+Thumbs.db
+.DS_Store
+
+# Environment and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.pfx
+*.p12
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+venv/
+dist/
+build/
+
+# Node and frontend
+node_modules/
+frontend/dist/
+coverage/
+*.tsbuildinfo
+
+# Rust and Tauri
+target/
+src-tauri/target/
+src-tauri/binaries/*
+!src-tauri/binaries/.gitkeep
+
+# Local application data
+*.sqlite
+*.sqlite3
+*.db
+*.db-wal
+*.db-shm
+logs/
+backups/
+
+# Generated installers and release packages
+*.msi
+*.msix
+*.exe
+*.appx
+*.zip
+*.tar.gz
