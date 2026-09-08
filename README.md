@@ -4,7 +4,7 @@ New Eden Foundry wird eine lokale Desktop-Anwendung für nachvollziehbare EVE-On
 
 ## Projektstatus
 
-**Design Preview – `v0.0.1-preview.1`.** Die erste installierbare Windows-Vorschau zeigt die geplante visuelle Sprache, Navigation und Informationsarchitektur mit vollständig synthetischen Daten. EVE SSO, ESI, SDE, Sidecar, Datenbank und fachliche Berechnungen sind ausdrücklich noch nicht angeschlossen.
+**Design Preview – `v0.0.1-preview.2`.** Die Windows-Vorschau zeigt die geplante visuelle Sprache, Navigation und Informationsarchitektur mit vollständig synthetischen Daten. Sie steht sowohl als Installer als auch als portable ZIP bereit. EVE SSO, ESI, SDE, Sidecar, Datenbank und fachliche Berechnungen sind ausdrücklich noch nicht angeschlossen.
 
 Die Vorschau ist als Prerelease unter [GitHub Releases](https://github.com/Savox76/eve-test-indu/releases) vorgesehen. Sie dient dazu, das Erscheinungsbild früh zu beurteilen; die erste technische Alpha entsteht erst nach dem vertikalen Architektur-Durchstich.
 
@@ -16,10 +16,22 @@ Die Vorschau ist als Prerelease unter [GitHub Releases](https://github.com/Savox
 - SQLite ohne Redis, PostgreSQL oder Docker im Endnutzerbetrieb
 - EVE SSO über Authorization Code mit PKCE und Systembrowser
 - ausschließlich synthetische Daten in Repository, Tests, Dokumentation und Screenshots
+- Windows-Releases enthalten Installer und portable ZIP sowie je eine SHA-256-Prüfsumme
 - keine GitHub-Actions-Artefakte; freigegebene Binärdateien liegen ausschließlich direkt an einem GitHub Release
 - Merge nach `main` nur über Pull Request und vollständig grüne Pflichtprüfungen
 
 Der lebende Projektplan steht in [docs/MASTERPLAN.md](docs/MASTERPLAN.md). Architekturentscheidungen werden als [ADRs](docs/adr/README.md) gepflegt.
+
+## Windows herunterladen
+
+Auf der [GitHub-Release-Seite](https://github.com/Savox76/eve-test-indu/releases) gibt es zwei Varianten:
+
+| Variante | Verwendung |
+| --- | --- |
+| `*_x64-setup.exe` | Empfohlene Installation für den normalen Windows-Betrieb. |
+| `*_x64-portable.zip` | Vollständig entpacken und danach `New Eden Foundry.exe` starten; keine Installation und keine Administratorrechte erforderlich. |
+
+Die portable ZIP benötigt die Microsoft Edge WebView2 Runtime, die auf unterstützten aktuellen Windows-10- und Windows-11-Systemen normalerweise vorhanden ist. „Portable“ beschreibt die Auslieferung ohne Installation: Künftige lokale Daten bleiben im Windows-Benutzerprofil und Zugangsdaten im Windows-Anmeldespeicher. Es handelt sich nicht um einen spurenlosen USB-Modus. Zu jeder Variante gehört eine gleichnamige `.sha256`-Datei zur Integritätsprüfung.
 
 ## Lokale Entwicklung
 

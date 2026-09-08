@@ -115,7 +115,8 @@ Der SDE-Import ist versioniert und atomar. Typen, Gruppen, Kategorien, Blueprint
 - Pflichtchecks müssen vor dem Merge vollständig grün sein.
 - GitHub Actions speichert **keine** Workflow-Artefakte; `upload-artifact` und `download-artifact` sind untersagt.
 - Build-Ausgaben bleiben innerhalb eines Workflows flüchtig.
-- Freigegebene Installer, Signaturen und Update-Manifeste dürfen ausschließlich direkt an das zugehörige GitHub Release angehängt werden.
+- Jedes Windows-Release stellt sowohl einen Installer als auch eine portable ZIP mit jeweils eigener SHA-256-Prüfsumme bereit.
+- Freigegebene Installer, portable Pakete, Prüfsummen, Signaturen und Update-Manifeste dürfen ausschließlich direkt an das zugehörige GitHub Release angehängt werden.
 - GitHub stellt bei jedem Release automatisch Quellcodearchive des zugehörigen Tags bereit; diese sind keine Actions-Artefakte.
 - Jedes Release beschreibt: neu hinzugefügt, geändert, behobene Fehler, bekannte Einschränkungen sowie Update und Datenbankmigration.
 - Ein Release entsteht nur aus einem bewusst freigegebenen Tag nach vollständig grünen Pflichtprüfungen.
