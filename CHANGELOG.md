@@ -24,6 +24,43 @@ Alle bemerkenswerten Änderungen an New Eden Foundry werden hier festgehalten. D
 
 - Keine.
 
+## 0.0.3-preview.1 – 8. September 2026
+
+### Neu hinzugefügt
+
+- Gebündelter FastAPI-Sidecar mit dynamischem Loopback-Port, versioniertem Startprotokoll und neuem 256-Bit-Sitzungstoken je App-Start.
+- Produktive SQLite-Anlage unter `data\foundry.sqlite3` sowie vorbereiteter Backup-Ordner `data\backups`, jeweils direkt im Programmordner.
+- Single-Instance-Fokus, Kindprozessüberwachung und kontrollierter Sidecar-Shutdown.
+- Native Start-, Bereit- und Fehlerzustände in der Oberfläche.
+- Frozen-Smoke-Test und Paketprüfung für den mitgelieferten Windows-Sidecar.
+- ADR-010 für die sichtbare Datenhaltung im Programmordner.
+
+### Geändert
+
+- `Savoxmedia` erscheint ausschließlich als Ersteller der App neben der Versionsnummer.
+- Installer und portable ZIP enthalten Hauptprogramm und Sidecar; die portable ZIP enthält zusätzlich deutsch-englische Nutzungshinweise.
+- Python-Laufzeit- und Build-Abhängigkeiten sind getrennt und exakt versioniert.
+- Die sichtbare Versionsnummer wurde auf `v0.0.3-preview.1` aktualisiert.
+
+### Behobene Fehler
+
+- Der lokale Kern verwendet bei einem nicht beschreibbaren Programmordner keinen versteckten Ersatzpfad.
+- Fehlende oder falsche Sitzungstokens werden auch am Health-Endpunkt abgewiesen und nicht ausgegeben.
+- Die missverständliche Darstellung von `Savoxmedia` als lokales Benutzerprofil wurde entfernt.
+
+### Bekannte Einschränkungen
+
+- Die Oberfläche verwendet weiterhin synthetische Mehrcharakterdaten und liest noch nicht aus SQLite.
+- EVE SSO, ESI, SDE, Synchronisierung, automatische Migrations-Backups und fachliche Berechnungen fehlen noch.
+- Installer und portable EXE sind noch nicht code-signiert.
+- Die portable ZIP benötigt eine vorhandene Microsoft Edge WebView2 Runtime und einen beschreibbaren Zielordner.
+- Schutzregeln für `main` sind noch nicht aktiviert.
+
+### Update und Datenbankmigration
+
+- Frühere Previews erzeugten keine produktive Datenbank. Der erste Start legt Schema-Version 2 unter `<Programmordner>\data\foundry.sqlite3` neu an.
+- Installer-Updates und Deinstallation lassen den nicht gebündelten Ordner `data` stehen. Bei einer portablen Aktualisierung die geschlossene App samt vollständigem Ordner `data` kopieren.
+
 ## 0.0.2-preview.2 – 8. September 2026
 
 ### Neu hinzugefügt
@@ -38,7 +75,7 @@ Alle bemerkenswerten Änderungen an New Eden Foundry werden hier festgehalten. D
 
 - Synchronisierungsläufe können jetzt eindeutig einem Charakter zugeordnet werden.
 - Der Datenstand der Gesamtübersicht richtet sich nach dem ältesten enthaltenen Charakterstand und bleibt sichtbar.
-- In der Navigation wird `Savoxmedia` als lokaler Betreiber statt eines synthetischen EVE-Charakters angezeigt.
+- `Savoxmedia` wurde als Projektbezeichnung von synthetischen EVE-Charakteren getrennt; die eindeutige Kennzeichnung als App-Ersteller folgt in `v0.0.3-preview.1`.
 - Die sichtbare Versionsnummer wurde auf `v0.0.2-preview.2` aktualisiert.
 
 ### Behobene Fehler
@@ -119,7 +156,7 @@ Alle bemerkenswerten Änderungen an New Eden Foundry werden hier festgehalten. D
 - Keine EVE-Anbindung und keine produktive Fachlogik.
 - Installer und portable EXE sind noch nicht code-signiert.
 - Die portable ZIP benötigt eine vorhandene Microsoft Edge WebView2 Runtime.
-- „Portable“ umfasst nicht das Mitführen künftiger Nutzerdaten oder Zugangsdaten im Programmordner.
+- Die damalige Planung eines vom Programmordner getrennten Datenorts wurde später durch ADR-010 ersetzt; ab `v0.0.3-preview.1` liegt die Fachdatenbank unter `data` im Programmordner.
 - Schutzregeln für `main` sind noch nicht aktiviert.
 
 ### Update und Datenbankmigration

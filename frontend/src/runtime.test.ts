@@ -16,10 +16,14 @@ describe("desktop runtime status", () => {
     const invoke = vi.fn<RuntimeAdapter["invoke"]>().mockResolvedValue(
       JSON.stringify({
         state: "ready",
-        version: "0.0.2-preview.2",
+        version: "0.0.3-preview.1",
         desktopShell: true,
-        sidecar: "pending",
-        database: "foundation",
+        singleInstance: true,
+        sidecar: "ready",
+        database: "ready",
+        databaseLocation: "data/foundry.sqlite3",
+        schemaVersion: 2,
+        errorCode: null,
       }),
     );
 
@@ -27,12 +31,60 @@ describe("desktop runtime status", () => {
       loadDesktopRuntimeStatus({ isAvailable: () => true, invoke }),
     ).resolves.toEqual({
       state: "ready",
-      version: "0.0.2-preview.2",
+      version: "0.0.3-preview.1",
       desktopShell: true,
-      sidecar: "pending",
-      database: "foundation",
+      singleInstance: true,
+      sidecar: "ready",
+      database: "ready",
+      databaseLocation: "data/foundry.sqlite3",
+      schemaVersion: 2,
+      errorCode: null,
     });
     expect(invoke).toHaveBeenCalledWith("desktop_runtime_status");
+  });
+
+  it("accepts the bounded native startup state", async () => {
+    const invoke = vi.fn<RuntimeAdapter["invoke"]>().mockResolvedValue(
+      JSON.stringify({
+        state: "ready",
+        version: "0.0.3-preview.1",
+        desktopShell: true,
+        singleInstance: true,
+        sidecar: "starting",
+        database: "starting",
+        databaseLocation: "data/foundry.sqlite3",
+        schemaVersion: null,
+        errorCode: null,
+      }),
+    );
+
+    await expect(
+      loadDesktopRuntimeStatus({ isAvailable: () => true, invoke }),
+    ).resolves.toMatchObject({ state: "ready", sidecar: "starting" });
+  });
+
+  it("accepts a sanitized native failure without exposing local paths", async () => {
+    const invoke = vi.fn<RuntimeAdapter["invoke"]>().mockResolvedValue(
+      JSON.stringify({
+        state: "ready",
+        version: "0.0.3-preview.1",
+        desktopShell: true,
+        singleInstance: true,
+        sidecar: "error",
+        database: "error",
+        databaseLocation: "data/foundry.sqlite3",
+        schemaVersion: null,
+        errorCode: "program-storage-unavailable",
+      }),
+    );
+
+    await expect(
+      loadDesktopRuntimeStatus({ isAvailable: () => true, invoke }),
+    ).resolves.toMatchObject({
+      state: "ready",
+      sidecar: "error",
+      errorCode: "program-storage-unavailable",
+    });
   });
 
   it("reports an unavailable core when native IPC fails", async () => {
@@ -47,6 +99,26 @@ describe("desktop runtime status", () => {
 
   it("reports an unavailable core when native IPC is malformed", async () => {
     const invoke = vi.fn<RuntimeAdapter["invoke"]>().mockResolvedValue("{}");
+
+    await expect(
+      loadDesktopRuntimeStatus({ isAvailable: () => true, invoke }),
+    ).resolves.toEqual({ state: "unavailable" });
+  });
+
+  it("rejects inconsistent component states", async () => {
+    const invoke = vi.fn<RuntimeAdapter["invoke"]>().mockResolvedValue(
+      JSON.stringify({
+        state: "ready",
+        version: "0.0.3-preview.1",
+        desktopShell: true,
+        singleInstance: true,
+        sidecar: "ready",
+        database: "starting",
+        databaseLocation: "data/foundry.sqlite3",
+        schemaVersion: 2,
+        errorCode: null,
+      }),
+    );
 
     await expect(
       loadDesktopRuntimeStatus({ isAvailable: () => true, invoke }),

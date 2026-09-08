@@ -1870,10 +1870,14 @@ dependencies = [
 
 [[package]]
 name = "new-eden-foundry"
-version = "0.0.2-preview.2"
+version = "0.0.3-preview.1"
 dependencies = [
+ "getrandom 0.3.4",
+ "serde",
+ "serde_json",
  "tauri",
  "tauri-build",
+ "tauri-plugin-single-instance",
 ]
 
 [[package]]

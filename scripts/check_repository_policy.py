@@ -43,6 +43,7 @@ REQUIRED_ADRS = tuple(
         "0007-decimal-and-golden-tests.md",
         "0008-jita-first-market-adapters.md",
         "0009-multi-character-scopes-and-local-account-groups.md",
+        "0010-program-folder-storage.md",
     )
 )
 
@@ -52,10 +53,19 @@ REQUIRED_BACKEND_FILES = tuple(
         "backend/new_eden_foundry_backend/__main__.py",
         "backend/new_eden_foundry_backend/database.py",
         "backend/new_eden_foundry_backend/identity.py",
+        "backend/new_eden_foundry_backend/sidecar.py",
+        "backend/new_eden_foundry_backend/storage.py",
         "backend/new_eden_foundry_backend/version.py",
+        "backend/requirements-build.txt",
+        "backend/requirements-runtime.txt",
+        "backend/sidecar_entry.py",
         "backend/tests/test_database.py",
         "backend/tests/test_foundation_status.py",
         "backend/tests/test_identity.py",
+        "backend/tests/test_sidecar.py",
+        "backend/tests/test_storage.py",
+        "scripts/build_sidecar.py",
+        "scripts/smoke_sidecar.py",
     )
 )
 
@@ -121,6 +131,9 @@ def check_workflows(errors: list[str]) -> None:
         release_content = release_workflow.read_text(encoding="utf-8")
         for marker in (
             "scripts/package_portable.ps1",
+            "scripts/build_sidecar.py",
+            "scripts/smoke_sidecar.py",
+            "requirements-build.txt",
             "_x64-portable.zip",
             "Get-FileHash -Algorithm SHA256",
         ):
@@ -157,6 +170,9 @@ def check_documentation(errors: list[str]) -> None:
         errors.append("Missing portable package usage notes.")
     if "portable ZIP" not in content:
         errors.append("docs/RELEASING.md must require a portable ZIP.")
+    for marker in ("foundry-sidecar.exe", "data", "Programmordner"):
+        if marker not in content:
+            errors.append(f"docs/RELEASING.md is missing program-folder marker: {marker}")
 
 
 def check_application_release(errors: list[str]) -> None:
@@ -207,6 +223,16 @@ def check_application_release(errors: list[str]) -> None:
     ):
         errors.append("The versioned UI demo data must explicitly contain synthetic: true.")
 
+    app_source = ROOT / "frontend" / "src" / "App.tsx"
+    if app_source.is_file():
+        app_content = app_source.read_text(encoding="utf-8")
+        for marker in (f'footerVersion: "v{version}"', 'creatorLabel: "Erstellt von"', "Savoxmedia"):
+            if marker not in app_content:
+                errors.append(f"The UI is missing required release marker: {marker}")
+        for forbidden in ("Lokaler Betreiber", "operatorName", "operatorRole"):
+            if forbidden in app_content:
+                errors.append(f"The UI contains a forbidden creator/profile marker: {forbidden}")
+
 
 def check_backend_foundation(errors: list[str]) -> None:
     for path in REQUIRED_BACKEND_FILES:
@@ -219,6 +245,31 @@ def check_backend_foundation(errors: list[str]) -> None:
         for marker in REQUIRED_SQLITE_MARKERS:
             if marker not in content:
                 errors.append(f"SQLite foundation is missing required marker: {marker}")
+
+    storage_source = ROOT / "backend" / "new_eden_foundry_backend" / "storage.py"
+    if storage_source.is_file():
+        storage_content = storage_source.read_text(encoding="utf-8")
+        for marker in ('DATA_DIRECTORY_NAME: Final = "data"', 'DATABASE_FILENAME: Final = "foundry.sqlite3"', "no alternate database path"):
+            if marker not in storage_content:
+                errors.append(f"Program-folder storage is missing required marker: {marker}")
+
+    sidecar_source = ROOT / "backend" / "new_eden_foundry_backend" / "sidecar.py"
+    if sidecar_source.is_file():
+        sidecar_content = sidecar_source.read_text(encoding="utf-8")
+        for marker in ('LOOPBACK_HOST: Final = "127.0.0.1"', "secrets.compare_digest", 'listener.bind((LOOPBACK_HOST, 0))'):
+            if marker not in sidecar_content:
+                errors.append(f"Sidecar security is missing required marker: {marker}")
+
+    tauri_source = ROOT / "src-tauri" / "src" / "lib.rs"
+    if tauri_source.is_file():
+        tauri_content = tauri_source.read_text(encoding="utf-8")
+        for marker in ("tauri_plugin_single_instance::init", "std::env::current_exe", "foundry-sidecar.exe", "sessionToken"):
+            if marker not in tauri_content:
+                errors.append(f"Tauri runtime is missing required marker: {marker}")
+
+    portable_script = ROOT / "scripts" / "package_portable.ps1"
+    if portable_script.is_file() and "foundry-sidecar.exe" not in portable_script.read_text(encoding="utf-8"):
+        errors.append("The portable package must contain foundry-sidecar.exe.")
 
     package_path = ROOT / "package.json"
     if not package_path.is_file():

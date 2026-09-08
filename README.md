@@ -4,9 +4,9 @@ New Eden Foundry wird eine lokale Desktop-Anwendung für nachvollziehbare EVE-On
 
 ## Projektstatus
 
-**Technische Preview – `v0.0.2-preview.2`.** Die Windows-Vorschau unterstützt jetzt eine gemeinsame Übersicht und getrennte Ansichten für mehrere Charaktere aus mehreren lokalen Kontogruppen. Im Backend speichert Schema-Version 2 diese Zuordnung und die pro Charakter gewährten SSO-Scopes. Die Tauri-Schale meldet weiterhin ihren echten Laufzeitstatus über IPC; Installer und portable ZIP bleiben beide verfügbar.
+**Technische Preview – `v0.0.3-preview.1`.** Die Windows-App startet jetzt ihren gebündelten Python/FastAPI-Sidecar selbst, schützt dessen dynamischen Loopback-Port mit einem neuen Sitzungstoken je Start und legt die SQLite-Datenbank sichtbar unter `data\foundry.sqlite3` im Programmordner an. Eine zweite Instanz fokussiert die bereits laufende App. Gemeinsame und getrennte Übersichten für mehrere Charaktere bleiben Teil der Oberfläche und des Schemas.
 
-Die neue Mehrcharakter-Oberfläche arbeitet weiterhin mit drei klar synthetischen Figuren. SQLite wird noch nicht von der App gestartet oder für Nutzerdaten verwendet; FastAPI-Sidecar, EVE SSO, ESI, SDE und fachliche Berechnungen sind noch nicht angeschlossen. Die Vorschau ist als Prerelease unter [GitHub Releases](https://github.com/Savox76/eve-test-indu/releases) vorgesehen; die erste technische Alpha entsteht erst nach dem vollständigen vertikalen Architektur-Durchstich.
+Die Mehrcharakter-Oberfläche arbeitet weiterhin mit drei klar synthetischen Figuren und liest diese Vorschauwerte noch nicht aus SQLite. EVE SSO, ESI, SDE und fachliche Berechnungen sind noch nicht angeschlossen. Die Preview ist als Prerelease unter [GitHub Releases](https://github.com/Savox76/eve-test-indu/releases) vorgesehen; das vollständige Windows-Installationsgate bleibt Voraussetzung für die erste technische Alpha.
 
 ## Verbindliche Grundlagen
 
@@ -31,14 +31,15 @@ Auf der [GitHub-Release-Seite](https://github.com/Savox76/eve-test-indu/releases
 | `*_x64-setup.exe` | Empfohlene Installation für den normalen Windows-Betrieb. |
 | `*_x64-portable.zip` | Vollständig entpacken und danach `New Eden Foundry.exe` starten; keine Installation und keine Administratorrechte erforderlich. |
 
-Die portable ZIP benötigt die Microsoft Edge WebView2 Runtime, die auf unterstützten aktuellen Windows-10- und Windows-11-Systemen normalerweise vorhanden ist. „Portable“ beschreibt die Auslieferung ohne Installation: Künftige lokale Daten bleiben im Windows-Benutzerprofil und Zugangsdaten im Windows-Anmeldespeicher. Es handelt sich nicht um einen spurenlosen USB-Modus. Zu jeder Variante gehört eine gleichnamige `.sha256`-Datei zur Integritätsprüfung.
+Die portable ZIP enthält Hauptprogramm und Sidecar und benötigt die Microsoft Edge WebView2 Runtime, die auf unterstützten aktuellen Windows-10- und Windows-11-Systemen normalerweise vorhanden ist. Beim ersten Start entsteht im entpackten Programmordner `data\foundry.sqlite3`; der Zielordner muss daher beschreibbar sein. Zum Umziehen oder Sichern wird die geschlossene Anwendung einschließlich des kompletten Ordners `data` kopiert. Spätere Zugangsdaten bleiben getrennt im Windows-Anmeldespeicher. Zu jeder Variante gehört eine gleichnamige `.sha256`-Datei zur Integritätsprüfung.
 
 ## Lokale Entwicklung
 
-Voraussetzungen sind Node.js 24 sowie für das Desktop-Paket die aktuellen Rust- und Tauri-Systemvoraussetzungen.
+Voraussetzungen sind Node.js 24, Python 3.13 sowie für das Desktop-Paket die aktuellen Rust- und Tauri-Systemvoraussetzungen.
 
 ```powershell
 npm ci
+python -m pip install -r backend/requirements-runtime.txt
 npm run dev
 ```
 
@@ -51,7 +52,7 @@ npm run build
 python scripts/check_repository_policy.py
 ```
 
-Ein lokaler Selbsttest der neuen SQLite-Grundlage lässt sich zusätzlich ausführen mit:
+Ein lokaler Selbsttest der SQLite-Grundlage lässt sich zusätzlich ausführen mit:
 
 ```powershell
 python -m backend.new_eden_foundry_backend --database .\foundry-development.sqlite3

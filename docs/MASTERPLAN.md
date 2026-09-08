@@ -1,10 +1,10 @@
 # Masterplan – New Eden Foundry
 
-**Fassung:** 1.3 (lebendes Repository-Dokument)
+**Fassung:** 1.4 (lebendes Repository-Dokument)
 
 **Stand:** 8. September 2026
 
-**Status:** In Umsetzung – Phase 1 mit erster lokaler Kern-Grundlage
+**Status:** In Umsetzung – Phase 1 mit gebündeltem lokalem Startpfad
 
 **Geltungsbereich:** `Savox76/eve-test-indu`
 
@@ -48,8 +48,9 @@ EVE Mail, Discord-Integration, Buyback-Automatisierung, T3 und Mehrbenutzerbetri
 
 - Windows ist die erste freigegebene Plattform.
 - Eine zweite gestartete Instanz fokussiert die vorhandene Instanz und startet keinen zweiten Sidecar.
+- Datenbank und Backups liegen sichtbar unter `data` im Programmordner. Ein nicht beschreibbarer Ordner ist ein Startfehler; es gibt keinen versteckten Ausweichpfad.
 - Die UI startet aus dem Cache und zeigt Start-, Offline-, veraltete und fehlerhafte Zustände ausdrücklich.
-- Deinstallation und Entfernen eines Charakters haben klar getrennte Regeln für Daten, Backups und Schlüsselbund-Einträge.
+- Updates und Deinstallation ersetzen beziehungsweise entfernen Programmdateien, lassen `data` jedoch stehen. Das Entfernen eines Charakters und eine spätere vollständige Datenlöschung bleiben davon getrennte, bewusste Vorgänge.
 - Linux und macOS erhalten erst nach Windows eigene Freigabe-Gates.
 
 ## 5. Zielarchitektur
@@ -59,7 +60,7 @@ EVE Mail, Discord-Integration, Buyback-Automatisierung, T3 und Mehrbenutzerbetri
 | Desktop-Schale | Tauri 2 / Rust |
 | Oberfläche | React / TypeScript, DE/EN-i18n |
 | Lokaler Dienst | Python / FastAPI als gebündelter Sidecar |
-| Persistenz | SQLite mit Foreign Keys, WAL, `busy_timeout`, Migrationen und Backups |
+| Persistenz | `data\foundry.sqlite3` im Programmordner; SQLite mit Foreign Keys, WAL, `busy_timeout`, Migrationen und Backups |
 | Lokale Kommunikation | ausschließlich Loopback, dynamischer interner Port, kurzlebiges Sitzungstoken |
 | Anmeldung | EVE SSO, Authorization Code mit PKCE, Systembrowser |
 | Tokenablage | Betriebssystem-Schlüsselbund |
@@ -76,6 +77,8 @@ Vor breiter Fachentwicklung muss ein vertikaler Windows-Prototyp beweisen:
 - Jede lokale Anfrage benötigt ein pro Start neu erzeugtes Sitzungstoken.
 - UI-Lesezugriff und Hintergrund-Sync arbeiten kontrolliert parallel auf SQLite.
 - Ein erzeugtes Windows-Paket lässt sich installieren, starten und entfernen.
+
+Die automatisierten Komponenten- und Paketprüfungen decken Sidecar-Build, Handshake, Tokenpflicht, Datenbankort, Integrität und Shutdown ab. Installation, zweiter Fensterstart, Update und Entfernung bleiben bis zur manuellen Abnahme auf einem freigegebenen Windows-Testgerät offene Teile dieses Gates.
 
 Scheitert dieser Durchstich, wird die Sidecar-Entscheidung vor weiterem Fachcode neu bewertet.
 
@@ -94,7 +97,7 @@ Scheitert dieser Durchstich, wird die Sidecar-Entscheidung vor weiterem Fachcode
 
 ## 7. Daten und Synchronisierung
 
-SQLite ist die lokale fachliche Quelle. Jeder Lauf besitzt Start, Ende, Status, Datenquelle, Datenstand und – soweit eigentümerbezogen – eine Charakter-ID. Nur vollständig erfolgreiche Läufe dürfen einen konsistenten Snapshot als aktuell markieren oder Deltas erzeugen. Gemeinsame Auswertungen behalten die Einzelbeiträge und ihre Datenalterung nachvollziehbar bei.
+SQLite unter `<Programmordner>\data\foundry.sqlite3` ist die lokale fachliche Quelle. Der Ordner `data\backups` nimmt künftige Migrationssicherungen auf. Jeder Lauf besitzt Start, Ende, Status, Datenquelle, Datenstand und – soweit eigentümerbezogen – eine Charakter-ID. Nur vollständig erfolgreiche Läufe dürfen einen konsistenten Snapshot als aktuell markieren oder Deltas erzeugen. Gemeinsame Auswertungen behalten die Einzelbeiträge und ihre Datenalterung nachvollziehbar bei.
 
 Der ESI-Client kapselt mindestens Compatibility-Date, User-Agent, Pagination, ETag/Expires, Fehlerbudget, `Retry-After`, Backoff und Circuit Breaker. Veraltete Daten werden nicht stillschweigend durch leere Ergebnisse ersetzt.
 
@@ -187,12 +190,14 @@ Die Reihenfolge ist verbindlicher als eine Kalenderangabe.
 ### Aktueller Stand
 
 - **In Arbeit:** 01 – ADR-Set und Repo-Schutz; der dokumentarische und technische Grundschutz steht, der Branchschutz auf GitHub ist noch offen.
-- **Teilweise umgesetzt:** 02 – Tauri und Frontend bauen bereits in CI; Frontend und Python-Backend werden gemeinsam getestet und lesen ihre Produktversion aus `package.json`. Der gebündelte Backend-Build fehlt noch.
+- **Abgeschlossen:** 02 – Tauri, Frontend und der zielsystemspezifisch eingefrorene Python-Sidecar bauen in CI; alle Komponenten lesen ihre Produktversion aus `package.json`.
 - **Vorbereitend umgesetzt:** 03 – die freigegebene Tauri-/React-Gestaltung verwendet weiterhin ausschließlich einen synthetischen UI-Datensatz.
+- **Technisch umgesetzt, Windows-Abnahme offen:** 04–06 – Single Instance, gebündelter Sidecar, dynamischer Loopback-Port, 256-Bit-Sitzungstoken, Bereitschaftsprotokoll, Prozessüberwachung und Shutdown sind implementiert. Automatisierte Quell-, Frozen- und Pakettests sichern den Kern ab; das vollständige installierte Windows-Laufzeitgate bleibt offen.
 - **Abgeschlossen:** 07 – die SQLite-Grundlage aktiviert und prüft Foreign Keys, WAL und `busy_timeout`, wendet eine versionierte Basismigration an und führt automatisierte Integritäts- sowie Parallelzugriffstests aus.
+- **Teilweise umgesetzt:** 09 – die UI zeigt Prüfung, Sidecar-/Datenbankstart, Bereitschaft und lokale Startfehler; Cache-, Offline- und Datenalterzustände folgen mit der echten Synchronisierung.
 - **Teilweise umgesetzt:** 15 – Schema und Zugriffslogik unterstützen mehrere separat autorisierte Charaktere, lokale Kontogruppen und getrennte Scopes. Die synthetische Oberfläche wechselt bereits zwischen Einzel- und Gesamtübersicht; echter SSO-, Keyring- und Löschablauf folgen erst in Phase 2.
-- **Als Nächstes:** 04–06 – Single Instance, gebündelter Sidecar und geschützter Loopback-Handshake vervollständigen den vertikalen Startpfad.
-- Architektur-Gate A0 ist noch nicht erfüllt; breite Fachentwicklung beginnt erst nach seinem erfolgreichen Abschluss.
+- **Als Nächstes:** 08 und das verbleibende A0-Windows-Gate – automatische Migrationssicherung/Wiederherstellung sowie Installation, zweiter Start, Update und Entfernung auf einem freigegebenen Windows-Testgerät.
+- Architektur-Gate A0 ist technisch weitgehend umgesetzt, aber bis zur vollständigen Windows-Abnahme noch nicht erfüllt; breite Fachentwicklung beginnt erst danach.
 
 ## 13. Entscheidungs- und Quellenrang
 

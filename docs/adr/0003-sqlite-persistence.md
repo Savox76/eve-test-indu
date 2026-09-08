@@ -1,6 +1,6 @@
 # ADR-003: SQLite mit Foreign Keys, WAL, Wartezeit und Migrations-Backups
 
-- **Status:** Angenommen
+- **Status:** Teilweise ersetzt durch ADR-010
 - **Datum:** 7. September 2026
 - **Entscheider:** Projektverantwortlicher
 
@@ -10,7 +10,7 @@ Eine Einzelplatzanwendung benötigt transaktionale lokale Persistenz, schnelle S
 
 ## Entscheidung
 
-Die fachliche Datenbank ist eine SQLite-Datei im betriebssystemspezifischen Anwendungsdatenverzeichnis.
+Die ursprüngliche Entscheidung sah eine SQLite-Datei im betriebssystemspezifischen Anwendungsdatenverzeichnis vor. **Dieser Speicherort wurde durch [ADR-010](0010-program-folder-storage.md) ersetzt.** Foreign Keys, WAL, Wartezeit, Migrationen und Backups aus dieser ADR gelten unverändert weiter.
 
 Jede Verbindung setzt und prüft mindestens:
 

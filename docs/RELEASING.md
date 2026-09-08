@@ -59,9 +59,11 @@ Jedes Windows-Release enthält mindestens:
 - die portable ZIP `New.Eden.Foundry_<VERSION>_x64-portable.zip`,
 - für beide Pakete jeweils eine gleichnamige `.sha256`-Datei.
 
-Die portable ZIP enthält einen versionsbezogenen Ordner mit `New Eden Foundry.exe` und den deutsch-englischen Nutzungshinweisen. Der Workflow öffnet das erzeugte Archiv und prüft diese Einträge, bevor eine Version freigegeben wird. Die ZIP muss vollständig entpackt werden; ein Start direkt aus der Archivvorschau wird nicht unterstützt.
+Die portable ZIP enthält einen versionsbezogenen Ordner mit `New Eden Foundry.exe`, `foundry-sidecar.exe` und den deutsch-englischen Nutzungshinweisen. Der Workflow öffnet das erzeugte Archiv und prüft diese Einträge, bevor eine Version freigegeben wird. Die ZIP muss vollständig in einen beschreibbaren Ordner entpackt werden; ein Start direkt aus der Archivvorschau wird nicht unterstützt.
 
-„Portable“ bedeutet hier, dass die Anwendung ohne Installation und ohne Administratorrechte gestartet werden kann. Es bedeutet nicht, dass Nutzerdaten oder Zugangsdaten im Programmordner mitgeführt werden. Künftige lokale Daten bleiben im Windows-Benutzerprofil und Geheimnisse im Windows-Anmeldespeicher. Ein vollständig selbstenthaltener USB-Modus wäre eine eigene, sicherheitsrelevante Produktentscheidung.
+„Portable“ bedeutet hier, dass die Anwendung ohne Installation und ohne Administratorrechte gestartet werden kann. Die Fachdatenbank und ihre Backups liegen im Unterordner `data` des Programmordners und werden beim Kopieren dieses vollständigen Ordners mitgeführt. Vor Kopie oder Sicherung muss die App geschlossen sein. Geheimnisse wie spätere EVE-Refresh-Tokens bleiben dagegen im Windows-Anmeldespeicher und sind deshalb nicht Bestandteil eines portablen Ordnertransfers.
+
+Der Installer arbeitet im Modus `currentUser`. Ein Update ersetzt nur ausgelieferte Programmdateien und lässt den nicht gebündelten Ordner `data` stehen. Auch eine Deinstallation lässt diesen Datenordner bewusst zurück; für eine vollständige Löschung muss er anschließend manuell entfernt werden, bis eine bestätigungspflichtige Löschfunktion existiert.
 
 Als selbst hochgeladene Release-Dateien sind ausschließlich Dateien erlaubt, die zur Installation, portablen Ausführung, Integritäts- oder Signaturprüfung oder zum Update der freigegebenen Anwendung benötigt werden. Debug-Dumps, echte Nutzerdaten und beliebige CI-Zwischenstände werden nicht hochgeladen.
 

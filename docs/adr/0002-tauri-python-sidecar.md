@@ -15,15 +15,16 @@ Die Desktop-Schale wird mit Tauri 2 und Rust gebaut, die Oberfläche mit React/T
 - Tauri besitzt den Sidecar-Lebenszyklus und startet höchstens einen Kindprozess.
 - Der Sidecar bindet ausschließlich an `127.0.0.1` und lässt den Port durch das Betriebssystem wählen.
 - Tauri erzeugt je Start ein kryptografisch zufälliges Sitzungstoken mit mindestens 256 Bit Entropie.
-- Das Token wird weder als Kommandozeilenargument noch im Log geführt. Der konkrete IPC-Transport wird im Architektur-Gate A0 durch einen Test festgeschrieben.
+- Das Token wird weder als Kommandozeilenargument noch im Log geführt. Tauri übergibt eine einzelne versionierte JSON-Startnachricht mit Token und Programmordner ausschließlich über die Standardeingabe des Kindprozesses.
 - Der Sidecar meldet seine Bereitschaft und den gewählten Port maschinenlesbar; eine fehlerhafte oder verspätete Bereitschaft bricht kontrolliert ab.
 - Jede lokale HTTP-Anfrage einschließlich `/health` wird authentifiziert. CORS ist nicht als Sicherheitsgrenze anzusehen.
 - Die WebView erhält nur die minimal nötigen Tauri-Capabilities. Beliebige Shell-Ausführung ist ausgeschlossen.
 - Beim Beenden der App wird der Kindprozess kontrolliert beendet; ein verwaister Prozess gilt als Fehler.
+- Das Single-Instance-Plugin wird vor allen anderen Plugins registriert. Ein zweiter Windows-Start fokussiert die bestehende Hauptinstanz und erreicht daher keinen zweiten Sidecar-Start.
 
 ## Folgen
 
-Für jedes freigegebene Zielsystem muss ein passender Sidecar gebaut und zusammen mit Tauri paketiert werden. Startprotokoll, Prozessüberwachung, Port-/Token-Handshake und Shutdown benötigen Integrations- und Pakettests. Der interne API-Vertrag wird versioniert.
+Für jedes freigegebene Zielsystem muss ein passender Sidecar gebaut und zusammen mit Tauri paketiert werden. Der Windows-x64-Sidecar wird als einzelne PyInstaller-EXE erzeugt und von Tauri als Ressource neben der Haupt-EXE installiert. Startprotokoll, Prozessüberwachung, Port-/Token-Handshake und Shutdown benötigen Integrations- und Pakettests. Der interne API-Vertrag wird versioniert.
 
 ## Verifikation
 

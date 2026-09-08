@@ -32,6 +32,9 @@
     "active": true,
     "targets": ["nsis"],
     "icon": ["icons/icon.ico"],
+    "resources": {
+      "binaries/foundry-sidecar-x86_64-pc-windows-msvc.exe": "foundry-sidecar.exe"
+    },
     "shortDescription": "Local EVE industry planning",
     "longDescription": "New Eden Foundry is a local-first desktop workspace for transparent EVE Online industry planning.",
     "copyright": "Copyright © 2026 New Eden Foundry contributors",

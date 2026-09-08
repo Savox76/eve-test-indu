@@ -24,9 +24,13 @@ if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
 }
 
 $sourceExecutable = Join-Path $TargetDirectory 'new-eden-foundry.exe'
+$sourceSidecar = Join-Path $repositoryRoot 'src-tauri/binaries/foundry-sidecar-x86_64-pc-windows-msvc.exe'
 $sourceReadme = Join-Path $repositoryRoot 'docs/portable/README-DE-EN.txt'
 if (-not (Test-Path -LiteralPath $sourceExecutable -PathType Leaf)) {
   throw "Built application executable not found: $sourceExecutable"
+}
+if (-not (Test-Path -LiteralPath $sourceSidecar -PathType Leaf)) {
+  throw "Bundled sidecar executable not found: $sourceSidecar"
 }
 if (-not (Test-Path -LiteralPath $sourceReadme -PathType Leaf)) {
   throw "Portable usage notes not found: $sourceReadme"
@@ -42,6 +46,7 @@ try {
   New-Item -ItemType Directory -Path $packageRoot -Force | Out-Null
   New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
   Copy-Item -LiteralPath $sourceExecutable -Destination (Join-Path $packageRoot 'New Eden Foundry.exe')
+  Copy-Item -LiteralPath $sourceSidecar -Destination (Join-Path $packageRoot 'foundry-sidecar.exe')
   Copy-Item -LiteralPath $sourceReadme -Destination (Join-Path $packageRoot 'PORTABLE-README-DE-EN.txt')
 
   if (Test-Path -LiteralPath $archivePath) {
@@ -62,6 +67,7 @@ try {
     $entries = @($archive.Entries | ForEach-Object { $_.FullName.Replace('\', '/') })
     foreach ($expected in @(
       "${folder}New Eden Foundry.exe",
+      "${folder}foundry-sidecar.exe",
       "${folder}PORTABLE-README-DE-EN.txt"
     )) {
       if ($expected -notin $entries) {

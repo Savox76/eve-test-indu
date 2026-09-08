@@ -26,13 +26,13 @@ Eine technische Gleichsetzung von EVE-Login, Account und Charakter wäre deshalb
 
 Ein EVE-Account mit mehreren Charakteren benötigt mehrere bewusste SSO-Anmeldevorgänge. Kontogruppen erleichtern anschließend die lokale Organisation, ersetzen aber keine EVE-Anmeldung. Spätere Asset-, Blueprint-, Job-, Markt-, Projekt- und PI-Tabellen müssen den Eigentümerbezug durchgängig erhalten, damit Einzel- und Gesamtansicht aus derselben Datenbasis reproduzierbar entstehen.
 
-Der feste Betreibername in der aktuellen Vorschau ist keine EVE-Identität. Sobald lokale Einstellungen implementiert werden, wird er als editierbare lokale Anzeige behandelt.
+`Savoxmedia` ist ausschließlich der Erstellerhinweis der App neben der Versionsnummer und keine EVE-Identität. Charakter- und Kontodarstellungen verwenden davon getrennte Datensätze.
 
 ## Verifikation
 
 - Migrationstests aktualisieren eine Schema-Version-1-Datenbank ohne Datenverlust auf das Mehrcharakter-Schema.
 - Backendtests prüfen mit negativen synthetischen IDs mehrere Kontogruppen, mehrere Charaktere, getrennte Scopes, idempotentes Wiederverbinden, ungültige Gruppenzuordnung und das gruppenunabhängige Fortbestehen eines Charakters.
-- UI-Tests wechseln zwischen Gesamt- und Charakterübersicht und prüfen unterschiedliche Kennzahlen sowie den sichtbaren Betreibername.
+- UI-Tests wechseln zwischen Gesamt- und Charakterübersicht, prüfen unterschiedliche Kennzahlen und halten den Erstellerhinweis von jeder Charakteridentität getrennt.
 - Spätere SSO-Integrationstests weisen nach, dass Token, Scopes, Fehler und Datenalter nie zwischen Charakteren vermischt werden.
 
 ## Referenzen

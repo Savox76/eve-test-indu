@@ -262,7 +262,8 @@ select:focus-visible {
   background: var(--gold-soft);
 }
 
-.local-status--unavailable .local-status__icon {
+.local-status--unavailable .local-status__icon,
+.local-status--error .local-status__icon {
   color: var(--coral);
   background: var(--coral-soft);
 }
@@ -284,75 +285,26 @@ select:focus-visible {
   font-size: 9px;
 }
 
-.profile {
-  display: grid;
-  grid-template-columns: 36px minmax(0, 1fr) 18px;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  padding: 11px 8px;
-  border: 0;
-  border-top: 1px solid var(--line-soft);
-  color: var(--text-soft);
-  background: transparent;
-  cursor: pointer;
-  text-align: left;
-}
-
-.profile:hover {
-  color: var(--text);
-}
-
-.avatar {
-  display: grid;
-  place-items: center;
-  width: 36px;
-  height: 36px;
-  border: 1px solid rgba(210, 168, 95, 0.26);
-  border-radius: 10px;
-  color: #ddc28e;
-  background: linear-gradient(135deg, #2b2b22, #1a211d);
-  font-size: 11px;
-  font-weight: 750;
-  letter-spacing: 0.05em;
-}
-
-.profile-copy {
-  min-width: 0;
-}
-
-.profile-copy strong,
-.profile-copy small {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.profile-copy strong {
-  color: #d8ded8;
-  font-size: 12px;
-}
-
-.profile-copy small {
-  margin-top: 3px;
-  color: var(--text-muted);
-  font-size: 9px;
-}
-
 .sidebar-footer {
   display: flex;
+  align-items: center;
   justify-content: space-between;
-  padding: 5px 8px 0;
+  gap: 8px;
+  padding: 11px 8px 0;
+  border-top: 1px solid var(--line-soft);
   color: #555f57;
-  font-size: 9px;
+  font-size: 8px;
   letter-spacing: 0.04em;
 }
 
-.preview-word {
-  color: rgba(210, 168, 95, 0.7);
+.creator-credit {
+  color: #68736a;
+  white-space: nowrap;
+}
+
+.creator-credit strong {
+  color: rgba(210, 168, 95, 0.82);
   font-weight: 700;
-  letter-spacing: 0.12em;
 }
 
 .main-content {
@@ -1701,8 +1653,6 @@ select:focus-visible {
   .nav-item span,
   .nav-count,
   .local-status > div:last-child,
-  .profile-copy,
-  .profile > svg,
   .sidebar-footer {
     display: none;
   }
@@ -1721,12 +1671,6 @@ select:focus-visible {
   .local-status {
     justify-content: center;
     padding: 9px;
-  }
-
-  .profile {
-    display: flex;
-    justify-content: center;
-    padding: 11px 0;
   }
 
   .hero-panel {
@@ -1770,7 +1714,6 @@ select:focus-visible {
 
   .brand,
   .local-status,
-  .profile,
   .sidebar-spacer {
     display: none;
   }

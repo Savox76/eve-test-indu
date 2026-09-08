@@ -35,11 +35,12 @@ describe("New Eden Foundry design preview", () => {
     expect(await screen.findByText("Desktop-Kern nur in der App")).toBeInTheDocument();
   });
 
-  it("shows Savoxmedia as the local operator in the navigation", () => {
+  it("credits Savoxmedia as the app creator next to the version", () => {
     render(<App />);
 
     expect(screen.getByText("Savoxmedia")).toBeInTheDocument();
-    expect(screen.getByText("Lokaler Betreiber")).toBeInTheDocument();
+    expect(screen.getByText("Erstellt von", { exact: false })).toBeInTheDocument();
+    expect(screen.queryByText("Lokaler Betreiber")).not.toBeInTheDocument();
   });
 
   it("switches between the combined and individual character overview", () => {
