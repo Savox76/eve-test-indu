@@ -83,7 +83,10 @@ impl RuntimeState {
     }
 
     fn set_snapshot(&self, snapshot: RuntimeSnapshot) {
-        *self.snapshot.lock().unwrap_or_else(|error| error.into_inner()) = snapshot;
+        *self
+            .snapshot
+            .lock()
+            .unwrap_or_else(|error| error.into_inner()) = snapshot;
     }
 }
 
@@ -215,7 +218,10 @@ fn start_sidecar(app: AppHandle) {
                 terminate_child(&mut process.child);
                 return;
             }
-            *state.sidecar.lock().unwrap_or_else(|error| error.into_inner()) = Some(process);
+            *state
+                .sidecar
+                .lock()
+                .unwrap_or_else(|error| error.into_inner()) = Some(process);
             state.set_snapshot(RuntimeSnapshot::ready(schema_version));
         }
         Err(error_code) => state.set_snapshot(RuntimeSnapshot::failed(error_code)),
