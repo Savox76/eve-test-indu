@@ -41,7 +41,7 @@ Alle bemerkenswerten Änderungen an New Eden Foundry werden hier festgehalten. D
 
 ### Behobene Fehler
 
-- Keine – erste ausführbare Vorschau.
+- Der Release-Gate-Ausdruck ist als gültiger YAML-Skalar quotiert und wird vor künftigen Veröffentlichungen durch die Repository-Prüfung abgesichert.
 
 ### Bekannte Einschränkungen
 
