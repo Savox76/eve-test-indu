@@ -1,6 +1,8 @@
 # Python-Backend
 
-Dieses Verzeichnis enthält den lokalen fachlichen Kern von New Eden Foundry. In der ersten Ausbaustufe stehen die versionierte SQLite-Grundlage und ein lokaler Selbsttest bereit. Ein Netzwerkdienst wird noch nicht gestartet.
+Dieses Verzeichnis enthält den lokalen fachlichen Kern von New Eden Foundry. Die aktuelle Ausbaustufe umfasst die versionierte SQLite-Grundlage, lokale Kontogruppen, getrennte Charakterdatensätze und deren jeweilige SSO-Scopes. Ein Netzwerkdienst wird noch nicht gestartet.
+
+EVE autorisiert jeden Charakter einzeln. Eine lokale Kontogruppe dient nur der vom Nutzer vergebenen Organisation mehrerer Charaktere; sie speichert weder EVE-Accountnamen noch Zugangsdaten. Token werden in einer späteren Ausbaustufe pro Charakter im Windows-Anmeldespeicher abgelegt und gehören nicht in SQLite.
 
 Der Selbsttest lässt sich aus diesem Verzeichnis ausführen:
 

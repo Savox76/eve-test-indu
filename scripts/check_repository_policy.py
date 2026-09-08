@@ -42,6 +42,7 @@ REQUIRED_ADRS = tuple(
         "0006-cache-first-sync.md",
         "0007-decimal-and-golden-tests.md",
         "0008-jita-first-market-adapters.md",
+        "0009-multi-character-scopes-and-local-account-groups.md",
     )
 )
 
@@ -50,9 +51,11 @@ REQUIRED_BACKEND_FILES = tuple(
     for path in (
         "backend/new_eden_foundry_backend/__main__.py",
         "backend/new_eden_foundry_backend/database.py",
+        "backend/new_eden_foundry_backend/identity.py",
         "backend/new_eden_foundry_backend/version.py",
         "backend/tests/test_database.py",
         "backend/tests/test_foundation_status.py",
+        "backend/tests/test_identity.py",
     )
 )
 
@@ -63,6 +66,9 @@ REQUIRED_SQLITE_MARKERS = (
     "PRAGMA quick_check",
     "PRAGMA foreign_key_check",
     "BEGIN IMMEDIATE",
+    "CREATE TABLE account_groups",
+    "CREATE TABLE characters",
+    "CREATE TABLE character_scopes",
 )
 
 

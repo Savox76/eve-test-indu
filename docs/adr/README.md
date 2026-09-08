@@ -12,5 +12,6 @@ ADRs halten Entscheidungen fest, die Architektur, Sicherheit, Datenmodell, Betri
 | [006](0006-cache-first-sync.md) | Cache-first-Synchronisierung mit sichtbarer Datenalterung | Angenommen |
 | [007](0007-decimal-and-golden-tests.md) | Decimal- und Golden-Test-Pflicht für wirtschaftliche Berechnungen | Angenommen |
 | [008](0008-jita-first-market-adapters.md) | Jita-first mit austauschbaren Marktadaptern | Angenommen |
+| [009](0009-multi-character-scopes-and-local-account-groups.md) | Charaktergebundene EVE-Zugänge mit lokalen Kontogruppen und Gesamtansicht | Angenommen |
 
 Neue ADRs verwenden vierstellige laufende Nummern und die Abschnitte **Kontext**, **Entscheidung**, **Folgen**, **Verifikation** und **Referenzen**.

@@ -21,6 +21,8 @@ Insbesondere nicht zulässig sind:
 
 Öffentliche, statische EVE-Stammdaten aus einer zulässigen SDE-Quelle sind keine Nutzerdaten. Ihre Herkunft und Version müssen jedoch dokumentiert werden.
 
+Ausdrücklich freigegebene Projekt-, Marken- oder Betreiberbezeichnungen sind UI-Texte und keine EVE-Fixtures. Sie dürfen keine tatsächliche Charakter-, Corporation-, Alliance- oder Accountzugehörigkeit behaupten. `Savoxmedia` wird deshalb ausschließlich als lokaler Betreibername angezeigt und nicht als EVE-Identität verwendet.
+
 ## Regeln für Fixtures
 
 - Personen, Organisationen, Strukturen, Projekte und Orte erhalten klar erfundene Namen.

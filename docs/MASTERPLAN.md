@@ -1,6 +1,6 @@
 # Masterplan – New Eden Foundry
 
-**Fassung:** 1.2 (lebendes Repository-Dokument)
+**Fassung:** 1.3 (lebendes Repository-Dokument)
 
 **Stand:** 8. September 2026
 
@@ -27,6 +27,7 @@ Jede wirtschaftliche Berechnung nennt ihre Eingaben und ihren Datenstand. Bekann
 - **Handlungsnah:** Ergebnisse führen zu Einkaufslisten, Bauketten und Projektfortschritt.
 - **Testbar:** synthetische Fixtures und Golden-Fälle sind die einzige Basis für Tests, Dokumentation und Screenshots.
 - **Zweisprachig vorbereitet:** sichtbare Texte werden von Beginn an aus deutschen und englischen Katalogen geladen.
+- **Mehrcharakterfähig:** jeder Charakter bleibt technisch und fachlich getrennt; Einzelansichten und eine nachvollziehbare Gesamtübersicht entstehen aus derselben Datenbasis.
 
 ## 3. Umfang bis 1.0
 
@@ -87,11 +88,13 @@ Scheitert dieser Durchstich, wird die Sidecar-Entscheidung vor weiterem Fachcode
 - Access Tokens werden anhand der veröffentlichten Metadaten und JWKS validiert.
 - Refresh-Token-Rotation gilt erst nach erfolgreicher atomarer Ablage im Schlüsselbund als abgeschlossen.
 - Scopes werden funktionsweise und so spät wie möglich angefordert.
+- Jeder Charakter wird separat autorisiert. Frei benannte lokale Kontogruppen ordnen Charaktere mehreren gewünschten Accountstrukturen zu, ohne EVE-Accountnamen oder Zugangsdaten zu speichern.
+- Die Gesamtübersicht aggregiert alle aktiv verbundenen Charaktere; jede Einzelübersicht erhält Datenalter, Scope- und Fehlerstatus des gewählten Charakters.
 - Die exakte Callback-URI, öffentliche Client-ID, Scopepakete und der Entwicklerkontakt werden vor SSO-Implementierung dokumentiert.
 
 ## 7. Daten und Synchronisierung
 
-SQLite ist die lokale fachliche Quelle. Jeder Lauf besitzt Start, Ende, Status, Datenquelle und Datenstand. Nur vollständig erfolgreiche Läufe dürfen einen konsistenten Snapshot als aktuell markieren oder Deltas erzeugen.
+SQLite ist die lokale fachliche Quelle. Jeder Lauf besitzt Start, Ende, Status, Datenquelle, Datenstand und – soweit eigentümerbezogen – eine Charakter-ID. Nur vollständig erfolgreiche Läufe dürfen einen konsistenten Snapshot als aktuell markieren oder Deltas erzeugen. Gemeinsame Auswertungen behalten die Einzelbeiträge und ihre Datenalterung nachvollziehbar bei.
 
 Der ESI-Client kapselt mindestens Compatibility-Date, User-Agent, Pagination, ETag/Expires, Fehlerbudget, `Retry-After`, Backoff und Circuit Breaker. Veraltete Daten werden nicht stillschweigend durch leere Ergebnisse ersetzt.
 
@@ -187,6 +190,7 @@ Die Reihenfolge ist verbindlicher als eine Kalenderangabe.
 - **Teilweise umgesetzt:** 02 – Tauri und Frontend bauen bereits in CI; Frontend und Python-Backend werden gemeinsam getestet und lesen ihre Produktversion aus `package.json`. Der gebündelte Backend-Build fehlt noch.
 - **Vorbereitend umgesetzt:** 03 – die freigegebene Tauri-/React-Gestaltung verwendet weiterhin ausschließlich einen synthetischen UI-Datensatz.
 - **Abgeschlossen:** 07 – die SQLite-Grundlage aktiviert und prüft Foreign Keys, WAL und `busy_timeout`, wendet eine versionierte Basismigration an und führt automatisierte Integritäts- sowie Parallelzugriffstests aus.
+- **Teilweise umgesetzt:** 15 – Schema und Zugriffslogik unterstützen mehrere separat autorisierte Charaktere, lokale Kontogruppen und getrennte Scopes. Die synthetische Oberfläche wechselt bereits zwischen Einzel- und Gesamtübersicht; echter SSO-, Keyring- und Löschablauf folgen erst in Phase 2.
 - **Als Nächstes:** 04–06 – Single Instance, gebündelter Sidecar und geschützter Loopback-Handshake vervollständigen den vertikalen Startpfad.
 - Architektur-Gate A0 ist noch nicht erfüllt; breite Fachentwicklung beginnt erst nach seinem erfolgreichen Abschluss.
 

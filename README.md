@@ -4,9 +4,9 @@ New Eden Foundry wird eine lokale Desktop-Anwendung für nachvollziehbare EVE-On
 
 ## Projektstatus
 
-**Technische Preview – `v0.0.2-preview.1`.** Die Windows-Vorschau behält die freigegebene Gestaltung bei und ergänzt den ersten lokalen Kern: Die Tauri-Schale meldet ihren echten Laufzeitstatus über IPC, während das Python-Backend eine versionierte SQLite-Grundlage mit Integritätsprüfung bereitstellt. Installer und portable ZIP bleiben beide verfügbar.
+**Technische Preview – `v0.0.2-preview.2`.** Die Windows-Vorschau unterstützt jetzt eine gemeinsame Übersicht und getrennte Ansichten für mehrere Charaktere aus mehreren lokalen Kontogruppen. Im Backend speichert Schema-Version 2 diese Zuordnung und die pro Charakter gewährten SSO-Scopes. Die Tauri-Schale meldet weiterhin ihren echten Laufzeitstatus über IPC; Installer und portable ZIP bleiben beide verfügbar.
 
-Die SQLite-Grundlage wird in dieser Version noch nicht von der Oberfläche gestartet oder für Nutzerdaten verwendet. Auch FastAPI-Sidecar, EVE SSO, ESI, SDE und fachliche Berechnungen sind noch nicht angeschlossen. Die Vorschau ist als Prerelease unter [GitHub Releases](https://github.com/Savox76/eve-test-indu/releases) vorgesehen; die erste technische Alpha entsteht erst nach dem vollständigen vertikalen Architektur-Durchstich.
+Die neue Mehrcharakter-Oberfläche arbeitet weiterhin mit drei klar synthetischen Figuren. SQLite wird noch nicht von der App gestartet oder für Nutzerdaten verwendet; FastAPI-Sidecar, EVE SSO, ESI, SDE und fachliche Berechnungen sind noch nicht angeschlossen. Die Vorschau ist als Prerelease unter [GitHub Releases](https://github.com/Savox76/eve-test-indu/releases) vorgesehen; die erste technische Alpha entsteht erst nach dem vollständigen vertikalen Architektur-Durchstich.
 
 ## Verbindliche Grundlagen
 

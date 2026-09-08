@@ -8,6 +8,7 @@ from pathlib import Path
 
 from new_eden_foundry_backend.database import (
     BUSY_TIMEOUT_MILLISECONDS,
+    MIGRATIONS,
     SCHEMA_VERSION,
     connect_database,
     initialize_database,
@@ -38,7 +39,52 @@ class DatabaseFoundationTests(unittest.TestCase):
         self.assertEqual(first, second)
         with closing(connect_database(self.database_path)) as connection:
             count = connection.execute("SELECT COUNT(*) FROM schema_migrations").fetchone()[0]
-        self.assertEqual(count, 1)
+        self.assertEqual(count, SCHEMA_VERSION)
+
+    def test_version_one_database_is_migrated_without_data_loss(self) -> None:
+        with closing(connect_database(self.database_path)) as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            connection.execute(
+                """
+                CREATE TABLE schema_migrations (
+                    version INTEGER PRIMARY KEY,
+                    name TEXT NOT NULL UNIQUE,
+                    applied_at TEXT NOT NULL DEFAULT (
+                        strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                    )
+                )
+                """
+            )
+            version, name, statements = MIGRATIONS[0]
+            for statement in statements:
+                connection.execute(statement)
+            connection.execute(
+                "INSERT INTO schema_migrations (version, name) VALUES (?, ?)",
+                (version, name),
+            )
+            connection.execute("PRAGMA user_version = 1")
+            connection.execute(
+                "INSERT INTO app_metadata (key, value) VALUES (?, ?)",
+                ("preserved", "yes"),
+            )
+            connection.execute("COMMIT")
+
+        status = initialize_database(self.database_path)
+
+        self.assertEqual(status.schema_version, SCHEMA_VERSION)
+        with closing(connect_database(self.database_path)) as connection:
+            value = connection.execute(
+                "SELECT value FROM app_metadata WHERE key = ?",
+                ("preserved",),
+            ).fetchone()[0]
+            tables = {
+                row[0]
+                for row in connection.execute(
+                    "SELECT name FROM sqlite_master WHERE type = 'table'"
+                )
+            }
+        self.assertEqual(value, "yes")
+        self.assertTrue({"account_groups", "characters", "character_scopes"} <= tables)
 
     def test_foreign_keys_are_enforced_on_every_connection(self) -> None:
         initialize_database(self.database_path)
