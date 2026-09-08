@@ -14,10 +14,13 @@ Wichtig:
   aktuellen Windows-10- und Windows-11-Systemen normalerweise bereits enthalten.
 - Diese Preview ist noch nicht code-signiert. Windows kann deshalb vor einem
   unbekannten Herausgeber warnen.
-- "Portable" bezeichnet die Anwendungsauslieferung ohne Installation. Diese
-  Preview legt noch keine Fachdatenbank an. Künftige Versionen speichern lokale
-  Daten weiterhin sicher im Windows-Benutzerprofil und Zugangsdaten im
-  Windows-Anmeldespeicher. Die ZIP ist daher kein spurenloser USB-Modus.
+- Beim ersten Start entsteht im Programmordner "data\foundry.sqlite3". Der
+  entpackte Ordner muss deshalb beschreibbar sein. Es wird kein versteckter
+  Ersatzpfad verwendet.
+- Zum Umziehen oder Sichern die Anwendung zuerst schließen und anschließend den
+  vollständigen Programmordner einschließlich "data" kopieren.
+- Spätere EVE-Zugangsdaten bleiben im Windows-Anmeldespeicher und werden beim
+  Kopieren des Programmordners nicht mitgeführt.
 
 Integrität prüfen (PowerShell):
   Get-FileHash -Algorithm SHA256 .\New.Eden.Foundry_<VERSION>_x64-portable.zip
@@ -39,10 +42,12 @@ Important:
   with supported, up-to-date Windows 10 and Windows 11 systems.
 - This preview is not code-signed yet. Windows may therefore warn about an
   unknown publisher.
-- "Portable" describes distribution without installation. This preview does not
-  create a production database yet. Future versions will still keep local data
-  safely in the Windows user profile and credentials in Windows Credential
-  Manager. The ZIP is therefore not a traceless USB mode.
+- The first start creates "data\foundry.sqlite3" inside the program folder. The
+  extracted folder must therefore be writable. No hidden fallback path is used.
+- To move or back up the app, close it first and then copy the complete program
+  folder including "data".
+- Future EVE credentials remain in Windows Credential Manager and do not travel
+  with a copied program folder.
 
 Verify integrity (PowerShell):
   Get-FileHash -Algorithm SHA256 .\New.Eden.Foundry_<VERSION>_x64-portable.zip

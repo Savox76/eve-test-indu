@@ -1,6 +1,6 @@
 [package]
 name = "new-eden-foundry"
-version = "0.0.2-preview.2"
+version = "0.0.3-preview.1"
 description = "Local-first EVE Online industry planning desktop application"
 authors = ["New Eden Foundry contributors"]
 edition = "2021"
@@ -15,3 +15,9 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "2", features = [] }
+getrandom = "0.3"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[target.'cfg(windows)'.dependencies]
+tauri-plugin-single-instance = "=2.4.4"

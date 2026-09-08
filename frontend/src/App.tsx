@@ -23,7 +23,6 @@ import {
   PackageSearch,
   RefreshCw,
   Search,
-  Settings,
   ShieldCheck,
   Sparkles,
   TrendingUp,
@@ -81,15 +80,22 @@ const copy = {
     syncNow: "Jetzt aktuell",
     refresh: "Datenstand simuliert aktualisieren",
     notices: "Hinweise anzeigen",
-    settings: "Einstellungen",
     runtimeStatus: {
       checking: {
         title: "Desktop-Kern",
         detail: "Status wird geprüft …",
       },
+      starting: {
+        title: "Lokaler Kern startet",
+        detail: "Datenbank im Programmordner wird geprüft",
+      },
       ready: {
-        title: "Desktop-Kern aktiv",
-        detail: "Native Windows-Schale verbunden",
+        title: "Lokaler Kern aktiv",
+        detail: "data\\foundry.sqlite3 im Programmordner",
+      },
+      error: {
+        title: "Lokaler Kern gestört",
+        detail: "Sidecar oder Programmordner nicht verfügbar",
       },
       preview: {
         title: "Designvorschau",
@@ -115,8 +121,7 @@ const copy = {
         planetary: "Planetary Industry",
       },
     },
-    operatorName: "Savoxmedia",
-    operatorRole: "Lokaler Betreiber",
+    creatorLabel: "Erstellt von",
     preview: "Design Preview",
     synthetic: "Ausschließlich synthetische Daten – noch keine EVE-Verbindung",
     dateLine: "OPERATIONS-BRIEF · YC 128.09.08",
@@ -200,7 +205,7 @@ const copy = {
     },
     planned: "Geplant",
     previewOnly: "Noch ohne Live-Funktion",
-    footerVersion: "v0.0.2-preview.2",
+    footerVersion: "v0.0.3-preview.1",
   },
   en: {
     nav: {
@@ -221,15 +226,22 @@ const copy = {
     syncNow: "Up to date",
     refresh: "Simulate data refresh",
     notices: "Show notices",
-    settings: "Settings",
     runtimeStatus: {
       checking: {
         title: "Desktop core",
         detail: "Checking status …",
       },
+      starting: {
+        title: "Local core starting",
+        detail: "Checking the database in the program folder",
+      },
       ready: {
-        title: "Desktop core active",
-        detail: "Native Windows shell connected",
+        title: "Local core active",
+        detail: "data\\foundry.sqlite3 in the program folder",
+      },
+      error: {
+        title: "Local core unavailable",
+        detail: "Sidecar or program folder is unavailable",
       },
       preview: {
         title: "Design preview",
@@ -255,8 +267,7 @@ const copy = {
         planetary: "Planetary industry",
       },
     },
-    operatorName: "Savoxmedia",
-    operatorRole: "Local operator",
+    creatorLabel: "Created by",
     preview: "Design Preview",
     synthetic: "Synthetic data only – no EVE connection yet",
     dateLine: "OPERATIONS BRIEF · YC 128.09.08",
@@ -340,7 +351,7 @@ const copy = {
     },
     planned: "Planned",
     previewOnly: "No live function yet",
-    footerVersion: "v0.0.2-preview.2",
+    footerVersion: "v0.0.3-preview.1",
   },
 } as const;
 
@@ -400,13 +411,24 @@ export function App() {
 
   useEffect(() => {
     let active = true;
-    void loadDesktopRuntimeStatus().then((status) => {
-      if (active) setRuntimeStatus(status);
-    });
+    let pollTimer: number | undefined;
+    const refreshRuntimeStatus = async () => {
+      const status = await loadDesktopRuntimeStatus();
+      if (!active) return;
+      setRuntimeStatus(status);
+      if (status.state === "ready" && status.sidecar === "starting") {
+        pollTimer = window.setTimeout(refreshRuntimeStatus, 250);
+      }
+    };
+    void refreshRuntimeStatus();
     return () => {
       active = false;
+      if (pollTimer !== undefined) window.clearTimeout(pollTimer);
     };
   }, []);
+
+  const runtimePresentationState =
+    runtimeStatus.state === "ready" ? runtimeStatus.sidecar : runtimeStatus.state;
 
   const searchResults = useMemo(() => {
     const normalized = query.trim().toLocaleLowerCase(locale);
@@ -464,28 +486,21 @@ export function App() {
 
         <div className="sidebar-spacer" />
 
-        <div className={`local-status local-status--${runtimeStatus.state}`} role="status">
+        <div className={`local-status local-status--${runtimePresentationState}`} role="status">
           <div className="local-status__icon">
             <ShieldCheck size={17} />
           </div>
           <div>
-            <strong>{t.runtimeStatus[runtimeStatus.state].title}</strong>
-            <span>{t.runtimeStatus[runtimeStatus.state].detail}</span>
+            <strong>{t.runtimeStatus[runtimePresentationState].title}</strong>
+            <span>{t.runtimeStatus[runtimePresentationState].detail}</span>
           </div>
         </div>
 
-        <button className="profile" type="button" aria-label={t.settings}>
-          <span className="avatar">SM</span>
-          <span className="profile-copy">
-            <strong>{t.operatorName}</strong>
-            <small>{t.operatorRole}</small>
-          </span>
-          <Settings size={17} />
-        </button>
-
         <div className="sidebar-footer">
           <span>{t.footerVersion}</span>
-          <span className="preview-word">PREVIEW</span>
+          <span className="creator-credit">
+            {t.creatorLabel} <strong>Savoxmedia</strong>
+          </span>
         </div>
       </aside>
 
