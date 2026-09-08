@@ -2,9 +2,9 @@
 
 **Fassung:** 1.1 (lebendes Repository-Dokument)
 
-**Stand:** 7. September 2026
+**Stand:** 8. September 2026
 
-**Status:** In Umsetzung – Phase 0
+**Status:** In Umsetzung – Phase 0 mit ausführbarer Design Preview
 
 **Geltungsbereich:** `Savox76/eve-test-indu`
 
@@ -182,8 +182,9 @@ Die Reihenfolge ist verbindlicher als eine Kalenderangabe.
 
 ### Aktueller Stand
 
-- **In Arbeit:** 01 – ADR-Set und Repo-Schutz
-- **Nicht begonnen:** 02–22
+- **In Arbeit:** 01 – ADR-Set und Repo-Schutz; der dokumentarische und technische Grundschutz steht, der Branchschutz auf GitHub ist noch offen.
+- **Vorbereitend umgesetzt:** eine ausdrücklich nicht-funktionale Tauri-/React-Designvorschau und ein synthetischer UI-Datensatz für die frühe Gestaltungsabnahme. Dies erfüllt weder Arbeitspaket 02 noch Architektur-Gate A0.
+- **Nicht begonnen:** die fachlichen und infrastrukturellen Abnahmekriterien aus 02–22.
 - Breite Fachentwicklung beginnt erst nach Freigabe der Phase-0-Grundlage und erfolgreichem Architektur-Gate A0.
 
 ## 13. Entscheidungs- und Quellenrang

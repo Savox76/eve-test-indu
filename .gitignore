@@ -36,6 +36,8 @@ target/
 src-tauri/target/
 src-tauri/binaries/*
 !src-tauri/binaries/.gitkeep
+src-tauri/icons/*
+!src-tauri/icons/icon.ico
 
 # Local application data
 *.sqlite

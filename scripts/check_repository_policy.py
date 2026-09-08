@@ -3,8 +3,10 @@
 
 from __future__ import annotations
 
+import json
 import re
 import sys
+import tomllib
 from pathlib import Path
 
 
@@ -96,10 +98,60 @@ def check_documentation(errors: list[str]) -> None:
             errors.append(f"docs/RELEASING.md is missing required heading: {heading}")
 
 
+def check_application_release(errors: list[str]) -> None:
+    package_path = ROOT / "package.json"
+    if not package_path.is_file():
+        return
+
+    package = json.loads(package_path.read_text(encoding="utf-8"))
+    version = package.get("version")
+    if not isinstance(version, str) or not version:
+        errors.append("package.json must define a non-empty version.")
+        return
+
+    tauri_config_path = ROOT / "src-tauri" / "tauri.conf.json"
+    if not tauri_config_path.is_file():
+        errors.append("Application package exists but src-tauri/tauri.conf.json is missing.")
+    else:
+        tauri_config = json.loads(tauri_config_path.read_text(encoding="utf-8"))
+        if tauri_config.get("version") != "../package.json":
+            errors.append("Tauri must read its application version from ../package.json.")
+
+    cargo_path = ROOT / "src-tauri" / "Cargo.toml"
+    if not cargo_path.is_file():
+        errors.append("Application package exists but src-tauri/Cargo.toml is missing.")
+    else:
+        cargo = tomllib.loads(cargo_path.read_text(encoding="utf-8"))
+        if cargo.get("package", {}).get("version") != version:
+            errors.append("Cargo package version must match package.json.")
+
+    release_notes_path = ROOT / "docs" / "releases" / f"v{version}.md"
+    if not release_notes_path.is_file():
+        errors.append(f"Missing release notes: {relative(release_notes_path)}")
+    else:
+        release_notes = release_notes_path.read_text(encoding="utf-8")
+        for heading in REQUIRED_RELEASE_HEADINGS:
+            if heading not in release_notes:
+                errors.append(
+                    f"{relative(release_notes_path)} is missing required heading: {heading}"
+                )
+
+    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    if f"## {version}" not in changelog:
+        errors.append(f"CHANGELOG.md has no section for {version}.")
+
+    demo_source = ROOT / "frontend" / "src" / "demo.ts"
+    if not demo_source.is_file() or "synthetic: true" not in demo_source.read_text(
+        encoding="utf-8"
+    ):
+        errors.append("The versioned UI demo data must explicitly contain synthetic: true.")
+
+
 def main() -> int:
     errors: list[str] = []
     check_workflows(errors)
     check_documentation(errors)
+    check_application_release(errors)
 
     if errors:
         print("Repository policy violations:", file=sys.stderr)
