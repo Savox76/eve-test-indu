@@ -9,7 +9,7 @@ from typing import Final
 
 
 BUSY_TIMEOUT_MILLISECONDS: Final = 5_000
-SCHEMA_VERSION: Final = 1
+SCHEMA_VERSION: Final = 2
 
 MIGRATIONS: Final = (
     (
@@ -52,6 +52,67 @@ MIGRATIONS: Final = (
                 observed_at TEXT NOT NULL,
                 UNIQUE (sync_run_id, resource)
             )
+            """,
+        ),
+    ),
+    (
+        2,
+        "multi_character_identity",
+        (
+            """
+            CREATE TABLE account_groups (
+                id INTEGER PRIMARY KEY,
+                label TEXT NOT NULL COLLATE NOCASE UNIQUE CHECK (
+                    length(trim(label)) BETWEEN 1 AND 80
+                ),
+                sort_order INTEGER NOT NULL DEFAULT 0 CHECK (sort_order >= 0),
+                created_at TEXT NOT NULL DEFAULT (
+                    strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                ),
+                updated_at TEXT NOT NULL DEFAULT (
+                    strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                )
+            )
+            """,
+            """
+            CREATE TABLE characters (
+                character_id INTEGER PRIMARY KEY CHECK (character_id <> 0),
+                account_group_id INTEGER
+                    REFERENCES account_groups(id) ON DELETE SET NULL,
+                name TEXT NOT NULL CHECK (
+                    length(trim(name)) BETWEEN 1 AND 100
+                ),
+                enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+                connected_at TEXT NOT NULL DEFAULT (
+                    strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                ),
+                updated_at TEXT NOT NULL DEFAULT (
+                    strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                )
+            )
+            """,
+            """
+            CREATE TABLE character_scopes (
+                character_id INTEGER NOT NULL
+                    REFERENCES characters(character_id) ON DELETE CASCADE,
+                scope TEXT NOT NULL CHECK (
+                    length(trim(scope)) BETWEEN 1 AND 200
+                ),
+                PRIMARY KEY (character_id, scope)
+            )
+            """,
+            """
+            ALTER TABLE sync_runs
+                ADD COLUMN character_id INTEGER
+                    REFERENCES characters(character_id) ON DELETE CASCADE
+            """,
+            """
+            CREATE INDEX idx_characters_account_group
+                ON characters(account_group_id, name COLLATE NOCASE)
+            """,
+            """
+            CREATE INDEX idx_sync_runs_character
+                ON sync_runs(character_id, started_at DESC)
             """,
         ),
     ),

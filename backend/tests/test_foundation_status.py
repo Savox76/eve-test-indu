@@ -28,7 +28,7 @@ class FoundationStatusTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         self.assertEqual(result["state"], "foundation-ready")
         self.assertEqual(result["database"]["integrity"], "ok")
-        self.assertEqual(result["database"]["schema_version"], 1)
+        self.assertEqual(result["database"]["schema_version"], 2)
 
 
 if __name__ == "__main__":

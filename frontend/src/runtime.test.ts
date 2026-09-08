@@ -16,7 +16,7 @@ describe("desktop runtime status", () => {
     const invoke = vi.fn<RuntimeAdapter["invoke"]>().mockResolvedValue(
       JSON.stringify({
         state: "ready",
-        version: "0.0.2-preview.1",
+        version: "0.0.2-preview.2",
         desktopShell: true,
         sidecar: "pending",
         database: "foundation",
@@ -27,7 +27,7 @@ describe("desktop runtime status", () => {
       loadDesktopRuntimeStatus({ isAvailable: () => true, invoke }),
     ).resolves.toEqual({
       state: "ready",
-      version: "0.0.2-preview.1",
+      version: "0.0.2-preview.2",
       desktopShell: true,
       sidecar: "pending",
       database: "foundation",

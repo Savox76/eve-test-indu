@@ -24,6 +24,44 @@ Alle bemerkenswerten Änderungen an New Eden Foundry werden hier festgehalten. D
 
 - Keine.
 
+## 0.0.2-preview.2 – 8. September 2026
+
+### Neu hinzugefügt
+
+- Schema-Version 2 mit lokalen Kontogruppen, eindeutig identifizierten Charakteren und getrennt gespeicherten SSO-Scopes je Charakter.
+- Atomare Charakteraktualisierung, damit eine erneute Autorisierung denselben Charakter aktualisiert und keine Dublette erzeugt.
+- Auswahl zwischen einer gemeinsamen Übersicht aller Charaktere und einer eigenen Übersicht für jeden Charakter.
+- Synthetische Mehrcharakter-Vorschau mit zwei lokalen Kontogruppen, drei Charakteren und jeweils eigenen Kennzahlen, Jobs, Hinweisen und Aktivitäten.
+- ADR-009 als verbindliche Grundlage für charaktergebundene EVE-Zugänge und lokale Accountorganisation.
+
+### Geändert
+
+- Synchronisierungsläufe können jetzt eindeutig einem Charakter zugeordnet werden.
+- Der Datenstand der Gesamtübersicht richtet sich nach dem ältesten enthaltenen Charakterstand und bleibt sichtbar.
+- In der Navigation wird `Savoxmedia` als lokaler Betreiber statt eines synthetischen EVE-Charakters angezeigt.
+- Die sichtbare Versionsnummer wurde auf `v0.0.2-preview.2` aktualisiert.
+
+### Behobene Fehler
+
+- Charakterbezogene Jobs, Hinweise und Aktivitäten behalten in der Gesamtansicht ihre sichtbare Besitzerzuordnung.
+- Das Löschen einer lokalen Kontogruppe entfernt nicht versehentlich die darin einsortierten Charakterdatensätze.
+- Das Löschen eines Charakters entfernt dessen lokale Scopes, Synchronisierungsläufe und Cache-Snapshots vollständig.
+
+### Bekannte Einschränkungen
+
+- Kontogruppen und Charakterübersichten verwenden in dieser Preview noch synthetische Daten und sind noch nicht mit der Oberfläche der SQLite-Datenbank verbunden.
+- Jeder echte Charakter muss später separat über EVE SSO autorisiert werden; EVE stellt der Anwendung keine bestätigte Accountgruppierung bereit.
+- FastAPI-Sidecar, Single Instance, lokaler Port-/Token-Handshake, EVE SSO, ESI und SDE fehlen noch.
+- Installer und portable EXE sind noch nicht code-signiert.
+- Die portable ZIP benötigt eine vorhandene Microsoft Edge WebView2 Runtime.
+- Schutzregeln für `main` sind noch nicht aktiviert.
+
+### Update und Datenbankmigration
+
+- Beim normalen App-Start existiert weiterhin keine produktive Nutzerdatenbank; daher ist für Preview-Nutzer keine Migration erforderlich.
+- Entwicklungsdatenbanken mit Schema-Version 1 werden ohne Verlust bestehender Metadaten auf Schema-Version 2 aktualisiert.
+- Automatische Migrations-Backups und Wiederherstellung folgen mit Arbeitspaket 08 und sind noch nicht Teil dieser Preview.
+
 ## 0.0.2-preview.1 – 8. September 2026
 
 ### Neu hinzugefügt

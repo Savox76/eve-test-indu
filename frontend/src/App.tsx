@@ -5,6 +5,7 @@ import {
   Bell,
   Boxes,
   Check,
+  ChevronDown,
   ChevronRight,
   CircleCheck,
   Clock3,
@@ -26,18 +27,23 @@ import {
   ShieldCheck,
   Sparkles,
   TrendingUp,
+  UserRound,
+  UsersRound,
   Zap,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import {
+  accountGroups,
   activity,
   attentionItems,
+  demoCharacters,
   demoMetadata,
   materialCoverage,
-  metrics,
   modulePreview,
+  overviewMetrics,
   productionStages,
+  type OverviewScopeId,
 } from "./demo";
 import { initialRuntimeStatus, loadDesktopRuntimeStatus } from "./runtime";
 
@@ -94,8 +100,23 @@ const copy = {
         detail: "Statusabfrage nicht möglich",
       },
     },
-    syntheticPilot: "Mara Venn",
-    syntheticCorp: "Kestrel Foundry · Demo",
+    scope: {
+      label: "Übersichtsbereich",
+      select: "Ansicht wählen",
+      combined: "Alle Charaktere",
+      combinedBadge: "GESAMT",
+      characterBadge: "CHARAKTER",
+      accountGroups: "lokale Kontogruppen",
+      characters: "Charaktere",
+      dataAge: "Datenstand",
+      roles: {
+        manufacturing: "Produktion & Assets",
+        research: "Forschung & Blueprints",
+        planetary: "Planetary Industry",
+      },
+    },
+    operatorName: "Savoxmedia",
+    operatorRole: "Lokaler Betreiber",
     preview: "Design Preview",
     synthetic: "Ausschließlich synthetische Daten – noch keine EVE-Verbindung",
     dateLine: "OPERATIONS-BRIEF · YC 128.09.08",
@@ -106,7 +127,6 @@ const copy = {
     inspectAction: "Datenlage prüfen",
     readiness: "Produktionsbereitschaft",
     readinessDetail: "für Projekt Aurora",
-    readinessDelta: "+6 Punkte seit gestern",
     metricLabels: {
       assets: "Asset-Wert",
       jobs: "Aktive Jobs",
@@ -180,7 +200,7 @@ const copy = {
     },
     planned: "Geplant",
     previewOnly: "Noch ohne Live-Funktion",
-    footerVersion: "v0.0.2-preview.1",
+    footerVersion: "v0.0.2-preview.2",
   },
   en: {
     nav: {
@@ -220,8 +240,23 @@ const copy = {
         detail: "Status request failed",
       },
     },
-    syntheticPilot: "Mara Venn",
-    syntheticCorp: "Kestrel Foundry · Demo",
+    scope: {
+      label: "Overview scope",
+      select: "Choose view",
+      combined: "All characters",
+      combinedBadge: "COMBINED",
+      characterBadge: "CHARACTER",
+      accountGroups: "local account groups",
+      characters: "characters",
+      dataAge: "Data age",
+      roles: {
+        manufacturing: "Manufacturing & assets",
+        research: "Research & blueprints",
+        planetary: "Planetary industry",
+      },
+    },
+    operatorName: "Savoxmedia",
+    operatorRole: "Local operator",
     preview: "Design Preview",
     synthetic: "Synthetic data only – no EVE connection yet",
     dateLine: "OPERATIONS BRIEF · YC 128.09.08",
@@ -232,7 +267,6 @@ const copy = {
     inspectAction: "Inspect data health",
     readiness: "Production readiness",
     readinessDetail: "for Project Aurora",
-    readinessDelta: "+6 points since yesterday",
     metricLabels: {
       assets: "Asset value",
       jobs: "Active jobs",
@@ -306,7 +340,7 @@ const copy = {
     },
     planned: "Planned",
     previewOnly: "No live function yet",
-    footerVersion: "v0.0.2-preview.1",
+    footerVersion: "v0.0.2-preview.2",
   },
 } as const;
 
@@ -357,6 +391,7 @@ export function App() {
   const [searchFocused, setSearchFocused] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [runtimeStatus, setRuntimeStatus] = useState(initialRuntimeStatus);
+  const [overviewScope, setOverviewScope] = useState<OverviewScopeId>("all");
   const t = copy[locale];
 
   useEffect(() => {
@@ -440,10 +475,10 @@ export function App() {
         </div>
 
         <button className="profile" type="button" aria-label={t.settings}>
-          <span className="avatar">MV</span>
+          <span className="avatar">SM</span>
           <span className="profile-copy">
-            <strong>{t.syntheticPilot}</strong>
-            <small>{t.syntheticCorp}</small>
+            <strong>{t.operatorName}</strong>
+            <small>{t.operatorRole}</small>
           </span>
           <Settings size={17} />
         </button>
@@ -527,6 +562,8 @@ export function App() {
           <Overview
             locale={locale}
             t={t}
+            scope={overviewScope}
+            onScopeChange={setOverviewScope}
             onOpenProduction={() => selectModule("production")}
             onInspect={scrollToAttention}
           />
@@ -543,16 +580,88 @@ type Translation = (typeof copy)[Locale];
 function Overview({
   locale,
   t,
+  scope,
+  onScopeChange,
   onOpenProduction,
   onInspect,
 }: {
   locale: Locale;
   t: Translation;
+  scope: OverviewScopeId;
+  onScopeChange: (scope: OverviewScopeId) => void;
   onOpenProduction: () => void;
   onInspect: () => void;
 }) {
+  const selectedCharacter = scope === "all"
+    ? undefined
+    : demoCharacters.find((character) => character.id === scope);
+  const selectedGroup = selectedCharacter
+    ? accountGroups.find((group) =>
+        (group.characterIds as readonly string[]).includes(selectedCharacter.id))
+    : undefined;
+  const selectedMetrics = overviewMetrics[scope];
+  const readiness = Number(
+    selectedMetrics.find((metric) => metric.id === "readiness")?.value ?? 0,
+  );
+  const dataAgeMinutes = selectedCharacter?.dataAgeMinutes
+    ?? Math.max(...demoCharacters.map((character) => character.dataAgeMinutes));
+  const readinessDelta = selectedCharacter?.readinessDelta ?? 6;
+  const scopeDetail = selectedCharacter
+    ? `${selectedGroup?.label ?? "—"} · ${t.scope.roles[selectedCharacter.role]}`
+    : `${accountGroups.length} ${t.scope.accountGroups} · ${demoCharacters.length} ${t.scope.characters}`;
+  const scopedProductionStages = productionStages
+    .map((stage, sourceIndex) => ({ stage, sourceIndex }))
+    .filter(({ stage }) => scope === "all" || stage.ownerId === scope);
+  const scopedAttentionItems = attentionItems
+    .map((item, sourceIndex) => ({ item, sourceIndex }))
+    .filter(({ item }) => scope === "all" || item.ownerId === scope);
+  const scopedActivity = activity
+    .map((item, sourceIndex) => ({ item, sourceIndex }))
+    .filter(({ item }) => scope === "all" || item.ownerId === scope);
+  const characterName = (characterId: string) =>
+    demoCharacters.find((character) => character.id === characterId)?.name ?? "—";
+
   return (
     <div className="workspace overview-workspace">
+      <section className="scope-bar" aria-label={t.scope.label}>
+        <div className="scope-bar__icon" aria-hidden="true">
+          {scope === "all" ? <UsersRound size={19} /> : <UserRound size={19} />}
+        </div>
+        <div className="scope-bar__copy" aria-live="polite">
+          <span>{t.scope.label}</span>
+          <div>
+            <strong>{selectedCharacter?.name ?? t.scope.combined}</strong>
+            <small>{scope === "all" ? t.scope.combinedBadge : t.scope.characterBadge}</small>
+          </div>
+          <p>{scopeDetail}</p>
+        </div>
+        <div className="scope-bar__freshness">
+          <StatusDot />
+          <span>{t.scope.dataAge}: {dataAgeMinutes} Min.</span>
+        </div>
+        <label className="scope-picker">
+          <span>{t.scope.select}</span>
+          <div>
+            <select
+              value={scope}
+              onChange={(event) => onScopeChange(event.target.value as OverviewScopeId)}
+              aria-label={t.scope.label}
+            >
+              <option value="all">{t.scope.combined}</option>
+              {accountGroups.map((group) => (
+                <optgroup label={group.label} key={group.id}>
+                  {group.characterIds.map((characterId) => {
+                    const character = demoCharacters.find(({ id }) => id === characterId)!;
+                    return <option value={character.id} key={character.id}>{character.name}</option>;
+                  })}
+                </optgroup>
+              ))}
+            </select>
+            <ChevronDown size={15} aria-hidden="true" />
+          </div>
+        </label>
+      </section>
+
       <section className="hero-panel">
         <div className="hero-grid" aria-hidden="true" />
         <div className="hero-copy">
@@ -569,22 +678,30 @@ function Overview({
           </div>
         </div>
         <div className="readiness-block">
-          <div className="readiness-ring" aria-label={`${t.readiness}: 84%`}>
+          <div
+            className="readiness-ring"
+            aria-label={`${t.readiness}: ${readiness}%`}
+            style={{
+              background: `conic-gradient(var(--teal) 0 ${readiness}%, #29332c ${readiness}% 100%)`,
+            }}
+          >
             <div>
-              <strong>84</strong><span>%</span>
+              <strong>{readiness}</strong><span>%</span>
             </div>
           </div>
           <div className="readiness-copy">
             <strong>{t.readiness}</strong>
             <span>{t.readinessDetail}</span>
-            <small><TrendingUp size={13} /> {t.readinessDelta}</small>
+            <small>
+              <TrendingUp size={13} /> +{readinessDelta} {locale === "de" ? "Punkte seit gestern" : "points since yesterday"}
+            </small>
           </div>
         </div>
       </section>
 
       <section className="metric-grid" aria-label={locale === "de" ? "Kennzahlen" : "Metrics"}>
-        {metrics.map((metric) => (
-          <article className={`metric-card metric-card--${metric.trend}`} key={metric.id}>
+        {selectedMetrics.map((metric) => (
+          <article className={`metric-card metric-card--${metric.trend}`} key={`${scope}-${metric.id}`}>
             <div className="metric-topline">
               <span>{t.metricLabels[metric.id]}</span>
               <button type="button" aria-label="Details"><MoreHorizontal size={17} /></button>
@@ -594,7 +711,7 @@ function Overview({
                 <strong className="metric-value">{metric.value}</strong>
                 <span className="metric-unit">{metric.unit}</span>
               </div>
-              <TrendLine id={metric.id} points={metric.points} warning={metric.trend === "warn"} />
+              <TrendLine id={`${scope}-${metric.id}`} points={metric.points} warning={metric.trend === "warn"} />
             </div>
             <div className="metric-footer">
               <span className="metric-delta">{metric.delta}</span>
@@ -619,11 +736,19 @@ function Overview({
               <span>{t.jobProgress}</span>
               <span>{t.due}</span>
             </div>
-            {productionStages.map((stage, index) => (
+            {scopedProductionStages.map(({ stage, sourceIndex }) => (
               <div className="production-row" key={stage.name}>
                 <div className="job-name">
-                  <span className={`job-glyph job-glyph--${index + 1}`}><Factory size={15} /></span>
-                  <div><strong>{stage.name}</strong><small>{locale === "de" ? ["42 von 60 Einheiten", "Material reserviert", "Blueprint-Forschung"][index] : stage.detail}</small></div>
+                  <span className={`job-glyph job-glyph--${sourceIndex + 1}`}><Factory size={15} /></span>
+                  <div>
+                    <strong>{stage.name}</strong>
+                    <small>
+                      {locale === "de"
+                        ? ["42 von 60 Einheiten", "Material reserviert", "Blueprint-Forschung"][sourceIndex]
+                        : stage.detail}
+                      {scope === "all" ? ` · ${characterName(stage.ownerId)}` : ""}
+                    </small>
+                  </div>
                 </div>
                 <div className="job-progress">
                   <div><span>{stage.progress}%</span><span>{stage.status === "research" ? (locale === "de" ? "Forschung" : "Research") : (locale === "de" ? "Aktiv" : "Active")}</span></div>
@@ -665,11 +790,17 @@ function Overview({
         <section className="panel attention-panel" id="attention-panel">
           <PanelHeader icon={AlertTriangle} title={t.attentionTitle} subtitle={t.attentionSubtitle} />
           <div className="attention-list">
-            {attentionItems.map((item, index) => (
+            {scopedAttentionItems.map(({ item, sourceIndex }) => (
               <div className="attention-item" key={item.title}>
                 <StatusDot tone={item.severity === "critical" ? "critical" : item.severity === "warning" ? "warn" : "good"} />
-                <div><strong>{item.title}</strong><span>{t.attentionDetails[index]}</span></div>
-                <button type="button">{t.attentionActions[index]}<ChevronRight size={14} /></button>
+                <div>
+                  <strong>{item.title}</strong>
+                  <span>
+                    {scope === "all" ? `${characterName(item.ownerId)} · ` : ""}
+                    {t.attentionDetails[sourceIndex]}
+                  </span>
+                </div>
+                <button type="button">{t.attentionActions[sourceIndex]}<ChevronRight size={14} /></button>
               </div>
             ))}
           </div>
@@ -678,13 +809,19 @@ function Overview({
         <section className="panel activity-panel">
           <PanelHeader icon={Database} title={t.activityTitle} subtitle={t.activitySubtitle} />
           <div className="activity-list">
-            {activity.map((item, index) => (
+            {scopedActivity.map(({ item, sourceIndex }) => (
               <div className="activity-item" key={item.title}>
                 <span className={`activity-icon activity-icon--${item.kind}`}>
                   {item.kind === "complete" ? <Check size={15} /> : item.kind === "market" ? <LineChart size={15} /> : <RefreshCw size={15} />}
                 </span>
-                <div><strong>{t.activityTitles[index]}</strong><span>{t.activityDetails[index]}</span></div>
-                <time>{t.activityTimes[index]}</time>
+                <div>
+                  <strong>{t.activityTitles[sourceIndex]}</strong>
+                  <span>
+                    {scope === "all" ? `${characterName(item.ownerId)} · ` : ""}
+                    {t.activityDetails[sourceIndex]}
+                  </span>
+                </div>
+                <time>{t.activityTimes[sourceIndex]}</time>
               </div>
             ))}
           </div>
