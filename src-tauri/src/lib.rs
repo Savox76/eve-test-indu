@@ -177,9 +177,7 @@ fn data_snapshot_is_valid(data: &RuntimeDataSnapshot) -> bool {
     let state_combination_is_valid = match data.state.as_str() {
         "loading" | "empty" => !data.has_cached_data && data.error_code.is_none(),
         "refreshing" | "stale" => data.has_cached_data && data.age_seconds.is_some(),
-        "fresh" => {
-            data.has_cached_data && data.age_seconds.is_some() && data.expires_at.is_some()
-        }
+        "fresh" => data.has_cached_data && data.age_seconds.is_some() && data.expires_at.is_some(),
         "offline" | "error" => data.error_code.is_some(),
         _ => false,
     };
