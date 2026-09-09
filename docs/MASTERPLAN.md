@@ -1,10 +1,10 @@
 # Masterplan – New Eden Foundry
 
-**Fassung:** 1.6 (lebendes Repository-Dokument)
+**Fassung:** 1.7 (lebendes Repository-Dokument)
 
 **Stand:** 9. September 2026
 
-**Status:** In Umsetzung – Phase 1 mit gebündeltem lokalem Startpfad
+**Status:** In Umsetzung – Phase 1 mit abgesicherter lokaler Updategrenze
 
 **Geltungsbereich:** `Savox76/eve-test-indu`
 
@@ -50,6 +50,7 @@ EVE Mail, Discord-Integration, Buyback-Automatisierung, T3 und Mehrbenutzerbetri
 - Eine zweite gestartete Instanz fokussiert die vorhandene Instanz und startet keinen zweiten Sidecar.
 - Datenbank und Backups liegen sichtbar unter `data` im Programmordner. Ein nicht beschreibbarer Ordner ist ein Startfehler; es gibt keinen versteckten Ausweichpfad.
 - Die UI startet aus dem Cache und zeigt Start-, Offline-, veraltete und fehlerhafte Zustände ausdrücklich.
+- Der gewählte Updatekanal wird lokal gespeichert. Bis zur gesonderten Produktionsfreigabe wird nur ein signiertes Offline-Testmanifest geprüft; öffentliche Updateverteilung, Download und Installation bleiben deaktiviert.
 - Updates und Deinstallation ersetzen beziehungsweise entfernen Programmdateien, lassen `data` jedoch stehen. Das Entfernen eines Charakters und eine spätere vollständige Datenlöschung bleiben davon getrennte, bewusste Vorgänge.
 - Linux und macOS erhalten erst nach Windows eigene Freigabe-Gates.
 
@@ -196,8 +197,9 @@ Die Reihenfolge ist verbindlicher als eine Kalenderangabe.
 - **Abgeschlossen:** 07 – die SQLite-Grundlage aktiviert und prüft Foreign Keys, WAL und `busy_timeout`, wendet eine versionierte Basismigration an und führt automatisierte Integritäts- sowie Parallelzugriffstests aus.
 - **Abgeschlossen:** 08 – ausstehende Migrationen erzeugen zuerst einen konsistenten, eigenständigen und SHA-256-geprüften Snapshot unter `data\backups`. Sicherungsfehler lassen das Schema unverändert; Migrationsfehler lösen eine geprüfte automatische Wiederherstellung aus. Die fünf neuesten Snapshots bleiben erhalten.
 - **Abgeschlossen:** 09 – der lokale Startpfad bewertet nur Snapshots vollständig abgeschlossener Läufe und zeigt Laden, Aktualisieren, leer, aktuell, veraltet, offline und fehlerhaft zweisprachig mit Datenalter. Vorhandene Cache-Daten bleiben bei Ablauf oder Folgfehlern sichtbar; echte Nutzdaten folgen mit ESI.
+- **Abgeschlossen:** 10 – die Desktop-Oberfläche kann `stable`, `beta` und `preview` wählen und speichert die Präferenz in Schema 5 im Programmordner. Ein gebündeltes Ed25519-signiertes Testmanifest wird streng und offline geprüft; die reservierte Domain `updates.invalid` sowie `publicDistribution: false` verhindern eine vorzeitige öffentliche Verteilung.
 - **Teilweise umgesetzt:** 15 – Schema und Zugriffslogik unterstützen mehrere separat autorisierte Charaktere, lokale Kontogruppen und getrennte Scopes. Die synthetische Oberfläche wechselt bereits zwischen Einzel- und Gesamtübersicht; echter SSO-, Keyring- und Löschablauf folgen erst in Phase 2.
-- **Als Nächstes:** das verbleibende A0-Windows-Gate und Arbeitspaket 10 – Installation, zweiter Start, Migration/Update und Entfernung auf einem freigegebenen Windows-Testgerät sowie ein wählbarer Updatekanal mit geprüftem, signiertem Testmanifest ohne öffentliche Updateverteilung.
+- **Als Nächstes:** das verbleibende A0-Windows-Gate und Arbeitspaket 11 – Installation, zweiter Start, Migration/Update und Entfernung auf einem freigegebenen Windows-Testgerät sowie die Dokumentation der exakten EVE-SSO-App-Registrierung.
 - Architektur-Gate A0 ist technisch weitgehend umgesetzt, aber bis zur vollständigen Windows-Abnahme noch nicht erfüllt; breite Fachentwicklung beginnt erst danach.
 
 ## 13. Entscheidungs- und Quellenrang

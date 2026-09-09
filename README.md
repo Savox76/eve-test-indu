@@ -4,9 +4,9 @@ New Eden Foundry wird eine lokale Desktop-Anwendung für nachvollziehbare EVE-On
 
 ## Projektstatus
 
-**Technische Preview – `v0.0.3-preview.3`.** Die App leitet ihren Startzustand jetzt ehrlich aus dem lokalen SQLite-Cache ab und unterscheidet Laden, Aktualisieren, leer, aktuell, veraltet, offline und fehlerhaft. Ein letzter vollständig geprüfter Stand bleibt bei Offline- oder Synchronisierungsfehlern sichtbar. Datenbank und automatische Migrationssicherungen liegen weiterhin ausschließlich unter `data` im Programmordner. Der gebündelte Sidecar, der geschützte dynamische Loopback-Port sowie gemeinsame und getrennte Mehrcharakter-Übersichten bleiben die technische Grundlage.
+**Technische Preview – `v0.0.4-preview.1`.** Die Desktop-App besitzt jetzt ein sicheres Updater-Skelett: „Offiziell“, „Beta“ und „Vorschau / Test“ sind wählbar, die Präferenz bleibt lokal in `data\foundry.sqlite3`, und ein gebündeltes Ed25519-signiertes Testmanifest wird vor der Statusfreigabe geprüft. Öffentliche Downloads und automatische Installation sind in diesem Schritt ausdrücklich deaktiviert. Cache-first Startzustände, der geschützte Sidecar sowie gemeinsame und getrennte Mehrcharakter-Übersichten bleiben die technische Grundlage.
 
-Die Mehrcharakter-Oberfläche arbeitet weiterhin mit drei klar synthetischen Figuren und liest diese Vorschauwerte noch nicht aus SQLite. EVE SSO, ESI, SDE, echte Synchronisierung und fachliche Berechnungen sind noch nicht angeschlossen. Eine neue Installation meldet deshalb korrekt, dass noch keine lokalen Daten vorhanden sind. Die Preview ist als Prerelease unter [GitHub Releases](https://github.com/Savox76/eve-test-indu/releases) vorgesehen; das vollständige Windows-Installationsgate bleibt Voraussetzung für die erste technische Alpha.
+Die Mehrcharakter-Oberfläche arbeitet weiterhin mit drei klar synthetischen Figuren und liest diese Vorschauwerte noch nicht aus SQLite. EVE SSO, ESI, SDE, echte Synchronisierung und fachliche Berechnungen sind noch nicht angeschlossen. Eine neue Installation meldet deshalb korrekt, dass noch keine lokalen Daten vorhanden sind. Versionen werden weiterhin manuell über [GitHub Releases](https://github.com/Savox76/eve-test-indu/releases) bezogen; das vollständige Windows-Installationsgate bleibt Voraussetzung für die erste technische Alpha.
 
 ## Verbindliche Grundlagen
 

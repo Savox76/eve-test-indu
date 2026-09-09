@@ -23,6 +23,9 @@ Wichtig:
   Migrationssicherungen bleiben erhalten.
 - Offline oder veraltete lokale Daten bleiben sichtbar und werden mit ihrem
   Datenalter gekennzeichnet; ein fehlgeschlagener Folgelauf leert den Cache nicht.
+- Der gewählte Update-Kanal wird lokal in der Datenbank gespeichert. In dieser
+  Preview sind Downloads und automatische Installation noch deaktiviert; neue
+  Versionen werden weiterhin manuell von GitHub Releases geladen.
 - Zum Umziehen oder Sichern die Anwendung zuerst schließen und anschließend den
   vollständigen Programmordner einschließlich "data" kopieren.
 - Spätere EVE-Zugangsdaten bleiben im Windows-Anmeldespeicher und werden beim
@@ -55,6 +58,9 @@ Important:
   restores the previous state. The five newest migration backups are retained.
 - Offline or stale local data remains visible and is labelled with its age; a
   failed follow-up run does not empty the cache.
+- The selected update channel is stored locally in the database. Downloads and
+  automatic installation remain disabled in this preview; new versions are
+  still downloaded manually from GitHub Releases.
 - To move or back up the app, close it first and then copy the complete program
   folder including "data".
 - Future EVE credentials remain in Windows Credential Manager and do not travel

@@ -15,6 +15,7 @@ Eine Meldung sollte betroffene Version oder Commit, reproduzierbare Schritte, er
 - Es werden keine Client Secrets mit der Desktop-Anwendung ausgeliefert.
 - Refresh Tokens liegen ausschließlich im Betriebssystem-Schlüsselbund.
 - Tokens, Sitzungsschlüssel und personenbezogene Nutzdaten erscheinen nicht in Logs.
+- Private Produktionsschlüssel für spätere Update-Signaturen liegen niemals im Repository, in der Anwendung, in Release-Paketen oder in Workflow-Logs. Eingebettete öffentliche Prüfschlüssel sind keine Geheimnisse.
 - Lokale Beispielkonfigurationen werden nicht committed.
 - Bei Offenlegung wird das Geheimnis zuerst widerrufen oder rotiert, danach wird die Historie bewertet und bereinigt.
 

@@ -19,6 +19,13 @@ from fastapi.responses import JSONResponse
 from .database import DatabaseStatus, connect_database, initialize_database
 from .storage import ProgramStorage, ProgramStorageError, prepare_program_storage
 from .startup_state import StartupDataState, inspect_startup_data_state
+from .updater import (
+    UpdateChannel,
+    UpdateManifestError,
+    read_update_channel,
+    set_update_channel,
+    verify_bundled_test_manifest,
+)
 from .version import project_version
 
 
@@ -101,6 +108,7 @@ def create_application(
     storage: ProgramStorage,
     database: DatabaseStatus,
     data_state: StartupDataState,
+    manifest_state: str,
 ) -> FastAPI:
     app = FastAPI(
         title="New Eden Foundry local core",
@@ -121,6 +129,8 @@ def create_application(
 
     @app.get("/health")
     async def health() -> dict[str, object]:
+        with closing(connect_database(storage.database_path)) as connection:
+            selected_channel = read_update_channel(connection)
         return {
             "service": "new-eden-foundry-core",
             "state": "ready",
@@ -134,7 +144,52 @@ def create_application(
                 "lastMigrationBackup": database.last_migration_backup,
             },
             "data": data_state.as_api_payload(),
+            "updater": {
+                "channel": selected_channel.value,
+                "manifestState": manifest_state,
+                "publicDistribution": False,
+            },
         }
+
+    @app.get("/settings/update")
+    async def get_update_settings() -> dict[str, object]:
+        with closing(connect_database(storage.database_path)) as connection:
+            selected_channel = read_update_channel(connection)
+        return {
+            "channel": selected_channel.value,
+            "manifestState": manifest_state,
+            "publicDistribution": False,
+        }
+
+    @app.put("/settings/update")
+    async def put_update_settings(request: Request) -> JSONResponse:
+        try:
+            payload = await request.json()
+        except Exception:
+            return JSONResponse(
+                status_code=422,
+                content={"detail": "The update-channel request is invalid."},
+            )
+        if not isinstance(payload, dict) or set(payload) != {"channel"}:
+            return JSONResponse(
+                status_code=422,
+                content={"detail": "The update-channel request is invalid."},
+            )
+        try:
+            with closing(connect_database(storage.database_path)) as connection:
+                selected_channel = set_update_channel(connection, payload["channel"])
+        except (TypeError, ValueError):
+            return JSONResponse(
+                status_code=422,
+                content={"detail": "The selected update channel is unsupported."},
+            )
+        return JSONResponse(
+            content={
+                "channel": selected_channel.value,
+                "manifestState": manifest_state,
+                "publicDistribution": False,
+            }
+        )
 
     return app
 
@@ -176,6 +231,7 @@ def run_sidecar(input_stream: TextIO = sys.stdin, output_stream: TextIO = sys.st
         )
         with closing(connect_database(storage.database_path)) as connection:
             data_state = inspect_startup_data_state(connection)
+            update_channel = read_update_channel(connection)
     except Exception:
         _emit_event(output_stream, {"event": "error", "code": "database-startup-failed"})
         return 4
@@ -191,7 +247,19 @@ def run_sidecar(input_stream: TextIO = sys.stdin, output_stream: TextIO = sys.st
         _emit_event(output_stream, {"event": "error", "code": "loopback-bind-failed"})
         return 5
 
-    application = create_application(startup, storage, database, data_state)
+    try:
+        verify_bundled_test_manifest()
+        manifest_state = "verified"
+    except UpdateManifestError:
+        manifest_state = "invalid"
+
+    application = create_application(
+        startup,
+        storage,
+        database,
+        data_state,
+        manifest_state,
+    )
     server = uvicorn.Server(
         uvicorn.Config(
             application,
@@ -227,6 +295,11 @@ def run_sidecar(input_stream: TextIO = sys.stdin, output_stream: TextIO = sys.st
                 "lastMigrationBackup": database.last_migration_backup,
             },
             "data": data_state.as_api_payload(),
+            "updater": {
+                "channel": update_channel.value,
+                "manifestState": manifest_state,
+                "publicDistribution": False,
+            },
         },
     )
 

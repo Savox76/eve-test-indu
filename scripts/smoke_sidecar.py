@@ -134,6 +134,7 @@ def seed_previous_release_database(program_directory: Path) -> Path:
                 resource TEXT NOT NULL,
                 payload_json TEXT NOT NULL,
                 observed_at TEXT NOT NULL,
+                expires_at TEXT,
                 UNIQUE (sync_run_id, resource)
             );
             CREATE TABLE migration_backups (
@@ -151,9 +152,11 @@ def seed_previous_release_database(program_directory: Path) -> Path:
                 VALUES (2, 'multi_character_identity');
             INSERT INTO schema_migrations (version, name)
                 VALUES (3, 'migration_backup_history');
+            INSERT INTO schema_migrations (version, name)
+                VALUES (4, 'cache_freshness_metadata');
             INSERT INTO app_metadata (key, value)
                 VALUES ('smoke-marker', 'portable-smoke-preserved');
-            PRAGMA user_version = 3;
+            PRAGMA user_version = 4;
             """
         )
         connection.commit()
@@ -208,31 +211,64 @@ def main() -> int:
             database = health.get("database")
             if not isinstance(database, dict) or database.get("location") != "data/foundry.sqlite3":
                 raise RuntimeError("The sidecar reported an unexpected database location.")
-            if database.get("schemaVersion") != 4 or database.get("integrity") != "ok":
+            if database.get("schemaVersion") != 5 or database.get("integrity") != "ok":
                 raise RuntimeError("The sidecar database health is invalid.")
             data_state = health.get("data")
             if not isinstance(data_state, dict) or data_state.get("state") != "empty":
                 raise RuntimeError("The sidecar did not report the empty cache-first state.")
+            updater = health.get("updater")
+            if (
+                not isinstance(updater, dict)
+                or updater.get("channel") != "stable"
+                or updater.get("manifestState") != "verified"
+                or updater.get("publicDistribution") is not False
+            ):
+                raise RuntimeError("The signed updater skeleton is not ready or safely disabled.")
             backup_name = database.get("lastMigrationBackup")
             if not isinstance(backup_name, str) or not backup_name.startswith(
-                "foundry-schema-v0003-to-v0004-"
+                "foundry-schema-v0004-to-v0005-"
             ):
                 raise RuntimeError("The packaged migration did not report its backup.")
+
+            update_request = urllib.request.Request(
+                f"http://127.0.0.1:{int(ready['port'])}/settings/update",
+                data=json.dumps({"channel": "preview"}).encode("utf-8"),
+                method="PUT",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": "application/json",
+                },
+            )
+            with opener.open(update_request, timeout=3) as response:
+                update_settings = json.loads(response.read())
+            if (
+                update_settings.get("channel") != "preview"
+                or update_settings.get("manifestState") != "verified"
+                or update_settings.get("publicDistribution") is not False
+            ):
+                raise RuntimeError("The packaged update-channel preference is invalid.")
 
             if not database_path.is_file():
                 raise RuntimeError("The database was not created inside the program directory.")
             with contextlib.closing(sqlite3.connect(database_path)) as connection:
                 if connection.execute("PRAGMA quick_check").fetchone()[0] != "ok":
                     raise RuntimeError("The created SQLite database failed quick_check.")
-                if connection.execute("PRAGMA user_version").fetchone()[0] != 4:
-                    raise RuntimeError("The packaged sidecar did not migrate to schema 4.")
+                if connection.execute("PRAGMA user_version").fetchone()[0] != 5:
+                    raise RuntimeError("The packaged sidecar did not migrate to schema 5.")
                 marker = connection.execute(
                     "SELECT value FROM app_metadata WHERE key = 'smoke-marker'"
+                ).fetchone()[0]
+                update_channel = connection.execute(
+                    "SELECT value FROM app_settings WHERE key = 'update_channel'"
                 ).fetchone()[0]
                 backup_record = connection.execute(
                     "SELECT filename, sha256 FROM migration_backups"
                 ).fetchone()
-            if marker != SYNTHETIC_MIGRATION_MARKER or backup_record[0] != backup_name:
+            if (
+                marker != SYNTHETIC_MIGRATION_MARKER
+                or update_channel != "preview"
+                or backup_record[0] != backup_name
+            ):
                 raise RuntimeError("The packaged migration did not preserve its source data.")
 
             backup_path = program_directory / "data" / "backups" / backup_name
@@ -244,8 +280,8 @@ def main() -> int:
             with contextlib.closing(sqlite3.connect(backup_path)) as backup_connection:
                 if backup_connection.execute("PRAGMA quick_check").fetchone()[0] != "ok":
                     raise RuntimeError("The packaged migration backup failed quick_check.")
-                if backup_connection.execute("PRAGMA user_version").fetchone()[0] != 3:
-                    raise RuntimeError("The packaged backup does not contain schema 3.")
+                if backup_connection.execute("PRAGMA user_version").fetchone()[0] != 4:
+                    raise RuntimeError("The packaged backup does not contain schema 4.")
                 backup_marker = backup_connection.execute(
                     "SELECT value FROM app_metadata WHERE key = 'smoke-marker'"
                 ).fetchone()[0]
@@ -270,7 +306,8 @@ def main() -> int:
                     stream.close()
 
     print(
-        "Frozen sidecar handshake, migration backup, database location and shutdown verified."
+        "Frozen sidecar handshake, signed updater skeleton, migration backup, "
+        "database location and shutdown verified."
     )
     return 0
 

@@ -11,6 +11,7 @@ from typing import Sequence
 
 from .database import connect_database, initialize_database
 from .startup_state import inspect_startup_data_state
+from .updater import read_update_channel, verify_bundled_test_manifest
 from .version import project_version
 
 
@@ -30,12 +31,20 @@ def main(argv: Sequence[str] | None = None) -> int:
     database = initialize_database(arguments.database)
     with closing(connect_database(arguments.database)) as connection:
         data_state = inspect_startup_data_state(connection)
+        update_channel = read_update_channel(connection)
+    verified_manifest = verify_bundled_test_manifest()
     result = {
         "service": "new-eden-foundry-core",
         "state": "foundation-ready",
         "version": project_version(),
         "database": asdict(database),
         "data": data_state.as_api_payload(),
+        "updater": {
+            "channel": update_channel.value,
+            "manifest_state": "verified",
+            "test_manifest_version": verified_manifest.version,
+            "public_distribution": False,
+        },
     }
     print(json.dumps(result, sort_keys=True))
     return 0

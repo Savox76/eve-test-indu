@@ -44,6 +44,7 @@ REQUIRED_ADRS = tuple(
         "0008-jita-first-market-adapters.md",
         "0009-multi-character-scopes-and-local-account-groups.md",
         "0010-program-folder-storage.md",
+        "0011-signed-update-channel-skeleton.md",
     )
 )
 
@@ -57,7 +58,10 @@ REQUIRED_BACKEND_FILES = tuple(
         "backend/new_eden_foundry_backend/sidecar.py",
         "backend/new_eden_foundry_backend/storage.py",
         "backend/new_eden_foundry_backend/startup_state.py",
+        "backend/new_eden_foundry_backend/updater.py",
         "backend/new_eden_foundry_backend/version.py",
+        "backend/new_eden_foundry_backend/resources/update-test-manifest.json",
+        "backend/new_eden_foundry_backend/resources/update-test-manifest.sig",
         "backend/requirements-build.txt",
         "backend/requirements-runtime.txt",
         "backend/sidecar_entry.py",
@@ -67,6 +71,7 @@ REQUIRED_BACKEND_FILES = tuple(
         "backend/tests/test_sidecar.py",
         "backend/tests/test_storage.py",
         "backend/tests/test_startup_state.py",
+        "backend/tests/test_updater.py",
         "scripts/build_sidecar.py",
         "scripts/prepare_release_files.ps1",
         "scripts/smoke_sidecar.py",
@@ -85,6 +90,8 @@ REQUIRED_SQLITE_MARKERS = (
     "CREATE TABLE character_scopes",
     "CREATE TABLE migration_backups",
     "ADD COLUMN expires_at",
+    "CREATE TABLE app_settings",
+    "VALUES ('update_channel', 'stable')",
 )
 
 REQUIRED_RECOVERY_MARKERS = (
@@ -292,14 +299,48 @@ def check_backend_foundation(errors: list[str]) -> None:
     sidecar_source = ROOT / "backend" / "new_eden_foundry_backend" / "sidecar.py"
     if sidecar_source.is_file():
         sidecar_content = sidecar_source.read_text(encoding="utf-8")
-        for marker in ('LOOPBACK_HOST: Final = "127.0.0.1"', "secrets.compare_digest", 'listener.bind((LOOPBACK_HOST, 0))'):
+        for marker in (
+            'LOOPBACK_HOST: Final = "127.0.0.1"',
+            "secrets.compare_digest",
+            'listener.bind((LOOPBACK_HOST, 0))',
+            'app.put("/settings/update")',
+            '"publicDistribution": False',
+            "verify_bundled_test_manifest",
+        ):
             if marker not in sidecar_content:
                 errors.append(f"Sidecar security is missing required marker: {marker}")
+
+    updater_source = ROOT / "backend" / "new_eden_foundry_backend" / "updater.py"
+    if updater_source.is_file():
+        updater_content = updater_source.read_text(encoding="utf-8")
+        for marker in (
+            "Ed25519PublicKey",
+            'hostname != "updates.invalid"',
+            "TEST_MANIFEST_MAX_BYTES",
+            "object_pairs_hook=_object_without_duplicates",
+        ):
+            if marker not in updater_content:
+                errors.append(f"Updater skeleton is missing required marker: {marker}")
+        if "PRIVATE_KEY" in updater_content:
+            errors.append("Updater skeleton must not contain a private signing key.")
+
+    runtime_requirements = ROOT / "backend" / "requirements-runtime.txt"
+    if runtime_requirements.is_file() and "cryptography==50.0.1" not in runtime_requirements.read_text(
+        encoding="utf-8"
+    ):
+        errors.append("Runtime requirements must pin the updater signature dependency.")
 
     tauri_source = ROOT / "src-tauri" / "src" / "lib.rs"
     if tauri_source.is_file():
         tauri_content = tauri_source.read_text(encoding="utf-8")
-        for marker in ("tauri_plugin_single_instance::init", "std::env::current_exe", "foundry-sidecar.exe", "sessionToken"):
+        for marker in (
+            "tauri_plugin_single_instance::init",
+            "std::env::current_exe",
+            "foundry-sidecar.exe",
+            "sessionToken",
+            "set_update_channel",
+            "SIDECAR_REQUEST_TIMEOUT",
+        ):
             if marker not in tauri_content:
                 errors.append(f"Tauri runtime is missing required marker: {marker}")
 

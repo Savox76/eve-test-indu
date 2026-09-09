@@ -24,6 +24,41 @@ Alle bemerkenswerten Änderungen an New Eden Foundry werden hier festgehalten. D
 
 - Keine.
 
+## 0.0.4-preview.1 – 9. September 2026
+
+### Neu hinzugefügt
+
+- Wählbare, lokal gespeicherte Updatekanäle „Offiziell“, „Beta“ und „Vorschau / Test“.
+- Schema-Version 5 mit `app_settings` und sicherem Standardkanal `stable`.
+- Gebündeltes Ed25519-signiertes, nicht auslieferndes Testmanifest samt strenger Struktur- und Zielprüfung.
+- Backend-, Sidecar-, IPC-, UI- und Frozen-Pakettests für Kanalwahl und Vertrauensgrenze.
+
+### Geändert
+
+- Kanaländerungen laufen ausschließlich über den authentifizierten Sidecar und bleiben nach einem Neustart in der Datenbank im Programmordner erhalten.
+- Laufzeitstatus und Oberfläche unterscheiden Manifestprüfung und öffentliche Verteilung ausdrücklich.
+- Der Sidecar-Build bündelt Testmanifest, Signatur und die fest versionierte Kryptografie-Abhängigkeit.
+- Die sichtbare Versionsnummer wurde auf `v0.0.4-preview.1` aktualisiert.
+
+### Behobene Fehler
+
+- Nicht vertrauenswürdige, mehrdeutige oder auf einen öffentlichen Host verweisende Testmetadaten werden vor Verwendung abgewiesen.
+- Die Browser-Vorschau kann keinen erfolgreichen nativen Kanalwechsel vortäuschen.
+
+### Bekannte Einschränkungen
+
+- Es gibt noch keinen öffentlichen Updater, Netzwerkabruf, Download oder automatische Installation; die Auswahl speichert derzeit nur die spätere Kanalpräferenz.
+- Die Mehrcharakter-Oberfläche verwendet weiterhin synthetische Werte und liest ihre Fachinhalte noch nicht aus SQLite.
+- EVE SSO, ESI, SDE, echte Synchronisierung und Fachberechnungen fehlen noch.
+- Installer und portable EXE sind noch nicht code-signiert.
+- Das manuelle Windows-Laufzeitgate und die Schutzregeln für `main` sind noch offen.
+
+### Update und Datenbankmigration
+
+- Schema 4 wird nach automatischer Sicherung auf Schema 5 migriert und um lokale Anwendungseinstellungen ergänzt.
+- Bestehende Charakter- und Cache-Daten bleiben erhalten; die Updatekanal-Präferenz startet einmalig mit `stable`.
+- Eine frische Installation legt direkt Schema-Version 5 an.
+
 ## 0.0.3-preview.3 – 9. September 2026
 
 ### Neu hinzugefügt

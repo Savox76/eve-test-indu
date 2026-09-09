@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, Read, Write};
+use std::net::{Ipv4Addr, SocketAddrV4, TcpStream};
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Mutex};
@@ -11,6 +12,8 @@ const SIDECAR_PROTOCOL_VERSION: u8 = 1;
 const DATABASE_LOCATION: &str = "data/foundry.sqlite3";
 const SIDECAR_READY_TIMEOUT: Duration = Duration::from_secs(25);
 const SIDECAR_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(4);
+const SIDECAR_REQUEST_TIMEOUT: Duration = Duration::from_secs(3);
+const SIDECAR_MAX_RESPONSE_BYTES: u64 = 65_536;
 const WINDOWS_CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 #[derive(Clone, Serialize)]
@@ -26,6 +29,7 @@ struct RuntimeSnapshot {
     schema_version: Option<u32>,
     error_code: Option<&'static str>,
     data: RuntimeDataSnapshot,
+    updater: RuntimeUpdaterSnapshot,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -62,6 +66,31 @@ impl RuntimeDataSnapshot {
     }
 }
 
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RuntimeUpdaterSnapshot {
+    channel: String,
+    manifest_state: String,
+    public_distribution: bool,
+}
+
+impl RuntimeUpdaterSnapshot {
+    fn checking() -> Self {
+        Self {
+            channel: "stable".to_owned(),
+            manifest_state: "checking".to_owned(),
+            public_distribution: false,
+        }
+    }
+
+    fn unavailable() -> Self {
+        Self {
+            manifest_state: "unavailable".to_owned(),
+            ..Self::checking()
+        }
+    }
+}
+
 impl RuntimeSnapshot {
     fn starting() -> Self {
         Self {
@@ -75,15 +104,21 @@ impl RuntimeSnapshot {
             schema_version: None,
             error_code: None,
             data: RuntimeDataSnapshot::loading(),
+            updater: RuntimeUpdaterSnapshot::checking(),
         }
     }
 
-    fn ready(schema_version: u32, data: RuntimeDataSnapshot) -> Self {
+    fn ready(
+        schema_version: u32,
+        data: RuntimeDataSnapshot,
+        updater: RuntimeUpdaterSnapshot,
+    ) -> Self {
         Self {
             sidecar: "ready",
             database: "ready",
             schema_version: Some(schema_version),
             data,
+            updater,
             ..Self::starting()
         }
     }
@@ -94,6 +129,7 @@ impl RuntimeSnapshot {
             database: "error",
             error_code: Some(error_code),
             data: RuntimeDataSnapshot::failed(error_code),
+            updater: RuntimeUpdaterSnapshot::unavailable(),
             ..Self::starting()
         }
     }
@@ -101,8 +137,8 @@ impl RuntimeSnapshot {
 
 struct SidecarProcess {
     child: Child,
-    _session_token: String,
-    _port: u16,
+    session_token: String,
+    port: u16,
 }
 
 struct RuntimeState {
@@ -136,6 +172,7 @@ struct SidecarReady {
     port: u16,
     database: SidecarDatabaseReady,
     data: RuntimeDataSnapshot,
+    updater: RuntimeUpdaterSnapshot,
 }
 
 #[derive(Deserialize)]
@@ -184,9 +221,23 @@ fn data_snapshot_is_valid(data: &RuntimeDataSnapshot) -> bool {
     state_is_valid && sync_status_is_valid && cache_fields_are_valid && state_combination_is_valid
 }
 
+fn updater_snapshot_is_valid(updater: &RuntimeUpdaterSnapshot) -> bool {
+    matches!(updater.channel.as_str(), "stable" | "beta" | "preview")
+        && matches!(updater.manifest_state.as_str(), "verified" | "invalid")
+        && !updater.public_distribution
+}
+
 fn launch_sidecar(
     app: &AppHandle,
-) -> Result<(SidecarProcess, u32, RuntimeDataSnapshot), &'static str> {
+) -> Result<
+    (
+        SidecarProcess,
+        u32,
+        RuntimeDataSnapshot,
+        RuntimeUpdaterSnapshot,
+    ),
+    &'static str,
+> {
     let program_directory = std::env::current_exe()
         .map_err(|_| "program-directory-unavailable")?
         .parent()
@@ -249,22 +300,29 @@ fn launch_sidecar(
             || ready.database.state != "ready"
             || ready.database.location != DATABASE_LOCATION
             || !data_snapshot_is_valid(&ready.data)
+            || !updater_snapshot_is_valid(&ready.updater)
         {
             return Err("sidecar-ready-invalid");
         }
 
-        Ok((ready.port, ready.database.schema_version, ready.data))
+        Ok((
+            ready.port,
+            ready.database.schema_version,
+            ready.data,
+            ready.updater,
+        ))
     })();
 
     match result {
-        Ok((port, schema_version, data)) => Ok((
+        Ok((port, schema_version, data, updater)) => Ok((
             SidecarProcess {
                 child,
-                _session_token: token,
-                _port: port,
+                session_token: token,
+                port,
             },
             schema_version,
             data,
+            updater,
         )),
         Err(error_code) => {
             terminate_child(&mut child);
@@ -280,7 +338,7 @@ fn start_sidecar(app: AppHandle) {
     }
 
     match launch_sidecar(&app) {
-        Ok((mut process, schema_version, data)) => {
+        Ok((mut process, schema_version, data, updater)) => {
             if state.shutting_down.load(Ordering::Acquire) {
                 terminate_child(&mut process.child);
                 return;
@@ -289,7 +347,7 @@ fn start_sidecar(app: AppHandle) {
                 .sidecar
                 .lock()
                 .unwrap_or_else(|error| error.into_inner()) = Some(process);
-            state.set_snapshot(RuntimeSnapshot::ready(schema_version, data));
+            state.set_snapshot(RuntimeSnapshot::ready(schema_version, data, updater));
         }
         Err(error_code) => state.set_snapshot(RuntimeSnapshot::failed(error_code)),
     }
@@ -339,6 +397,80 @@ fn refresh_sidecar_status(state: &RuntimeState) {
     }
 }
 
+fn sidecar_json_request(
+    process: &SidecarProcess,
+    method: &str,
+    path: &str,
+    body: &str,
+) -> Result<String, &'static str> {
+    let address = SocketAddrV4::new(Ipv4Addr::LOCALHOST, process.port);
+    let mut stream = TcpStream::connect_timeout(&address.into(), SIDECAR_REQUEST_TIMEOUT)
+        .map_err(|_| "sidecar-request-failed")?;
+    stream
+        .set_read_timeout(Some(SIDECAR_REQUEST_TIMEOUT))
+        .and_then(|_| stream.set_write_timeout(Some(SIDECAR_REQUEST_TIMEOUT)))
+        .map_err(|_| "sidecar-request-failed")?;
+
+    let request = format!(
+        "{method} {path} HTTP/1.1\r\nHost: 127.0.0.1\r\nAuthorization: Bearer {}\r\nAccept: application/json\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+        process.session_token,
+        body.len(),
+    );
+    stream
+        .write_all(request.as_bytes())
+        .and_then(|_| stream.flush())
+        .map_err(|_| "sidecar-request-failed")?;
+
+    let mut response = String::new();
+    stream
+        .take(SIDECAR_MAX_RESPONSE_BYTES + 1)
+        .read_to_string(&mut response)
+        .map_err(|_| "sidecar-response-invalid")?;
+    if response.len() as u64 > SIDECAR_MAX_RESPONSE_BYTES {
+        return Err("sidecar-response-invalid");
+    }
+    let (headers, response_body) = response
+        .split_once("\r\n\r\n")
+        .ok_or("sidecar-response-invalid")?;
+    let status_line = headers.lines().next().ok_or("sidecar-response-invalid")?;
+    if status_line != "HTTP/1.1 200 OK" && status_line != "HTTP/1.0 200 OK" {
+        return Err("sidecar-request-rejected");
+    }
+    Ok(response_body.to_owned())
+}
+
+#[tauri::command]
+fn set_update_channel(channel: String, state: State<'_, RuntimeState>) -> Result<String, String> {
+    if !matches!(channel.as_str(), "stable" | "beta" | "preview") {
+        return Err("unsupported-update-channel".to_owned());
+    }
+    refresh_sidecar_status(&state);
+    let body = serde_json::json!({ "channel": channel.clone() }).to_string();
+    let response = {
+        let sidecar = state
+            .sidecar
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let process = sidecar
+            .as_ref()
+            .ok_or_else(|| "sidecar-unavailable".to_owned())?;
+        sidecar_json_request(process, "PUT", "/settings/update", &body)
+            .map_err(str::to_owned)?
+    };
+    let updater: RuntimeUpdaterSnapshot =
+        serde_json::from_str(&response).map_err(|_| "sidecar-response-invalid".to_owned())?;
+    if !updater_snapshot_is_valid(&updater) || updater.channel != channel {
+        return Err("sidecar-response-invalid".to_owned());
+    }
+
+    state
+        .snapshot
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .updater = updater.clone();
+    serde_json::to_string(&updater).map_err(|_| "status-serialization-failed".to_owned())
+}
+
 #[tauri::command]
 fn desktop_runtime_status(state: State<'_, RuntimeState>) -> String {
     refresh_sidecar_status(&state);
@@ -349,7 +481,7 @@ fn desktop_runtime_status(state: State<'_, RuntimeState>) -> String {
             .unwrap_or_else(|error| error.into_inner()),
     )
     .unwrap_or_else(|_| {
-        r#"{"state":"ready","version":"unknown","desktopShell":true,"singleInstance":true,"sidecar":"error","database":"error","databaseLocation":"data/foundry.sqlite3","schemaVersion":null,"errorCode":"status-serialization-failed","data":{"state":"error","hasCachedData":false,"observedAt":null,"expiresAt":null,"ageSeconds":null,"lastSyncStatus":"never","errorCode":"status-serialization-failed"}}"#.to_owned()
+        r#"{"state":"ready","version":"unknown","desktopShell":true,"singleInstance":true,"sidecar":"error","database":"error","databaseLocation":"data/foundry.sqlite3","schemaVersion":null,"errorCode":"status-serialization-failed","data":{"state":"error","hasCachedData":false,"observedAt":null,"expiresAt":null,"ageSeconds":null,"lastSyncStatus":"never","errorCode":"status-serialization-failed"},"updater":{"channel":"stable","manifestState":"unavailable","publicDistribution":false}}"#.to_owned()
     })
 }
 
@@ -373,7 +505,10 @@ pub fn run() {
             thread::spawn(move || start_sidecar(app_handle));
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![desktop_runtime_status])
+        .invoke_handler(tauri::generate_handler![
+            desktop_runtime_status,
+            set_update_channel
+        ])
         .build(tauri::generate_context!())
         .expect("New Eden Foundry could not start");
 
