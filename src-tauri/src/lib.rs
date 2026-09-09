@@ -25,6 +25,41 @@ struct RuntimeSnapshot {
     database_location: &'static str,
     schema_version: Option<u32>,
     error_code: Option<&'static str>,
+    data: RuntimeDataSnapshot,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RuntimeDataSnapshot {
+    state: String,
+    has_cached_data: bool,
+    observed_at: Option<String>,
+    expires_at: Option<String>,
+    age_seconds: Option<u64>,
+    last_sync_status: String,
+    error_code: Option<String>,
+}
+
+impl RuntimeDataSnapshot {
+    fn loading() -> Self {
+        Self {
+            state: "loading".to_owned(),
+            has_cached_data: false,
+            observed_at: None,
+            expires_at: None,
+            age_seconds: None,
+            last_sync_status: "never".to_owned(),
+            error_code: None,
+        }
+    }
+
+    fn failed(error_code: &'static str) -> Self {
+        Self {
+            state: "error".to_owned(),
+            error_code: Some(error_code.to_owned()),
+            ..Self::loading()
+        }
+    }
 }
 
 impl RuntimeSnapshot {
@@ -39,14 +74,16 @@ impl RuntimeSnapshot {
             database_location: DATABASE_LOCATION,
             schema_version: None,
             error_code: None,
+            data: RuntimeDataSnapshot::loading(),
         }
     }
 
-    fn ready(schema_version: u32) -> Self {
+    fn ready(schema_version: u32, data: RuntimeDataSnapshot) -> Self {
         Self {
             sidecar: "ready",
             database: "ready",
             schema_version: Some(schema_version),
+            data,
             ..Self::starting()
         }
     }
@@ -56,6 +93,7 @@ impl RuntimeSnapshot {
             sidecar: "error",
             database: "error",
             error_code: Some(error_code),
+            data: RuntimeDataSnapshot::failed(error_code),
             ..Self::starting()
         }
     }
@@ -97,6 +135,7 @@ struct SidecarReady {
     host: String,
     port: u16,
     database: SidecarDatabaseReady,
+    data: RuntimeDataSnapshot,
 }
 
 #[derive(Deserialize)]
@@ -121,7 +160,35 @@ fn terminate_child(child: &mut Child) {
     let _ = child.wait();
 }
 
-fn launch_sidecar(app: &AppHandle) -> Result<(SidecarProcess, u32), &'static str> {
+fn data_snapshot_is_valid(data: &RuntimeDataSnapshot) -> bool {
+    let state_is_valid = matches!(
+        data.state.as_str(),
+        "loading" | "refreshing" | "empty" | "fresh" | "stale" | "offline" | "error"
+    );
+    let sync_status_is_valid = matches!(
+        data.last_sync_status.as_str(),
+        "never" | "running" | "completed" | "failed" | "cancelled"
+    );
+    let cache_fields_are_valid = if data.has_cached_data {
+        data.observed_at.is_some()
+    } else {
+        data.observed_at.is_none() && data.expires_at.is_none() && data.age_seconds.is_none()
+    };
+    let state_combination_is_valid = match data.state.as_str() {
+        "loading" | "empty" => !data.has_cached_data && data.error_code.is_none(),
+        "refreshing" | "stale" => data.has_cached_data && data.age_seconds.is_some(),
+        "fresh" => {
+            data.has_cached_data && data.age_seconds.is_some() && data.expires_at.is_some()
+        }
+        "offline" | "error" => data.error_code.is_some(),
+        _ => false,
+    };
+    state_is_valid && sync_status_is_valid && cache_fields_are_valid && state_combination_is_valid
+}
+
+fn launch_sidecar(
+    app: &AppHandle,
+) -> Result<(SidecarProcess, u32, RuntimeDataSnapshot), &'static str> {
     let program_directory = std::env::current_exe()
         .map_err(|_| "program-directory-unavailable")?
         .parent()
@@ -183,21 +250,23 @@ fn launch_sidecar(app: &AppHandle) -> Result<(SidecarProcess, u32), &'static str
             || ready.port == 0
             || ready.database.state != "ready"
             || ready.database.location != DATABASE_LOCATION
+            || !data_snapshot_is_valid(&ready.data)
         {
             return Err("sidecar-ready-invalid");
         }
 
-        Ok((ready.port, ready.database.schema_version))
+        Ok((ready.port, ready.database.schema_version, ready.data))
     })();
 
     match result {
-        Ok((port, schema_version)) => Ok((
+        Ok((port, schema_version, data)) => Ok((
             SidecarProcess {
                 child,
                 _session_token: token,
                 _port: port,
             },
             schema_version,
+            data,
         )),
         Err(error_code) => {
             terminate_child(&mut child);
@@ -213,7 +282,7 @@ fn start_sidecar(app: AppHandle) {
     }
 
     match launch_sidecar(&app) {
-        Ok((mut process, schema_version)) => {
+        Ok((mut process, schema_version, data)) => {
             if state.shutting_down.load(Ordering::Acquire) {
                 terminate_child(&mut process.child);
                 return;
@@ -222,7 +291,7 @@ fn start_sidecar(app: AppHandle) {
                 .sidecar
                 .lock()
                 .unwrap_or_else(|error| error.into_inner()) = Some(process);
-            state.set_snapshot(RuntimeSnapshot::ready(schema_version));
+            state.set_snapshot(RuntimeSnapshot::ready(schema_version, data));
         }
         Err(error_code) => state.set_snapshot(RuntimeSnapshot::failed(error_code)),
     }
@@ -282,7 +351,7 @@ fn desktop_runtime_status(state: State<'_, RuntimeState>) -> String {
             .unwrap_or_else(|error| error.into_inner()),
     )
     .unwrap_or_else(|_| {
-        r#"{"state":"ready","version":"unknown","desktopShell":true,"singleInstance":true,"sidecar":"error","database":"error","databaseLocation":"data/foundry.sqlite3","schemaVersion":null,"errorCode":"status-serialization-failed"}"#.to_owned()
+        r#"{"state":"ready","version":"unknown","desktopShell":true,"singleInstance":true,"sidecar":"error","database":"error","databaseLocation":"data/foundry.sqlite3","schemaVersion":null,"errorCode":"status-serialization-failed","data":{"state":"error","hasCachedData":false,"observedAt":null,"expiresAt":null,"ageSeconds":null,"lastSyncStatus":"never","errorCode":"status-serialization-failed"}}"#.to_owned()
     })
 }
 

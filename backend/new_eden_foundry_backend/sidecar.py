@@ -7,6 +7,7 @@ import secrets
 import socket
 import sys
 import threading
+from contextlib import closing
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final, TextIO
@@ -15,8 +16,9 @@ import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from .database import DatabaseStatus, initialize_database
+from .database import DatabaseStatus, connect_database, initialize_database
 from .storage import ProgramStorage, ProgramStorageError, prepare_program_storage
+from .startup_state import StartupDataState, inspect_startup_data_state
 from .version import project_version
 
 
@@ -98,6 +100,7 @@ def create_application(
     startup: StartupConfiguration,
     storage: ProgramStorage,
     database: DatabaseStatus,
+    data_state: StartupDataState,
 ) -> FastAPI:
     app = FastAPI(
         title="New Eden Foundry local core",
@@ -130,6 +133,7 @@ def create_application(
                 "location": storage.relative_database_path.as_posix(),
                 "lastMigrationBackup": database.last_migration_backup,
             },
+            "data": data_state.as_api_payload(),
         }
 
     return app
@@ -170,6 +174,8 @@ def run_sidecar(input_stream: TextIO = sys.stdin, output_stream: TextIO = sys.st
             storage.database_path,
             backup_directory=storage.backup_directory,
         )
+        with closing(connect_database(storage.database_path)) as connection:
+            data_state = inspect_startup_data_state(connection)
     except Exception:
         _emit_event(output_stream, {"event": "error", "code": "database-startup-failed"})
         return 4
@@ -185,7 +191,7 @@ def run_sidecar(input_stream: TextIO = sys.stdin, output_stream: TextIO = sys.st
         _emit_event(output_stream, {"event": "error", "code": "loopback-bind-failed"})
         return 5
 
-    application = create_application(startup, storage, database)
+    application = create_application(startup, storage, database, data_state)
     server = uvicorn.Server(
         uvicorn.Config(
             application,
@@ -220,6 +226,7 @@ def run_sidecar(input_stream: TextIO = sys.stdin, output_stream: TextIO = sys.st
                 "location": storage.relative_database_path.as_posix(),
                 "lastMigrationBackup": database.last_migration_backup,
             },
+            "data": data_state.as_api_payload(),
         },
     )
 

@@ -114,8 +114,8 @@ class DatabaseFoundationTests(unittest.TestCase):
             <= tables
         )
 
-    def test_existing_database_gets_a_verified_backup_before_migration(self) -> None:
-        self.create_database_at_version(2)
+    def test_previous_release_database_gets_a_verified_backup_before_migration(self) -> None:
+        self.create_database_at_version(3)
         with closing(connect_database(self.database_path)) as connection:
             connection.execute(
                 "INSERT INTO app_metadata (key, value) VALUES (?, ?)",
@@ -139,12 +139,12 @@ class DatabaseFoundationTests(unittest.TestCase):
                 """
             ).fetchone()
         self.assertEqual(record["filename"], backup_path.name)
-        self.assertEqual(record["source_schema_version"], 2)
+        self.assertEqual(record["source_schema_version"], 3)
         self.assertEqual(record["target_schema_version"], SCHEMA_VERSION)
         self.assertEqual(record["size_bytes"], backup_path.stat().st_size)
         verify_database_backup(
             backup_path,
-            expected_schema_version=2,
+            expected_schema_version=3,
             expected_sha256=record["sha256"],
         )
 
@@ -160,7 +160,7 @@ class DatabaseFoundationTests(unittest.TestCase):
                 "PRAGMA journal_mode"
             ).fetchone()[0]
         self.assertEqual(preserved, "preserved")
-        self.assertEqual(backup_version, 2)
+        self.assertEqual(backup_version, 3)
         self.assertEqual(backup_journal, "delete")
 
     def test_failed_migration_automatically_restores_the_verified_backup(self) -> None:
@@ -171,12 +171,13 @@ class DatabaseFoundationTests(unittest.TestCase):
                 ("recovery-marker", "before-failure"),
             )
 
+        next_version = SCHEMA_VERSION + 1
         failing_migrations = MIGRATIONS + (
-            (4, "synthetic_failure", ("CREATE TABLE broken (",)),
+            (next_version, "synthetic_failure", ("CREATE TABLE broken (",)),
         )
         with (
             patch.object(database_module, "MIGRATIONS", failing_migrations),
-            patch.object(database_module, "SCHEMA_VERSION", 4),
+            patch.object(database_module, "SCHEMA_VERSION", next_version),
             self.assertRaisesRegex(DatabaseMigrationError, "backup was restored"),
         ):
             initialize_database(self.database_path)

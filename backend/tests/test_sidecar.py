@@ -96,6 +96,7 @@ class SidecarIntegrationTests(unittest.TestCase):
             self.assertEqual(ready["host"], "127.0.0.1")
             self.assertGreater(ready["port"], 0)
             self.assertEqual(ready["database"]["location"], "data/foundry.sqlite3")
+            self.assertEqual(ready["data"]["state"], "empty")
             self.assertNotIn(SYNTHETIC_SESSION_TOKEN, ready_line)
 
             base_url = f"http://127.0.0.1:{ready['port']}"
@@ -121,9 +122,13 @@ class SidecarIntegrationTests(unittest.TestCase):
             with opener.open(valid_request, timeout=3) as response:
                 health = json.loads(response.read())
             self.assertEqual(health["state"], "ready")
-            self.assertEqual(health["database"]["schemaVersion"], 3)
+            self.assertEqual(health["database"]["schemaVersion"], 4)
             self.assertEqual(health["database"]["location"], "data/foundry.sqlite3")
             self.assertIsNone(health["database"]["lastMigrationBackup"])
+            self.assertEqual(health["data"]["state"], "empty")
+            self.assertFalse(health["data"]["hasCachedData"])
+            self.assertEqual(health["data"]["lastSyncStatus"], "never")
+            self.assertIsNone(health["data"]["ageSeconds"])
 
             database_path = program_directory / "data" / "foundry.sqlite3"
             self.assertTrue(database_path.is_file())

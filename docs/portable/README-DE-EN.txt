@@ -21,6 +21,8 @@ Wichtig:
   geprüfte Sicherung unter "data\backups" an. Bei einem Migrationsfehler wird
   der vorherige Stand automatisch wiederhergestellt. Die fünf neuesten
   Migrationssicherungen bleiben erhalten.
+- Offline oder veraltete lokale Daten bleiben sichtbar und werden mit ihrem
+  Datenalter gekennzeichnet; ein fehlgeschlagener Folgelauf leert den Cache nicht.
 - Zum Umziehen oder Sichern die Anwendung zuerst schließen und anschließend den
   vollständigen Programmordner einschließlich "data" kopieren.
 - Spätere EVE-Zugangsdaten bleiben im Windows-Anmeldespeicher und werden beim
@@ -51,6 +53,8 @@ Important:
 - Before a required database migration, the app automatically creates a
   verified backup under "data\backups". A failed migration automatically
   restores the previous state. The five newest migration backups are retained.
+- Offline or stale local data remains visible and is labelled with its age; a
+  failed follow-up run does not empty the cache.
 - To move or back up the app, close it first and then copy the complete program
   folder including "data".
 - Future EVE credentials remain in Windows Credential Manager and do not travel

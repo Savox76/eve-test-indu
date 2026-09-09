@@ -25,6 +25,8 @@ Alle Ansichten starten aus dem letzten konsistenten lokalen Snapshot und synchro
 
 Jede Fachansicht benötigt Zustände für Alterung und Teilverfügbarkeit. Das Datenmodell speichert Laufmetadaten zusätzlich zu Nutzdaten. Cache-Invalidierung und Speicheraufbewahrung werden fachlich definiert, nicht pro Komponente improvisiert.
 
+Seit Schema-Version 4 trägt ein Cache-Snapshot optional seinen bestätigten Ablaufzeitpunkt. Der lokale Startpfad unterscheidet `loading`, `refreshing`, `empty`, `fresh`, `stale`, `offline` und `error`. Nur Snapshots vollständig abgeschlossener Läufe dürfen als verfügbar gelten. Fehlgeschlagene oder laufende Folgeläufe ändern den gespeicherten Snapshot nicht; unbekannte oder fehlende Ablaufmetadaten werden vorsichtshalber als veraltet behandelt.
+
 ## Verifikation
 
 Golden- und Integrationstests simulieren 304, Pagination, 403 für Strukturen, 420/429, 5xx, Timeout, abgebrochenen Lauf und Offline-Start. In keinem Fall wird ein bekannter vollständiger Snapshot stillschweigend geleert.

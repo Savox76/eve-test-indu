@@ -17,7 +17,7 @@ from .recovery import (
 
 
 BUSY_TIMEOUT_MILLISECONDS: Final = 5_000
-SCHEMA_VERSION: Final = 3
+SCHEMA_VERSION: Final = 4
 
 MIGRATIONS: Final = (
     (
@@ -153,6 +153,20 @@ MIGRATIONS: Final = (
             """
             CREATE INDEX idx_migration_backups_created
                 ON migration_backups(created_at DESC)
+            """,
+        ),
+    ),
+    (
+        4,
+        "cache_freshness_metadata",
+        (
+            """
+            ALTER TABLE cached_snapshots
+                ADD COLUMN expires_at TEXT
+            """,
+            """
+            CREATE INDEX idx_cached_snapshots_resource_observed
+                ON cached_snapshots(resource, observed_at DESC)
             """,
         ),
     ),
