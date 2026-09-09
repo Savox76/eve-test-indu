@@ -154,25 +154,11 @@ jobs:
       - name: Publish Windows packages directly to GitHub Release
         shell: pwsh
         run: |
-          $installers = @(Get-ChildItem "src-tauri/target/release/bundle/nsis/*.exe")
-          if ($installers.Count -ne 1) {
-            throw "Expected exactly one NSIS installer, found $($installers.Count)."
-          }
-
-          $portablePath = "src-tauri/target/release/bundle/New.Eden.Foundry_$($env:RELEASE_VERSION)_x64-portable.zip"
-          if (-not (Test-Path -LiteralPath $portablePath -PathType Leaf)) {
-            throw "Missing portable package: $portablePath"
-          }
-
-          $installer = $installers[0]
-          $portable = Get-Item -LiteralPath $portablePath
-          $releaseFiles = @()
-          foreach ($package in @($installer, $portable)) {
-            $checksumPath = "$($package.FullName).sha256"
-            $checksum = (Get-FileHash -Algorithm SHA256 $package.FullName).Hash.ToLowerInvariant()
-            "$checksum  $($package.Name)" | Set-Content -Encoding utf8NoBOM $checksumPath
-            $releaseFiles += $package.FullName
-            $releaseFiles += $checksumPath
+          $releaseFiles = @(
+            ./scripts/prepare_release_files.ps1 -Version $env:RELEASE_VERSION
+          )
+          if ($releaseFiles.Count -ne 4) {
+            throw "Expected installer, portable ZIP and two checksums."
           }
 
           $releaseTitle = "New Eden Foundry $($env:RELEASE_TAG)"

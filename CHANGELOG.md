@@ -24,6 +24,45 @@ Alle bemerkenswerten Änderungen an New Eden Foundry werden hier festgehalten. D
 
 - Keine.
 
+## 0.0.3-preview.2 – 9. September 2026
+
+### Neu hinzugefügt
+
+- Konsistente SQLite-Sicherung vor jeder ausstehenden Migration unter `data\backups`.
+- Prüfung von Integrität, Fremdschlüsseln, Schema-Version und SHA-256 vor Beginn einer Migration.
+- Automatische Wiederherstellung des geprüften Ausgangsstands bei fehlgeschlagener Migration oder Abschlussprüfung.
+- Schema-Version 3 mit lokaler Sicherungshistorie und Aufbewahrung der fünf neuesten Migrationssnapshots.
+- Automatisierte Fehler- und Wiederherstellungstests einschließlich beschädigter Sicherungen.
+
+### Geändert
+
+- Der native Bereitschaftsstatus kennzeichnet die aktive Migrationssicherung.
+- Sidecar-, Backend-, Portable- und Release-Dokumentation beschreiben den vollständigen Sicherungsablauf.
+- Der Release-Workflow verwendet bereits vor der SHA-256-Erzeugung den endgültigen öffentlichen Installer-Dateinamen.
+- Die sichtbare Versionsnummer wurde auf `v0.0.3-preview.2` aktualisiert.
+
+### Behobene Fehler
+
+- Eine Migration kann nicht mehr ohne vorherige erfolgreiche Sicherung beginnen.
+- Nach einem Migrationsfehler bleibt kein teilweise aktualisiertes Schema als einsatzbereit zurück.
+- Eine beschädigte Sicherung kann die aktuelle Datenbank nicht ersetzen.
+- Der Dateiname innerhalb der Installer-Prüfsumme stimmt nun mit dem GitHub-Assetnamen überein.
+
+### Bekannte Einschränkungen
+
+- Die Oberfläche verwendet weiterhin synthetische Mehrcharakterdaten und liest noch nicht aus SQLite.
+- EVE SSO, ESI, SDE, Synchronisierung und fachliche Berechnungen fehlen noch.
+- Eine manuelle Auswahl älterer Sicherungen in der Oberfläche ist noch nicht vorhanden.
+- Installer und portable EXE sind noch nicht code-signiert.
+- Die portable ZIP benötigt eine vorhandene Microsoft Edge WebView2 Runtime und einen beschreibbaren Zielordner.
+- Schutzregeln für `main` sind noch nicht aktiviert.
+
+### Update und Datenbankmigration
+
+- Eine vorhandene Schema-Version-2-Datenbank aus `v0.0.3-preview.1` wird nach automatischer Sicherung auf Schema-Version 3 aktualisiert. Es ist keine manuelle Aktion erforderlich.
+- Eine frische Installation legt direkt Schema-Version 3 an und erzeugt deshalb keinen unnötigen Migrationssnapshot.
+- Installer-Updates und Deinstallation lassen `data` einschließlich `data\backups` stehen. Bei einer portablen Aktualisierung die App schließen und den vollständigen Ordner `data` übernehmen.
+
 ## 0.0.3-preview.1 – 8. September 2026
 
 ### Neu hinzugefügt

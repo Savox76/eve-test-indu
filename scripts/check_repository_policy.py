@@ -53,6 +53,7 @@ REQUIRED_BACKEND_FILES = tuple(
         "backend/new_eden_foundry_backend/__main__.py",
         "backend/new_eden_foundry_backend/database.py",
         "backend/new_eden_foundry_backend/identity.py",
+        "backend/new_eden_foundry_backend/recovery.py",
         "backend/new_eden_foundry_backend/sidecar.py",
         "backend/new_eden_foundry_backend/storage.py",
         "backend/new_eden_foundry_backend/version.py",
@@ -65,6 +66,7 @@ REQUIRED_BACKEND_FILES = tuple(
         "backend/tests/test_sidecar.py",
         "backend/tests/test_storage.py",
         "scripts/build_sidecar.py",
+        "scripts/prepare_release_files.ps1",
         "scripts/smoke_sidecar.py",
     )
 )
@@ -79,6 +81,16 @@ REQUIRED_SQLITE_MARKERS = (
     "CREATE TABLE account_groups",
     "CREATE TABLE characters",
     "CREATE TABLE character_scopes",
+    "CREATE TABLE migration_backups",
+)
+
+REQUIRED_RECOVERY_MARKERS = (
+    "source.backup(destination)",
+    "PRAGMA journal_mode = DELETE",
+    "PRAGMA quick_check",
+    "PRAGMA foreign_key_check",
+    "MAX_MIGRATION_BACKUPS: Final = 5",
+    "os.replace(temporary_path, database_path)",
 )
 
 
@@ -131,15 +143,29 @@ def check_workflows(errors: list[str]) -> None:
         release_content = release_workflow.read_text(encoding="utf-8")
         for marker in (
             "scripts/package_portable.ps1",
+            "scripts/prepare_release_files.ps1",
             "scripts/build_sidecar.py",
             "scripts/smoke_sidecar.py",
             "requirements-build.txt",
-            "_x64-portable.zip",
-            "Get-FileHash -Algorithm SHA256",
+            "gh release",
         ):
             if marker not in release_content:
                 errors.append(
                     f"{relative(release_workflow)} is missing portable release marker: {marker}"
+                )
+
+    release_file_script = ROOT / "scripts" / "prepare_release_files.ps1"
+    if release_file_script.is_file():
+        release_file_content = release_file_script.read_text(encoding="utf-8")
+        for marker in (
+            "New.Eden.Foundry_${Version}_x64-setup.exe",
+            "New.Eden.Foundry_${Version}_x64-portable.zip",
+            "Get-FileHash -Algorithm SHA256",
+            "$($package.Name)",
+        ):
+            if marker not in release_file_content:
+                errors.append(
+                    f"{relative(release_file_script)} is missing release file marker: {marker}"
                 )
 
 
@@ -252,6 +278,13 @@ def check_backend_foundation(errors: list[str]) -> None:
         for marker in ('DATA_DIRECTORY_NAME: Final = "data"', 'DATABASE_FILENAME: Final = "foundry.sqlite3"', "no alternate database path"):
             if marker not in storage_content:
                 errors.append(f"Program-folder storage is missing required marker: {marker}")
+
+    recovery_source = ROOT / "backend" / "new_eden_foundry_backend" / "recovery.py"
+    if recovery_source.is_file():
+        recovery_content = recovery_source.read_text(encoding="utf-8")
+        for marker in REQUIRED_RECOVERY_MARKERS:
+            if marker not in recovery_content:
+                errors.append(f"Migration recovery is missing required marker: {marker}")
 
     sidecar_source = ROOT / "backend" / "new_eden_foundry_backend" / "sidecar.py"
     if sidecar_source.is_file():

@@ -23,6 +23,9 @@ Zusätzlich gelten folgende Regeln:
 - Schemaänderungen laufen ausschließlich über nummerierte, vorwärts gerichtete Migrationen.
 - Vor einer Migration wird eine konsistente Sicherung der vorhandenen Datenbank erzeugt.
 - Erst erfolgreiche Migration und Integritätsprüfung ersetzen den bisherigen Stand.
+- Die Sicherung verwendet die SQLite-Backup-API, wird zunächst als temporäre Datei geschrieben und nach `quick_check`, `foreign_key_check`, Schema- und SHA-256-Prüfung atomar unter `data\backups` veröffentlicht.
+- Scheitert eine Sicherung, beginnt die Migration nicht. Scheitert die Migration oder ihre Abschlussprüfung, wird der geprüfte vorherige Stand automatisch wiederhergestellt.
+- Die Datenbankhistorie vermerkt Dateiname, Quell- und Ziel-Schema, SHA-256, Größe und Erstellungszeit. Automatisch werden die fünf neuesten Migrationssicherungen aufbewahrt.
 - Synchronisierung schreibt in kurzen Transaktionen; UI-Lesen darf nicht unnötig blockiert werden.
 - Ein vollständiger Sync wird atomar als aktuell markiert. Abgebrochene Läufe erzeugen keinen falschen Snapshot und keine Deltas.
 - Backups, WAL-Checkpointing, Wiederherstellung und maximaler Speicherverbrauch werden als Betriebsfunktionen getestet.
@@ -36,6 +39,7 @@ WAL erzeugt zusätzliche `-wal`- und `-shm`-Dateien und setzt ein lokales Dateis
 - Automatisierte Tests prüfen die drei PRAGMAs auf jeder produktiven Verbindung.
 - Ein Integrationsfall liest während eines simulierten Sync-Schreibvorgangs.
 - Eine Testmigration kann aus ihrer Sicherung kontrolliert wiederhergestellt werden.
+- Fehlerfälle prüfen, dass eine fehlgeschlagene Sicherung das Schema nicht verändert, eine fehlgeschlagene Migration automatisch zurückgesetzt und eine beschädigte Sicherung nie eingespielt wird.
 - `foreign_key_check` und ein geeigneter Integritätscheck sind nach Migration grün.
 
 ## Referenzen
@@ -43,3 +47,4 @@ WAL erzeugt zusätzliche `-wal`- und `-shm`-Dateien und setzt ein lokales Dateis
 - [SQLite – Write-Ahead Logging](https://www.sqlite.org/wal.html)
 - [SQLite – Foreign Key Support](https://www.sqlite.org/foreignkeys.html)
 - [SQLite – PRAGMA busy_timeout](https://www.sqlite.org/pragma.html#pragma_busy_timeout)
+- [SQLite – Online Backup API](https://www.sqlite.org/backup.html)

@@ -91,7 +91,7 @@ const copy = {
       },
       ready: {
         title: "Lokaler Kern aktiv",
-        detail: "data\\foundry.sqlite3 im Programmordner",
+        detail: "data\\foundry.sqlite3 · Migrationssicherung aktiv",
       },
       error: {
         title: "Lokaler Kern gestört",
@@ -205,7 +205,7 @@ const copy = {
     },
     planned: "Geplant",
     previewOnly: "Noch ohne Live-Funktion",
-    footerVersion: "v0.0.3-preview.1",
+    footerVersion: "v0.0.3-preview.2",
   },
   en: {
     nav: {
@@ -237,7 +237,7 @@ const copy = {
       },
       ready: {
         title: "Local core active",
-        detail: "data\\foundry.sqlite3 in the program folder",
+        detail: "data\\foundry.sqlite3 · migration backup active",
       },
       error: {
         title: "Local core unavailable",
@@ -351,7 +351,7 @@ const copy = {
     },
     planned: "Planned",
     previewOnly: "No live function yet",
-    footerVersion: "v0.0.3-preview.1",
+    footerVersion: "v0.0.3-preview.2",
   },
 } as const;
 

@@ -1,8 +1,8 @@
 # Masterplan – New Eden Foundry
 
-**Fassung:** 1.4 (lebendes Repository-Dokument)
+**Fassung:** 1.5 (lebendes Repository-Dokument)
 
-**Stand:** 8. September 2026
+**Stand:** 9. September 2026
 
 **Status:** In Umsetzung – Phase 1 mit gebündeltem lokalem Startpfad
 
@@ -78,7 +78,7 @@ Vor breiter Fachentwicklung muss ein vertikaler Windows-Prototyp beweisen:
 - UI-Lesezugriff und Hintergrund-Sync arbeiten kontrolliert parallel auf SQLite.
 - Ein erzeugtes Windows-Paket lässt sich installieren, starten und entfernen.
 
-Die automatisierten Komponenten- und Paketprüfungen decken Sidecar-Build, Handshake, Tokenpflicht, Datenbankort, Integrität und Shutdown ab. Installation, zweiter Fensterstart, Update und Entfernung bleiben bis zur manuellen Abnahme auf einem freigegebenen Windows-Testgerät offene Teile dieses Gates.
+Die automatisierten Komponenten- und Paketprüfungen decken Sidecar-Build, Handshake, Tokenpflicht, Datenbankort, Integrität, Migrationssicherung, Wiederherstellung und Shutdown ab. Installation, zweiter Fensterstart, Update und Entfernung bleiben bis zur manuellen Abnahme auf einem freigegebenen Windows-Testgerät offene Teile dieses Gates.
 
 Scheitert dieser Durchstich, wird die Sidecar-Entscheidung vor weiterem Fachcode neu bewertet.
 
@@ -97,7 +97,7 @@ Scheitert dieser Durchstich, wird die Sidecar-Entscheidung vor weiterem Fachcode
 
 ## 7. Daten und Synchronisierung
 
-SQLite unter `<Programmordner>\data\foundry.sqlite3` ist die lokale fachliche Quelle. Der Ordner `data\backups` nimmt künftige Migrationssicherungen auf. Jeder Lauf besitzt Start, Ende, Status, Datenquelle, Datenstand und – soweit eigentümerbezogen – eine Charakter-ID. Nur vollständig erfolgreiche Läufe dürfen einen konsistenten Snapshot als aktuell markieren oder Deltas erzeugen. Gemeinsame Auswertungen behalten die Einzelbeiträge und ihre Datenalterung nachvollziehbar bei.
+SQLite unter `<Programmordner>\data\foundry.sqlite3` ist die lokale fachliche Quelle. Vor jeder ausstehenden Schemaänderung erzeugt die Anwendung über die SQLite-Backup-API einen konsistenten Snapshot unter `data\backups`, prüft Integrität, Fremdschlüssel, Schema und SHA-256 und bewahrt die fünf neuesten Migrationssicherungen auf. Eine fehlgeschlagene Sicherung verhindert die Migration; eine fehlgeschlagene Migration oder Abschlussprüfung stellt den geprüften Ausgangsstand automatisch wieder her. Jeder Synchronisierungslauf besitzt Start, Ende, Status, Datenquelle, Datenstand und – soweit eigentümerbezogen – eine Charakter-ID. Nur vollständig erfolgreiche Läufe dürfen einen konsistenten Snapshot als aktuell markieren oder Deltas erzeugen. Gemeinsame Auswertungen behalten die Einzelbeiträge und ihre Datenalterung nachvollziehbar bei.
 
 Der ESI-Client kapselt mindestens Compatibility-Date, User-Agent, Pagination, ETag/Expires, Fehlerbudget, `Retry-After`, Backoff und Circuit Breaker. Veraltete Daten werden nicht stillschweigend durch leere Ergebnisse ersetzt.
 
@@ -194,9 +194,10 @@ Die Reihenfolge ist verbindlicher als eine Kalenderangabe.
 - **Vorbereitend umgesetzt:** 03 – die freigegebene Tauri-/React-Gestaltung verwendet weiterhin ausschließlich einen synthetischen UI-Datensatz.
 - **Technisch umgesetzt, Windows-Abnahme offen:** 04–06 – Single Instance, gebündelter Sidecar, dynamischer Loopback-Port, 256-Bit-Sitzungstoken, Bereitschaftsprotokoll, Prozessüberwachung und Shutdown sind implementiert. Automatisierte Quell-, Frozen- und Pakettests sichern den Kern ab; das vollständige installierte Windows-Laufzeitgate bleibt offen.
 - **Abgeschlossen:** 07 – die SQLite-Grundlage aktiviert und prüft Foreign Keys, WAL und `busy_timeout`, wendet eine versionierte Basismigration an und führt automatisierte Integritäts- sowie Parallelzugriffstests aus.
+- **Abgeschlossen:** 08 – ausstehende Migrationen erzeugen zuerst einen konsistenten, eigenständigen und SHA-256-geprüften Snapshot unter `data\backups`. Sicherungsfehler lassen das Schema unverändert; Migrationsfehler lösen eine geprüfte automatische Wiederherstellung aus. Die fünf neuesten Snapshots bleiben erhalten.
 - **Teilweise umgesetzt:** 09 – die UI zeigt Prüfung, Sidecar-/Datenbankstart, Bereitschaft und lokale Startfehler; Cache-, Offline- und Datenalterzustände folgen mit der echten Synchronisierung.
 - **Teilweise umgesetzt:** 15 – Schema und Zugriffslogik unterstützen mehrere separat autorisierte Charaktere, lokale Kontogruppen und getrennte Scopes. Die synthetische Oberfläche wechselt bereits zwischen Einzel- und Gesamtübersicht; echter SSO-, Keyring- und Löschablauf folgen erst in Phase 2.
-- **Als Nächstes:** 08 und das verbleibende A0-Windows-Gate – automatische Migrationssicherung/Wiederherstellung sowie Installation, zweiter Start, Update und Entfernung auf einem freigegebenen Windows-Testgerät.
+- **Als Nächstes:** das verbleibende A0-Windows-Gate und Arbeitspaket 09 – Installation, zweiter Start, Migration/Update und Entfernung auf einem freigegebenen Windows-Testgerät sowie die noch fehlenden Cache-, Offline- und Datenalterzustände.
 - Architektur-Gate A0 ist technisch weitgehend umgesetzt, aber bis zur vollständigen Windows-Abnahme noch nicht erfüllt; breite Fachentwicklung beginnt erst danach.
 
 ## 13. Entscheidungs- und Quellenrang

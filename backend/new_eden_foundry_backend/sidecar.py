@@ -128,6 +128,7 @@ def create_application(
                 "schemaVersion": database.schema_version,
                 "integrity": database.integrity,
                 "location": storage.relative_database_path.as_posix(),
+                "lastMigrationBackup": database.last_migration_backup,
             },
         }
 
@@ -165,7 +166,10 @@ def run_sidecar(input_stream: TextIO = sys.stdin, output_stream: TextIO = sys.st
         return 3
 
     try:
-        database = initialize_database(storage.database_path)
+        database = initialize_database(
+            storage.database_path,
+            backup_directory=storage.backup_directory,
+        )
     except Exception:
         _emit_event(output_stream, {"event": "error", "code": "database-startup-failed"})
         return 4
@@ -214,6 +218,7 @@ def run_sidecar(input_stream: TextIO = sys.stdin, output_stream: TextIO = sys.st
                 "state": "ready",
                 "schemaVersion": database.schema_version,
                 "location": storage.relative_database_path.as_posix(),
+                "lastMigrationBackup": database.last_migration_backup,
             },
         },
     )

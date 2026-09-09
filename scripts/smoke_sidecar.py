@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import hashlib
 import json
 import queue
 import secrets
@@ -17,6 +18,9 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 from typing import TextIO
+
+
+SYNTHETIC_MIGRATION_MARKER = "portable-smoke-preserved"
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -73,6 +77,40 @@ def expect_unauthorized(
     raise RuntimeError("An unauthenticated sidecar request was accepted.")
 
 
+def seed_version_two_database(program_directory: Path) -> Path:
+    data_directory = program_directory / "data"
+    data_directory.mkdir()
+    database_path = data_directory / "foundry.sqlite3"
+    with contextlib.closing(sqlite3.connect(database_path)) as connection:
+        connection.executescript(
+            """
+            CREATE TABLE schema_migrations (
+                version INTEGER PRIMARY KEY,
+                name TEXT NOT NULL UNIQUE,
+                applied_at TEXT NOT NULL DEFAULT (
+                    strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                )
+            );
+            CREATE TABLE app_metadata (
+                key TEXT PRIMARY KEY NOT NULL,
+                value TEXT NOT NULL,
+                updated_at TEXT NOT NULL DEFAULT (
+                    strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                )
+            );
+            INSERT INTO schema_migrations (version, name)
+                VALUES (1, 'initial_local_core');
+            INSERT INTO schema_migrations (version, name)
+                VALUES (2, 'multi_character_identity');
+            INSERT INTO app_metadata (key, value)
+                VALUES ('smoke-marker', 'portable-smoke-preserved');
+            PRAGMA user_version = 2;
+            """
+        )
+        connection.commit()
+    return database_path
+
+
 def main() -> int:
     arguments = build_parser().parse_args()
     executable = arguments.executable.resolve(strict=True)
@@ -80,6 +118,7 @@ def main() -> int:
 
     with tempfile.TemporaryDirectory(prefix="new-eden-foundry-sidecar-") as temporary_directory:
         program_directory = Path(temporary_directory).resolve()
+        database_path = seed_version_two_database(program_directory)
         process = subprocess.Popen(
             [str(executable)],
             stdin=subprocess.PIPE,
@@ -120,15 +159,46 @@ def main() -> int:
             database = health.get("database")
             if not isinstance(database, dict) or database.get("location") != "data/foundry.sqlite3":
                 raise RuntimeError("The sidecar reported an unexpected database location.")
-            if database.get("schemaVersion") != 2 or database.get("integrity") != "ok":
+            if database.get("schemaVersion") != 3 or database.get("integrity") != "ok":
                 raise RuntimeError("The sidecar database health is invalid.")
+            backup_name = database.get("lastMigrationBackup")
+            if not isinstance(backup_name, str) or not backup_name.startswith(
+                "foundry-schema-v0002-to-v0003-"
+            ):
+                raise RuntimeError("The packaged migration did not report its backup.")
 
-            database_path = program_directory / "data" / "foundry.sqlite3"
             if not database_path.is_file():
                 raise RuntimeError("The database was not created inside the program directory.")
             with contextlib.closing(sqlite3.connect(database_path)) as connection:
                 if connection.execute("PRAGMA quick_check").fetchone()[0] != "ok":
                     raise RuntimeError("The created SQLite database failed quick_check.")
+                if connection.execute("PRAGMA user_version").fetchone()[0] != 3:
+                    raise RuntimeError("The packaged sidecar did not migrate to schema 3.")
+                marker = connection.execute(
+                    "SELECT value FROM app_metadata WHERE key = 'smoke-marker'"
+                ).fetchone()[0]
+                backup_record = connection.execute(
+                    "SELECT filename, sha256 FROM migration_backups"
+                ).fetchone()
+            if marker != SYNTHETIC_MIGRATION_MARKER or backup_record[0] != backup_name:
+                raise RuntimeError("The packaged migration did not preserve its source data.")
+
+            backup_path = program_directory / "data" / "backups" / backup_name
+            if not backup_path.is_file():
+                raise RuntimeError("The packaged migration backup was not created.")
+            checksum = hashlib.sha256(backup_path.read_bytes()).hexdigest()
+            if checksum != backup_record[1]:
+                raise RuntimeError("The packaged migration backup checksum is invalid.")
+            with contextlib.closing(sqlite3.connect(backup_path)) as backup_connection:
+                if backup_connection.execute("PRAGMA quick_check").fetchone()[0] != "ok":
+                    raise RuntimeError("The packaged migration backup failed quick_check.")
+                if backup_connection.execute("PRAGMA user_version").fetchone()[0] != 2:
+                    raise RuntimeError("The packaged backup does not contain schema 2.")
+                backup_marker = backup_connection.execute(
+                    "SELECT value FROM app_metadata WHERE key = 'smoke-marker'"
+                ).fetchone()[0]
+            if backup_marker != SYNTHETIC_MIGRATION_MARKER:
+                raise RuntimeError("The packaged backup did not preserve source data.")
 
             process.stdin.write('{"command":"shutdown"}\n')
             process.stdin.flush()
@@ -147,7 +217,9 @@ def main() -> int:
                 if stream is not None and not stream.closed:
                     stream.close()
 
-    print("Frozen sidecar handshake, database location and shutdown verified.")
+    print(
+        "Frozen sidecar handshake, migration backup, database location and shutdown verified."
+    )
     return 0
 
 
