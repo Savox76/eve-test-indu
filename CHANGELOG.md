@@ -24,6 +24,43 @@ Alle bemerkenswerten Änderungen an New Eden Foundry werden hier festgehalten. D
 
 - Keine.
 
+## 0.0.4-preview.5 – 9. September 2026
+
+### Neu hinzugefügt
+
+- Charaktergebundene Refresh-Token-Ablage im Windows-Anmeldespeicher ohne Datei- oder SQLite-Rückfall.
+- Verifizierter Zwei-Slot-Austausch für Erstablage und Rotation einschließlich Wiederaufnahme nach unterbrochenem Schreiben.
+- Prozesslokaler Access-Token-Cache mit rechtzeitiger, charaktergebundener Erneuerung und Konfliktschutz für parallele Rotationen.
+- Automatisierte Sicherheits- und Integrationsprüfungen für Ablage, Rotation, Redigierung, Identität und Fehlerpfade.
+
+### Geändert
+
+- Ein erfolgreicher SSO-Rückruf gilt erst nach geprüfter Identität, erfolgreicher SQLite-Speicherung und bestätigter Aktivierung des Refresh Tokens als verbunden.
+- Access Tokens verbleiben ausschließlich im Sidecar-Speicher; Refresh Tokens werden ausschließlich über den Windows-Anmeldespeicher gelesen und ersetzt.
+- Der Sidecar meldet den verfügbaren Credential-Backend-Status, ohne Eintragsnamen oder Geheimnisse preiszugeben.
+- Masterplan 2.2 markiert Arbeitspaket 14 als abgeschlossen und die vollständige Charakterverwaltung als nächsten Schritt.
+- Die sichtbare Versionsnummer wurde auf `v0.0.4-preview.5` aktualisiert; `Savoxmedia` bleibt ausschließlich als Ersteller der App neben der Version genannt.
+
+### Behobene Fehler
+
+- Nach einer erfolgreichen Autorisierung wird der Refresh Token nicht mehr verworfen; der verbundene Charakter kann künftig ohne erneute Browseranmeldung ein Access Token erhalten.
+- Ein fehlgeschlagener Austausch überschreibt den letzten aktiven Refresh Token nicht.
+- Eine veraltete parallele Rotation kann einen bereits erneuerten Refresh Token nicht zurücksetzen.
+- Tokenwerte erscheinen auch vollqualifiziert verpackt weder in Objekt-Repräsentationen noch in öffentlichen Fehlertexten.
+
+### Bekannte Einschränkungen
+
+- Die Verwaltungsoberfläche für Alias, Aktivstatus, Gruppen, Scope-Status und vollständiges Löschen folgt in Arbeitspaket 15.
+- Der zentrale ESI-Client und damit die echte Synchronisierung folgen in Arbeitspaket 16; Fachkennzahlen bleiben bis dahin synthetisch.
+- Auf Linux und macOS ist absichtlich keine Ersatzablage aktiv; die aktuelle Windows-first Preview meldet den Credential-Backend dort als nicht verfügbar.
+- Öffentliche Updateverteilung und Codesignierung bleiben deaktiviert; das manuelle Windows-Laufzeitgate und der Schutz von `main` sind offen.
+
+### Update und Datenbankmigration
+
+- Keine Datenbankmigration; Schema-Version 5 und alle Daten unter `data` bleiben erhalten.
+- Bereits in `v0.0.4-preview.4` verbundene Charaktere besitzen noch keinen Refresh Token und müssen einmal erneut verbunden werden.
+- Für ein portables Update die Anwendung schließen und den bisherigen Ordner `data` vollständig in den neuen Programmordner übernehmen. Refresh Tokens verbleiben getrennt im Windows-Anmeldespeicher des aktuellen Nutzers.
+
 ## 0.0.4-preview.4 – 9. September 2026
 
 ### Neu hinzugefügt

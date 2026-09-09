@@ -12,6 +12,7 @@ import time
 import unittest
 import urllib.error
 import urllib.request
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from new_eden_foundry_backend.sidecar import (
@@ -19,9 +20,11 @@ from new_eden_foundry_backend.sidecar import (
     StartupProtocolError,
     is_authorized,
     parse_startup_configuration,
+    store_verified_authorization,
     store_verified_character,
 )
-from new_eden_foundry_backend.sso_tokens import VerifiedCharacter
+from new_eden_foundry_backend.sso_tokens import VerifiedAuthorization, VerifiedCharacter
+from new_eden_foundry_backend.token_vault import MemoryCredentialStore, RefreshTokenVault
 
 
 SYNTHETIC_SESSION_TOKEN = "a" * 64
@@ -80,6 +83,60 @@ class SidecarProtocolTests(unittest.TestCase):
                     1,
                 )
 
+    def test_verified_authorization_commits_identity_and_refresh_token(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            database_path = Path(temporary_directory) / "foundry.sqlite3"
+            from new_eden_foundry_backend.database import initialize_database
+
+            initialize_database(database_path)
+            vault = RefreshTokenVault(MemoryCredentialStore())
+            authorization = VerifiedAuthorization(
+                character=VerifiedCharacter(
+                    2_112_345_679,
+                    "Stored Pilot",
+                    ("esi-assets.read_assets.v1",),
+                ),
+                access_token="synthetic-access-token",
+                refresh_token="synthetic-refresh-token",
+                expires_at=datetime.now(timezone.utc) + timedelta(minutes=20),
+            )
+
+            store_verified_authorization(database_path, vault, authorization)
+
+            self.assertEqual(
+                vault.read(authorization.character.character_id),
+                "synthetic-refresh-token",
+            )
+            with contextlib.closing(sqlite3.connect(database_path)) as connection:
+                self.assertEqual(
+                    connection.execute(
+                        "SELECT name FROM characters WHERE character_id = ?",
+                        (authorization.character.character_id,),
+                    ).fetchone()[0],
+                    "Stored Pilot",
+                )
+
+    def test_identity_failure_discards_the_staged_refresh_token(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            database_path = Path(temporary_directory) / "uninitialized.sqlite3"
+            store = MemoryCredentialStore()
+            vault = RefreshTokenVault(store)
+            authorization = VerifiedAuthorization(
+                character=VerifiedCharacter(
+                    2_112_345_680,
+                    "Rejected Pilot",
+                    ("esi-assets.read_assets.v1",),
+                ),
+                access_token="synthetic-access-token",
+                refresh_token="synthetic-refresh-token",
+                expires_at=datetime.now(timezone.utc) + timedelta(minutes=20),
+            )
+
+            with self.assertRaises(sqlite3.OperationalError):
+                store_verified_authorization(database_path, vault, authorization)
+
+            self.assertFalse(store.values)
+
 
 class SidecarIntegrationTests(unittest.TestCase):
     def test_loopback_health_requires_token_and_shutdown_is_clean(self) -> None:
@@ -123,6 +180,14 @@ class SidecarIntegrationTests(unittest.TestCase):
             self.assertEqual(ready["updater"]["manifestState"], "verified")
             self.assertFalse(ready["updater"]["publicDistribution"])
             self.assertEqual(ready["appearance"], {"fontScale": "normal"})
+            expected_backend = (
+                "windows-credential-manager" if sys.platform == "win32" else "unavailable"
+            )
+            self.assertEqual(ready["credentials"]["backend"], expected_backend)
+            self.assertEqual(
+                ready["credentials"]["state"],
+                "available" if sys.platform == "win32" else "unavailable",
+            )
             self.assertEqual(ready["ssoRegistration"]["state"], "registered")
             self.assertEqual(
                 ready["ssoRegistration"]["clientId"],
@@ -169,6 +234,7 @@ class SidecarIntegrationTests(unittest.TestCase):
             self.assertFalse(health["updater"]["publicDistribution"])
             self.assertEqual(health["appearance"], {"fontScale": "normal"})
             self.assertEqual(health["characters"], {"connected": 0})
+            self.assertEqual(health["credentials"], ready["credentials"])
             self.assertEqual(health["ssoRegistration"]["state"], "registered")
 
             sso_login_url = f"{base_url}/sso/login"

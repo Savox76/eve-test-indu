@@ -1,10 +1,10 @@
 # Masterplan – New Eden Foundry
 
-**Fassung:** 2.1 (lebendes Repository-Dokument)
+**Fassung:** 2.2 (lebendes Repository-Dokument)
 
 **Stand:** 9. September 2026
 
-**Status:** In Umsetzung – Phase 2 mit JWT-geprüfter Charakterbindung
+**Status:** In Umsetzung – Phase 2 mit geschützter Tokenlebensdauer
 
 **Geltungsbereich:** `Savox76/eve-test-indu`
 
@@ -201,10 +201,11 @@ Die Reihenfolge ist verbindlicher als eine Kalenderangabe.
 - **Abgeschlossen:** 10 – die Desktop-Oberfläche kann `stable`, `beta` und `preview` wählen und speichert die Präferenz in Schema 5 im Programmordner. Ein gebündeltes Ed25519-signiertes Testmanifest wird streng und offline geprüft; die reservierte Domain `updates.invalid` sowie `publicDistribution: false` verhindern eine vorzeitige öffentliche Verteilung.
 - **Abgeschlossen:** 11 – Callback-URI, öffentliche Client-ID, Entwicklerkontakt und funktionsbezogene Scopepakete sind im EVE Developers Portal registriert, verbindlich dokumentiert, maschinenlesbar hinterlegt, im Sidecar-Paket enthalten und gegen Drift getestet.
 - **Abgeschlossen:** 12 – die Desktop-App startet EVE SSO im Systembrowser, erzeugt je Versuch unabhängigen kryptografischen `state` und PKCE-Verifier mit `S256`, prüft den Rückruf am festen Callback und beendet Listener und Geheimnisse bei Fehler, Drei-Minuten-Timeout, Abbruch oder App-Ende. Scopepakete werden pro einzeln zu autorisierendem Charakter gewählt.
-- **Abgeschlossen:** 13 – der Sidecar tauscht den einmaligen Code ohne Client Secret per PKCE aus, bezieht Token- und JWKS-Endpunkte aus streng begrenzten EVE-Metadaten und prüft `RS256`-Signatur, Schlüssel-ID, Issuer, beide Audience-Werte, Ablauf, Charakter-Subject, Name und Scopes. Nur danach werden Identität und Scope-Status idempotent in SQLite gespeichert und in der echten Charakterliste angezeigt. Tokens werden bis Paket 14 anschließend verworfen.
+- **Abgeschlossen:** 13 – der Sidecar tauscht den einmaligen Code ohne Client Secret per PKCE aus, bezieht Token- und JWKS-Endpunkte aus streng begrenzten EVE-Metadaten und prüft `RS256`-Signatur, Schlüssel-ID, Issuer, beide Audience-Werte, Ablauf, Charakter-Subject, Name und Scopes. Nur danach werden Identität und Scope-Status idempotent in SQLite gespeichert und in der echten Charakterliste angezeigt.
+- **Abgeschlossen:** 14 – der ausschließlich nach erfolgreicher JWT-Prüfung erhaltene Refresh Token wird pro Charakter in einem verifizierten Zwei-Slot-Verfahren im Windows-Anmeldespeicher aktiviert. Der bisherige aktive Wert bleibt bei Schreibfehlern erhalten; unterbrochene und konkurrierende Rotationen werden ohne Tokenverlust behandelt. Access Tokens verbleiben nur im Sidecar-Speicher, Geheimnisse erreichen weder SQLite noch API-Antworten oder Logs, und nicht unterstützte Schlüsselbundumgebungen schlagen geschlossen fehl.
 - **Teilweise umgesetzt:** 15 – Schema, Zugriffslogik und Oberfläche unterstützen mehrere separat autorisierte und aus SQLite geladene Charaktere, lokale Kontogruppen und getrennte Scopes. Alias, Deaktivierung, Gruppeneditor und vollständiger Löschablauf folgen nach der Schlüsselbundanbindung; Fachansichten verwenden bis zum ESI-Sync weiterhin synthetische Werte.
 - **Zusätzlich umgesetzt:** Die vollständige sichtbare Oberfläche unterstützt fünf globale Schriftgrößenstufen; die Auswahl bleibt in der bestehenden `app_settings`-Tabelle im Programmordner erhalten.
-- **Als Nächstes:** Arbeitspaket 14 speichert den ausschließlich nach erfolgreicher JWT-Prüfung erhaltenen Refresh Token atomar pro Charakter im Betriebssystem-Schlüsselbund, behandelt Rotation ohne Tokenverlust und entfernt alte Werte erst nach bestätigter Ablage. Parallel bleibt das A0-Windows-Gate für Installation, zweiten Start, Migration/Update und Entfernung auf einem freigegebenen Windows-Testgerät offen.
+- **Als Nächstes:** Arbeitspaket 15 vervollständigt die Charakterverwaltung mit Alias, Aktivstatus, lokalen Kontogruppen, verständlichem Scope-/Credential-Status und vollständigem Löschablauf. Parallel bleibt das A0-Windows-Gate für Installation, zweiten Start, Migration/Update und Entfernung auf einem freigegebenen Windows-Testgerät offen.
 - Architektur-Gate A0 ist technisch weitgehend umgesetzt, aber bis zur vollständigen Windows-Abnahme noch nicht erfüllt; breite Fachentwicklung beginnt erst danach.
 
 ## 13. Entscheidungs- und Quellenrang

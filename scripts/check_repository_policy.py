@@ -63,6 +63,8 @@ REQUIRED_BACKEND_FILES = tuple(
         "backend/new_eden_foundry_backend/sso_registration.py",
         "backend/new_eden_foundry_backend/sso_pkce.py",
         "backend/new_eden_foundry_backend/sso_tokens.py",
+        "backend/new_eden_foundry_backend/token_vault.py",
+        "backend/new_eden_foundry_backend/token_service.py",
         "backend/new_eden_foundry_backend/updater.py",
         "backend/new_eden_foundry_backend/version.py",
         "backend/new_eden_foundry_backend/resources/update-test-manifest.json",
@@ -81,6 +83,8 @@ REQUIRED_BACKEND_FILES = tuple(
         "backend/tests/test_sso_registration.py",
         "backend/tests/test_sso_pkce.py",
         "backend/tests/test_sso_tokens.py",
+        "backend/tests/test_token_vault.py",
+        "backend/tests/test_token_service.py",
         "backend/tests/test_updater.py",
         "scripts/build_sidecar.py",
         "scripts/prepare_release_files.ps1",
@@ -227,6 +231,20 @@ def check_documentation(errors: list[str]) -> None:
         ):
             if marker not in pkce_content:
                 errors.append(f"SSO PKCE documentation is missing marker: {marker}")
+
+    token_documentation = ROOT / "docs" / "token-security.md"
+    if not token_documentation.is_file():
+        errors.append("Missing EVE token storage and rotation documentation.")
+    else:
+        token_content = token_documentation.read_text(encoding="utf-8")
+        for marker in (
+            "Windows-Anmeldespeicher",
+            "refresh.pending",
+            "Access Tokens bleiben ausschließlich im Speicher",
+            "keinen Rückfall auf Dateien, SQLite oder Klartext",
+        ):
+            if marker not in token_content:
+                errors.append(f"Token security documentation is missing marker: {marker}")
 
     releasing = ROOT / "docs" / "RELEASING.md"
     if not releasing.is_file():

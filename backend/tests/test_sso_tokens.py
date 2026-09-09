@@ -13,6 +13,7 @@ from new_eden_foundry_backend.sso_tokens import (
     EveSsoClient,
     SSO_METADATA_ENDPOINT,
     SsoTokenError,
+    VerifiedAuthorization,
     validate_access_token,
 )
 
@@ -140,15 +141,53 @@ class TokenExchangeTests(unittest.TestCase):
             request_json=self.requester,
             utc_now=lambda: NOW,
         )
-        identity = client.exchange_and_validate("synthetic-code", "v" * 43, SCOPES)
+        authorization = client.exchange_and_validate("synthetic-code", "v" * 43, SCOPES)
 
-        self.assertEqual(identity.name, "Synthetic Pilot")
+        self.assertIsInstance(authorization, VerifiedAuthorization)
+        self.assertEqual(authorization.character.name, "Synthetic Pilot")
+        self.assertEqual(authorization.refresh_token, "synthetic-refresh-token")
+        self.assertNotIn("synthetic-refresh-token", repr(authorization))
+        self.assertNotIn(authorization.access_token, repr(authorization))
         self.assertEqual([call[0] for call in self.calls], ["GET", "POST", "GET"])
         token_form = cast(dict[str, str], self.calls[1][2])
         self.assertEqual(token_form["grant_type"], "authorization_code")
         self.assertEqual(token_form["client_id"], CLIENT_ID)
         self.assertEqual(token_form["code_verifier"], "v" * 43)
         self.assertNotIn("client_secret", token_form)
+
+    def test_refresh_rotates_token_and_remains_bound_to_character(self) -> None:
+        client = EveSsoClient(
+            CLIENT_ID,
+            request_json=self.requester,
+            utc_now=lambda: NOW,
+        )
+
+        authorization = client.refresh_and_validate(
+            "stored-refresh-token",
+            expected_character_id=2_112_345_678,
+            expected_scopes=SCOPES,
+        )
+
+        self.assertEqual(authorization.character.character_id, 2_112_345_678)
+        token_form = cast(dict[str, str], self.calls[1][2])
+        self.assertEqual(token_form["grant_type"], "refresh_token")
+        self.assertEqual(token_form["refresh_token"], "stored-refresh-token")
+        self.assertEqual(token_form["client_id"], CLIENT_ID)
+        self.assertNotIn("client_secret", token_form)
+
+    def test_refresh_rejects_a_token_for_another_character(self) -> None:
+        client = EveSsoClient(
+            CLIENT_ID,
+            request_json=self.requester,
+            utc_now=lambda: NOW,
+        )
+
+        with self.assertRaisesRegex(SsoTokenError, "refresh-character-mismatch"):
+            client.refresh_and_validate(
+                "stored-refresh-token",
+                expected_character_id=2_000_000_001,
+                expected_scopes=SCOPES,
+            )
 
     def test_rejects_metadata_endpoint_outside_eve_sso(self) -> None:
         def malicious_requester(method, url, form, headers):  # type: ignore[no-untyped-def]

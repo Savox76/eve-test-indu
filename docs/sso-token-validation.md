@@ -1,7 +1,7 @@
 # EVE-SSO-Token- und Charakterprüfung
 
 **Stand:** 9. September 2026  
-**Umsetzung:** Arbeitspaket 13
+**Umsetzung:** Arbeitspakete 13 und 14
 
 ## Vertrauenskette
 
@@ -10,9 +10,9 @@
 3. Die OAuth-Metadatenadresse muss Issuer, Autorisierungs-, Token- und JWKS-Endpunkt unter HTTPS auf `login.eveonline.com` liefern. Weiterleitungen werden abgewiesen.
 4. Das Access Token wird ausschließlich als JWT mit `RS256` und genau passendem `kid` aus dem JWKS akzeptiert.
 5. Signatur, EVE-Issuer, die Audiences `EVE Online` und die öffentliche Client-ID, Ablauf, optionaler Gültigkeitsbeginn, `CHARACTER:EVE:<id>`, Name und bestätigte Scopes werden gemeinsam geprüft.
-6. Erst danach werden Charakter-ID, Name und Scopes atomar in `data\foundry.sqlite3` eingefügt oder aktualisiert und über die geschützte lokale Charakterliste an die Oberfläche gegeben.
+6. Erst danach werden Charakter-ID, Name und Scopes in `data\foundry.sqlite3` eingefügt oder aktualisiert und der Refresh Token atomar pro Charakter im Windows-Anmeldespeicher aktiviert.
 
-Kein Access Token, Refresh Token, Autorisierungscode, `state` oder PKCE-Verifier wird an React/Tauri übergeben, geloggt oder in SQLite gespeichert. Bis Arbeitspaket 14 werden die erhaltenen Tokens unmittelbar nach der Identitätsprüfung verworfen.
+Kein Access Token, Refresh Token, Autorisierungscode, `state` oder PKCE-Verifier wird an React/Tauri übergeben, geloggt oder in SQLite gespeichert. Access Tokens leben nur im Sidecar-Speicher. Refresh Tokens liegen ausschließlich pro Charakter im Windows-Anmeldespeicher; eine fehlende Schlüsselbundfunktion führt zu einem geschlossenen Fehler und niemals zu einer Klartext-Ausweichablage.
 
 ## Sichtbares Verhalten
 
@@ -33,6 +33,7 @@ Eine Autorisierung aus Paket 12 kann nicht nachträglich übernommen werden, wei
 - Ablauf, `nbf`, `iat`, Charakter-Subject, Name und Scope-Vollständigkeit
 - keine Speicherung bei irgendeinem Token-, JWT- oder Datenbankfehler
 - idempotentes Wiederverbinden und sichtbares Laden mehrerer Charaktere aus SQLite
+- atomare Refresh-Token-Erstablage und -Rotation mit verifiziertem Zwischen-Slot, Wiederaufnahme nach Unterbrechung und Konflikterkennung
 
 ## Offizielle Quelle
 

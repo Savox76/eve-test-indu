@@ -24,7 +24,7 @@ const emptyData = {
 function nativeStatus(overrides: Record<string, unknown> = {}) {
   return JSON.stringify({
     state: "ready",
-    version: "0.0.4-preview.4",
+    version: "0.0.4-preview.5",
     desktopShell: true,
     singleInstance: true,
     sidecar: "ready",
@@ -60,7 +60,7 @@ describe("desktop runtime status", () => {
       loadDesktopRuntimeStatus({ isAvailable: () => true, invoke }),
     ).resolves.toEqual({
       state: "ready",
-      version: "0.0.4-preview.4",
+      version: "0.0.4-preview.5",
       desktopShell: true,
       singleInstance: true,
       sidecar: "ready",

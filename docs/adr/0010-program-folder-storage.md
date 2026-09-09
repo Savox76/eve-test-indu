@@ -18,7 +18,7 @@ Die Anwendung soll ohne externen Datenbankdienst funktionieren und ihre lokale D
 - Symbolische Umleitungen für `data`, Datenbank oder Backup-Ordner werden abgewiesen.
 - Der Windows-Installer bleibt eine Installation für den aktuellen Benutzer, damit sein Programmordner ohne Administratorrechte beschreibbar ist.
 - Die portable ZIP muss vollständig in einen beschreibbaren Ordner entpackt werden. Wird der vollständige Ordner einschließlich `data` verschoben, wandert die Datenbank mit.
-- EVE-Refresh-Tokens und andere Geheimnisse bleiben von dieser Entscheidung ausgenommen und werden später pro Charakter im Windows-Anmeldespeicher gehalten.
+- EVE-Refresh-Tokens und andere Geheimnisse bleiben von dieser Entscheidung ausgenommen. Refresh Tokens werden pro Charakter im Windows-Anmeldespeicher des aktuellen Nutzers gehalten und nicht mit dem Programmordner übertragen.
 - Updates ersetzen nur ausgelieferte Programmdateien. Der nicht gebündelte Ordner `data` bleibt erhalten. Eine bewusste vollständige Datenlöschung wird später als eigene, bestätigungspflichtige Funktion umgesetzt.
 
 ## Folgen
