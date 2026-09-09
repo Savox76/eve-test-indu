@@ -146,6 +146,41 @@ class SidecarIntegrationTests(unittest.TestCase):
             self.assertFalse(health["updater"]["publicDistribution"])
             self.assertEqual(health["ssoRegistration"]["state"], "registered")
 
+            sso_login_url = f"{base_url}/sso/login"
+            sso_status_request = urllib.request.Request(
+                sso_login_url,
+                headers={"Authorization": f"Bearer {SYNTHETIC_SESSION_TOKEN}"},
+            )
+            with opener.open(sso_status_request, timeout=3) as response:
+                sso_status = json.loads(response.read())
+            self.assertEqual(sso_status["state"], "idle")
+
+            sso_start_request = urllib.request.Request(
+                sso_login_url,
+                data=json.dumps({"scopePackages": ["industry-core"]}).encode(),
+                method="POST",
+                headers={
+                    "Authorization": f"Bearer {SYNTHETIC_SESSION_TOKEN}",
+                    "Content-Type": "application/json",
+                },
+            )
+            with opener.open(sso_start_request, timeout=3) as response:
+                sso_start = json.loads(response.read())
+            self.assertEqual(sso_start["status"]["state"], "waiting")
+            self.assertTrue(sso_start["authorizationUrl"].startswith(
+                "https://login.eveonline.com/v2/oauth/authorize?"
+            ))
+            self.assertNotIn("codeVerifier", json.dumps(sso_start))
+
+            sso_cancel_request = urllib.request.Request(
+                sso_login_url,
+                method="DELETE",
+                headers={"Authorization": f"Bearer {SYNTHETIC_SESSION_TOKEN}"},
+            )
+            with opener.open(sso_cancel_request, timeout=3) as response:
+                sso_cancelled = json.loads(response.read())
+            self.assertEqual(sso_cancelled["state"], "cancelled")
+
             update_settings_url = f"{base_url}/settings/update"
             put_request = urllib.request.Request(
                 update_settings_url,

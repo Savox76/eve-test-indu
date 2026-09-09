@@ -41,7 +41,7 @@ Der technisch schreibend klingende PI-Scope wird nur für die ESI-Lesewege zu ei
 4. Repository- und Backendtests ausführen. Sie blockieren eine abweichende Callback-URI, unbekannte Scopepakete und ungültige Profilfelder.
 5. Vor dem Merge die gespeicherte Portalansicht noch einmal Zeichen für Zeichen mit dieser Tabelle vergleichen.
 
-Die echte Client-ID ist eingetragen und das Registrierungsprofil damit vollständig. Paket 12 implementiert anschließend Listener, Systembrowser, `state`, PKCE, Timeout und Abbruch.
+Die echte Client-ID ist eingetragen und das Registrierungsprofil damit vollständig. Paket 12 hat Listener, Systembrowser, `state`, PKCE, Timeout und Abbruch umgesetzt. Der Ablauf und seine bewusste Grenze vor dem Tokenaustausch stehen in [sso-pkce-login.md](sso-pkce-login.md).
 
 ## Quellen
 

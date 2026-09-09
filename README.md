@@ -4,11 +4,11 @@ New Eden Foundry wird eine lokale Desktop-Anwendung für nachvollziehbare EVE-On
 
 ## Projektstatus
 
-**Technische Preview – `v0.0.4-preview.2`.** Die Desktop-App besitzt jetzt ein vollständig registriertes und strikt geprüftes EVE-SSO-App-Profil mit fester Loopback-Callback-URI, öffentlicher Client-ID und minimalen Funktions-Scopes. Das sichere Updater-Skelett, cache-first Startzustände, der geschützte Sidecar sowie gemeinsame und getrennte Mehrcharakter-Übersichten bleiben die technische Grundlage.
+**Technische Preview – `v0.0.4-preview.3`.** Die Desktop-App startet jetzt einen echten EVE-SSO-Autorisierungsdialog im Systembrowser. Ein kurzlebiger Listener an der fest registrierten Loopback-URI prüft kryptografischen `state` und PKCE `S256`, beendet Versuche nach drei Minuten oder auf Abbruch und verwirft anschließend alle temporären Geheimnisse. Funktionsbezogene Scopepakete werden pro Charakter gewählt; weitere Charaktere lassen sich nacheinander autorisieren.
 
-Die Mehrcharakter-Oberfläche arbeitet weiterhin mit drei klar synthetischen Figuren und liest diese Vorschauwerte noch nicht aus SQLite. EVE SSO, ESI, SDE, echte Synchronisierung und fachliche Berechnungen sind noch nicht angeschlossen. Eine neue Installation meldet deshalb korrekt, dass noch keine lokalen Daten vorhanden sind. Versionen werden weiterhin manuell über [GitHub Releases](https://github.com/Savox76/eve-test-indu/releases) bezogen; das vollständige Windows-Installationsgate bleibt Voraussetzung für die erste technische Alpha.
+Die Mehrcharakter-Oberfläche arbeitet weiterhin mit drei klar synthetischen Figuren und liest diese Vorschauwerte noch nicht aus SQLite. WP12 endet absichtlich nach dem verifizierten Browser-Rückruf: Tokenaustausch, JWT-Prüfung und die dauerhafte Charakterzuordnung folgen in WP13 und WP14. ESI, SDE, echte Synchronisierung und fachliche Berechnungen sind noch nicht angeschlossen. Eine neue Installation meldet deshalb korrekt, dass noch keine lokalen Daten vorhanden sind. Versionen werden weiterhin manuell über [GitHub Releases](https://github.com/Savox76/eve-test-indu/releases) bezogen; das vollständige Windows-Installationsgate bleibt Voraussetzung für die erste technische Alpha.
 
-Für den nächsten SSO-Schritt sind Callback-URI, öffentliche Client-ID, Entwicklerkontakt und minimale Funktions-Scopes im [verbindlichen Registrierungsprofil](docs/sso-registration.md) vollständig festgelegt und automatisiert gegen Drift geschützt. Der eigentliche PKCE-Login folgt in Arbeitspaket 12 und bleibt bis dahin bewusst deaktiviert.
+Registrierungswerte stehen im [verbindlichen Registrierungsprofil](docs/sso-registration.md); Ablauf und Sicherheitsgrenze des neuen Browserflusses beschreibt die [PKCE-Betriebsdokumentation](docs/sso-pkce-login.md). Die Anwendung enthält weiterhin kein Client Secret und gibt weder `state`, Verifier noch Autorisierungscode an die Oberfläche oder Logs weiter.
 
 ## Verbindliche Grundlagen
 

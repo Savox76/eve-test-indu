@@ -2,12 +2,20 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { App } from "./App";
-import type { DesktopRuntimeStatus } from "./runtime";
+import type { DesktopRuntimeStatus, SsoLoginStatus } from "./runtime";
+
+const idleSso: SsoLoginStatus = {
+  state: "idle",
+  attemptId: null,
+  scopePackages: [],
+  expiresAt: null,
+  errorCode: null,
+};
 
 const nativeRuntime = (overrides: Partial<Extract<DesktopRuntimeStatus, { state: "ready" }>> = {}) =>
   Promise.resolve<DesktopRuntimeStatus>({
     state: "ready",
-    version: "0.0.4-preview.2",
+    version: "0.0.4-preview.3",
     desktopShell: true,
     singleInstance: true,
     sidecar: "ready",
@@ -67,7 +75,7 @@ describe("New Eden Foundry design preview", () => {
   it("credits Savoxmedia as the app creator next to the version", () => {
     render(<App />);
 
-    expect(screen.getByText("v0.0.4-preview.2")).toBeInTheDocument();
+    expect(screen.getByText("v0.0.4-preview.3")).toBeInTheDocument();
     expect(screen.getByText("Savoxmedia")).toBeInTheDocument();
     expect(screen.getByText("Erstellt von", { exact: false })).toBeInTheDocument();
     expect(screen.queryByText("Lokaler Betreiber")).not.toBeInTheDocument();
@@ -161,5 +169,47 @@ describe("New Eden Foundry design preview", () => {
     await waitFor(() => expect(updateChannelSetter).toHaveBeenCalledWith("beta"));
     expect(await screen.findByText(/Signiertes Testmanifest geprüft · Downloads noch deaktiviert/))
       .toBeInTheDocument();
+  });
+
+  it("starts and cancels one-character-at-a-time PKCE login with selected scopes", async () => {
+    const waiting: SsoLoginStatus = {
+      state: "waiting",
+      attemptId: "opaque-attempt",
+      scopePackages: ["industry-core", "market"],
+      expiresAt: "2026-09-09T12:03:00Z",
+      errorCode: null,
+    };
+    const cancelled: SsoLoginStatus = { ...waiting, state: "cancelled" };
+    const ssoStarter = vi.fn().mockResolvedValue(waiting);
+    const ssoCanceller = vi.fn().mockResolvedValue(cancelled);
+    render(
+      <App
+        runtimeLoader={() => nativeRuntime()}
+        ssoStatusLoader={() => Promise.resolve(idleSso)}
+        ssoStarter={ssoStarter}
+        ssoCanceller={ssoCanceller}
+      />,
+    );
+
+    const startButton = await screen.findByRole("button", { name: "Charakter verbinden" });
+    await waitFor(() => expect(startButton).toBeEnabled());
+    expect(screen.getByRole("checkbox", { name: "Industrie-Basis" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Industrie-Basis" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Markt" }));
+    fireEvent.click(startButton);
+
+    await waitFor(() => expect(ssoStarter).toHaveBeenCalledWith(["industry-core", "market"]));
+    expect(await screen.findByText("Browser-Anmeldung läuft")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Abbrechen" }));
+
+    await waitFor(() => expect(ssoCanceller).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText("Anmeldung abgebrochen")).toBeInTheDocument();
+  });
+
+  it("keeps real EVE sign-in disabled in browser design preview", async () => {
+    render(<App />);
+
+    expect(await screen.findByRole("button", { name: "Charakter verbinden" })).toBeDisabled();
+    expect(screen.getByText("Die echte Anmeldung ist in der Windows-App verfügbar.")).toBeInTheDocument();
   });
 });

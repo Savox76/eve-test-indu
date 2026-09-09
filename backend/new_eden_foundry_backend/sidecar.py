@@ -23,6 +23,7 @@ from .sso_registration import (
     SsoRegistrationProfile,
     load_bundled_sso_registration_profile,
 )
+from .sso_pkce import SsoPkceError, SsoPkceManager
 from .updater import (
     UpdateChannel,
     UpdateManifestError,
@@ -114,6 +115,7 @@ def create_application(
     data_state: StartupDataState,
     manifest_state: str,
     sso_registration: SsoRegistrationProfile,
+    sso_login: SsoPkceManager,
 ) -> FastAPI:
     app = FastAPI(
         title="New Eden Foundry local core",
@@ -197,6 +199,38 @@ def create_application(
             }
         )
 
+    @app.get("/sso/login")
+    async def get_sso_login() -> dict[str, object]:
+        return sso_login.status()
+
+    @app.post("/sso/login")
+    async def start_sso_login(request: Request) -> JSONResponse:
+        try:
+            payload = await request.json()
+        except Exception:
+            return JSONResponse(
+                status_code=422,
+                content={"detail": "The SSO login request is invalid."},
+            )
+        if not isinstance(payload, dict) or set(payload) != {"scopePackages"}:
+            return JSONResponse(
+                status_code=422,
+                content={"detail": "The SSO login request is invalid."},
+            )
+        try:
+            authorization_url, status = sso_login.start(payload["scopePackages"])
+        except SsoPkceError as error:
+            status_code = 409 if error.code in {
+                "login-already-active",
+                "callback-unavailable",
+            } else 422
+            return JSONResponse(status_code=status_code, content={"detail": error.code})
+        return JSONResponse(content={"authorizationUrl": authorization_url, "status": status})
+
+    @app.delete("/sso/login")
+    async def cancel_sso_login() -> dict[str, object]:
+        return sso_login.cancel()
+
     return app
 
 
@@ -260,6 +294,12 @@ def run_sidecar(input_stream: TextIO = sys.stdin, output_stream: TextIO = sys.st
         manifest_state = "invalid"
 
     sso_registration = load_bundled_sso_registration_profile()
+    try:
+        sso_login = SsoPkceManager(sso_registration)
+    except SsoPkceError:
+        listener.close()
+        _emit_event(output_stream, {"event": "error", "code": "sso-not-registered"})
+        return 6
 
     application = create_application(
         startup,
@@ -268,6 +308,7 @@ def run_sidecar(input_stream: TextIO = sys.stdin, output_stream: TextIO = sys.st
         data_state,
         manifest_state,
         sso_registration,
+        sso_login,
     )
     server = uvicorn.Server(
         uvicorn.Config(
@@ -316,6 +357,7 @@ def run_sidecar(input_stream: TextIO = sys.stdin, output_stream: TextIO = sys.st
     try:
         server.run(sockets=[listener])
     finally:
+        sso_login.close()
         listener.close()
     return 0
 

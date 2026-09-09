@@ -60,6 +60,7 @@ REQUIRED_BACKEND_FILES = tuple(
         "backend/new_eden_foundry_backend/storage.py",
         "backend/new_eden_foundry_backend/startup_state.py",
         "backend/new_eden_foundry_backend/sso_registration.py",
+        "backend/new_eden_foundry_backend/sso_pkce.py",
         "backend/new_eden_foundry_backend/updater.py",
         "backend/new_eden_foundry_backend/version.py",
         "backend/new_eden_foundry_backend/resources/update-test-manifest.json",
@@ -75,6 +76,7 @@ REQUIRED_BACKEND_FILES = tuple(
         "backend/tests/test_storage.py",
         "backend/tests/test_startup_state.py",
         "backend/tests/test_sso_registration.py",
+        "backend/tests/test_sso_pkce.py",
         "backend/tests/test_updater.py",
         "scripts/build_sidecar.py",
         "scripts/prepare_release_files.ps1",
@@ -206,6 +208,20 @@ def check_documentation(errors: list[str]) -> None:
         ):
             if marker not in sso_content:
                 errors.append(f"SSO registration documentation is missing marker: {marker}")
+
+    pkce_documentation = ROOT / "docs" / "sso-pkce-login.md"
+    if not pkce_documentation.is_file():
+        errors.append("Missing EVE SSO PKCE operating documentation.")
+    else:
+        pkce_content = pkce_documentation.read_text(encoding="utf-8")
+        for marker in (
+            "http://127.0.0.1:17891/oauth/callback",
+            "Drei-Minuten-Timeout",
+            "authorization-received",
+            "Paket 13",
+        ):
+            if marker not in pkce_content:
+                errors.append(f"SSO PKCE documentation is missing marker: {marker}")
 
     releasing = ROOT / "docs" / "RELEASING.md"
     if not releasing.is_file():
@@ -369,6 +385,22 @@ def check_backend_foundation(errors: list[str]) -> None:
         if profile.get("clientId") != "a8409de72d5b4cab9b0424819d0abdec":
             errors.append("The bundled public EVE SSO client ID has drifted.")
 
+    sso_pkce_source = ROOT / "backend" / "new_eden_foundry_backend" / "sso_pkce.py"
+    if sso_pkce_source.is_file():
+        pkce_content = sso_pkce_source.read_text(encoding="utf-8")
+        for marker in (
+            'SSO_AUTHORIZATION_ENDPOINT: Final = "https://login.eveonline.com/v2/oauth/authorize"',
+            "secrets.token_bytes(32)",
+            "code_challenge_method",
+            "secrets.compare_digest",
+            '"timed-out"',
+            "server.shutdown()",
+        ):
+            if marker not in pkce_content:
+                errors.append(f"SSO PKCE implementation is missing marker: {marker}")
+        if "client_secret" in pkce_content.lower():
+            errors.append("The SSO PKCE implementation must not contain a client secret field.")
+
     sidecar_build = ROOT / "scripts" / "build_sidecar.py"
     if sidecar_build.is_file() and "SSO_REGISTRATION_PROFILE" not in sidecar_build.read_text(
         encoding="utf-8"
@@ -378,7 +410,11 @@ def check_backend_foundation(errors: list[str]) -> None:
     sidecar_smoke = ROOT / "scripts" / "smoke_sidecar.py"
     if sidecar_smoke.is_file():
         smoke_content = sidecar_smoke.read_text(encoding="utf-8")
-        for marker in ("registered", "a8409de72d5b4cab9b0424819d0abdec"):
+        for marker in (
+            "registered",
+            "a8409de72d5b4cab9b0424819d0abdec",
+            "PKCE start/cancel",
+        ):
             if marker not in smoke_content:
                 errors.append(
                     f"The frozen sidecar smoke test is missing SSO marker: {marker}"
@@ -399,6 +435,10 @@ def check_backend_foundation(errors: list[str]) -> None:
             "foundry-sidecar.exe",
             "sessionToken",
             "set_update_channel",
+            "start_eve_sso",
+            "eve_sso_status",
+            "cancel_eve_sso",
+            "EVE_SSO_AUTHORIZATION_ENDPOINT",
             "SIDECAR_REQUEST_TIMEOUT",
         ):
             if marker not in tauri_content:

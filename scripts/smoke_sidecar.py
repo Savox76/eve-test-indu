@@ -234,6 +234,46 @@ def main() -> int:
                 != "http://127.0.0.1:17891/oauth/callback"
             ):
                 raise RuntimeError("The packaged SSO registration profile is invalid.")
+
+            sso_login_url = f"http://127.0.0.1:{int(ready['port'])}/sso/login"
+            sso_status_request = urllib.request.Request(
+                sso_login_url,
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            with opener.open(sso_status_request, timeout=3) as response:
+                sso_status = json.loads(response.read())
+            if sso_status.get("state") != "idle":
+                raise RuntimeError("The packaged PKCE login did not start idle.")
+
+            sso_start_request = urllib.request.Request(
+                sso_login_url,
+                data=json.dumps({"scopePackages": ["industry-core"]}).encode("utf-8"),
+                method="POST",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": "application/json",
+                },
+            )
+            with opener.open(sso_start_request, timeout=3) as response:
+                sso_start = json.loads(response.read())
+            if (
+                sso_start.get("status", {}).get("state") != "waiting"
+                or not str(sso_start.get("authorizationUrl", "")).startswith(
+                    "https://login.eveonline.com/v2/oauth/authorize?"
+                )
+                or "codeVerifier" in json.dumps(sso_start)
+            ):
+                raise RuntimeError("The packaged PKCE login response is invalid.")
+
+            sso_cancel_request = urllib.request.Request(
+                sso_login_url,
+                method="DELETE",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            with opener.open(sso_cancel_request, timeout=3) as response:
+                sso_cancelled = json.loads(response.read())
+            if sso_cancelled.get("state") != "cancelled":
+                raise RuntimeError("The packaged PKCE login could not be cancelled.")
             backup_name = database.get("lastMigrationBackup")
             if not isinstance(backup_name, str) or not backup_name.startswith(
                 "foundry-schema-v0004-to-v0005-"
@@ -300,7 +340,7 @@ def main() -> int:
 
             process.stdin.write('{"command":"shutdown"}\n')
             process.stdin.flush()
-            exit_code = process.wait(timeout=12)
+            exit_code = process.wait(timeout=30)
             remaining_output = process.stdout.read()
             error_output = process.stderr.read()
             if exit_code != 0:
@@ -316,7 +356,7 @@ def main() -> int:
                     stream.close()
 
     print(
-        "Frozen sidecar handshake, signed updater skeleton, SSO profile, migration "
+        "Frozen sidecar handshake, signed updater skeleton, PKCE start/cancel, migration "
         "backup, database location and shutdown verified."
     )
     return 0

@@ -1,8 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  cancelEveSso,
   loadDesktopRuntimeStatus,
+  loadEveSsoStatus,
   setDesktopUpdateChannel,
+  startEveSso,
   type RuntimeAdapter,
 } from "./runtime";
 
@@ -19,7 +22,7 @@ const emptyData = {
 function nativeStatus(overrides: Record<string, unknown> = {}) {
   return JSON.stringify({
     state: "ready",
-    version: "0.0.4-preview.2",
+    version: "0.0.4-preview.3",
     desktopShell: true,
     singleInstance: true,
     sidecar: "ready",
@@ -54,7 +57,7 @@ describe("desktop runtime status", () => {
       loadDesktopRuntimeStatus({ isAvailable: () => true, invoke }),
     ).resolves.toEqual({
       state: "ready",
-      version: "0.0.4-preview.2",
+      version: "0.0.4-preview.3",
       desktopShell: true,
       singleInstance: true,
       sidecar: "ready",
@@ -224,5 +227,72 @@ describe("desktop runtime status", () => {
     await expect(
       setDesktopUpdateChannel("preview", { isAvailable: () => true, invoke }),
     ).rejects.toThrow("invalid updater metadata");
+  });
+
+  it("starts a PKCE login with selected per-character scope packages", async () => {
+    const status = {
+      state: "waiting",
+      attemptId: "opaque-attempt",
+      scopePackages: ["industry-core", "market"],
+      expiresAt: "2026-09-09T12:03:00Z",
+      errorCode: null,
+    };
+    const invoke = vi.fn<RuntimeAdapter["invoke"]>().mockResolvedValue(JSON.stringify(status));
+
+    await expect(
+      startEveSso(["industry-core", "market"], { isAvailable: () => true, invoke }),
+    ).resolves.toEqual(status);
+    expect(invoke).toHaveBeenCalledWith("start_eve_sso", {
+      scopePackages: ["industry-core", "market"],
+    });
+  });
+
+  it("polls and cancels an active PKCE login through native IPC", async () => {
+    const waiting = JSON.stringify({
+      state: "waiting",
+      attemptId: "opaque-attempt",
+      scopePackages: ["industry-core"],
+      expiresAt: "2026-09-09T12:03:00Z",
+      errorCode: null,
+    });
+    const cancelled = JSON.stringify({
+      state: "cancelled",
+      attemptId: "opaque-attempt",
+      scopePackages: ["industry-core"],
+      expiresAt: "2026-09-09T12:03:00Z",
+      errorCode: null,
+    });
+    const invoke = vi.fn<RuntimeAdapter["invoke"]>()
+      .mockResolvedValueOnce(waiting)
+      .mockResolvedValueOnce(cancelled);
+    const adapter = { isAvailable: () => true, invoke };
+
+    await expect(loadEveSsoStatus(adapter)).resolves.toMatchObject({ state: "waiting" });
+    await expect(cancelEveSso(adapter)).resolves.toMatchObject({ state: "cancelled" });
+    expect(invoke).toHaveBeenNthCalledWith(1, "eve_sso_status", undefined);
+    expect(invoke).toHaveBeenNthCalledWith(2, "cancel_eve_sso", undefined);
+  });
+
+  it("rejects malformed or secret-bearing-equivalent SSO state combinations", async () => {
+    const invoke = vi.fn<RuntimeAdapter["invoke"]>().mockResolvedValue(JSON.stringify({
+      state: "waiting",
+      attemptId: null,
+      scopePackages: ["industry-core"],
+      expiresAt: "2026-09-09T12:03:00Z",
+      errorCode: null,
+    }));
+
+    await expect(
+      loadEveSsoStatus({ isAvailable: () => true, invoke }),
+    ).rejects.toThrow("inconsistent SSO metadata");
+  });
+
+  it("does not expose EVE SSO commands in browser preview mode", async () => {
+    const invoke = vi.fn<RuntimeAdapter["invoke"]>();
+
+    await expect(
+      startEveSso(["industry-core"], { isAvailable: () => false, invoke }),
+    ).rejects.toThrow("desktop application");
+    expect(invoke).not.toHaveBeenCalled();
   });
 });
