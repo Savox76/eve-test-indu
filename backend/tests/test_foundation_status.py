@@ -28,10 +28,14 @@ class FoundationStatusTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         self.assertEqual(result["state"], "foundation-ready")
         self.assertEqual(result["database"]["integrity"], "ok")
-        self.assertEqual(result["database"]["schema_version"], 4)
+        self.assertEqual(result["database"]["schema_version"], 5)
         self.assertIsNone(result["database"]["last_migration_backup"])
         self.assertEqual(result["data"]["state"], "empty")
         self.assertFalse(result["data"]["hasCachedData"])
+        self.assertEqual(result["updater"]["channel"], "stable")
+        self.assertEqual(result["updater"]["manifest_state"], "verified")
+        self.assertEqual(result["updater"]["test_manifest_version"], "0.0.4-preview.1")
+        self.assertFalse(result["updater"]["public_distribution"])
 
 
 if __name__ == "__main__":

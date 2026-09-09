@@ -97,6 +97,9 @@ class SidecarIntegrationTests(unittest.TestCase):
             self.assertGreater(ready["port"], 0)
             self.assertEqual(ready["database"]["location"], "data/foundry.sqlite3")
             self.assertEqual(ready["data"]["state"], "empty")
+            self.assertEqual(ready["updater"]["channel"], "stable")
+            self.assertEqual(ready["updater"]["manifestState"], "verified")
+            self.assertFalse(ready["updater"]["publicDistribution"])
             self.assertNotIn(SYNTHETIC_SESSION_TOKEN, ready_line)
 
             base_url = f"http://127.0.0.1:{ready['port']}"
@@ -122,18 +125,58 @@ class SidecarIntegrationTests(unittest.TestCase):
             with opener.open(valid_request, timeout=3) as response:
                 health = json.loads(response.read())
             self.assertEqual(health["state"], "ready")
-            self.assertEqual(health["database"]["schemaVersion"], 4)
+            self.assertEqual(health["database"]["schemaVersion"], 5)
             self.assertEqual(health["database"]["location"], "data/foundry.sqlite3")
             self.assertIsNone(health["database"]["lastMigrationBackup"])
             self.assertEqual(health["data"]["state"], "empty")
             self.assertFalse(health["data"]["hasCachedData"])
             self.assertEqual(health["data"]["lastSyncStatus"], "never")
             self.assertIsNone(health["data"]["ageSeconds"])
+            self.assertEqual(health["updater"]["channel"], "stable")
+            self.assertEqual(health["updater"]["manifestState"], "verified")
+            self.assertFalse(health["updater"]["publicDistribution"])
+
+            update_settings_url = f"{base_url}/settings/update"
+            put_request = urllib.request.Request(
+                update_settings_url,
+                data=json.dumps({"channel": "beta"}).encode(),
+                method="PUT",
+                headers={
+                    "Authorization": f"Bearer {SYNTHETIC_SESSION_TOKEN}",
+                    "Content-Type": "application/json",
+                },
+            )
+            with opener.open(put_request, timeout=3) as response:
+                update_settings = json.loads(response.read())
+            self.assertEqual(update_settings["channel"], "beta")
+            self.assertEqual(update_settings["manifestState"], "verified")
+            self.assertFalse(update_settings["publicDistribution"])
+
+            with opener.open(valid_request, timeout=3) as response:
+                updated_health = json.loads(response.read())
+            self.assertEqual(updated_health["updater"]["channel"], "beta")
+
+            invalid_request = urllib.request.Request(
+                update_settings_url,
+                data=json.dumps({"channel": "nightly"}).encode(),
+                method="PUT",
+                headers={
+                    "Authorization": f"Bearer {SYNTHETIC_SESSION_TOKEN}",
+                    "Content-Type": "application/json",
+                },
+            )
+            with self.assertRaises(urllib.error.HTTPError) as invalid_channel:
+                opener.open(invalid_request, timeout=3)
+            self.assertEqual(invalid_channel.exception.code, 422)
 
             database_path = program_directory / "data" / "foundry.sqlite3"
             self.assertTrue(database_path.is_file())
             with contextlib.closing(sqlite3.connect(database_path)) as connection:
                 self.assertEqual(connection.execute("PRAGMA quick_check").fetchone()[0], "ok")
+                channel = connection.execute(
+                    "SELECT value FROM app_settings WHERE key = 'update_channel'"
+                ).fetchone()[0]
+            self.assertEqual(channel, "beta")
 
             process.stdin.write('{"command":"shutdown"}\n')
             process.stdin.flush()

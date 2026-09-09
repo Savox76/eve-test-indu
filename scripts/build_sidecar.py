@@ -16,6 +16,10 @@ ROOT = Path(__file__).resolve().parents[1]
 BACKEND = ROOT / "backend"
 ENTRY_POINT = BACKEND / "sidecar_entry.py"
 PACKAGE_JSON = ROOT / "package.json"
+UPDATE_TEST_MANIFEST = (
+    BACKEND / "new_eden_foundry_backend" / "resources" / "update-test-manifest.json"
+)
+UPDATE_TEST_SIGNATURE = UPDATE_TEST_MANIFEST.with_suffix(".sig")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -56,6 +60,16 @@ def main() -> int:
         str(BACKEND),
         "--add-data",
         f"{PACKAGE_JSON}{os.pathsep}.",
+        "--add-data",
+        (
+            f"{UPDATE_TEST_MANIFEST}{os.pathsep}"
+            "new_eden_foundry_backend/resources"
+        ),
+        "--add-data",
+        (
+            f"{UPDATE_TEST_SIGNATURE}{os.pathsep}"
+            "new_eden_foundry_backend/resources"
+        ),
         "--collect-submodules",
         "uvicorn",
         "--distpath",

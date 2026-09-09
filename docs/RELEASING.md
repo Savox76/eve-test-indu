@@ -4,11 +4,17 @@
 
 Eine Version wird nur bewusst, reproduzierbar und nach vollständig grünen Pflichtprüfungen veröffentlicht. GitHub-Actions-Artefakte sind weder Zwischenspeicher noch Vertriebsweg.
 
-## Kanäle
+## Release-Reife
 
 - **Alpha:** interne technische oder fachliche Erprobung; bekannte Lücken sind zulässig und dokumentiert.
 - **Beta:** Kernabläufe sind nutzbar; Migration, Wiederherstellung und Update werden geprüft.
 - **Stable:** alle zugehörigen Plattform-, Daten-, Sicherheits- und Nutzer-Gates sind erfüllt.
+
+## Lokale Updatekanäle
+
+Seit `v0.0.4-preview.1` kann die Desktop-App die spätere Kanalpräferenz `stable`, `beta` oder `preview` lokal speichern. Diese Auswahl ist noch kein öffentlicher Update-Dienst: Das gebündelte Ed25519-signierte Testmanifest verweist ausschließlich auf `updates.invalid`, der Laufzeitstatus erzwingt `publicDistribution: false`, und es findet weder ein Netzwerkabruf noch ein Download oder eine Installation statt. Versionen werden weiterhin bewusst von der GitHub-Release-Seite bezogen.
+
+Eine spätere Aktivierung benötigt ein eigenes geprüftes Arbeitspaket mit Produktionsendpunkt, getrennt verwaltetem privatem Produktionsschlüssel, Signierung der tatsächlichen Updatepakete, Rollback-Regeln und bestandenem Windows-Update-Gate. Ein privater Schlüssel darf niemals in Repository, Anwendung, portable ZIP oder GitHub-Actions-Log gelangen. Der öffentliche Prüfschlüssel darf in der Anwendung liegen.
 
 ## Pflichtablauf
 
@@ -68,5 +74,7 @@ Der Installer arbeitet im Modus `currentUser`. Ein Update ersetzt nur ausgeliefe
 Steht beim ersten Start einer neuen Version eine Datenbankmigration an, erzeugt der lokale Kern zuvor über die SQLite-Backup-API einen konsistenten Snapshot unter `data\backups`. Integrität, Fremdschlüssel, Schema-Version und SHA-256 werden geprüft, bevor die Migration beginnt. Scheitert die Migration, wird dieser Stand automatisch wiederhergestellt; scheitert bereits die Sicherung, bleibt das Schema unverändert und der Start wird abgebrochen. Die fünf neuesten automatisch erzeugten Migrationssicherungen bleiben erhalten. Eine manuelle Wiederherstellung darf nur bei vollständig geschlossener App erfolgen.
 
 Als selbst hochgeladene Release-Dateien sind ausschließlich Dateien erlaubt, die zur Installation, portablen Ausführung, Integritäts- oder Signaturprüfung oder zum Update der freigegebenen Anwendung benötigt werden. Debug-Dumps, echte Nutzerdaten und beliebige CI-Zwischenstände werden nicht hochgeladen.
+
+Solange die öffentliche Updateverteilung deaktiviert ist, enthält ein Release genau die beiden Windows-Pakete und ihre beiden SHA-256-Dateien. Das interne Testmanifest und seine Testsignatur bleiben Bestandteil des Sidecars und werden nicht als eigenständige Release-Dateien veröffentlicht.
 
 Das Repository und seine Release-Seiten sind öffentlich. GitHub ergänzt bei jedem Release automatisch ZIP- und Tarball-Links auf den Quellcode des Tags. Diese automatisch bereitgestellten Quellcodearchive sind keine GitHub-Actions-Artefakte und können für ein öffentliches Repository nicht als geheimer Vertriebsweg behandelt werden.

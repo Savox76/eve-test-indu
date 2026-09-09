@@ -47,8 +47,11 @@ import {
 import {
   initialRuntimeStatus,
   loadDesktopRuntimeStatus,
+  setDesktopUpdateChannel,
   type DesktopRuntimeStatus,
   type LocalDataState,
+  type UpdateChannel,
+  type UpdaterStatus,
 } from "./runtime";
 
 type Locale = "de" | "en";
@@ -156,6 +159,23 @@ const copy = {
     },
     dataAge: "Datenalter",
     noDataAge: "noch kein Datenstand",
+    updates: {
+      label: "Update-Kanal",
+      select: "Update-Kanal auswählen",
+      channels: {
+        stable: "Offiziell",
+        beta: "Beta",
+        preview: "Vorschau / Test",
+      },
+      verified: "Signiertes Testmanifest geprüft",
+      invalid: "Testmanifest ungültig · Updates gesperrt",
+      checking: "Testmanifest wird geprüft",
+      unavailable: "Updater derzeit nicht verfügbar",
+      disabled: "Downloads noch deaktiviert",
+      saving: "Kanal wird gespeichert …",
+      saveError: "Kanal konnte nicht gespeichert werden",
+      desktopOnly: "In der Desktop-App wählbar",
+    },
     scope: {
       label: "Übersichtsbereich",
       select: "Ansicht wählen",
@@ -255,7 +275,7 @@ const copy = {
     },
     planned: "Geplant",
     previewOnly: "Noch ohne Live-Funktion",
-    footerVersion: "v0.0.3-preview.3",
+    footerVersion: "v0.0.4-preview.1",
   },
   en: {
     nav: {
@@ -347,6 +367,23 @@ const copy = {
     },
     dataAge: "Data age",
     noDataAge: "no data yet",
+    updates: {
+      label: "Update channel",
+      select: "Select update channel",
+      channels: {
+        stable: "Official",
+        beta: "Beta",
+        preview: "Preview / test",
+      },
+      verified: "Signed test manifest verified",
+      invalid: "Test manifest invalid · updates blocked",
+      checking: "Checking test manifest",
+      unavailable: "Updater is currently unavailable",
+      disabled: "Downloads remain disabled",
+      saving: "Saving channel …",
+      saveError: "Channel could not be saved",
+      desktopOnly: "Selectable in the desktop app",
+    },
     scope: {
       label: "Overview scope",
       select: "Choose view",
@@ -446,7 +483,7 @@ const copy = {
     },
     planned: "Planned",
     previewOnly: "No live function yet",
-    footerVersion: "v0.0.3-preview.3",
+    footerVersion: "v0.0.4-preview.1",
   },
 } as const;
 
@@ -546,8 +583,10 @@ function DataStateNotice({
 
 export function App({
   runtimeLoader = loadDesktopRuntimeStatus,
+  updateChannelSetter = setDesktopUpdateChannel,
 }: {
   runtimeLoader?: () => Promise<DesktopRuntimeStatus>;
+  updateChannelSetter?: (channel: UpdateChannel) => Promise<UpdaterStatus>;
 }) {
   const [locale, setLocale] = useState<Locale>("de");
   const [activeModule, setActiveModule] = useState<ModuleId>("overview");
@@ -556,6 +595,8 @@ export function App({
   const [syncing, setSyncing] = useState(false);
   const [runtimeStatus, setRuntimeStatus] = useState(initialRuntimeStatus);
   const [overviewScope, setOverviewScope] = useState<OverviewScopeId>("all");
+  const [savingUpdateChannel, setSavingUpdateChannel] = useState(false);
+  const [updateChannelError, setUpdateChannelError] = useState(false);
   const t = copy[locale];
 
   useEffect(() => {
@@ -583,6 +624,7 @@ export function App({
   const runtimePresentationState =
     runtimeStatus.state === "ready" ? runtimeStatus.sidecar : runtimeStatus.state;
   const localData = runtimeStatus.state === "ready" ? runtimeStatus.data : null;
+  const updater = runtimeStatus.state === "ready" ? runtimeStatus.updater : null;
   const nativeSyncLabel = localData?.ageSeconds === null
     ? t.noDataAge
     : localData
@@ -623,6 +665,22 @@ export function App({
     window.setTimeout(() => setSyncing(false), 900);
   };
 
+  const chooseUpdateChannel = async (channel: UpdateChannel) => {
+    if (runtimeStatus.state !== "ready" || runtimeStatus.sidecar !== "ready") return;
+    setSavingUpdateChannel(true);
+    setUpdateChannelError(false);
+    try {
+      const nextUpdater = await updateChannelSetter(channel);
+      setRuntimeStatus((current) => current.state === "ready"
+        ? { ...current, updater: nextUpdater }
+        : current);
+    } catch {
+      setUpdateChannelError(true);
+    } finally {
+      setSavingUpdateChannel(false);
+    }
+  };
+
   const scrollToAttention = () => {
     document.getElementById("attention-panel")?.scrollIntoView({ behavior: "smooth", block: "center" });
   };
@@ -661,6 +719,37 @@ export function App({
         </nav>
 
         <div className="sidebar-spacer" />
+
+        <section className="update-channel" aria-label={t.updates.label}>
+          <div className="update-channel__heading">
+            <RefreshCw size={14} aria-hidden="true" />
+            <span>{t.updates.label}</span>
+          </div>
+          <select
+            value={updater?.channel ?? "stable"}
+            onChange={(event) => void chooseUpdateChannel(event.target.value as UpdateChannel)}
+            disabled={
+              savingUpdateChannel ||
+              runtimeStatus.state !== "ready" ||
+              runtimeStatus.sidecar !== "ready" ||
+              updater?.manifestState !== "verified"
+            }
+            aria-label={t.updates.select}
+          >
+            {(["stable", "beta", "preview"] as const).map((channel) => (
+              <option value={channel} key={channel}>{t.updates.channels[channel]}</option>
+            ))}
+          </select>
+          <small className={updateChannelError || updater?.manifestState === "invalid" ? "is-error" : ""}>
+            {updateChannelError
+              ? t.updates.saveError
+              : savingUpdateChannel
+                ? t.updates.saving
+                : updater
+                  ? `${t.updates[updater.manifestState]} · ${t.updates.disabled}`
+                  : t.updates.desktopOnly}
+          </small>
+        </section>
 
         <div className={`local-status local-status--${runtimePresentationState}`} role="status">
           <div className="local-status__icon">

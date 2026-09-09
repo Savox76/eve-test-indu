@@ -110,12 +110,14 @@ class DatabaseFoundationTests(unittest.TestCase):
                 "characters",
                 "character_scopes",
                 "migration_backups",
+                "app_settings",
             }
             <= tables
         )
 
     def test_previous_release_database_gets_a_verified_backup_before_migration(self) -> None:
-        self.create_database_at_version(3)
+        previous_version = SCHEMA_VERSION - 1
+        self.create_database_at_version(previous_version)
         with closing(connect_database(self.database_path)) as connection:
             connection.execute(
                 "INSERT INTO app_metadata (key, value) VALUES (?, ?)",
@@ -138,13 +140,17 @@ class DatabaseFoundationTests(unittest.TestCase):
                 FROM migration_backups
                 """
             ).fetchone()
+            selected_channel = migrated.execute(
+                "SELECT value FROM app_settings WHERE key = 'update_channel'"
+            ).fetchone()[0]
         self.assertEqual(record["filename"], backup_path.name)
-        self.assertEqual(record["source_schema_version"], 3)
+        self.assertEqual(record["source_schema_version"], previous_version)
         self.assertEqual(record["target_schema_version"], SCHEMA_VERSION)
         self.assertEqual(record["size_bytes"], backup_path.stat().st_size)
+        self.assertEqual(selected_channel, "stable")
         verify_database_backup(
             backup_path,
-            expected_schema_version=3,
+            expected_schema_version=previous_version,
             expected_sha256=record["sha256"],
         )
 
@@ -160,7 +166,7 @@ class DatabaseFoundationTests(unittest.TestCase):
                 "PRAGMA journal_mode"
             ).fetchone()[0]
         self.assertEqual(preserved, "preserved")
-        self.assertEqual(backup_version, 3)
+        self.assertEqual(backup_version, previous_version)
         self.assertEqual(backup_journal, "delete")
 
     def test_failed_migration_automatically_restores_the_verified_backup(self) -> None:

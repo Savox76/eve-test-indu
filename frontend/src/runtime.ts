@@ -10,6 +10,8 @@ export type LocalDataState =
   | "error";
 
 export type LastSyncStatus = "never" | "running" | "completed" | "failed" | "cancelled";
+export type UpdateChannel = "stable" | "beta" | "preview";
+export type ManifestState = "checking" | "verified" | "invalid" | "unavailable";
 
 export interface LocalDataStatus {
   state: LocalDataState;
@@ -19,6 +21,12 @@ export interface LocalDataStatus {
   ageSeconds: number | null;
   lastSyncStatus: LastSyncStatus;
   errorCode: string | null;
+}
+
+export interface UpdaterStatus {
+  channel: UpdateChannel;
+  manifestState: ManifestState;
+  publicDistribution: false;
 }
 
 export type DesktopRuntimeStatus =
@@ -36,16 +44,17 @@ export type DesktopRuntimeStatus =
       schemaVersion: number | null;
       errorCode: string | null;
       data: LocalDataStatus;
+      updater: UpdaterStatus;
     };
 
 export interface RuntimeAdapter {
   isAvailable: () => boolean;
-  invoke: (command: string) => Promise<string>;
+  invoke: (command: string, arguments_?: Record<string, unknown>) => Promise<string>;
 }
 
 const tauriAdapter: RuntimeAdapter = {
   isAvailable: isTauri,
-  invoke: (command) => invoke<string>(command),
+  invoke: (command, arguments_) => invoke<string>(command, arguments_),
 };
 
 const localDataStates: readonly LocalDataState[] = [
@@ -63,6 +72,13 @@ const lastSyncStatuses: readonly LastSyncStatus[] = [
   "completed",
   "failed",
   "cancelled",
+];
+const updateChannels: readonly UpdateChannel[] = ["stable", "beta", "preview"];
+const manifestStates: readonly ManifestState[] = [
+  "checking",
+  "verified",
+  "invalid",
+  "unavailable",
 ];
 
 export const initialRuntimeStatus: DesktopRuntimeStatus = { state: "checking" };
@@ -122,6 +138,20 @@ function parseLocalDataStatus(candidate: unknown): LocalDataStatus {
   return data;
 }
 
+function parseUpdaterStatus(candidate: unknown): UpdaterStatus {
+  if (
+    !isRecord(candidate) ||
+    typeof candidate.channel !== "string" ||
+    !updateChannels.includes(candidate.channel as UpdateChannel) ||
+    typeof candidate.manifestState !== "string" ||
+    !manifestStates.includes(candidate.manifestState as ManifestState) ||
+    candidate.publicDistribution !== false
+  ) {
+    throw new Error("The native runtime returned invalid updater metadata.");
+  }
+  return candidate as unknown as UpdaterStatus;
+}
+
 function parseReadyStatus(rawStatus: string): DesktopRuntimeStatus {
   const candidate: unknown = JSON.parse(rawStatus);
   if (
@@ -146,21 +176,25 @@ function parseReadyStatus(rawStatus: string): DesktopRuntimeStatus {
   const schemaVersion = candidate.schemaVersion as number | null;
   const errorCode = candidate.errorCode as string | null;
   const data = parseLocalDataStatus(candidate.data);
+  const updater = parseUpdaterStatus(candidate.updater);
   const hasValidStateCombination =
     (sidecar === "starting" &&
       database === "starting" &&
       schemaVersion === null &&
       errorCode === null &&
-      data.state === "loading") ||
+      data.state === "loading" &&
+      updater.manifestState === "checking") ||
     (sidecar === "ready" &&
       database === "ready" &&
       schemaVersion !== null &&
-      errorCode === null) ||
+      errorCode === null &&
+      ["verified", "invalid"].includes(updater.manifestState)) ||
     (sidecar === "error" &&
       database === "error" &&
       schemaVersion === null &&
       errorCode !== null &&
-      data.state === "error");
+      data.state === "error" &&
+      updater.manifestState === "unavailable");
   if (!hasValidStateCombination) {
     throw new Error("The native runtime returned an inconsistent status payload.");
   }
@@ -176,6 +210,7 @@ function parseReadyStatus(rawStatus: string): DesktopRuntimeStatus {
     schemaVersion,
     errorCode,
     data,
+    updater,
   };
 }
 
@@ -192,4 +227,19 @@ export async function loadDesktopRuntimeStatus(
   } catch {
     return { state: "unavailable" };
   }
+}
+
+export async function setDesktopUpdateChannel(
+  channel: UpdateChannel,
+  adapter: RuntimeAdapter = tauriAdapter,
+): Promise<UpdaterStatus> {
+  if (!adapter.isAvailable()) {
+    throw new Error("The desktop updater is unavailable in browser preview mode.");
+  }
+  const rawStatus = await adapter.invoke("set_update_channel", { channel });
+  const status = parseUpdaterStatus(JSON.parse(rawStatus));
+  if (status.channel !== channel) {
+    throw new Error("The desktop updater returned a different channel.");
+  }
+  return status;
 }

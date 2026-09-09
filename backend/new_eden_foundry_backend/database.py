@@ -17,7 +17,7 @@ from .recovery import (
 
 
 BUSY_TIMEOUT_MILLISECONDS: Final = 5_000
-SCHEMA_VERSION: Final = 4
+SCHEMA_VERSION: Final = 5
 
 MIGRATIONS: Final = (
     (
@@ -167,6 +167,27 @@ MIGRATIONS: Final = (
             """
             CREATE INDEX idx_cached_snapshots_resource_observed
                 ON cached_snapshots(resource, observed_at DESC)
+            """,
+        ),
+    ),
+    (
+        5,
+        "local_update_preferences",
+        (
+            """
+            CREATE TABLE app_settings (
+                key TEXT PRIMARY KEY NOT NULL CHECK (
+                    length(trim(key)) BETWEEN 1 AND 80
+                ),
+                value TEXT NOT NULL CHECK (length(value) <= 2000),
+                updated_at TEXT NOT NULL DEFAULT (
+                    strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                )
+            )
+            """,
+            """
+            INSERT INTO app_settings (key, value)
+                VALUES ('update_channel', 'stable')
             """,
         ),
     ),

@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { loadDesktopRuntimeStatus, type RuntimeAdapter } from "./runtime";
+import {
+  loadDesktopRuntimeStatus,
+  setDesktopUpdateChannel,
+  type RuntimeAdapter,
+} from "./runtime";
 
 const emptyData = {
   state: "empty",
@@ -15,15 +19,20 @@ const emptyData = {
 function nativeStatus(overrides: Record<string, unknown> = {}) {
   return JSON.stringify({
     state: "ready",
-    version: "0.0.3-preview.3",
+    version: "0.0.4-preview.1",
     desktopShell: true,
     singleInstance: true,
     sidecar: "ready",
     database: "ready",
     databaseLocation: "data/foundry.sqlite3",
-    schemaVersion: 4,
+    schemaVersion: 5,
     errorCode: null,
     data: emptyData,
+    updater: {
+      channel: "stable",
+      manifestState: "verified",
+      publicDistribution: false,
+    },
     ...overrides,
   });
 }
@@ -45,15 +54,20 @@ describe("desktop runtime status", () => {
       loadDesktopRuntimeStatus({ isAvailable: () => true, invoke }),
     ).resolves.toEqual({
       state: "ready",
-      version: "0.0.3-preview.3",
+      version: "0.0.4-preview.1",
       desktopShell: true,
       singleInstance: true,
       sidecar: "ready",
       database: "ready",
       databaseLocation: "data/foundry.sqlite3",
-      schemaVersion: 4,
+      schemaVersion: 5,
       errorCode: null,
       data: emptyData,
+      updater: {
+        channel: "stable",
+        manifestState: "verified",
+        publicDistribution: false,
+      },
     });
     expect(invoke).toHaveBeenCalledWith("desktop_runtime_status");
   });
@@ -99,6 +113,11 @@ describe("desktop runtime status", () => {
         database: "starting",
         schemaVersion: null,
         data: { ...emptyData, state: "loading" },
+        updater: {
+          channel: "stable",
+          manifestState: "checking",
+          publicDistribution: false,
+        },
       }),
     );
 
@@ -118,6 +137,11 @@ describe("desktop runtime status", () => {
           ...emptyData,
           state: "error",
           errorCode: "program-storage-unavailable",
+        },
+        updater: {
+          channel: "stable",
+          manifestState: "unavailable",
+          publicDistribution: false,
         },
       }),
     );
@@ -167,5 +191,38 @@ describe("desktop runtime status", () => {
     await expect(
       loadDesktopRuntimeStatus({ isAvailable: () => true, invoke }),
     ).resolves.toEqual({ state: "unavailable" });
+  });
+
+  it("stores a selected update channel through native IPC", async () => {
+    const invoke = vi.fn<RuntimeAdapter["invoke"]>().mockResolvedValue(
+      JSON.stringify({
+        channel: "beta",
+        manifestState: "verified",
+        publicDistribution: false,
+      }),
+    );
+
+    await expect(
+      setDesktopUpdateChannel("beta", { isAvailable: () => true, invoke }),
+    ).resolves.toEqual({
+      channel: "beta",
+      manifestState: "verified",
+      publicDistribution: false,
+    });
+    expect(invoke).toHaveBeenCalledWith("set_update_channel", { channel: "beta" });
+  });
+
+  it("rejects updater responses that enable public distribution", async () => {
+    const invoke = vi.fn<RuntimeAdapter["invoke"]>().mockResolvedValue(
+      JSON.stringify({
+        channel: "preview",
+        manifestState: "verified",
+        publicDistribution: true,
+      }),
+    );
+
+    await expect(
+      setDesktopUpdateChannel("preview", { isAvailable: () => true, invoke }),
+    ).rejects.toThrow("invalid updater metadata");
   });
 });
