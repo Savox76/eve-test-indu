@@ -4,7 +4,7 @@ New Eden Foundry wird eine lokale Desktop-Anwendung für nachvollziehbare EVE-On
 
 ## Projektstatus
 
-**Technische Preview – `v0.0.3-preview.1`.** Die Windows-App startet jetzt ihren gebündelten Python/FastAPI-Sidecar selbst, schützt dessen dynamischen Loopback-Port mit einem neuen Sitzungstoken je Start und legt die SQLite-Datenbank sichtbar unter `data\foundry.sqlite3` im Programmordner an. Eine zweite Instanz fokussiert die bereits laufende App. Gemeinsame und getrennte Übersichten für mehrere Charaktere bleiben Teil der Oberfläche und des Schemas.
+**Technische Preview – `v0.0.3-preview.2`.** Der lokale Kern schützt Datenbankupdates jetzt automatisch: Vor einer anstehenden Schemaänderung entsteht unter `data\backups` ein konsistenter, geprüfter SQLite-Snapshot. Erst danach wird migriert; bei einem Fehler stellt die App den vorherigen Stand automatisch wieder her. Die fünf neuesten Migrationssicherungen bleiben sichtbar im Programmordner. Der gebündelte Sidecar, der geschützte dynamische Loopback-Port sowie gemeinsame und getrennte Mehrcharakter-Übersichten bleiben die technische Grundlage.
 
 Die Mehrcharakter-Oberfläche arbeitet weiterhin mit drei klar synthetischen Figuren und liest diese Vorschauwerte noch nicht aus SQLite. EVE SSO, ESI, SDE und fachliche Berechnungen sind noch nicht angeschlossen. Die Preview ist als Prerelease unter [GitHub Releases](https://github.com/Savox76/eve-test-indu/releases) vorgesehen; das vollständige Windows-Installationsgate bleibt Voraussetzung für die erste technische Alpha.
 
@@ -31,7 +31,7 @@ Auf der [GitHub-Release-Seite](https://github.com/Savox76/eve-test-indu/releases
 | `*_x64-setup.exe` | Empfohlene Installation für den normalen Windows-Betrieb. |
 | `*_x64-portable.zip` | Vollständig entpacken und danach `New Eden Foundry.exe` starten; keine Installation und keine Administratorrechte erforderlich. |
 
-Die portable ZIP enthält Hauptprogramm und Sidecar und benötigt die Microsoft Edge WebView2 Runtime, die auf unterstützten aktuellen Windows-10- und Windows-11-Systemen normalerweise vorhanden ist. Beim ersten Start entsteht im entpackten Programmordner `data\foundry.sqlite3`; der Zielordner muss daher beschreibbar sein. Zum Umziehen oder Sichern wird die geschlossene Anwendung einschließlich des kompletten Ordners `data` kopiert. Spätere Zugangsdaten bleiben getrennt im Windows-Anmeldespeicher. Zu jeder Variante gehört eine gleichnamige `.sha256`-Datei zur Integritätsprüfung.
+Die portable ZIP enthält Hauptprogramm und Sidecar und benötigt die Microsoft Edge WebView2 Runtime, die auf unterstützten aktuellen Windows-10- und Windows-11-Systemen normalerweise vorhanden ist. Beim ersten Start entsteht im entpackten Programmordner `data\foundry.sqlite3`; der Zielordner muss daher beschreibbar sein. Beim Update einer vorhandenen Datenbank wird eine erforderliche Migrationssicherung automatisch unter `data\backups` angelegt. Zum Umziehen oder manuellen Sichern wird die geschlossene Anwendung einschließlich des kompletten Ordners `data` kopiert. Spätere Zugangsdaten bleiben getrennt im Windows-Anmeldespeicher. Zu jeder Variante gehört eine gleichnamige `.sha256`-Datei zur Integritätsprüfung.
 
 ## Lokale Entwicklung
 

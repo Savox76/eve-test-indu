@@ -65,6 +65,8 @@ Die portable ZIP enthält einen versionsbezogenen Ordner mit `New Eden Foundry.e
 
 Der Installer arbeitet im Modus `currentUser`. Ein Update ersetzt nur ausgelieferte Programmdateien und lässt den nicht gebündelten Ordner `data` stehen. Auch eine Deinstallation lässt diesen Datenordner bewusst zurück; für eine vollständige Löschung muss er anschließend manuell entfernt werden, bis eine bestätigungspflichtige Löschfunktion existiert.
 
+Steht beim ersten Start einer neuen Version eine Datenbankmigration an, erzeugt der lokale Kern zuvor über die SQLite-Backup-API einen konsistenten Snapshot unter `data\backups`. Integrität, Fremdschlüssel, Schema-Version und SHA-256 werden geprüft, bevor die Migration beginnt. Scheitert die Migration, wird dieser Stand automatisch wiederhergestellt; scheitert bereits die Sicherung, bleibt das Schema unverändert und der Start wird abgebrochen. Die fünf neuesten automatisch erzeugten Migrationssicherungen bleiben erhalten. Eine manuelle Wiederherstellung darf nur bei vollständig geschlossener App erfolgen.
+
 Als selbst hochgeladene Release-Dateien sind ausschließlich Dateien erlaubt, die zur Installation, portablen Ausführung, Integritäts- oder Signaturprüfung oder zum Update der freigegebenen Anwendung benötigt werden. Debug-Dumps, echte Nutzerdaten und beliebige CI-Zwischenstände werden nicht hochgeladen.
 
 Das Repository und seine Release-Seiten sind öffentlich. GitHub ergänzt bei jedem Release automatisch ZIP- und Tarball-Links auf den Quellcode des Tags. Diese automatisch bereitgestellten Quellcodearchive sind keine GitHub-Actions-Artefakte und können für ein öffentliches Repository nicht als geheimer Vertriebsweg behandelt werden.

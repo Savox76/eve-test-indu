@@ -12,7 +12,7 @@ Die Anwendung soll ohne externen Datenbankdienst funktionieren und ihre lokale D
 ## Entscheidung
 
 - Die einzige produktive Datenbank liegt relativ zur Haupt-EXE unter `data\foundry.sqlite3`.
-- Künftige Migrationssicherungen liegen ausschließlich unter `data\backups`.
+- Automatisch erzeugte Migrationssicherungen liegen ausschließlich unter `data\backups`; die fünf neuesten werden aufbewahrt.
 - Tauri bestimmt den Programmordner aus dem Verzeichnis der laufenden Haupt-EXE und übergibt ihn dem Sidecar über dessen geschützte Standardeingabe.
 - Existiert `data` noch nicht, wird der Ordner beim Start angelegt. Ist der Programmordner nicht beschreibbar, startet der lokale Kern nicht und die Oberfläche zeigt einen Fehler. Es gibt keinen stillen Ersatzpfad in AppData, Temp oder im Benutzerprofil.
 - Symbolische Umleitungen für `data`, Datenbank oder Backup-Ordner werden abgewiesen.

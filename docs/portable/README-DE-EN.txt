@@ -17,6 +17,10 @@ Wichtig:
 - Beim ersten Start entsteht im Programmordner "data\foundry.sqlite3". Der
   entpackte Ordner muss deshalb beschreibbar sein. Es wird kein versteckter
   Ersatzpfad verwendet.
+- Vor einer notwendigen Datenbankmigration legt die App automatisch eine
+  geprüfte Sicherung unter "data\backups" an. Bei einem Migrationsfehler wird
+  der vorherige Stand automatisch wiederhergestellt. Die fünf neuesten
+  Migrationssicherungen bleiben erhalten.
 - Zum Umziehen oder Sichern die Anwendung zuerst schließen und anschließend den
   vollständigen Programmordner einschließlich "data" kopieren.
 - Spätere EVE-Zugangsdaten bleiben im Windows-Anmeldespeicher und werden beim
@@ -44,6 +48,9 @@ Important:
   unknown publisher.
 - The first start creates "data\foundry.sqlite3" inside the program folder. The
   extracted folder must therefore be writable. No hidden fallback path is used.
+- Before a required database migration, the app automatically creates a
+  verified backup under "data\backups". A failed migration automatically
+  restores the previous state. The five newest migration backups are retained.
 - To move or back up the app, close it first and then copy the complete program
   folder including "data".
 - Future EVE credentials remain in Windows Credential Manager and do not travel

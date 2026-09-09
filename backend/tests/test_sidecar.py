@@ -121,8 +121,9 @@ class SidecarIntegrationTests(unittest.TestCase):
             with opener.open(valid_request, timeout=3) as response:
                 health = json.loads(response.read())
             self.assertEqual(health["state"], "ready")
-            self.assertEqual(health["database"]["schemaVersion"], 2)
+            self.assertEqual(health["database"]["schemaVersion"], 3)
             self.assertEqual(health["database"]["location"], "data/foundry.sqlite3")
+            self.assertIsNone(health["database"]["lastMigrationBackup"])
 
             database_path = program_directory / "data" / "foundry.sqlite3"
             self.assertTrue(database_path.is_file())

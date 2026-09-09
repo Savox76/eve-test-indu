@@ -16,13 +16,13 @@ describe("desktop runtime status", () => {
     const invoke = vi.fn<RuntimeAdapter["invoke"]>().mockResolvedValue(
       JSON.stringify({
         state: "ready",
-        version: "0.0.3-preview.1",
+        version: "0.0.3-preview.2",
         desktopShell: true,
         singleInstance: true,
         sidecar: "ready",
         database: "ready",
         databaseLocation: "data/foundry.sqlite3",
-        schemaVersion: 2,
+        schemaVersion: 3,
         errorCode: null,
       }),
     );
@@ -31,13 +31,13 @@ describe("desktop runtime status", () => {
       loadDesktopRuntimeStatus({ isAvailable: () => true, invoke }),
     ).resolves.toEqual({
       state: "ready",
-      version: "0.0.3-preview.1",
+      version: "0.0.3-preview.2",
       desktopShell: true,
       singleInstance: true,
       sidecar: "ready",
       database: "ready",
       databaseLocation: "data/foundry.sqlite3",
-      schemaVersion: 2,
+      schemaVersion: 3,
       errorCode: null,
     });
     expect(invoke).toHaveBeenCalledWith("desktop_runtime_status");
@@ -47,7 +47,7 @@ describe("desktop runtime status", () => {
     const invoke = vi.fn<RuntimeAdapter["invoke"]>().mockResolvedValue(
       JSON.stringify({
         state: "ready",
-        version: "0.0.3-preview.1",
+        version: "0.0.3-preview.2",
         desktopShell: true,
         singleInstance: true,
         sidecar: "starting",
@@ -67,7 +67,7 @@ describe("desktop runtime status", () => {
     const invoke = vi.fn<RuntimeAdapter["invoke"]>().mockResolvedValue(
       JSON.stringify({
         state: "ready",
-        version: "0.0.3-preview.1",
+        version: "0.0.3-preview.2",
         desktopShell: true,
         singleInstance: true,
         sidecar: "error",
@@ -109,13 +109,13 @@ describe("desktop runtime status", () => {
     const invoke = vi.fn<RuntimeAdapter["invoke"]>().mockResolvedValue(
       JSON.stringify({
         state: "ready",
-        version: "0.0.3-preview.1",
+        version: "0.0.3-preview.2",
         desktopShell: true,
         singleInstance: true,
         sidecar: "ready",
         database: "starting",
         databaseLocation: "data/foundry.sqlite3",
-        schemaVersion: 2,
+        schemaVersion: 3,
         errorCode: null,
       }),
     );
