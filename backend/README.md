@@ -2,6 +2,8 @@
 
 Dieses Verzeichnis enthält den lokalen fachlichen Kern von New Eden Foundry. Die aktuelle Ausbaustufe umfasst den gebündelten FastAPI-Sidecar, die versionierte SQLite-Grundlage mit automatischer Migrationssicherung und Wiederherstellung, cache-first Startzustände, lokale Kontogruppen, getrennte Charakterdatensätze und deren jeweilige SSO-Scopes. Hinzu kommt das Updater-Skelett mit lokaler Kanalpräferenz und einem gebündelten Ed25519-signierten Testmanifest. Tauri startet den Dienst als Kindprozess auf einem dynamischen Loopback-Port und übergibt das kurzlebige Sitzungstoken ausschließlich über die Standardeingabe.
 
+Der Sidecar bündelt außerdem das vollständige öffentliche EVE-SSO-Registrierungsprofil und meldet dessen Zustand als `registered`. Das Profil enthält die öffentliche Client-ID und ausdrücklich kein Client Secret. Der eigentliche PKCE-Login folgt im nächsten Arbeitspaket.
+
 EVE autorisiert jeden Charakter einzeln. Eine lokale Kontogruppe dient nur der vom Nutzer vergebenen Organisation mehrerer Charaktere; sie speichert weder EVE-Accountnamen noch Zugangsdaten. Token werden in einer späteren Ausbaustufe pro Charakter im Windows-Anmeldespeicher abgelegt und gehören nicht in SQLite.
 
 Der Selbsttest lässt sich aus diesem Verzeichnis ausführen:

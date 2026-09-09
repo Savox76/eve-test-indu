@@ -224,6 +224,16 @@ def main() -> int:
                 or updater.get("publicDistribution") is not False
             ):
                 raise RuntimeError("The signed updater skeleton is not ready or safely disabled.")
+            sso_registration = health.get("ssoRegistration")
+            if (
+                not isinstance(sso_registration, dict)
+                or sso_registration.get("state") != "registered"
+                or sso_registration.get("clientId")
+                != "a8409de72d5b4cab9b0424819d0abdec"
+                or sso_registration.get("redirectUri")
+                != "http://127.0.0.1:17891/oauth/callback"
+            ):
+                raise RuntimeError("The packaged SSO registration profile is invalid.")
             backup_name = database.get("lastMigrationBackup")
             if not isinstance(backup_name, str) or not backup_name.startswith(
                 "foundry-schema-v0004-to-v0005-"
@@ -306,8 +316,8 @@ def main() -> int:
                     stream.close()
 
     print(
-        "Frozen sidecar handshake, signed updater skeleton, migration backup, "
-        "database location and shutdown verified."
+        "Frozen sidecar handshake, signed updater skeleton, SSO profile, migration "
+        "backup, database location and shutdown verified."
     )
     return 0
 

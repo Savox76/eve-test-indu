@@ -20,6 +20,9 @@ UPDATE_TEST_MANIFEST = (
     BACKEND / "new_eden_foundry_backend" / "resources" / "update-test-manifest.json"
 )
 UPDATE_TEST_SIGNATURE = UPDATE_TEST_MANIFEST.with_suffix(".sig")
+SSO_REGISTRATION_PROFILE = (
+    BACKEND / "new_eden_foundry_backend" / "resources" / "eve-sso-registration.json"
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -68,6 +71,11 @@ def main() -> int:
         "--add-data",
         (
             f"{UPDATE_TEST_SIGNATURE}{os.pathsep}"
+            "new_eden_foundry_backend/resources"
+        ),
+        "--add-data",
+        (
+            f"{SSO_REGISTRATION_PROFILE}{os.pathsep}"
             "new_eden_foundry_backend/resources"
         ),
         "--collect-submodules",

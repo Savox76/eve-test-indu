@@ -1,10 +1,10 @@
 # Masterplan – New Eden Foundry
 
-**Fassung:** 1.7 (lebendes Repository-Dokument)
+**Fassung:** 1.9 (lebendes Repository-Dokument)
 
 **Stand:** 9. September 2026
 
-**Status:** In Umsetzung – Phase 1 mit abgesicherter lokaler Updategrenze
+**Status:** In Umsetzung – Phase 1 mit registriertem EVE-SSO-App-Profil
 
 **Geltungsbereich:** `Savox76/eve-test-indu`
 
@@ -198,8 +198,9 @@ Die Reihenfolge ist verbindlicher als eine Kalenderangabe.
 - **Abgeschlossen:** 08 – ausstehende Migrationen erzeugen zuerst einen konsistenten, eigenständigen und SHA-256-geprüften Snapshot unter `data\backups`. Sicherungsfehler lassen das Schema unverändert; Migrationsfehler lösen eine geprüfte automatische Wiederherstellung aus. Die fünf neuesten Snapshots bleiben erhalten.
 - **Abgeschlossen:** 09 – der lokale Startpfad bewertet nur Snapshots vollständig abgeschlossener Läufe und zeigt Laden, Aktualisieren, leer, aktuell, veraltet, offline und fehlerhaft zweisprachig mit Datenalter. Vorhandene Cache-Daten bleiben bei Ablauf oder Folgfehlern sichtbar; echte Nutzdaten folgen mit ESI.
 - **Abgeschlossen:** 10 – die Desktop-Oberfläche kann `stable`, `beta` und `preview` wählen und speichert die Präferenz in Schema 5 im Programmordner. Ein gebündeltes Ed25519-signiertes Testmanifest wird streng und offline geprüft; die reservierte Domain `updates.invalid` sowie `publicDistribution: false` verhindern eine vorzeitige öffentliche Verteilung.
+- **Abgeschlossen:** 11 – Callback-URI, öffentliche Client-ID, Entwicklerkontakt und funktionsbezogene Scopepakete sind im EVE Developers Portal registriert, verbindlich dokumentiert, maschinenlesbar hinterlegt, im Sidecar-Paket enthalten und gegen Drift getestet.
 - **Teilweise umgesetzt:** 15 – Schema und Zugriffslogik unterstützen mehrere separat autorisierte Charaktere, lokale Kontogruppen und getrennte Scopes. Die synthetische Oberfläche wechselt bereits zwischen Einzel- und Gesamtübersicht; echter SSO-, Keyring- und Löschablauf folgen erst in Phase 2.
-- **Als Nächstes:** das verbleibende A0-Windows-Gate und Arbeitspaket 11 – Installation, zweiter Start, Migration/Update und Entfernung auf einem freigegebenen Windows-Testgerät sowie die Dokumentation der exakten EVE-SSO-App-Registrierung.
+- **Als Nächstes:** Arbeitspaket 12 implementiert den PKCE-Login mit festem Callback-Listener, Systembrowser, `state`, Challenge/Verifier, Timeout und Abbruch. Parallel bleibt das A0-Windows-Gate für Installation, zweiten Start, Migration/Update und Entfernung auf einem freigegebenen Windows-Testgerät offen.
 - Architektur-Gate A0 ist technisch weitgehend umgesetzt, aber bis zur vollständigen Windows-Abnahme noch nicht erfüllt; breite Fachentwicklung beginnt erst danach.
 
 ## 13. Entscheidungs- und Quellenrang
