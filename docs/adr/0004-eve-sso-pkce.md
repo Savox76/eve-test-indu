@@ -32,11 +32,13 @@ Eine nutzbare Client-ID und exakte Callback-URI müssen im EVE Developers Portal
 
 Tests decken PKCE-Vektor, `state`, Callback-Bindung, Timeout, JWT-Fehler, Scope-Differenz und atomare Refresh-Token-Rotation ab. Ein Golden-Pfad funktioniert ohne Client Secret in Paket oder Prozessumgebung.
 
-### Umsetzungsstand Pakete 12 und 13
+### Umsetzungsstand Pakete 12 bis 14
 
 Systembrowser, fester IPv4-Loopback-Listener, unabhängiger 256-Bit-`state`, neuer 256-Bit-Verifier mit `S256`-Challenge, funktionsbezogene Scopeauswahl, Drei-Minuten-Timeout und manueller Abbruch sind implementiert. Der native Shell-Prozess öffnet nur eine vollständig geprüfte URL unter dem festen EVE-Autorisierungsendpunkt. Die Sidecar-API gibt weder `state` noch Verifier oder Autorisierungscode an die Weboberfläche zurück.
 
-Paket 13 tauscht den Code über den aus den offiziellen Metadaten bezogenen Token-Endpunkt aus. Metadaten-, Token- und JWKS-Ziele sind auf HTTPS bei `login.eveonline.com` begrenzt; HTTP-Weiterleitungen werden nicht verfolgt. Das Access Token muss `RS256`, eine eindeutige veröffentlichte Schlüssel-ID, gültige Signatur, akzeptierten Issuer, die Audiences `EVE Online` und öffentliche Client-ID, gültigen Ablauf, ein Charakter-Subject, Name sowie mindestens alle angeforderten Scopes enthalten. Erst danach werden ID, Name und Scopes gespeichert. Access und Refresh Token werden anschließend verworfen, bis Paket 14 den geprüften Refresh Token atomar im Betriebssystem-Schlüsselbund ablegt.
+Paket 13 tauscht den Code über den aus den offiziellen Metadaten bezogenen Token-Endpunkt aus. Metadaten-, Token- und JWKS-Ziele sind auf HTTPS bei `login.eveonline.com` begrenzt; HTTP-Weiterleitungen werden nicht verfolgt. Das Access Token muss `RS256`, eine eindeutige veröffentlichte Schlüssel-ID, gültige Signatur, akzeptierten Issuer, die Audiences `EVE Online` und öffentliche Client-ID, gültigen Ablauf, ein Charakter-Subject, Name sowie mindestens alle angeforderten Scopes enthalten. Erst danach werden ID, Name und Scopes gespeichert.
+
+Paket 14 hält Access Tokens ausschließlich im Prozessspeicher und speichert geprüfte Refresh Tokens pro Charakter als generische Zugangsdaten des aktuellen Windows-Nutzers. Ein neuer Wert wird zuerst in einem getrennten Zwischen-Slot geschrieben und zurückgelesen, dann als aktiv ersetzt und erneut geprüft; erst danach verschwindet der Zwischen-Slot. Bei einer Unterbrechung bleibt der bisherige aktive Token erhalten und ein vollständig geschriebener Kandidat wird beim nächsten Zugriff abgeschlossen. Eine Vergleichsprüfung verhindert, dass konkurrierende Rotationen einen neueren Token überschreiben. Andere Plattformen oder ein nicht verfügbarer Anmeldespeicher schlagen geschlossen fehl.
 
 ## Referenzen
 

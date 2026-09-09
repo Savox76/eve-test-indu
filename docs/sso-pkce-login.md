@@ -1,7 +1,7 @@
 # EVE-SSO-PKCE-Login
 
 **Stand:** 9. September 2026  
-**Umsetzung:** Arbeitspakete 12 und 13
+**Umsetzung:** Arbeitspakete 12 bis 14
 
 ## Nutzerablauf
 
@@ -9,7 +9,7 @@
 2. „Charakter verbinden“ erzeugt einen neuen Anmeldeversuch und öffnet die EVE-Anmeldung im Systembrowser. Zugangsdaten werden ausschließlich bei EVE eingegeben.
 3. Der lokale Sidecar wartet höchstens drei Minuten am registrierten Callback `http://127.0.0.1:17891/oauth/callback`.
 4. Ein korrekter Rückruf startet den PKCE-Codeaustausch. Die App zeigt während der Signatur- und Claim-Prüfung einen eigenen Zustand.
-5. Erst eine vollständig geprüfte Identität wird in SQLite gespeichert und in „Verbundene EVE-Charaktere“ angezeigt. Abbruch, EVE-Ablehnung, Token-/JWT-Fehler und Timeout bleiben getrennte Zustände.
+5. Erst eine vollständig geprüfte Identität wird in SQLite gespeichert; ihr Refresh Token wird getrennt und atomar im Windows-Anmeldespeicher aktiviert. Danach erscheint der Charakter in „Verbundene EVE-Charaktere“. Abbruch, EVE-Ablehnung, Token-/JWT- oder Schlüsselbundfehler und Timeout bleiben getrennte Zustände.
 6. Weitere Charaktere können anschließend einzeln mit eigenen Berechtigungspaketen autorisiert werden.
 
 ## Sicherheitsgrenzen
@@ -19,7 +19,7 @@
 - Der Callback lauscht ausschließlich auf IPv4-Loopback und nur am festen Port `17891`. Der `Host`-Header, Pfad, einzelne `state`-Wert und einzelne Autorisierungscode werden streng geprüft.
 - Die interne Status-, Start- und Abbruch-API bleibt durch das kurzlebige Sidecar-Sitzungstoken geschützt. Der Browser-Callback ist der einzige absichtlich öffentliche lokale Endpunkt.
 - Die Tauri-Schale akzeptiert zum Öffnen nur `https://login.eveonline.com/v2/oauth/authorize` mit vollständigem erwarteten PKCE-Parametersatz. Andere Hosts, Pfade, Protokolle, Fragmente oder doppelte Parameter werden verworfen.
-- Autorisierungscode, Tokens, `state` und Verifier erscheinen weder in UI-Antworten noch Logs. Nach Verwendung, Fehler, Timeout, Abbruch oder App-Ende werden temporäre Werte gelöscht und der Listener geschlossen.
+- Autorisierungscode, Tokens, `state` und Verifier erscheinen weder in UI-Antworten noch Logs. Nach Verwendung, Fehler, Timeout, Abbruch oder App-Ende werden temporäre Werte gelöscht und der Listener geschlossen. Nur der geprüfte Refresh Token bleibt pro Charakter im Windows-Anmeldespeicher; Access Tokens bleiben im Sidecar-Speicher.
 - Das Programm enthält und verwendet kein Client Secret.
 
 ## Zustände
@@ -34,9 +34,9 @@
 | `timed-out` | Drei-Minuten-Fenster ist abgelaufen | Erneut starten |
 | `failed` | EVE-Ablehnung oder ungültiger Callback | Scopes prüfen und erneut starten |
 
-## Bewusste Paketgrenze
+## Paketgrenze
 
-Paket 13 führt Codeaustausch und vollständige JWT-Prüfung aus und speichert ausschließlich die geprüfte Identität mit Scopes. Paket 14 übernimmt danach Schlüsselbundspeicherung und atomare Refresh-Token-Rotation. Bis dahin werden Access und Refresh Token nach der Identitätsprüfung verworfen; dadurch ist die Identität sichtbar, aber ESI-Synchronisierung noch nicht möglich.
+Paket 13 führt Codeaustausch und vollständige JWT-Prüfung aus. Paket 14 übernimmt den geprüften Refresh Token mit verifizierter Zwei-Slot-Ablage in den Windows-Anmeldespeicher und hält Access Tokens ausschließlich im Speicher. Der eigentliche ESI-Zugriff folgt mit dem zentralen Client in Paket 16.
 
 ## Automatisierte Verifikation
 
@@ -48,6 +48,7 @@ Paket 13 führt Codeaustausch und vollständige JWT-Prüfung aus und speichert a
 - native URL-Zielprüfung sowie Start-, Status- und Abbruchvertrag bis zur React-Oberfläche
 - Metadaten-/JWKS-Begrenzung, `RS256`-Signatur, Issuer, beide Audience-Werte, Ablauf, Charakter-ID und Scopes
 - idempotente Speicherung und sichtbares erneutes Laden des verbundenen Charakters
+- verifizierte Erstablage, unterbrechbare Rotation, Wiederaufnahme und konkurrierende Rotation ohne Verlust des letzten aktiven Refresh Tokens
 
 ## Offizielle Quellen
 

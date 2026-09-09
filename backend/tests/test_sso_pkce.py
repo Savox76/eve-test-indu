@@ -6,6 +6,7 @@ import time
 import unittest
 import urllib.error
 import urllib.request
+from datetime import datetime, timedelta, timezone
 from urllib.parse import parse_qs, urlencode, urlsplit
 
 from new_eden_foundry_backend.sso_pkce import (
@@ -18,7 +19,11 @@ from new_eden_foundry_backend.sso_registration import (
     SSO_CALLBACK_PATH,
     load_bundled_sso_registration_profile,
 )
-from new_eden_foundry_backend.sso_tokens import SsoTokenError, VerifiedCharacter
+from new_eden_foundry_backend.sso_tokens import (
+    SsoTokenError,
+    VerifiedAuthorization,
+    VerifiedCharacter,
+)
 
 
 class SyntheticSsoClient:
@@ -31,11 +36,20 @@ class SyntheticSsoClient:
         authorization_code: str,
         code_verifier: str,
         expected_scopes: tuple[str, ...],
-    ) -> VerifiedCharacter:
+    ) -> VerifiedAuthorization:
         self.exchanges.append((authorization_code, code_verifier, expected_scopes))
         if self.error_code is not None:
             raise SsoTokenError(self.error_code)
-        return VerifiedCharacter(2_112_345_678, "Synthetic Pilot", tuple(sorted(expected_scopes)))
+        return VerifiedAuthorization(
+            character=VerifiedCharacter(
+                2_112_345_678,
+                "Synthetic Pilot",
+                tuple(sorted(expected_scopes)),
+            ),
+            access_token="synthetic-access-token",
+            refresh_token="synthetic-refresh-token",
+            expires_at=datetime.now(timezone.utc) + timedelta(minutes=20),
+        )
 
 
 class BlockingSsoClient(SyntheticSsoClient):
@@ -48,7 +62,7 @@ class BlockingSsoClient(SyntheticSsoClient):
         authorization_code: str,
         code_verifier: str,
         expected_scopes: tuple[str, ...],
-    ) -> VerifiedCharacter:
+    ) -> VerifiedAuthorization:
         self.release.wait(timeout=2)
         return super().exchange_and_validate(
             authorization_code,
@@ -67,7 +81,9 @@ class SsoPkceTests(unittest.TestCase):
             callback_port=0,
             timeout_seconds=2,
             sso_client=self.sso_client,  # type: ignore[arg-type]
-            identity_handler=self.identities.append,
+            authorization_handler=lambda authorization: self.identities.append(
+                authorization.character
+            ),
         )
 
     def tearDown(self) -> None:
@@ -146,7 +162,9 @@ class SsoPkceTests(unittest.TestCase):
             callback_port=0,
             timeout_seconds=2,
             sso_client=SyntheticSsoClient("jwt-signature-invalid"),  # type: ignore[arg-type]
-            identity_handler=self.identities.append,
+            authorization_handler=lambda authorization: self.identities.append(
+                authorization.character
+            ),
         )
         self.addCleanup(manager.close)
         authorization_url, status = manager.start(["industry-core"])

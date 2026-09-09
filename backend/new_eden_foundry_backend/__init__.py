@@ -29,6 +29,14 @@ from .storage import (
     resolve_program_storage,
 )
 from .startup_state import StartupDataState, inspect_startup_data_state
+from .token_vault import (
+    MemoryCredentialStore,
+    RefreshTokenVault,
+    StagedRefreshToken,
+    TokenVaultError,
+    create_system_refresh_token_vault,
+)
+from .token_service import AccessTokenLease, CharacterTokenError, CharacterTokenService
 from .updater import (
     UpdateChannel,
     UpdateManifestError,
@@ -42,6 +50,9 @@ from .version import project_version
 
 __all__ = [
     "AccountGroup",
+    "AccessTokenLease",
+    "CharacterTokenError",
+    "CharacterTokenService",
     "CharacterRecord",
     "DatabaseBackupError",
     "DatabaseMigrationError",
@@ -52,15 +63,20 @@ __all__ = [
     "ProgramStorage",
     "ProgramStorageError",
     "StartupDataState",
+    "StagedRefreshToken",
+    "RefreshTokenVault",
+    "TokenVaultError",
     "UpdateChannel",
     "UpdateManifestError",
     "VerifiedUpdateManifest",
     "create_account_group",
+    "create_system_refresh_token_vault",
     "create_migration_backup",
     "initialize_database",
     "inspect_startup_data_state",
     "list_account_groups",
     "list_characters",
+    "MemoryCredentialStore",
     "prepare_program_storage",
     "project_version",
     "read_update_channel",

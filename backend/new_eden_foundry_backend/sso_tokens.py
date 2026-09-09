@@ -13,7 +13,7 @@ import urllib.parse
 import urllib.request
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Final
 
 from cryptography.exceptions import InvalidSignature
@@ -36,7 +36,7 @@ HTTP_TIMEOUT_SECONDS: Final = 8.0
 METADATA_CACHE_SECONDS: Final = 300.0
 MAXIMUM_JSON_BYTES: Final = 262_144
 MAXIMUM_ACCESS_TOKEN_LENGTH: Final = 32_768
-MAXIMUM_REFRESH_TOKEN_LENGTH: Final = 16_384
+MAXIMUM_REFRESH_TOKEN_LENGTH: Final = 2_400
 MAXIMUM_AUTHORIZATION_CODE_LENGTH: Final = 4_096
 MAXIMUM_CODE_VERIFIER_LENGTH: Final = 128
 JWT_CLOCK_SKEW_SECONDS: Final = 30
@@ -72,6 +72,29 @@ class VerifiedCharacter:
             "name": self.name,
             "scopes": list(self.scopes),
         }
+
+
+@dataclass(frozen=True, slots=True, repr=False)
+class VerifiedAuthorization:
+    """Validated identity plus process-local OAuth credentials.
+
+    This object must stay inside the Python sidecar. Its representation is
+    deliberately redacted so an accidental exception or debug line cannot
+    disclose either token.
+    """
+
+    character: VerifiedCharacter
+    access_token: str
+    refresh_token: str
+    expires_at: datetime
+
+    def __repr__(self) -> str:
+        return (
+            "VerifiedAuthorization("
+            f"character_id={self.character.character_id}, "
+            "access_token=<redacted>, refresh_token=<redacted>, "
+            f"expires_at={self.expires_at.isoformat()})"
+        )
 
 
 JsonRequester = Callable[
@@ -291,7 +314,7 @@ def validate_access_token(
 
 
 class EveSsoClient:
-    """Fetch trusted EVE metadata, exchange one code, and return only identity."""
+    """Exchange or refresh OAuth credentials and validate their EVE identity."""
 
     def __init__(
         self,
@@ -338,7 +361,7 @@ class EveSsoClient:
         authorization_code: str,
         code_verifier: str,
         expected_scopes: Sequence[str],
-    ) -> VerifiedCharacter:
+    ) -> VerifiedAuthorization:
         if (
             not isinstance(authorization_code, str)
             or not 1 <= len(authorization_code) <= MAXIMUM_AUTHORIZATION_CODE_LENGTH
@@ -361,6 +384,61 @@ class EveSsoClient:
         except SsoTokenError as error:
             raise SsoTokenError("token-exchange-failed") from error
 
+        return self._validate_token_response(
+            token_payload,
+            metadata=metadata,
+            expected_scopes=expected_scopes,
+        )
+
+    def refresh_and_validate(
+        self,
+        refresh_token: str,
+        *,
+        expected_character_id: int,
+        expected_scopes: Sequence[str],
+    ) -> VerifiedAuthorization:
+        """Use a stored refresh token and reject cross-character responses."""
+
+        if (
+            not isinstance(refresh_token, str)
+            or not 1 <= len(refresh_token.encode("utf-8")) <= MAXIMUM_REFRESH_TOKEN_LENGTH
+            or refresh_token.strip() != refresh_token
+            or "\x00" in refresh_token
+            or isinstance(expected_character_id, bool)
+            or not isinstance(expected_character_id, int)
+            or expected_character_id <= 0
+        ):
+            raise SsoTokenError("refresh-request-invalid")
+        metadata = self._load_metadata()
+        try:
+            token_payload = self._request_json(
+                "POST",
+                metadata.token_endpoint,
+                {
+                    "grant_type": "refresh_token",
+                    "refresh_token": refresh_token,
+                    "client_id": self._client_id,
+                },
+                {"Content-Type": "application/x-www-form-urlencoded"},
+            )
+        except SsoTokenError as error:
+            raise SsoTokenError("refresh-exchange-failed") from error
+        authorization = self._validate_token_response(
+            token_payload,
+            metadata=metadata,
+            expected_scopes=expected_scopes,
+        )
+        if authorization.character.character_id != expected_character_id:
+            raise SsoTokenError("refresh-character-mismatch")
+        return authorization
+
+    def _validate_token_response(
+        self,
+        token_payload: Mapping[str, object],
+        *,
+        metadata: EveSsoMetadata,
+        expected_scopes: Sequence[str],
+    ) -> VerifiedAuthorization:
         access_token = token_payload.get("access_token")
         refresh_token = token_payload.get("refresh_token")
         expires_in = token_payload.get("expires_in")
@@ -369,7 +447,9 @@ class EveSsoClient:
             not isinstance(access_token, str)
             or not 1 <= len(access_token) <= MAXIMUM_ACCESS_TOKEN_LENGTH
             or not isinstance(refresh_token, str)
-            or not 1 <= len(refresh_token) <= MAXIMUM_REFRESH_TOKEN_LENGTH
+            or not 1 <= len(refresh_token.encode("utf-8")) <= MAXIMUM_REFRESH_TOKEN_LENGTH
+            or refresh_token.strip() != refresh_token
+            or "\x00" in refresh_token
             or isinstance(expires_in, bool)
             or not isinstance(expires_in, int)
             or not 1 <= expires_in <= 86_400
@@ -381,16 +461,17 @@ class EveSsoClient:
             jwks = self._request_json("GET", metadata.jwks_uri, None, {})
         except SsoTokenError as error:
             raise SsoTokenError("jwks-unavailable") from error
-        try:
-            return validate_access_token(
-                access_token,
-                jwks=jwks,
-                client_id=self._client_id,
-                expected_scopes=expected_scopes,
-                now=self._utc_now(),
-            )
-        finally:
-            # WP14 will store the refresh token atomically in the OS keyring. Until
-            # then both tokens remain process-local and are discarded after validation.
-            access_token = ""
-            refresh_token = ""
+        now = self._utc_now()
+        character = validate_access_token(
+            access_token,
+            jwks=jwks,
+            client_id=self._client_id,
+            expected_scopes=expected_scopes,
+            now=now,
+        )
+        return VerifiedAuthorization(
+            character=character,
+            access_token=access_token,
+            refresh_token=refresh_token,
+            expires_at=now + timedelta(seconds=expires_in),
+        )

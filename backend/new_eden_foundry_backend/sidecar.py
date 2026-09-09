@@ -26,7 +26,12 @@ from .sso_registration import (
     load_bundled_sso_registration_profile,
 )
 from .sso_pkce import SsoPkceError, SsoPkceManager
-from .sso_tokens import VerifiedCharacter
+from .sso_tokens import EveSsoClient, VerifiedAuthorization, VerifiedCharacter
+from .token_service import CharacterTokenService
+from .token_vault import (
+    RefreshTokenVault,
+    create_system_refresh_token_vault,
+)
 from .updater import (
     UpdateChannel,
     UpdateManifestError,
@@ -133,6 +138,28 @@ def store_verified_character(database_path: Path, identity: VerifiedCharacter) -
         )
 
 
+def store_verified_authorization(
+    database_path: Path,
+    token_vault: RefreshTokenVault,
+    authorization: VerifiedAuthorization,
+    token_service: CharacterTokenService | None = None,
+) -> None:
+    """Commit identity and its refresh token without exposing token material."""
+
+    candidate = token_vault.stage(
+        authorization.character.character_id,
+        authorization.refresh_token,
+    )
+    try:
+        store_verified_character(database_path, authorization.character)
+    except BaseException:
+        token_vault.discard(candidate)
+        raise
+    token_vault.commit(candidate)
+    if token_service is not None:
+        token_service.remember(authorization)
+
+
 def create_application(
     startup: StartupConfiguration,
     storage: ProgramStorage,
@@ -141,6 +168,7 @@ def create_application(
     manifest_state: str,
     sso_registration: SsoRegistrationProfile,
     sso_login: SsoPkceManager,
+    token_vault: RefreshTokenVault,
 ) -> FastAPI:
     app = FastAPI(
         title="New Eden Foundry local core",
@@ -185,6 +213,14 @@ def create_application(
             },
             "appearance": appearance_payload(font_scale),
             "characters": {"connected": character_count},
+            "credentials": {
+                "backend": token_vault.backend_name,
+                "state": (
+                    "available"
+                    if token_vault.backend_name == "windows-credential-manager"
+                    else "unavailable"
+                ),
+            },
             "ssoRegistration": sso_registration.as_status_payload(),
         }
 
@@ -359,12 +395,19 @@ def run_sidecar(input_stream: TextIO = sys.stdin, output_stream: TextIO = sys.st
         manifest_state = "invalid"
 
     sso_registration = load_bundled_sso_registration_profile()
+    token_vault = create_system_refresh_token_vault()
+    assert sso_registration.client_id is not None
+    sso_client = EveSsoClient(sso_registration.client_id)
+    token_service = CharacterTokenService(token_vault, sso_client)
     try:
         sso_login = SsoPkceManager(
             sso_registration,
-            identity_handler=lambda identity: store_verified_character(
+            sso_client=sso_client,
+            authorization_handler=lambda authorization: store_verified_authorization(
                 storage.database_path,
-                identity,
+                token_vault,
+                authorization,
+                token_service,
             ),
         )
     except SsoPkceError:
@@ -380,6 +423,7 @@ def run_sidecar(input_stream: TextIO = sys.stdin, output_stream: TextIO = sys.st
         manifest_state,
         sso_registration,
         sso_login,
+        token_vault,
     )
     server = uvicorn.Server(
         uvicorn.Config(
@@ -422,6 +466,14 @@ def run_sidecar(input_stream: TextIO = sys.stdin, output_stream: TextIO = sys.st
                 "publicDistribution": False,
             },
             "appearance": appearance_payload(font_scale),
+            "credentials": {
+                "backend": token_vault.backend_name,
+                "state": (
+                    "available"
+                    if token_vault.backend_name == "windows-credential-manager"
+                    else "unavailable"
+                ),
+            },
             "ssoRegistration": sso_registration.as_status_payload(),
         },
     )

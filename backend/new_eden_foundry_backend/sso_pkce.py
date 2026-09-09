@@ -20,7 +20,12 @@ from .sso_registration import (
     SSO_CALLBACK_PORT,
     SsoRegistrationProfile,
 )
-from .sso_tokens import EveSsoClient, SsoTokenError, VerifiedCharacter
+from .sso_tokens import (
+    EveSsoClient,
+    SsoTokenError,
+    VerifiedAuthorization,
+    VerifiedCharacter,
+)
 
 
 SSO_AUTHORIZATION_ENDPOINT: Final = "https://login.eveonline.com/v2/oauth/authorize"
@@ -103,7 +108,7 @@ class SsoPkceManager:
         callback_path: str = SSO_CALLBACK_PATH,
         timeout_seconds: float = PKCE_LOGIN_TIMEOUT_SECONDS,
         sso_client: EveSsoClient | None = None,
-        identity_handler: Callable[[VerifiedCharacter], None] | None = None,
+        authorization_handler: Callable[[VerifiedAuthorization], None] | None = None,
     ) -> None:
         if not profile.is_registered or profile.client_id is None:
             raise SsoPkceError("sso-not-registered")
@@ -120,7 +125,9 @@ class SsoPkceManager:
         self._callback_path = callback_path
         self._timeout_seconds = timeout_seconds
         self._sso_client = sso_client or EveSsoClient(profile.client_id)
-        self._identity_handler = identity_handler or (lambda _identity: None)
+        self._authorization_handler = authorization_handler or (
+            lambda _authorization: None
+        )
         self._lock = threading.RLock()
         self._attempt: _Attempt | None = None
         self._server: _CallbackServer | None = None
@@ -387,7 +394,7 @@ class SsoPkceManager:
         expected_scopes: tuple[str, ...],
     ) -> None:
         try:
-            identity = self._sso_client.exchange_and_validate(
+            authorization = self._sso_client.exchange_and_validate(
                 authorization_code,
                 code_verifier,
                 expected_scopes,
@@ -413,11 +420,11 @@ class SsoPkceManager:
             ):
                 return
             try:
-                self._identity_handler(identity)
+                self._authorization_handler(authorization)
             except Exception:
                 self._finish_locked("failed", "character-save-failed")
                 return
-            self._attempt.character = identity
+            self._attempt.character = authorization.character
             self._finish_locked("connected")
 
     def _finish_locked(self, state: str, error_code: str | None = None) -> None:
