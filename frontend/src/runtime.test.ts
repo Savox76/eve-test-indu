@@ -2,6 +2,32 @@ import { describe, expect, it, vi } from "vitest";
 
 import { loadDesktopRuntimeStatus, type RuntimeAdapter } from "./runtime";
 
+const emptyData = {
+  state: "empty",
+  hasCachedData: false,
+  observedAt: null,
+  expiresAt: null,
+  ageSeconds: null,
+  lastSyncStatus: "never",
+  errorCode: null,
+} as const;
+
+function nativeStatus(overrides: Record<string, unknown> = {}) {
+  return JSON.stringify({
+    state: "ready",
+    version: "0.0.3-preview.3",
+    desktopShell: true,
+    singleInstance: true,
+    sidecar: "ready",
+    database: "ready",
+    databaseLocation: "data/foundry.sqlite3",
+    schemaVersion: 4,
+    errorCode: null,
+    data: emptyData,
+    ...overrides,
+  });
+}
+
 describe("desktop runtime status", () => {
   it("identifies the browser build as a design preview", async () => {
     const invoke = vi.fn<RuntimeAdapter["invoke"]>();
@@ -12,69 +38,87 @@ describe("desktop runtime status", () => {
     expect(invoke).not.toHaveBeenCalled();
   });
 
-  it("accepts the versioned status from the native Tauri shell", async () => {
-    const invoke = vi.fn<RuntimeAdapter["invoke"]>().mockResolvedValue(
-      JSON.stringify({
-        state: "ready",
-        version: "0.0.3-preview.2",
-        desktopShell: true,
-        singleInstance: true,
-        sidecar: "ready",
-        database: "ready",
-        databaseLocation: "data/foundry.sqlite3",
-        schemaVersion: 3,
-        errorCode: null,
-      }),
-    );
+  it("accepts an empty cache from the native Tauri shell", async () => {
+    const invoke = vi.fn<RuntimeAdapter["invoke"]>().mockResolvedValue(nativeStatus());
 
     await expect(
       loadDesktopRuntimeStatus({ isAvailable: () => true, invoke }),
     ).resolves.toEqual({
       state: "ready",
-      version: "0.0.3-preview.2",
+      version: "0.0.3-preview.3",
       desktopShell: true,
       singleInstance: true,
       sidecar: "ready",
       database: "ready",
       databaseLocation: "data/foundry.sqlite3",
-      schemaVersion: 3,
+      schemaVersion: 4,
       errorCode: null,
+      data: emptyData,
     });
     expect(invoke).toHaveBeenCalledWith("desktop_runtime_status");
   });
 
+  it("accepts a stale cache that remains available after expiry", async () => {
+    const data = {
+      state: "stale",
+      hasCachedData: true,
+      observedAt: "2026-09-09T08:00:00Z",
+      expiresAt: "2026-09-09T08:05:00Z",
+      ageSeconds: 7_200,
+      lastSyncStatus: "completed",
+      errorCode: null,
+    };
+    const invoke = vi.fn<RuntimeAdapter["invoke"]>().mockResolvedValue(nativeStatus({ data }));
+
+    await expect(
+      loadDesktopRuntimeStatus({ isAvailable: () => true, invoke }),
+    ).resolves.toMatchObject({ state: "ready", data });
+  });
+
+  it("accepts offline state while retaining verified cache metadata", async () => {
+    const data = {
+      state: "offline",
+      hasCachedData: true,
+      observedAt: "2026-09-09T08:00:00Z",
+      expiresAt: "2026-09-09T08:05:00Z",
+      ageSeconds: 7_200,
+      lastSyncStatus: "failed",
+      errorCode: "network-unavailable",
+    };
+    const invoke = vi.fn<RuntimeAdapter["invoke"]>().mockResolvedValue(nativeStatus({ data }));
+
+    await expect(
+      loadDesktopRuntimeStatus({ isAvailable: () => true, invoke }),
+    ).resolves.toMatchObject({ state: "ready", data });
+  });
+
   it("accepts the bounded native startup state", async () => {
     const invoke = vi.fn<RuntimeAdapter["invoke"]>().mockResolvedValue(
-      JSON.stringify({
-        state: "ready",
-        version: "0.0.3-preview.2",
-        desktopShell: true,
-        singleInstance: true,
+      nativeStatus({
         sidecar: "starting",
         database: "starting",
-        databaseLocation: "data/foundry.sqlite3",
         schemaVersion: null,
-        errorCode: null,
+        data: { ...emptyData, state: "loading" },
       }),
     );
 
     await expect(
       loadDesktopRuntimeStatus({ isAvailable: () => true, invoke }),
-    ).resolves.toMatchObject({ state: "ready", sidecar: "starting" });
+    ).resolves.toMatchObject({ state: "ready", sidecar: "starting", data: { state: "loading" } });
   });
 
   it("accepts a sanitized native failure without exposing local paths", async () => {
     const invoke = vi.fn<RuntimeAdapter["invoke"]>().mockResolvedValue(
-      JSON.stringify({
-        state: "ready",
-        version: "0.0.3-preview.2",
-        desktopShell: true,
-        singleInstance: true,
+      nativeStatus({
         sidecar: "error",
         database: "error",
-        databaseLocation: "data/foundry.sqlite3",
         schemaVersion: null,
         errorCode: "program-storage-unavailable",
+        data: {
+          ...emptyData,
+          state: "error",
+          errorCode: "program-storage-unavailable",
+        },
       }),
     );
 
@@ -107,17 +151,17 @@ describe("desktop runtime status", () => {
 
   it("rejects inconsistent component states", async () => {
     const invoke = vi.fn<RuntimeAdapter["invoke"]>().mockResolvedValue(
-      JSON.stringify({
-        state: "ready",
-        version: "0.0.3-preview.2",
-        desktopShell: true,
-        singleInstance: true,
-        sidecar: "ready",
-        database: "starting",
-        databaseLocation: "data/foundry.sqlite3",
-        schemaVersion: 3,
-        errorCode: null,
-      }),
+      nativeStatus({ database: "starting" }),
+    );
+
+    await expect(
+      loadDesktopRuntimeStatus({ isAvailable: () => true, invoke }),
+    ).resolves.toEqual({ state: "unavailable" });
+  });
+
+  it("rejects a fresh state without cache metadata", async () => {
+    const invoke = vi.fn<RuntimeAdapter["invoke"]>().mockResolvedValue(
+      nativeStatus({ data: { ...emptyData, state: "fresh" } }),
     );
 
     await expect(

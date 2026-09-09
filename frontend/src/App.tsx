@@ -44,7 +44,12 @@ import {
   productionStages,
   type OverviewScopeId,
 } from "./demo";
-import { initialRuntimeStatus, loadDesktopRuntimeStatus } from "./runtime";
+import {
+  initialRuntimeStatus,
+  loadDesktopRuntimeStatus,
+  type DesktopRuntimeStatus,
+  type LocalDataState,
+} from "./runtime";
 
 type Locale = "de" | "en";
 type ModuleId = "overview" | keyof typeof modulePreview;
@@ -76,7 +81,7 @@ const copy = {
     search: "Foundry durchsuchen …",
     searchHint: "Module direkt öffnen",
     noResults: "Kein Modul gefunden",
-    syncFresh: "Datenstand: vor 6 Min.",
+    syncFresh: "Vorschau: vor 6 Min.",
     syncNow: "Jetzt aktuell",
     refresh: "Datenstand simuliert aktualisieren",
     notices: "Hinweise anzeigen",
@@ -106,6 +111,51 @@ const copy = {
         detail: "Statusabfrage nicht möglich",
       },
     },
+    runtimeErrors: {
+      storage: "Programmordner ist nicht beschreibbar",
+      database: "Datenbank konnte nicht sicher geöffnet werden",
+      sidecar: "Lokaler Dienst wurde unerwartet beendet",
+      fallback: "Sidecar oder Programmordner nicht verfügbar",
+    },
+    dataStatus: {
+      loading: {
+        title: "Lokaler Datenstand wird geladen",
+        detail: "Die Datenbank wird geprüft, bevor Inhalte angezeigt werden.",
+        noDataDetail: "Die Datenbank wird geprüft, bevor Inhalte angezeigt werden.",
+      },
+      refreshing: {
+        title: "Cache sichtbar · Aktualisierung läuft",
+        detail: "Der letzte geprüfte Stand bleibt während der Aktualisierung nutzbar.",
+        noDataDetail: "Die erste Aktualisierung läuft.",
+      },
+      empty: {
+        title: "Noch keine lokalen Daten",
+        detail: "Nach der EVE-Anmeldung erscheint hier der erste geprüfte Datenstand.",
+        noDataDetail: "Nach der EVE-Anmeldung erscheint hier der erste geprüfte Datenstand.",
+      },
+      fresh: {
+        title: "Lokaler Datenstand aktuell",
+        detail: "Die Oberfläche verwendet den letzten vollständig geprüften Cache.",
+        noDataDetail: "Noch kein vollständiger Cache vorhanden.",
+      },
+      stale: {
+        title: "Veralteter Cache sichtbar",
+        detail: "Die bekannten Daten bleiben verfügbar und sind eindeutig als veraltet markiert.",
+        noDataDetail: "Es ist noch kein verwendbarer Cache vorhanden.",
+      },
+      offline: {
+        title: "Offline · Cache bleibt verfügbar",
+        detail: "Die Verbindung fehlt; der letzte geprüfte Stand wird nicht gelöscht.",
+        noDataDetail: "Die Verbindung fehlt und es ist noch kein lokaler Stand vorhanden.",
+      },
+      error: {
+        title: "Synchronisierung gestört",
+        detail: "Der letzte geprüfte Cache bleibt sichtbar; der Fehlerstatus wird getrennt geführt.",
+        noDataDetail: "Die Synchronisierung ist fehlgeschlagen und es gibt noch keinen Cache.",
+      },
+    },
+    dataAge: "Datenalter",
+    noDataAge: "noch kein Datenstand",
     scope: {
       label: "Übersichtsbereich",
       select: "Ansicht wählen",
@@ -205,7 +255,7 @@ const copy = {
     },
     planned: "Geplant",
     previewOnly: "Noch ohne Live-Funktion",
-    footerVersion: "v0.0.3-preview.2",
+    footerVersion: "v0.0.3-preview.3",
   },
   en: {
     nav: {
@@ -222,7 +272,7 @@ const copy = {
     search: "Search the Foundry …",
     searchHint: "Open modules directly",
     noResults: "No module found",
-    syncFresh: "Data age: 6 min",
+    syncFresh: "Preview: 6 min ago",
     syncNow: "Up to date",
     refresh: "Simulate data refresh",
     notices: "Show notices",
@@ -252,6 +302,51 @@ const copy = {
         detail: "Status request failed",
       },
     },
+    runtimeErrors: {
+      storage: "Program folder is not writable",
+      database: "Database could not be opened safely",
+      sidecar: "Local service stopped unexpectedly",
+      fallback: "Sidecar or program folder is unavailable",
+    },
+    dataStatus: {
+      loading: {
+        title: "Loading local data",
+        detail: "The database is verified before any content is shown.",
+        noDataDetail: "The database is verified before any content is shown.",
+      },
+      refreshing: {
+        title: "Cache visible · refresh in progress",
+        detail: "The last verified state remains usable while data is refreshed.",
+        noDataDetail: "The first refresh is in progress.",
+      },
+      empty: {
+        title: "No local data yet",
+        detail: "The first verified data state will appear after EVE sign-in.",
+        noDataDetail: "The first verified data state will appear after EVE sign-in.",
+      },
+      fresh: {
+        title: "Local data is current",
+        detail: "The interface uses the latest fully verified cache.",
+        noDataDetail: "No complete cache is available yet.",
+      },
+      stale: {
+        title: "Stale cache remains visible",
+        detail: "Known data stays available and is clearly marked as stale.",
+        noDataDetail: "No usable cache is available yet.",
+      },
+      offline: {
+        title: "Offline · cache remains available",
+        detail: "The connection is unavailable; the last verified state is not deleted.",
+        noDataDetail: "The connection is unavailable and there is no local state yet.",
+      },
+      error: {
+        title: "Sync unavailable",
+        detail: "The last verified cache remains visible while the error is tracked separately.",
+        noDataDetail: "Synchronization failed and no cache is available yet.",
+      },
+    },
+    dataAge: "Data age",
+    noDataAge: "no data yet",
     scope: {
       label: "Overview scope",
       select: "Choose view",
@@ -351,7 +446,7 @@ const copy = {
     },
     planned: "Planned",
     previewOnly: "No live function yet",
-    footerVersion: "v0.0.3-preview.2",
+    footerVersion: "v0.0.3-preview.3",
   },
 } as const;
 
@@ -395,7 +490,65 @@ function StatusDot({ tone = "good" }: { tone?: "good" | "warn" | "critical" }) {
   return <span className={`status-dot status-dot--${tone}`} aria-hidden="true" />;
 }
 
-export function App() {
+function formatDataAge(seconds: number, locale: Locale): string {
+  if (seconds < 60) return locale === "de" ? "unter 1 Min." : "under 1 min";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return locale === "de" ? `${minutes} Min.` : `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 48) return locale === "de" ? `${hours} Std.` : `${hours} hr`;
+  const days = Math.floor(hours / 24);
+  return locale === "de" ? `${days} Tage` : `${days} days`;
+}
+
+function DataStateNotice({
+  state,
+  hasCachedData,
+  ageSeconds,
+  locale,
+  t,
+}: {
+  state: LocalDataState;
+  hasCachedData: boolean;
+  ageSeconds: number | null;
+  locale: Locale;
+  t: Translation;
+}) {
+  const statusCopy = t.dataStatus[state];
+  const detail = hasCachedData ? statusCopy.detail : statusCopy.noDataDetail;
+  const Icon = state === "fresh"
+    ? CircleCheck
+    : state === "stale"
+      ? Clock3
+      : state === "offline" || state === "error"
+        ? AlertTriangle
+        : state === "loading" || state === "refreshing"
+          ? RefreshCw
+          : Database;
+
+  return (
+    <section className={`data-state data-state--${state}`} role="status" aria-live="polite">
+      <div className="data-state__icon" aria-hidden="true">
+        <Icon className={state === "loading" || state === "refreshing" ? "spin" : ""} size={17} />
+      </div>
+      <div className="data-state__copy">
+        <strong>{statusCopy.title}</strong>
+        <span>{detail}</span>
+      </div>
+      <div className="data-state__age">
+        <Clock3 size={13} aria-hidden="true" />
+        <span>
+          {ageSeconds === null ? t.noDataAge : `${t.dataAge}: ${formatDataAge(ageSeconds, locale)}`}
+        </span>
+      </div>
+    </section>
+  );
+}
+
+export function App({
+  runtimeLoader = loadDesktopRuntimeStatus,
+}: {
+  runtimeLoader?: () => Promise<DesktopRuntimeStatus>;
+}) {
   const [locale, setLocale] = useState<Locale>("de");
   const [activeModule, setActiveModule] = useState<ModuleId>("overview");
   const [query, setQuery] = useState("");
@@ -413,7 +566,7 @@ export function App() {
     let active = true;
     let pollTimer: number | undefined;
     const refreshRuntimeStatus = async () => {
-      const status = await loadDesktopRuntimeStatus();
+      const status = await runtimeLoader();
       if (!active) return;
       setRuntimeStatus(status);
       if (status.state === "ready" && status.sidecar === "starting") {
@@ -425,10 +578,32 @@ export function App() {
       active = false;
       if (pollTimer !== undefined) window.clearTimeout(pollTimer);
     };
-  }, []);
+  }, [runtimeLoader]);
 
   const runtimePresentationState =
     runtimeStatus.state === "ready" ? runtimeStatus.sidecar : runtimeStatus.state;
+  const localData = runtimeStatus.state === "ready" ? runtimeStatus.data : null;
+  const nativeSyncLabel = localData?.ageSeconds === null
+    ? t.noDataAge
+    : localData
+      ? `${t.dataAge}: ${formatDataAge(localData.ageSeconds, locale)}`
+      : null;
+  let runtimeDetail: string = t.runtimeStatus[runtimePresentationState].detail;
+  if (runtimeStatus.state === "ready" && runtimeStatus.sidecar === "error") {
+    switch (runtimeStatus.errorCode) {
+      case "program-storage-unavailable":
+        runtimeDetail = t.runtimeErrors.storage;
+        break;
+      case "database-startup-failed":
+        runtimeDetail = t.runtimeErrors.database;
+        break;
+      case "sidecar-exited":
+        runtimeDetail = t.runtimeErrors.sidecar;
+        break;
+      default:
+        runtimeDetail = t.runtimeErrors.fallback;
+    }
+  }
 
   const searchResults = useMemo(() => {
     const normalized = query.trim().toLocaleLowerCase(locale);
@@ -443,6 +618,7 @@ export function App() {
   };
 
   const simulateRefresh = () => {
+    if (runtimeStatus.state !== "preview") return;
     setSyncing(true);
     window.setTimeout(() => setSyncing(false), 900);
   };
@@ -492,7 +668,7 @@ export function App() {
           </div>
           <div>
             <strong>{t.runtimeStatus[runtimePresentationState].title}</strong>
-            <span>{t.runtimeStatus[runtimePresentationState].detail}</span>
+            <span>{runtimeDetail}</span>
           </div>
         </div>
 
@@ -540,9 +716,18 @@ export function App() {
             )}
           </div>
 
-          <button className="sync-status" type="button" onClick={simulateRefresh} aria-label={t.refresh}>
-            <RefreshCw className={syncing ? "spin" : ""} size={15} />
-            <span>{syncing ? t.syncNow : t.syncFresh}</span>
+          <button
+            className={`sync-status ${localData ? `sync-status--${localData.state}` : ""}`}
+            type="button"
+            onClick={simulateRefresh}
+            aria-label={t.refresh}
+            disabled={runtimeStatus.state !== "preview"}
+          >
+            <RefreshCw
+              className={syncing || localData?.state === "loading" || localData?.state === "refreshing" ? "spin" : ""}
+              size={15}
+            />
+            <span>{nativeSyncLabel ?? (syncing ? t.syncNow : t.syncFresh)}</span>
           </button>
 
           <div className="language-switch" aria-label="Language">
@@ -572,6 +757,16 @@ export function App() {
           <span>{t.synthetic}</span>
           <span className="preview-strip__meta">synthetic: {String(demoMetadata.synthetic)}</span>
         </div>
+
+        {localData && (
+          <DataStateNotice
+            state={localData.state}
+            hasCachedData={localData.hasCachedData}
+            ageSeconds={localData.ageSeconds}
+            locale={locale}
+            t={t}
+          />
+        )}
 
         {activeModule === "overview" ? (
           <Overview

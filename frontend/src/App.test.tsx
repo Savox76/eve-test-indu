@@ -2,6 +2,30 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { App } from "./App";
+import type { DesktopRuntimeStatus } from "./runtime";
+
+const nativeRuntime = (overrides: Partial<Extract<DesktopRuntimeStatus, { state: "ready" }>> = {}) =>
+  Promise.resolve<DesktopRuntimeStatus>({
+    state: "ready",
+    version: "0.0.3-preview.3",
+    desktopShell: true,
+    singleInstance: true,
+    sidecar: "ready",
+    database: "ready",
+    databaseLocation: "data/foundry.sqlite3",
+    schemaVersion: 4,
+    errorCode: null,
+    data: {
+      state: "empty",
+      hasCachedData: false,
+      observedAt: null,
+      expiresAt: null,
+      ageSeconds: null,
+      lastSyncStatus: "never",
+      errorCode: null,
+    },
+    ...overrides,
+  });
 
 describe("New Eden Foundry design preview", () => {
   it("marks every displayed value as synthetic preview data", () => {
@@ -38,7 +62,7 @@ describe("New Eden Foundry design preview", () => {
   it("credits Savoxmedia as the app creator next to the version", () => {
     render(<App />);
 
-    expect(screen.getByText("v0.0.3-preview.2")).toBeInTheDocument();
+    expect(screen.getByText("v0.0.3-preview.3")).toBeInTheDocument();
     expect(screen.getByText("Savoxmedia")).toBeInTheDocument();
     expect(screen.getByText("Erstellt von", { exact: false })).toBeInTheDocument();
     expect(screen.queryByText("Lokaler Betreiber")).not.toBeInTheDocument();
@@ -63,5 +87,52 @@ describe("New Eden Foundry design preview", () => {
 
     fireEvent.change(scopeSelector, { target: { value: "all" } });
     expect(screen.getByText("18.42 B")).toBeInTheDocument();
+  });
+
+  it("keeps cached content visible and labels an offline start", async () => {
+    render(
+      <App
+        runtimeLoader={() => nativeRuntime({
+          data: {
+            state: "offline",
+            hasCachedData: true,
+            observedAt: "2026-09-09T07:00:00Z",
+            expiresAt: "2026-09-09T07:05:00Z",
+            ageSeconds: 7_200,
+            lastSyncStatus: "failed",
+            errorCode: "network-unavailable",
+          },
+        })}
+      />,
+    );
+
+    expect(await screen.findByText("Offline · Cache bleibt verfügbar")).toBeInTheDocument();
+    expect(screen.getAllByText("Datenalter: 2 Std.")).toHaveLength(2);
+    expect(screen.getByText("18.42 B")).toBeInTheDocument();
+  });
+
+  it("explains a program-folder startup failure without showing an absolute path", async () => {
+    render(
+      <App
+        runtimeLoader={() => nativeRuntime({
+          sidecar: "error",
+          database: "error",
+          schemaVersion: null,
+          errorCode: "program-storage-unavailable",
+          data: {
+            state: "error",
+            hasCachedData: false,
+            observedAt: null,
+            expiresAt: null,
+            ageSeconds: null,
+            lastSyncStatus: "never",
+            errorCode: "program-storage-unavailable",
+          },
+        })}
+      />,
+    );
+
+    expect(await screen.findByText("Programmordner ist nicht beschreibbar")).toBeInTheDocument();
+    expect(screen.queryByText(/Users\\|AppData|tmp/i)).not.toBeInTheDocument();
   });
 });

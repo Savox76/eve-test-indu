@@ -56,6 +56,7 @@ REQUIRED_BACKEND_FILES = tuple(
         "backend/new_eden_foundry_backend/recovery.py",
         "backend/new_eden_foundry_backend/sidecar.py",
         "backend/new_eden_foundry_backend/storage.py",
+        "backend/new_eden_foundry_backend/startup_state.py",
         "backend/new_eden_foundry_backend/version.py",
         "backend/requirements-build.txt",
         "backend/requirements-runtime.txt",
@@ -65,6 +66,7 @@ REQUIRED_BACKEND_FILES = tuple(
         "backend/tests/test_identity.py",
         "backend/tests/test_sidecar.py",
         "backend/tests/test_storage.py",
+        "backend/tests/test_startup_state.py",
         "scripts/build_sidecar.py",
         "scripts/prepare_release_files.ps1",
         "scripts/smoke_sidecar.py",
@@ -82,6 +84,7 @@ REQUIRED_SQLITE_MARKERS = (
     "CREATE TABLE characters",
     "CREATE TABLE character_scopes",
     "CREATE TABLE migration_backups",
+    "ADD COLUMN expires_at",
 )
 
 REQUIRED_RECOVERY_MARKERS = (

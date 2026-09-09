@@ -77,7 +77,7 @@ def expect_unauthorized(
     raise RuntimeError("An unauthenticated sidecar request was accepted.")
 
 
-def seed_version_two_database(program_directory: Path) -> Path:
+def seed_previous_release_database(program_directory: Path) -> Path:
     data_directory = program_directory / "data"
     data_directory.mkdir()
     database_path = data_directory / "foundry.sqlite3"
@@ -98,13 +98,62 @@ def seed_version_two_database(program_directory: Path) -> Path:
                     strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
                 )
             );
+            CREATE TABLE account_groups (
+                id INTEGER PRIMARY KEY,
+                label TEXT NOT NULL UNIQUE,
+                sort_order INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE TABLE characters (
+                character_id INTEGER PRIMARY KEY,
+                account_group_id INTEGER REFERENCES account_groups(id) ON DELETE SET NULL,
+                name TEXT NOT NULL,
+                enabled INTEGER NOT NULL DEFAULT 1,
+                connected_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE TABLE character_scopes (
+                character_id INTEGER NOT NULL REFERENCES characters(character_id) ON DELETE CASCADE,
+                scope TEXT NOT NULL,
+                PRIMARY KEY (character_id, scope)
+            );
+            CREATE TABLE sync_runs (
+                id INTEGER PRIMARY KEY,
+                source TEXT NOT NULL,
+                status TEXT NOT NULL,
+                started_at TEXT NOT NULL,
+                completed_at TEXT,
+                data_timestamp TEXT,
+                error_code TEXT,
+                character_id INTEGER REFERENCES characters(character_id) ON DELETE CASCADE
+            );
+            CREATE TABLE cached_snapshots (
+                id INTEGER PRIMARY KEY,
+                sync_run_id INTEGER NOT NULL REFERENCES sync_runs(id) ON DELETE CASCADE,
+                resource TEXT NOT NULL,
+                payload_json TEXT NOT NULL,
+                observed_at TEXT NOT NULL,
+                UNIQUE (sync_run_id, resource)
+            );
+            CREATE TABLE migration_backups (
+                id INTEGER PRIMARY KEY,
+                filename TEXT NOT NULL UNIQUE,
+                source_schema_version INTEGER NOT NULL,
+                target_schema_version INTEGER NOT NULL,
+                sha256 TEXT NOT NULL,
+                size_bytes INTEGER NOT NULL,
+                created_at TEXT NOT NULL
+            );
             INSERT INTO schema_migrations (version, name)
                 VALUES (1, 'initial_local_core');
             INSERT INTO schema_migrations (version, name)
                 VALUES (2, 'multi_character_identity');
+            INSERT INTO schema_migrations (version, name)
+                VALUES (3, 'migration_backup_history');
             INSERT INTO app_metadata (key, value)
                 VALUES ('smoke-marker', 'portable-smoke-preserved');
-            PRAGMA user_version = 2;
+            PRAGMA user_version = 3;
             """
         )
         connection.commit()
@@ -118,7 +167,7 @@ def main() -> int:
 
     with tempfile.TemporaryDirectory(prefix="new-eden-foundry-sidecar-") as temporary_directory:
         program_directory = Path(temporary_directory).resolve()
-        database_path = seed_version_two_database(program_directory)
+        database_path = seed_previous_release_database(program_directory)
         process = subprocess.Popen(
             [str(executable)],
             stdin=subprocess.PIPE,
@@ -159,11 +208,14 @@ def main() -> int:
             database = health.get("database")
             if not isinstance(database, dict) or database.get("location") != "data/foundry.sqlite3":
                 raise RuntimeError("The sidecar reported an unexpected database location.")
-            if database.get("schemaVersion") != 3 or database.get("integrity") != "ok":
+            if database.get("schemaVersion") != 4 or database.get("integrity") != "ok":
                 raise RuntimeError("The sidecar database health is invalid.")
+            data_state = health.get("data")
+            if not isinstance(data_state, dict) or data_state.get("state") != "empty":
+                raise RuntimeError("The sidecar did not report the empty cache-first state.")
             backup_name = database.get("lastMigrationBackup")
             if not isinstance(backup_name, str) or not backup_name.startswith(
-                "foundry-schema-v0002-to-v0003-"
+                "foundry-schema-v0003-to-v0004-"
             ):
                 raise RuntimeError("The packaged migration did not report its backup.")
 
@@ -172,8 +224,8 @@ def main() -> int:
             with contextlib.closing(sqlite3.connect(database_path)) as connection:
                 if connection.execute("PRAGMA quick_check").fetchone()[0] != "ok":
                     raise RuntimeError("The created SQLite database failed quick_check.")
-                if connection.execute("PRAGMA user_version").fetchone()[0] != 3:
-                    raise RuntimeError("The packaged sidecar did not migrate to schema 3.")
+                if connection.execute("PRAGMA user_version").fetchone()[0] != 4:
+                    raise RuntimeError("The packaged sidecar did not migrate to schema 4.")
                 marker = connection.execute(
                     "SELECT value FROM app_metadata WHERE key = 'smoke-marker'"
                 ).fetchone()[0]
@@ -192,8 +244,8 @@ def main() -> int:
             with contextlib.closing(sqlite3.connect(backup_path)) as backup_connection:
                 if backup_connection.execute("PRAGMA quick_check").fetchone()[0] != "ok":
                     raise RuntimeError("The packaged migration backup failed quick_check.")
-                if backup_connection.execute("PRAGMA user_version").fetchone()[0] != 2:
-                    raise RuntimeError("The packaged backup does not contain schema 2.")
+                if backup_connection.execute("PRAGMA user_version").fetchone()[0] != 3:
+                    raise RuntimeError("The packaged backup does not contain schema 3.")
                 backup_marker = backup_connection.execute(
                     "SELECT value FROM app_metadata WHERE key = 'smoke-marker'"
                 ).fetchone()[0]

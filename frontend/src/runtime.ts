@@ -1,5 +1,26 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 
+export type LocalDataState =
+  | "loading"
+  | "refreshing"
+  | "empty"
+  | "fresh"
+  | "stale"
+  | "offline"
+  | "error";
+
+export type LastSyncStatus = "never" | "running" | "completed" | "failed" | "cancelled";
+
+export interface LocalDataStatus {
+  state: LocalDataState;
+  hasCachedData: boolean;
+  observedAt: string | null;
+  expiresAt: string | null;
+  ageSeconds: number | null;
+  lastSyncStatus: LastSyncStatus;
+  errorCode: string | null;
+}
+
 export type DesktopRuntimeStatus =
   | { state: "checking" }
   | { state: "preview" }
@@ -14,6 +35,7 @@ export type DesktopRuntimeStatus =
       databaseLocation: "data/foundry.sqlite3";
       schemaVersion: number | null;
       errorCode: string | null;
+      data: LocalDataStatus;
     };
 
 export interface RuntimeAdapter {
@@ -26,34 +48,95 @@ const tauriAdapter: RuntimeAdapter = {
   invoke: (command) => invoke<string>(command),
 };
 
+const localDataStates: readonly LocalDataState[] = [
+  "loading",
+  "refreshing",
+  "empty",
+  "fresh",
+  "stale",
+  "offline",
+  "error",
+];
+const lastSyncStatuses: readonly LastSyncStatus[] = [
+  "never",
+  "running",
+  "completed",
+  "failed",
+  "cancelled",
+];
+
 export const initialRuntimeStatus: DesktopRuntimeStatus = { state: "checking" };
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isNullableText(value: unknown): value is string | null {
+  return value === null || (typeof value === "string" && value.trim().length > 0);
+}
+
+function parseLocalDataStatus(candidate: unknown): LocalDataStatus {
+  if (
+    !isRecord(candidate) ||
+    typeof candidate.state !== "string" ||
+    !localDataStates.includes(candidate.state as LocalDataState) ||
+    typeof candidate.hasCachedData !== "boolean" ||
+    !isNullableText(candidate.observedAt) ||
+    !isNullableText(candidate.expiresAt) ||
+    (candidate.ageSeconds !== null &&
+      (!Number.isInteger(candidate.ageSeconds) || Number(candidate.ageSeconds) < 0)) ||
+    typeof candidate.lastSyncStatus !== "string" ||
+    !lastSyncStatuses.includes(candidate.lastSyncStatus as LastSyncStatus) ||
+    !isNullableText(candidate.errorCode)
+  ) {
+    throw new Error("The native runtime returned invalid local-data metadata.");
+  }
+
+  const data = candidate as unknown as LocalDataStatus;
+  const cacheFieldsAreValid = data.hasCachedData
+    ? data.observedAt !== null
+    : data.observedAt === null && data.expiresAt === null && data.ageSeconds === null;
+  const stateCombinationIsValid = (() => {
+    switch (data.state) {
+      case "loading":
+      case "empty":
+        return !data.hasCachedData && data.errorCode === null;
+      case "refreshing":
+      case "stale":
+        return data.hasCachedData && data.ageSeconds !== null && data.errorCode === null;
+      case "fresh":
+        return (
+          data.hasCachedData &&
+          data.ageSeconds !== null &&
+          data.expiresAt !== null &&
+          data.errorCode === null
+        );
+      case "offline":
+      case "error":
+        return data.errorCode !== null;
+    }
+  })();
+  if (!cacheFieldsAreValid || !stateCombinationIsValid) {
+    throw new Error("The native runtime returned inconsistent local-data metadata.");
+  }
+  return data;
+}
 
 function parseReadyStatus(rawStatus: string): DesktopRuntimeStatus {
   const candidate: unknown = JSON.parse(rawStatus);
   if (
-    typeof candidate !== "object" ||
-    candidate === null ||
-    !("state" in candidate) ||
+    !isRecord(candidate) ||
     candidate.state !== "ready" ||
-    !("version" in candidate) ||
     typeof candidate.version !== "string" ||
     candidate.version.trim().length === 0 ||
-    !("desktopShell" in candidate) ||
     candidate.desktopShell !== true ||
-    !("singleInstance" in candidate) ||
     candidate.singleInstance !== true ||
-    !("sidecar" in candidate) ||
     !["starting", "ready", "error"].includes(String(candidate.sidecar)) ||
-    !("database" in candidate) ||
     !["starting", "ready", "error"].includes(String(candidate.database)) ||
-    !("databaseLocation" in candidate) ||
     candidate.databaseLocation !== "data/foundry.sqlite3" ||
-    !("schemaVersion" in candidate) ||
     (candidate.schemaVersion !== null &&
       (!Number.isInteger(candidate.schemaVersion) || Number(candidate.schemaVersion) < 1)) ||
-    !("errorCode" in candidate) ||
-    (candidate.errorCode !== null &&
-      (typeof candidate.errorCode !== "string" || candidate.errorCode.trim().length === 0))
+    !isNullableText(candidate.errorCode)
   ) {
     throw new Error("The native runtime returned an invalid status payload.");
   }
@@ -62,11 +145,13 @@ function parseReadyStatus(rawStatus: string): DesktopRuntimeStatus {
   const database = candidate.database as "starting" | "ready" | "error";
   const schemaVersion = candidate.schemaVersion as number | null;
   const errorCode = candidate.errorCode as string | null;
+  const data = parseLocalDataStatus(candidate.data);
   const hasValidStateCombination =
     (sidecar === "starting" &&
       database === "starting" &&
       schemaVersion === null &&
-      errorCode === null) ||
+      errorCode === null &&
+      data.state === "loading") ||
     (sidecar === "ready" &&
       database === "ready" &&
       schemaVersion !== null &&
@@ -74,7 +159,8 @@ function parseReadyStatus(rawStatus: string): DesktopRuntimeStatus {
     (sidecar === "error" &&
       database === "error" &&
       schemaVersion === null &&
-      errorCode !== null);
+      errorCode !== null &&
+      data.state === "error");
   if (!hasValidStateCombination) {
     throw new Error("The native runtime returned an inconsistent status payload.");
   }
@@ -89,6 +175,7 @@ function parseReadyStatus(rawStatus: string): DesktopRuntimeStatus {
     databaseLocation: "data/foundry.sqlite3",
     schemaVersion,
     errorCode,
+    data,
   };
 }
 

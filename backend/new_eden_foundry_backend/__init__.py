@@ -28,6 +28,7 @@ from .storage import (
     prepare_program_storage,
     resolve_program_storage,
 )
+from .startup_state import StartupDataState, inspect_startup_data_state
 from .version import project_version
 
 __all__ = [
@@ -41,9 +42,11 @@ __all__ = [
     "MigrationBackup",
     "ProgramStorage",
     "ProgramStorageError",
+    "StartupDataState",
     "create_account_group",
     "create_migration_backup",
     "initialize_database",
+    "inspect_startup_data_state",
     "list_account_groups",
     "list_characters",
     "prepare_program_storage",

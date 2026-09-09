@@ -24,6 +24,40 @@ Alle bemerkenswerten Änderungen an New Eden Foundry werden hier festgehalten. D
 
 - Keine.
 
+## 0.0.3-preview.3 – 9. September 2026
+
+### Neu hinzugefügt
+
+- Cache-first-Startzustände für Laden, Aktualisieren, leer, aktuell, veraltet, offline und fehlerhaft.
+- Zweisprachiges Statusband mit echtem lokalen Datenalter und verständlicher Zustandsbeschreibung.
+- Schema-Version 4 mit optionalem Ablaufzeitpunkt je Cache-Snapshot.
+- Tests für Cache-Ablauf, Offlinebetrieb, Folgfehler, laufende Aktualisierung und ungültige Metadaten.
+
+### Geändert
+
+- Sidecar und Tauri-Schale übertragen und prüfen den aus SQLite abgeleiteten Cachezustand.
+- Die native App simuliert keine erfolgreiche Aktualisierung mehr, solange ESI noch nicht angeschlossen ist.
+- Programmordner-, Datenbank- und Sidecarfehler werden verständlich und ohne absolute lokale Pfade erklärt.
+- Die sichtbare Versionsnummer wurde auf `v0.0.3-preview.3` aktualisiert.
+
+### Behobene Fehler
+
+- Ein fehlgeschlagener Folgelauf lässt einen vorhandenen vollständigen Cache nicht mehr leer erscheinen.
+- Interne Synchronisierungsfehler werden vor der UI-Ausgabe auf stabile Codes reduziert.
+
+### Bekannte Einschränkungen
+
+- Die Mehrcharakter-Oberfläche verwendet weiterhin synthetische Werte und liest ihre Fachinhalte noch nicht aus SQLite.
+- EVE SSO, ESI, SDE, echte Synchronisierung und Fachberechnungen fehlen noch.
+- Installer und portable EXE sind noch nicht code-signiert.
+- Das manuelle Windows-Laufzeitgate und die Schutzregeln für `main` sind noch offen.
+
+### Update und Datenbankmigration
+
+- Schema 3 wird nach automatischer Sicherung auf Schema 4 migriert und um `expires_at` für Cache-Snapshots ergänzt.
+- Bestehende Snapshots ohne bestätigten Ablaufzeitpunkt bleiben erhalten und gelten vorsichtshalber als veraltet.
+- Eine frische Installation legt direkt Schema-Version 4 an.
+
 ## 0.0.3-preview.2 – 9. September 2026
 
 ### Neu hinzugefügt
