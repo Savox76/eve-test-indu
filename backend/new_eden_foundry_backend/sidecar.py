@@ -16,7 +16,9 @@ import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
+from .appearance import appearance_payload, read_font_scale, set_font_scale
 from .database import DatabaseStatus, connect_database, initialize_database
+from .identity import list_characters, upsert_character
 from .storage import ProgramStorage, ProgramStorageError, prepare_program_storage
 from .startup_state import StartupDataState, inspect_startup_data_state
 from .sso_registration import (
@@ -24,6 +26,7 @@ from .sso_registration import (
     load_bundled_sso_registration_profile,
 )
 from .sso_pkce import SsoPkceError, SsoPkceManager
+from .sso_tokens import VerifiedCharacter
 from .updater import (
     UpdateChannel,
     UpdateManifestError,
@@ -108,6 +111,28 @@ def is_authorized(authorization_header: str | None, session_token: str) -> bool:
     return secrets.compare_digest(authorization_header, expected)
 
 
+def store_verified_character(database_path: Path, identity: VerifiedCharacter) -> None:
+    """Persist only an identity that already passed EVE JWT validation."""
+
+    with closing(connect_database(database_path)) as connection:
+        existing = next(
+            (
+                character
+                for character in list_characters(connection)
+                if character.character_id == identity.character_id
+            ),
+            None,
+        )
+        upsert_character(
+            connection,
+            character_id=identity.character_id,
+            name=identity.name,
+            account_group_id=(existing.account_group_id if existing is not None else None),
+            scopes=identity.scopes,
+            enabled=True,
+        )
+
+
 def create_application(
     startup: StartupConfiguration,
     storage: ProgramStorage,
@@ -138,6 +163,8 @@ def create_application(
     async def health() -> dict[str, object]:
         with closing(connect_database(storage.database_path)) as connection:
             selected_channel = read_update_channel(connection)
+            font_scale = read_font_scale(connection)
+            character_count = len(list_characters(connection))
         return {
             "service": "new-eden-foundry-core",
             "state": "ready",
@@ -156,6 +183,8 @@ def create_application(
                 "manifestState": manifest_state,
                 "publicDistribution": False,
             },
+            "appearance": appearance_payload(font_scale),
+            "characters": {"connected": character_count},
             "ssoRegistration": sso_registration.as_status_payload(),
         }
 
@@ -198,6 +227,41 @@ def create_application(
                 "publicDistribution": False,
             }
         )
+
+    @app.get("/settings/appearance")
+    async def get_appearance_settings() -> dict[str, str]:
+        with closing(connect_database(storage.database_path)) as connection:
+            return appearance_payload(read_font_scale(connection))
+
+    @app.put("/settings/appearance")
+    async def put_appearance_settings(request: Request) -> JSONResponse:
+        try:
+            payload = await request.json()
+        except Exception:
+            return JSONResponse(
+                status_code=422,
+                content={"detail": "The appearance request is invalid."},
+            )
+        if not isinstance(payload, dict) or set(payload) != {"fontScale"}:
+            return JSONResponse(
+                status_code=422,
+                content={"detail": "The appearance request is invalid."},
+            )
+        try:
+            with closing(connect_database(storage.database_path)) as connection:
+                font_scale = set_font_scale(connection, payload["fontScale"])
+        except (TypeError, ValueError):
+            return JSONResponse(
+                status_code=422,
+                content={"detail": "The selected font scale is unsupported."},
+            )
+        return JSONResponse(content=appearance_payload(font_scale))
+
+    @app.get("/characters")
+    async def get_characters() -> dict[str, object]:
+        with closing(connect_database(storage.database_path)) as connection:
+            characters = list_characters(connection)
+        return {"characters": [character.as_api_payload() for character in characters]}
 
     @app.get("/sso/login")
     async def get_sso_login() -> dict[str, object]:
@@ -272,6 +336,7 @@ def run_sidecar(input_stream: TextIO = sys.stdin, output_stream: TextIO = sys.st
         with closing(connect_database(storage.database_path)) as connection:
             data_state = inspect_startup_data_state(connection)
             update_channel = read_update_channel(connection)
+            font_scale = read_font_scale(connection)
     except Exception:
         _emit_event(output_stream, {"event": "error", "code": "database-startup-failed"})
         return 4
@@ -295,7 +360,13 @@ def run_sidecar(input_stream: TextIO = sys.stdin, output_stream: TextIO = sys.st
 
     sso_registration = load_bundled_sso_registration_profile()
     try:
-        sso_login = SsoPkceManager(sso_registration)
+        sso_login = SsoPkceManager(
+            sso_registration,
+            identity_handler=lambda identity: store_verified_character(
+                storage.database_path,
+                identity,
+            ),
+        )
     except SsoPkceError:
         listener.close()
         _emit_event(output_stream, {"event": "error", "code": "sso-not-registered"})
@@ -350,6 +421,7 @@ def run_sidecar(input_stream: TextIO = sys.stdin, output_stream: TextIO = sys.st
                 "manifestState": manifest_state,
                 "publicDistribution": False,
             },
+            "appearance": appearance_payload(font_scale),
             "ssoRegistration": sso_registration.as_status_payload(),
         },
     )

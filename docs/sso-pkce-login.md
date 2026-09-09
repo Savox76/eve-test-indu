@@ -1,15 +1,16 @@
 # EVE-SSO-PKCE-Login
 
 **Stand:** 9. September 2026  
-**Umsetzung:** Arbeitspaket 12
+**Umsetzung:** Arbeitspakete 12 und 13
 
 ## Nutzerablauf
 
 1. In der Desktop-App werden die Berechtigungspakete für genau einen Charakter ausgewählt. `industry-core` bleibt das notwendige Basispaket; Markt, PI, Projekte und private Strukturen sind optional.
 2. „Charakter verbinden“ erzeugt einen neuen Anmeldeversuch und öffnet die EVE-Anmeldung im Systembrowser. Zugangsdaten werden ausschließlich bei EVE eingegeben.
 3. Der lokale Sidecar wartet höchstens drei Minuten am registrierten Callback `http://127.0.0.1:17891/oauth/callback`.
-4. Ein korrekter Rückruf bestätigt die Autorisierung in App und Browser. Abbruch, EVE-Ablehnung, ungültiger Rückruf und Timeout werden als getrennte Zustände angezeigt.
-5. Weitere Charaktere können anschließend einzeln mit eigenen Berechtigungspaketen autorisiert werden. Die gemeinsame Übersicht und jede Einzelansicht bleiben das Zielmodell.
+4. Ein korrekter Rückruf startet den PKCE-Codeaustausch. Die App zeigt während der Signatur- und Claim-Prüfung einen eigenen Zustand.
+5. Erst eine vollständig geprüfte Identität wird in SQLite gespeichert und in „Verbundene EVE-Charaktere“ angezeigt. Abbruch, EVE-Ablehnung, Token-/JWT-Fehler und Timeout bleiben getrennte Zustände.
+6. Weitere Charaktere können anschließend einzeln mit eigenen Berechtigungspaketen autorisiert werden.
 
 ## Sicherheitsgrenzen
 
@@ -18,7 +19,7 @@
 - Der Callback lauscht ausschließlich auf IPv4-Loopback und nur am festen Port `17891`. Der `Host`-Header, Pfad, einzelne `state`-Wert und einzelne Autorisierungscode werden streng geprüft.
 - Die interne Status-, Start- und Abbruch-API bleibt durch das kurzlebige Sidecar-Sitzungstoken geschützt. Der Browser-Callback ist der einzige absichtlich öffentliche lokale Endpunkt.
 - Die Tauri-Schale akzeptiert zum Öffnen nur `https://login.eveonline.com/v2/oauth/authorize` mit vollständigem erwarteten PKCE-Parametersatz. Andere Hosts, Pfade, Protokolle, Fragmente oder doppelte Parameter werden verworfen.
-- Autorisierungscode, `state` und Verifier erscheinen weder in UI-Antworten noch Logs. Nach Erfolg, Fehler, Timeout, Abbruch oder App-Ende werden die temporären Werte gelöscht und der Listener geschlossen.
+- Autorisierungscode, Tokens, `state` und Verifier erscheinen weder in UI-Antworten noch Logs. Nach Verwendung, Fehler, Timeout, Abbruch oder App-Ende werden temporäre Werte gelöscht und der Listener geschlossen.
 - Das Programm enthält und verwendet kein Client Secret.
 
 ## Zustände
@@ -27,14 +28,15 @@
 |---|---|---|
 | `idle` | Kein Versuch aktiv | Charakteranmeldung starten |
 | `waiting` | Systembrowser geöffnet, Callback ausstehend | Abschließen oder abbrechen |
-| `authorization-received` | `state` und einmaliger Code wurden gültig empfangen | Weiteren Charakter autorisieren oder auf Paket 13 warten |
+| `exchanging` | Rückruf gültig; Codeaustausch, Signatur und Claims werden geprüft | Prüfung abwarten oder abbrechen |
+| `connected` | Geprüfte Charakteridentität wurde lokal gespeichert | Charakter sehen oder weiteren verbinden |
 | `cancelled` | Nutzer hat lokal abgebrochen | Erneut starten |
 | `timed-out` | Drei-Minuten-Fenster ist abgelaufen | Erneut starten |
 | `failed` | EVE-Ablehnung oder ungültiger Callback | Scopes prüfen und erneut starten |
 
 ## Bewusste Paketgrenze
 
-Paket 12 beweist den nativen Authorization-Code-mit-PKCE-Weg bis einschließlich des sicher gebundenen Browser-Rückrufs. Der einmalige Code wird noch nicht gegen Tokens getauscht, weil Paket 13 zuerst JWKS, Signatur, Issuer, Audience, Ablauf und Charakterbindung vollständig validiert. Dadurch gelangt kein ungeprüftes Token in die Charakterdatenbank. Paket 14 übernimmt danach Schlüsselbundspeicherung und atomare Refresh-Token-Rotation.
+Paket 13 führt Codeaustausch und vollständige JWT-Prüfung aus und speichert ausschließlich die geprüfte Identität mit Scopes. Paket 14 übernimmt danach Schlüsselbundspeicherung und atomare Refresh-Token-Rotation. Bis dahin werden Access und Refresh Token nach der Identitätsprüfung verworfen; dadurch ist die Identität sichtbar, aber ESI-Synchronisierung noch nicht möglich.
 
 ## Automatisierte Verifikation
 
@@ -44,6 +46,8 @@ Paket 12 beweist den nativen Authorization-Code-mit-PKCE-Weg bis einschließlich
 - Drei-Minuten-Timeout, manueller Abbruch und Löschen aller temporären Geheimnisse
 - authentifizierte Sidecar-Endpunkte in Quell- und Frozen-Smoke-Tests
 - native URL-Zielprüfung sowie Start-, Status- und Abbruchvertrag bis zur React-Oberfläche
+- Metadaten-/JWKS-Begrenzung, `RS256`-Signatur, Issuer, beide Audience-Werte, Ablauf, Charakter-ID und Scopes
+- idempotente Speicherung und sichtbares erneutes Laden des verbundenen Charakters
 
 ## Offizielle Quellen
 

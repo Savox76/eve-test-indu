@@ -24,6 +24,42 @@ Alle bemerkenswerten Änderungen an New Eden Foundry werden hier festgehalten. D
 
 - Keine.
 
+## 0.0.4-preview.4 – 9. September 2026
+
+### Neu hinzugefügt
+
+- Echter PKCE-Codeaustausch ohne Client Secret und strikte JWT-Prüfung über EVE-Metadaten und JWKS.
+- Prüfung von `RS256`-Signatur, Schlüssel-ID, Issuer, beiden Audience-Werten, Ablauf, Charakter-ID, Name und bestätigten Scopes.
+- Sichtbare, dauerhaft aus SQLite geladene Liste aller erfolgreich verbundenen EVE-Charaktere.
+- Globale Schriftgröße in fünf Stufen für alle derzeit sichtbaren Oberflächentexte.
+- Automatisierte Positiv- und Negativtests für Token-, Identitäts-, Persistenz- und Darstellungskette.
+
+### Geändert
+
+- Ein Callback wechselt zunächst in den sichtbaren Prüfzustand; nur eine vollständig validierte EVE-Identität erreicht den Zustand `connected`.
+- Erneute Autorisierung aktualisiert denselben Charakter idempotent und erhält eine bestehende lokale Kontogruppenzuordnung.
+- Die Schriftgrößenstufe wird ohne neue Datenbankmigration in `app_settings` im Programmordner gespeichert.
+- Masterplan 2.1 markiert Arbeitspaket 13 als abgeschlossen und Schlüsselbund/Rotation als nächsten Schritt.
+- Die sichtbare Versionsnummer wurde auf `v0.0.4-preview.4` aktualisiert; `Savoxmedia` bleibt ausschließlich als Ersteller der App neben der Version genannt.
+
+### Behobene Fehler
+
+- Ein im Browser erfolgreich autorisierter Charakter bleibt nach einem erneuten Login nicht mehr unsichtbar, sondern erscheint sofort und nach Neustarts in der echten Charakterliste.
+- Ungeprüfte, manipulierte, abgelaufene oder für einen anderen Client ausgestellte Tokens können keinen Charakterdatensatz erzeugen.
+- Alle sichtbaren Textbereiche reagieren gemeinsam auf eine Schriftgrößenänderung.
+
+### Bekannte Einschränkungen
+
+- Eine Autorisierung aus `v0.0.4-preview.3` muss wiederholt werden, weil Paket 12 den einmaligen Code bewusst verworfen hat.
+- Access und Refresh Token werden nach der Identitätsprüfung noch verworfen; Schlüsselbundspeicherung und Rotation folgen in Paket 14.
+- Fachkennzahlen bleiben synthetisch; ESI, SDE, echte Synchronisierung und Berechnungen sind noch nicht angeschlossen.
+- Öffentliche Updateverteilung und Codesignierung bleiben deaktiviert; das manuelle Windows-Laufzeitgate und der Schutz von `main` sind offen.
+
+### Update und Datenbankmigration
+
+- Keine Datenbankmigration; Schema-Version 5 und alle Daten unter `data` bleiben erhalten.
+- Für ein portables Update die Anwendung schließen und den bisherigen Ordner `data` vollständig in den neuen Programmordner übernehmen.
+
 ## 0.0.4-preview.3 – 9. September 2026
 
 ### Neu hinzugefügt

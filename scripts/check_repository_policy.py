@@ -53,6 +53,7 @@ REQUIRED_BACKEND_FILES = tuple(
     ROOT / path
     for path in (
         "backend/new_eden_foundry_backend/__main__.py",
+        "backend/new_eden_foundry_backend/appearance.py",
         "backend/new_eden_foundry_backend/database.py",
         "backend/new_eden_foundry_backend/identity.py",
         "backend/new_eden_foundry_backend/recovery.py",
@@ -61,6 +62,7 @@ REQUIRED_BACKEND_FILES = tuple(
         "backend/new_eden_foundry_backend/startup_state.py",
         "backend/new_eden_foundry_backend/sso_registration.py",
         "backend/new_eden_foundry_backend/sso_pkce.py",
+        "backend/new_eden_foundry_backend/sso_tokens.py",
         "backend/new_eden_foundry_backend/updater.py",
         "backend/new_eden_foundry_backend/version.py",
         "backend/new_eden_foundry_backend/resources/update-test-manifest.json",
@@ -70,6 +72,7 @@ REQUIRED_BACKEND_FILES = tuple(
         "backend/requirements-runtime.txt",
         "backend/sidecar_entry.py",
         "backend/tests/test_database.py",
+        "backend/tests/test_appearance.py",
         "backend/tests/test_foundation_status.py",
         "backend/tests/test_identity.py",
         "backend/tests/test_sidecar.py",
@@ -77,6 +80,7 @@ REQUIRED_BACKEND_FILES = tuple(
         "backend/tests/test_startup_state.py",
         "backend/tests/test_sso_registration.py",
         "backend/tests/test_sso_pkce.py",
+        "backend/tests/test_sso_tokens.py",
         "backend/tests/test_updater.py",
         "scripts/build_sidecar.py",
         "scripts/prepare_release_files.ps1",
@@ -217,8 +221,9 @@ def check_documentation(errors: list[str]) -> None:
         for marker in (
             "http://127.0.0.1:17891/oauth/callback",
             "Drei-Minuten-Timeout",
-            "authorization-received",
-            "Paket 13",
+            "exchanging",
+            "connected",
+            "Paket 14",
         ):
             if marker not in pkce_content:
                 errors.append(f"SSO PKCE documentation is missing marker: {marker}")
@@ -339,6 +344,8 @@ def check_backend_foundation(errors: list[str]) -> None:
             "secrets.compare_digest",
             'listener.bind((LOOPBACK_HOST, 0))',
             'app.put("/settings/update")',
+            'app.put("/settings/appearance")',
+            'app.get("/characters")',
             '"publicDistribution": False',
             "verify_bundled_test_manifest",
         ):
@@ -401,6 +408,22 @@ def check_backend_foundation(errors: list[str]) -> None:
         if "client_secret" in pkce_content.lower():
             errors.append("The SSO PKCE implementation must not contain a client secret field.")
 
+    sso_token_source = ROOT / "backend" / "new_eden_foundry_backend" / "sso_tokens.py"
+    if sso_token_source.is_file():
+        token_content = sso_token_source.read_text(encoding="utf-8")
+        for marker in (
+            "SSO_METADATA_ENDPOINT",
+            "RS256",
+            "EXPECTED_EVE_AUDIENCE",
+            "jwt-signature-invalid",
+            "CHARACTER:EVE:",
+            "_RejectRedirects",
+        ):
+            if marker not in token_content:
+                errors.append(f"SSO token validation is missing required marker: {marker}")
+        if "client_secret" in token_content.lower():
+            errors.append("The SSO token implementation must not contain a client secret field.")
+
     sidecar_build = ROOT / "scripts" / "build_sidecar.py"
     if sidecar_build.is_file() and "SSO_REGISTRATION_PROFILE" not in sidecar_build.read_text(
         encoding="utf-8"
@@ -424,7 +447,7 @@ def check_backend_foundation(errors: list[str]) -> None:
     if runtime_requirements.is_file() and "cryptography==50.0.1" not in runtime_requirements.read_text(
         encoding="utf-8"
     ):
-        errors.append("Runtime requirements must pin the updater signature dependency.")
+        errors.append("Runtime requirements must pin the cryptographic validation dependency.")
 
     tauri_source = ROOT / "src-tauri" / "src" / "lib.rs"
     if tauri_source.is_file():
@@ -435,6 +458,8 @@ def check_backend_foundation(errors: list[str]) -> None:
             "foundry-sidecar.exe",
             "sessionToken",
             "set_update_channel",
+            "set_font_scale",
+            "list_eve_characters",
             "start_eve_sso",
             "eve_sso_status",
             "cancel_eve_sso",

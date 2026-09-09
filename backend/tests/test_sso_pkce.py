@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import threading
 import time
 import unittest
 import urllib.error
@@ -17,12 +18,57 @@ from new_eden_foundry_backend.sso_registration import (
     SSO_CALLBACK_PATH,
     load_bundled_sso_registration_profile,
 )
+from new_eden_foundry_backend.sso_tokens import SsoTokenError, VerifiedCharacter
+
+
+class SyntheticSsoClient:
+    def __init__(self, error_code: str | None = None) -> None:
+        self.error_code = error_code
+        self.exchanges: list[tuple[str, str, tuple[str, ...]]] = []
+
+    def exchange_and_validate(
+        self,
+        authorization_code: str,
+        code_verifier: str,
+        expected_scopes: tuple[str, ...],
+    ) -> VerifiedCharacter:
+        self.exchanges.append((authorization_code, code_verifier, expected_scopes))
+        if self.error_code is not None:
+            raise SsoTokenError(self.error_code)
+        return VerifiedCharacter(2_112_345_678, "Synthetic Pilot", tuple(sorted(expected_scopes)))
+
+
+class BlockingSsoClient(SyntheticSsoClient):
+    def __init__(self) -> None:
+        super().__init__()
+        self.release = threading.Event()
+
+    def exchange_and_validate(
+        self,
+        authorization_code: str,
+        code_verifier: str,
+        expected_scopes: tuple[str, ...],
+    ) -> VerifiedCharacter:
+        self.release.wait(timeout=2)
+        return super().exchange_and_validate(
+            authorization_code,
+            code_verifier,
+            expected_scopes,
+        )
 
 
 class SsoPkceTests(unittest.TestCase):
     def setUp(self) -> None:
         self.profile = load_bundled_sso_registration_profile()
-        self.manager = SsoPkceManager(self.profile, callback_port=0, timeout_seconds=2)
+        self.sso_client = SyntheticSsoClient()
+        self.identities: list[VerifiedCharacter] = []
+        self.manager = SsoPkceManager(
+            self.profile,
+            callback_port=0,
+            timeout_seconds=2,
+            sso_client=self.sso_client,  # type: ignore[arg-type]
+            identity_handler=self.identities.append,
+        )
 
     def tearDown(self) -> None:
         self.manager.close()
@@ -61,7 +107,7 @@ class SsoPkceTests(unittest.TestCase):
         self.assertNotIn(query["state"][0], str(status))
         self.assertNotIn("codeVerifier", status)
 
-    def test_listener_rejects_wrong_state_then_accepts_exact_callback_once(self) -> None:
+    def test_listener_rejects_wrong_state_then_connects_verified_character_once(self) -> None:
         authorization_url, _ = self.manager.start(["industry-core"])
         query = parse_qs(urlsplit(authorization_url).query)
         callback_uri = query["redirect_uri"][0]
@@ -77,8 +123,14 @@ class SsoPkceTests(unittest.TestCase):
         with opener.open(valid_url, timeout=2) as response:
             document = response.read().decode("utf-8")
         self.assertEqual(response.status, 200)
-        self.assertIn("EVE-Autorisierung empfangen", document)
-        self.assertEqual(self.manager.status()["state"], "authorization-received")
+        self.assertIn("EVE-Autorisierung wird geprüft", document)
+        deadline = time.monotonic() + 2
+        while self.manager.status()["state"] == "exchanging" and time.monotonic() < deadline:
+            time.sleep(0.01)
+        self.assertEqual(self.manager.status()["state"], "connected")
+        self.assertEqual(self.manager.status()["character"]["name"], "Synthetic Pilot")
+        self.assertEqual([identity.name for identity in self.identities], ["Synthetic Pilot"])
+        self.assertEqual(self.sso_client.exchanges[0][0], "synthetic-code")
         self.assertIsNone(self.manager._attempt.state_secret)  # noqa: SLF001
         self.assertIsNone(self.manager._attempt.code_verifier)  # noqa: SLF001
 
@@ -87,6 +139,55 @@ class SsoPkceTests(unittest.TestCase):
             urlencode({"code": "second-code", "state": query["state"][0]}),
         )
         self.assertEqual(result.status_code, 410)
+
+    def test_token_validation_failure_never_persists_character(self) -> None:
+        manager = SsoPkceManager(
+            self.profile,
+            callback_port=0,
+            timeout_seconds=2,
+            sso_client=SyntheticSsoClient("jwt-signature-invalid"),  # type: ignore[arg-type]
+            identity_handler=self.identities.append,
+        )
+        self.addCleanup(manager.close)
+        authorization_url, status = manager.start(["industry-core"])
+        state = parse_qs(urlsplit(authorization_url).query)["state"][0]
+
+        result = manager.accept_callback(
+            str(status["attemptId"]),
+            urlencode({"code": "synthetic-code", "state": state}),
+        )
+        self.assertEqual(result.status_code, 200)
+        deadline = time.monotonic() + 2
+        while manager.status()["state"] == "exchanging" and time.monotonic() < deadline:
+            time.sleep(0.01)
+
+        self.assertEqual(manager.status()["state"], "failed")
+        self.assertEqual(manager.status()["errorCode"], "jwt-signature-invalid")
+        self.assertIsNone(manager.status()["character"])
+        self.assertEqual(self.identities, [])
+
+    def test_second_login_is_rejected_while_token_exchange_is_active(self) -> None:
+        client = BlockingSsoClient()
+        manager = SsoPkceManager(
+            self.profile,
+            callback_port=0,
+            timeout_seconds=2,
+            sso_client=client,  # type: ignore[arg-type]
+        )
+        self.addCleanup(manager.close)
+        authorization_url, status = manager.start(["industry-core"])
+        state = parse_qs(urlsplit(authorization_url).query)["state"][0]
+        result = manager.accept_callback(
+            str(status["attemptId"]),
+            urlencode({"code": "synthetic-code", "state": state}),
+        )
+        self.assertEqual(result.status_code, 200)
+        self.assertEqual(manager.status()["state"], "exchanging")
+        try:
+            with self.assertRaisesRegex(SsoPkceError, "login-already-active"):
+                manager.start(["industry-core"])
+        finally:
+            client.release.set()
 
     def test_cancel_clears_secrets_and_stops_waiting(self) -> None:
         self.manager.start(["industry-core"])

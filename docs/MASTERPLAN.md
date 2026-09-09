@@ -1,10 +1,10 @@
 # Masterplan – New Eden Foundry
 
-**Fassung:** 2.0 (lebendes Repository-Dokument)
+**Fassung:** 2.1 (lebendes Repository-Dokument)
 
 **Stand:** 9. September 2026
 
-**Status:** In Umsetzung – Phase 2 mit geprüftem PKCE-Browser-Rückruf
+**Status:** In Umsetzung – Phase 2 mit JWT-geprüfter Charakterbindung
 
 **Geltungsbereich:** `Savox76/eve-test-indu`
 
@@ -51,6 +51,7 @@ EVE Mail, Discord-Integration, Buyback-Automatisierung, T3 und Mehrbenutzerbetri
 - Datenbank und Backups liegen sichtbar unter `data` im Programmordner. Ein nicht beschreibbarer Ordner ist ein Startfehler; es gibt keinen versteckten Ausweichpfad.
 - Die UI startet aus dem Cache und zeigt Start-, Offline-, veraltete und fehlerhafte Zustände ausdrücklich.
 - Der gewählte Updatekanal wird lokal gespeichert. Bis zur gesonderten Produktionsfreigabe wird nur ein signiertes Offline-Testmanifest geprüft; öffentliche Updateverteilung, Download und Installation bleiben deaktiviert.
+- Die globale Schriftgröße ist in fünf Stufen wählbar und wird als nicht geheime Einstellung in derselben Datenbank im Programmordner gespeichert.
 - Updates und Deinstallation ersetzen beziehungsweise entfernen Programmdateien, lassen `data` jedoch stehen. Das Entfernen eines Charakters und eine spätere vollständige Datenlöschung bleiben davon getrennte, bewusste Vorgänge.
 - Linux und macOS erhalten erst nach Windows eigene Freigabe-Gates.
 
@@ -199,9 +200,11 @@ Die Reihenfolge ist verbindlicher als eine Kalenderangabe.
 - **Abgeschlossen:** 09 – der lokale Startpfad bewertet nur Snapshots vollständig abgeschlossener Läufe und zeigt Laden, Aktualisieren, leer, aktuell, veraltet, offline und fehlerhaft zweisprachig mit Datenalter. Vorhandene Cache-Daten bleiben bei Ablauf oder Folgfehlern sichtbar; echte Nutzdaten folgen mit ESI.
 - **Abgeschlossen:** 10 – die Desktop-Oberfläche kann `stable`, `beta` und `preview` wählen und speichert die Präferenz in Schema 5 im Programmordner. Ein gebündeltes Ed25519-signiertes Testmanifest wird streng und offline geprüft; die reservierte Domain `updates.invalid` sowie `publicDistribution: false` verhindern eine vorzeitige öffentliche Verteilung.
 - **Abgeschlossen:** 11 – Callback-URI, öffentliche Client-ID, Entwicklerkontakt und funktionsbezogene Scopepakete sind im EVE Developers Portal registriert, verbindlich dokumentiert, maschinenlesbar hinterlegt, im Sidecar-Paket enthalten und gegen Drift getestet.
-- **Abgeschlossen:** 12 – die Desktop-App startet EVE SSO im Systembrowser, erzeugt je Versuch unabhängigen kryptografischen `state` und PKCE-Verifier mit `S256`, prüft den Rückruf am festen Callback und beendet Listener und Geheimnisse bei Erfolg, Fehler, Drei-Minuten-Timeout, Abbruch oder App-Ende. Scopepakete werden pro einzeln zu autorisierendem Charakter gewählt; der Autorisierungscode wird bis zur vollständigen Token- und JWT-Prüfung in Paket 13 bewusst nicht verwendet oder gespeichert.
-- **Teilweise umgesetzt:** 15 – Schema und Zugriffslogik unterstützen mehrere separat autorisierte Charaktere, lokale Kontogruppen und getrennte Scopes. Die synthetische Oberfläche wechselt bereits zwischen Einzel- und Gesamtübersicht; echter SSO-, Keyring- und Löschablauf folgen erst in Phase 2.
-- **Als Nächstes:** Arbeitspaket 13 ergänzt Codeaustausch und strikte JWT-Validierung über JWKS, Issuer, Audience, Ablauf und Charakter-ID, bevor eine EVE-Identität als vertrauenswürdig gespeichert werden darf. Parallel bleibt das A0-Windows-Gate für Installation, zweiten Start, Migration/Update und Entfernung auf einem freigegebenen Windows-Testgerät offen.
+- **Abgeschlossen:** 12 – die Desktop-App startet EVE SSO im Systembrowser, erzeugt je Versuch unabhängigen kryptografischen `state` und PKCE-Verifier mit `S256`, prüft den Rückruf am festen Callback und beendet Listener und Geheimnisse bei Fehler, Drei-Minuten-Timeout, Abbruch oder App-Ende. Scopepakete werden pro einzeln zu autorisierendem Charakter gewählt.
+- **Abgeschlossen:** 13 – der Sidecar tauscht den einmaligen Code ohne Client Secret per PKCE aus, bezieht Token- und JWKS-Endpunkte aus streng begrenzten EVE-Metadaten und prüft `RS256`-Signatur, Schlüssel-ID, Issuer, beide Audience-Werte, Ablauf, Charakter-Subject, Name und Scopes. Nur danach werden Identität und Scope-Status idempotent in SQLite gespeichert und in der echten Charakterliste angezeigt. Tokens werden bis Paket 14 anschließend verworfen.
+- **Teilweise umgesetzt:** 15 – Schema, Zugriffslogik und Oberfläche unterstützen mehrere separat autorisierte und aus SQLite geladene Charaktere, lokale Kontogruppen und getrennte Scopes. Alias, Deaktivierung, Gruppeneditor und vollständiger Löschablauf folgen nach der Schlüsselbundanbindung; Fachansichten verwenden bis zum ESI-Sync weiterhin synthetische Werte.
+- **Zusätzlich umgesetzt:** Die vollständige sichtbare Oberfläche unterstützt fünf globale Schriftgrößenstufen; die Auswahl bleibt in der bestehenden `app_settings`-Tabelle im Programmordner erhalten.
+- **Als Nächstes:** Arbeitspaket 14 speichert den ausschließlich nach erfolgreicher JWT-Prüfung erhaltenen Refresh Token atomar pro Charakter im Betriebssystem-Schlüsselbund, behandelt Rotation ohne Tokenverlust und entfernt alte Werte erst nach bestätigter Ablage. Parallel bleibt das A0-Windows-Gate für Installation, zweiten Start, Migration/Update und Entfernung auf einem freigegebenen Windows-Testgerät offen.
 - Architektur-Gate A0 ist technisch weitgehend umgesetzt, aber bis zur vollständigen Windows-Abnahme noch nicht erfüllt; breite Fachentwicklung beginnt erst danach.
 
 ## 13. Entscheidungs- und Quellenrang

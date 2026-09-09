@@ -11,11 +11,13 @@ export type LocalDataState =
 
 export type LastSyncStatus = "never" | "running" | "completed" | "failed" | "cancelled";
 export type UpdateChannel = "stable" | "beta" | "preview";
+export type FontScale = "very-small" | "small" | "normal" | "large" | "very-large";
 export type ManifestState = "checking" | "verified" | "invalid" | "unavailable";
 export type SsoLoginState =
   | "idle"
   | "waiting"
-  | "authorization-received"
+  | "exchanging"
+  | "connected"
   | "cancelled"
   | "timed-out"
   | "failed";
@@ -42,12 +44,29 @@ export interface UpdaterStatus {
   publicDistribution: false;
 }
 
+export interface AppearanceStatus {
+  fontScale: FontScale;
+}
+
+export interface EveCharacterIdentity {
+  characterId: number;
+  name: string;
+  scopes: string[];
+}
+
+export interface EveCharacter extends EveCharacterIdentity {
+  accountGroupId: number | null;
+  accountGroupLabel: string | null;
+  enabled: boolean;
+}
+
 export interface SsoLoginStatus {
   state: SsoLoginState;
   attemptId: string | null;
   scopePackages: SsoScopePackage[];
   expiresAt: string | null;
   errorCode: string | null;
+  character: EveCharacterIdentity | null;
 }
 
 export type DesktopRuntimeStatus =
@@ -66,6 +85,7 @@ export type DesktopRuntimeStatus =
       errorCode: string | null;
       data: LocalDataStatus;
       updater: UpdaterStatus;
+      appearance: AppearanceStatus;
     };
 
 export interface RuntimeAdapter {
@@ -95,6 +115,13 @@ const lastSyncStatuses: readonly LastSyncStatus[] = [
   "cancelled",
 ];
 const updateChannels: readonly UpdateChannel[] = ["stable", "beta", "preview"];
+export const fontScales: readonly FontScale[] = [
+  "very-small",
+  "small",
+  "normal",
+  "large",
+  "very-large",
+];
 const manifestStates: readonly ManifestState[] = [
   "checking",
   "verified",
@@ -104,7 +131,8 @@ const manifestStates: readonly ManifestState[] = [
 const ssoLoginStates: readonly SsoLoginState[] = [
   "idle",
   "waiting",
-  "authorization-received",
+  "exchanging",
+  "connected",
   "cancelled",
   "timed-out",
   "failed",
@@ -188,6 +216,52 @@ function parseUpdaterStatus(candidate: unknown): UpdaterStatus {
   return candidate as unknown as UpdaterStatus;
 }
 
+function parseAppearanceStatus(candidate: unknown): AppearanceStatus {
+  if (
+    !isRecord(candidate) ||
+    typeof candidate.fontScale !== "string" ||
+    !fontScales.includes(candidate.fontScale as FontScale)
+  ) {
+    throw new Error("The native runtime returned invalid appearance metadata.");
+  }
+  return candidate as unknown as AppearanceStatus;
+}
+
+function parseEveCharacterIdentity(candidate: unknown): EveCharacterIdentity {
+  if (
+    !isRecord(candidate) ||
+    !Number.isSafeInteger(candidate.characterId) ||
+    Number(candidate.characterId) <= 0 ||
+    typeof candidate.name !== "string" ||
+    candidate.name.trim() !== candidate.name ||
+    candidate.name.length < 1 ||
+    candidate.name.length > 100 ||
+    !Array.isArray(candidate.scopes) ||
+    candidate.scopes.length < 1 ||
+    !candidate.scopes.every(
+      (scope) => typeof scope === "string" && scope.startsWith("esi-") && scope.endsWith(".v1"),
+    ) ||
+    new Set(candidate.scopes).size !== candidate.scopes.length
+  ) {
+    throw new Error("The native runtime returned invalid EVE character metadata.");
+  }
+  return candidate as unknown as EveCharacterIdentity;
+}
+
+function parseEveCharacter(candidate: unknown): EveCharacter {
+  const identity = parseEveCharacterIdentity(candidate);
+  if (
+    !isRecord(candidate) ||
+    (candidate.accountGroupId !== null &&
+      (!Number.isSafeInteger(candidate.accountGroupId) || Number(candidate.accountGroupId) <= 0)) ||
+    !isNullableText(candidate.accountGroupLabel) ||
+    typeof candidate.enabled !== "boolean"
+  ) {
+    throw new Error("The native runtime returned invalid EVE character metadata.");
+  }
+  return { ...candidate, ...identity } as unknown as EveCharacter;
+}
+
 function parseSsoLoginStatus(candidate: unknown): SsoLoginStatus {
   if (
     !isRecord(candidate) ||
@@ -200,7 +274,8 @@ function parseSsoLoginStatus(candidate: unknown): SsoLoginStatus {
     ) ||
     new Set(candidate.scopePackages).size !== candidate.scopePackages.length ||
     !isNullableText(candidate.expiresAt) ||
-    !isNullableText(candidate.errorCode)
+    !isNullableText(candidate.errorCode) ||
+    !(candidate.character === null || isRecord(candidate.character))
   ) {
     throw new Error("The native runtime returned invalid SSO metadata.");
   }
@@ -212,11 +287,26 @@ function parseSsoLoginStatus(candidate: unknown): SsoLoginStatus {
   const errorIsValid = status.state === "timed-out"
     ? status.errorCode === "login-timeout"
     : status.state === "failed"
-      ? ["authorization-denied", "authorization-failed", "callback-invalid"].includes(
-          status.errorCode ?? "",
-        )
+      ? [
+          "authorization-denied", "authorization-failed", "callback-invalid",
+          "pkce-state-missing", "sso-metadata-unavailable", "sso-metadata-invalid",
+          "token-request-invalid", "token-exchange-failed", "token-response-invalid",
+          "jwks-unavailable", "jwks-invalid", "jwt-malformed", "jwt-header-invalid",
+          "jwt-key-not-found", "jwt-signature-invalid", "jwt-claims-invalid", "jwt-expired",
+          "jwt-identity-invalid", "jwt-scopes-missing", "character-save-failed",
+        ].includes(status.errorCode ?? "")
       : status.errorCode === null;
-  if (!attemptFieldsAreValid || !errorIsValid) {
+  const characterIsValid = status.state === "connected"
+    ? status.character !== null && (() => {
+        try {
+          parseEveCharacterIdentity(status.character);
+          return true;
+        } catch {
+          return false;
+        }
+      })()
+    : status.character === null;
+  if (!attemptFieldsAreValid || !errorIsValid || !characterIsValid) {
     throw new Error("The native runtime returned inconsistent SSO metadata.");
   }
   return status;
@@ -247,6 +337,7 @@ function parseReadyStatus(rawStatus: string): DesktopRuntimeStatus {
   const errorCode = candidate.errorCode as string | null;
   const data = parseLocalDataStatus(candidate.data);
   const updater = parseUpdaterStatus(candidate.updater);
+  const appearance = parseAppearanceStatus(candidate.appearance);
   const hasValidStateCombination =
     (sidecar === "starting" &&
       database === "starting" &&
@@ -281,6 +372,7 @@ function parseReadyStatus(rawStatus: string): DesktopRuntimeStatus {
     errorCode,
     data,
     updater,
+    appearance,
   };
 }
 
@@ -312,6 +404,40 @@ export async function setDesktopUpdateChannel(
     throw new Error("The desktop updater returned a different channel.");
   }
   return status;
+}
+
+export async function setDesktopFontScale(
+  fontScale: FontScale,
+  adapter: RuntimeAdapter = tauriAdapter,
+): Promise<AppearanceStatus> {
+  if (!fontScales.includes(fontScale)) {
+    throw new Error("The selected font scale is unsupported.");
+  }
+  if (!adapter.isAvailable()) {
+    return { fontScale };
+  }
+  const status = parseAppearanceStatus(
+    JSON.parse(await adapter.invoke("set_font_scale", { fontScale })),
+  );
+  if (status.fontScale !== fontScale) {
+    throw new Error("The desktop runtime returned a different font scale.");
+  }
+  return status;
+}
+
+export async function loadEveCharacters(
+  adapter: RuntimeAdapter = tauriAdapter,
+): Promise<EveCharacter[]> {
+  if (!adapter.isAvailable()) return [];
+  const candidate: unknown = JSON.parse(await adapter.invoke("list_eve_characters"));
+  if (!isRecord(candidate) || !Array.isArray(candidate.characters)) {
+    throw new Error("The native runtime returned an invalid character list.");
+  }
+  const characters = candidate.characters.map(parseEveCharacter);
+  if (new Set(characters.map((character) => character.characterId)).size !== characters.length) {
+    throw new Error("The native runtime returned duplicate EVE characters.");
+  }
+  return characters;
 }
 
 async function invokeSsoCommand(
