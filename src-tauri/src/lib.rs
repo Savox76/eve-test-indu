@@ -454,8 +454,7 @@ fn set_update_channel(channel: String, state: State<'_, RuntimeState>) -> Result
         let process = sidecar
             .as_ref()
             .ok_or_else(|| "sidecar-unavailable".to_owned())?;
-        sidecar_json_request(process, "PUT", "/settings/update", &body)
-            .map_err(str::to_owned)?
+        sidecar_json_request(process, "PUT", "/settings/update", &body).map_err(str::to_owned)?
     };
     let updater: RuntimeUpdaterSnapshot =
         serde_json::from_str(&response).map_err(|_| "sidecar-response-invalid".to_owned())?;

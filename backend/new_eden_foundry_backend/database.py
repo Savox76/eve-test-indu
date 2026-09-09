@@ -179,7 +179,7 @@ MIGRATIONS: Final = (
                 key TEXT PRIMARY KEY NOT NULL CHECK (
                     length(trim(key)) BETWEEN 1 AND 80
                 ),
-                value TEXT NOT NULL CHECK (length(value) <= 2_000),
+                value TEXT NOT NULL CHECK (length(value) <= 2000),
                 updated_at TEXT NOT NULL DEFAULT (
                     strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
                 )
