@@ -199,6 +199,8 @@ def main() -> int:
             ready = json.loads(ready_line)
             if ready.get("event") != "ready" or ready.get("host") != "127.0.0.1":
                 raise RuntimeError(f"Unexpected readiness payload: {ready!r}")
+            if ready.get("appearance") != {"fontScale": "normal"}:
+                raise RuntimeError("The packaged default font scale is invalid.")
             if token in ready_line:
                 raise RuntimeError("The readiness payload exposed the session token.")
 
@@ -234,6 +236,19 @@ def main() -> int:
                 != "http://127.0.0.1:17891/oauth/callback"
             ):
                 raise RuntimeError("The packaged SSO registration profile is invalid.")
+            if health.get("appearance") != {"fontScale": "normal"}:
+                raise RuntimeError("The packaged appearance health is invalid.")
+            if health.get("characters") != {"connected": 0}:
+                raise RuntimeError("The packaged character health is invalid.")
+
+            characters_request = urllib.request.Request(
+                f"http://127.0.0.1:{int(ready['port'])}/characters",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            with opener.open(characters_request, timeout=3) as response:
+                characters = json.loads(response.read())
+            if characters != {"characters": []}:
+                raise RuntimeError("The packaged character roster is invalid.")
 
             sso_login_url = f"http://127.0.0.1:{int(ready['port'])}/sso/login"
             sso_status_request = urllib.request.Request(
@@ -244,6 +259,8 @@ def main() -> int:
                 sso_status = json.loads(response.read())
             if sso_status.get("state") != "idle":
                 raise RuntimeError("The packaged PKCE login did not start idle.")
+            if sso_status.get("character") is not None:
+                raise RuntimeError("The idle PKCE login exposed a character.")
 
             sso_start_request = urllib.request.Request(
                 sso_login_url,
@@ -262,6 +279,7 @@ def main() -> int:
                     "https://login.eveonline.com/v2/oauth/authorize?"
                 )
                 or "codeVerifier" in json.dumps(sso_start)
+                or sso_start.get("status", {}).get("character") is not None
             ):
                 raise RuntimeError("The packaged PKCE login response is invalid.")
 
@@ -298,6 +316,20 @@ def main() -> int:
             ):
                 raise RuntimeError("The packaged update-channel preference is invalid.")
 
+            appearance_request = urllib.request.Request(
+                f"http://127.0.0.1:{int(ready['port'])}/settings/appearance",
+                data=json.dumps({"fontScale": "very-large"}).encode("utf-8"),
+                method="PUT",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": "application/json",
+                },
+            )
+            with opener.open(appearance_request, timeout=3) as response:
+                appearance = json.loads(response.read())
+            if appearance != {"fontScale": "very-large"}:
+                raise RuntimeError("The packaged font-scale preference is invalid.")
+
             if not database_path.is_file():
                 raise RuntimeError("The database was not created inside the program directory.")
             with contextlib.closing(sqlite3.connect(database_path)) as connection:
@@ -311,12 +343,16 @@ def main() -> int:
                 update_channel = connection.execute(
                     "SELECT value FROM app_settings WHERE key = 'update_channel'"
                 ).fetchone()[0]
+                font_scale = connection.execute(
+                    "SELECT value FROM app_settings WHERE key = 'font_scale'"
+                ).fetchone()[0]
                 backup_record = connection.execute(
                     "SELECT filename, sha256 FROM migration_backups"
                 ).fetchone()
             if (
                 marker != SYNTHETIC_MIGRATION_MARKER
                 or update_channel != "preview"
+                or font_scale != "very-large"
                 or backup_record[0] != backup_name
             ):
                 raise RuntimeError("The packaged migration did not preserve its source data.")
@@ -356,8 +392,8 @@ def main() -> int:
                     stream.close()
 
     print(
-        "Frozen sidecar handshake, signed updater skeleton, PKCE start/cancel, migration "
-        "backup, database location and shutdown verified."
+        "Frozen sidecar handshake, signed updater skeleton, PKCE start/cancel, character "
+        "roster, font scale, migration backup, database location and shutdown verified."
     )
     return 0
 

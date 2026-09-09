@@ -24,6 +24,16 @@ class CharacterRecord:
     enabled: bool
     scopes: tuple[str, ...]
 
+    def as_api_payload(self) -> dict[str, object]:
+        return {
+            "characterId": self.character_id,
+            "name": self.name,
+            "accountGroupId": self.account_group_id,
+            "accountGroupLabel": self.account_group_label,
+            "enabled": self.enabled,
+            "scopes": list(self.scopes),
+        }
+
 
 def _validated_text(value: str, *, field: str, maximum: int) -> str:
     normalized = value.strip()

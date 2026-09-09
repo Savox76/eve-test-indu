@@ -26,6 +26,7 @@ const EVE_SSO_SCOPE_PACKAGES: [&str; 5] = [
     "projects",
     "private-structures",
 ];
+const FONT_SCALES: [&str; 5] = ["very-small", "small", "normal", "large", "very-large"];
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -41,6 +42,7 @@ struct RuntimeSnapshot {
     error_code: Option<&'static str>,
     data: RuntimeDataSnapshot,
     updater: RuntimeUpdaterSnapshot,
+    appearance: RuntimeAppearanceSnapshot,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -87,12 +89,27 @@ struct RuntimeUpdaterSnapshot {
 
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
+struct RuntimeAppearanceSnapshot {
+    font_scale: String,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SsoCharacterIdentity {
+    character_id: u64,
+    name: String,
+    scopes: Vec<String>,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct SsoLoginStatus {
     state: String,
     attempt_id: Option<String>,
     scope_packages: Vec<String>,
     expires_at: Option<String>,
     error_code: Option<String>,
+    character: Option<SsoCharacterIdentity>,
 }
 
 #[derive(Deserialize)]
@@ -100,6 +117,22 @@ struct SsoLoginStatus {
 struct SsoLoginStart {
     authorization_url: String,
     status: SsoLoginStatus,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct EveCharacterRecord {
+    character_id: u64,
+    name: String,
+    account_group_id: Option<u64>,
+    account_group_label: Option<String>,
+    enabled: bool,
+    scopes: Vec<String>,
+}
+
+#[derive(Deserialize, Serialize)]
+struct EveCharactersResponse {
+    characters: Vec<EveCharacterRecord>,
 }
 
 impl RuntimeUpdaterSnapshot {
@@ -119,6 +152,14 @@ impl RuntimeUpdaterSnapshot {
     }
 }
 
+impl RuntimeAppearanceSnapshot {
+    fn normal() -> Self {
+        Self {
+            font_scale: "normal".to_owned(),
+        }
+    }
+}
+
 impl RuntimeSnapshot {
     fn starting() -> Self {
         Self {
@@ -133,6 +174,7 @@ impl RuntimeSnapshot {
             error_code: None,
             data: RuntimeDataSnapshot::loading(),
             updater: RuntimeUpdaterSnapshot::checking(),
+            appearance: RuntimeAppearanceSnapshot::normal(),
         }
     }
 
@@ -140,6 +182,7 @@ impl RuntimeSnapshot {
         schema_version: u32,
         data: RuntimeDataSnapshot,
         updater: RuntimeUpdaterSnapshot,
+        appearance: RuntimeAppearanceSnapshot,
     ) -> Self {
         Self {
             sidecar: "ready",
@@ -147,6 +190,7 @@ impl RuntimeSnapshot {
             schema_version: Some(schema_version),
             data,
             updater,
+            appearance,
             ..Self::starting()
         }
     }
@@ -201,6 +245,7 @@ struct SidecarReady {
     database: SidecarDatabaseReady,
     data: RuntimeDataSnapshot,
     updater: RuntimeUpdaterSnapshot,
+    appearance: RuntimeAppearanceSnapshot,
 }
 
 #[derive(Deserialize)]
@@ -255,6 +300,37 @@ fn updater_snapshot_is_valid(updater: &RuntimeUpdaterSnapshot) -> bool {
         && !updater.public_distribution
 }
 
+fn appearance_snapshot_is_valid(appearance: &RuntimeAppearanceSnapshot) -> bool {
+    FONT_SCALES.contains(&appearance.font_scale.as_str())
+}
+
+fn sso_character_identity_is_valid(character: &SsoCharacterIdentity) -> bool {
+    character.character_id > 0
+        && !character.name.trim().is_empty()
+        && character.name.trim() == character.name
+        && character.name.len() <= 100
+        && !character.scopes.is_empty()
+        && character.scopes.iter().collect::<HashSet<_>>().len() == character.scopes.len()
+        && character.scopes.iter().all(|scope| {
+            !scope.is_empty()
+                && scope.len() <= 200
+                && scope.starts_with("esi-")
+                && scope.ends_with(".v1")
+        })
+}
+
+fn eve_character_record_is_valid(character: &EveCharacterRecord) -> bool {
+    sso_character_identity_is_valid(&SsoCharacterIdentity {
+        character_id: character.character_id,
+        name: character.name.clone(),
+        scopes: character.scopes.clone(),
+    }) && character.account_group_id != Some(0)
+        && character
+            .account_group_label
+            .as_ref()
+            .is_none_or(|label| !label.trim().is_empty() && label.len() <= 80)
+}
+
 fn sso_login_status_is_valid(status: &SsoLoginStatus) -> bool {
     let packages_are_valid = !status.scope_packages.is_empty()
         && status
@@ -269,8 +345,9 @@ fn sso_login_status_is_valid(status: &SsoLoginStatus) -> bool {
                 && status.scope_packages.is_empty()
                 && status.expires_at.is_none()
                 && status.error_code.is_none()
+                && status.character.is_none()
         }
-        "waiting" | "authorization-received" | "cancelled" => {
+        "waiting" | "exchanging" | "cancelled" => {
             status
                 .attempt_id
                 .as_ref()
@@ -281,6 +358,23 @@ fn sso_login_status_is_valid(status: &SsoLoginStatus) -> bool {
                     .as_ref()
                     .is_some_and(|value| !value.is_empty())
                 && status.error_code.is_none()
+                && status.character.is_none()
+        }
+        "connected" => {
+            status
+                .attempt_id
+                .as_ref()
+                .is_some_and(|value| !value.is_empty())
+                && packages_are_valid
+                && status
+                    .expires_at
+                    .as_ref()
+                    .is_some_and(|value| !value.is_empty())
+                && status.error_code.is_none()
+                && status
+                    .character
+                    .as_ref()
+                    .is_some_and(sso_character_identity_is_valid)
         }
         "timed-out" => {
             status
@@ -293,6 +387,7 @@ fn sso_login_status_is_valid(status: &SsoLoginStatus) -> bool {
                     .as_ref()
                     .is_some_and(|value| !value.is_empty())
                 && status.error_code.as_deref() == Some("login-timeout")
+                && status.character.is_none()
         }
         "failed" => {
             status
@@ -304,12 +399,32 @@ fn sso_login_status_is_valid(status: &SsoLoginStatus) -> bool {
                     .expires_at
                     .as_ref()
                     .is_some_and(|value| !value.is_empty())
-                && matches!(
-                    status.error_code.as_deref(),
-                    Some("authorization-denied")
-                        | Some("authorization-failed")
-                        | Some("callback-invalid")
-                )
+                && status.error_code.as_ref().is_some_and(|code| {
+                    matches!(
+                        code.as_str(),
+                        "authorization-denied"
+                            | "authorization-failed"
+                            | "callback-invalid"
+                            | "pkce-state-missing"
+                            | "sso-metadata-unavailable"
+                            | "sso-metadata-invalid"
+                            | "token-request-invalid"
+                            | "token-exchange-failed"
+                            | "token-response-invalid"
+                            | "jwks-unavailable"
+                            | "jwks-invalid"
+                            | "jwt-malformed"
+                            | "jwt-header-invalid"
+                            | "jwt-key-not-found"
+                            | "jwt-signature-invalid"
+                            | "jwt-claims-invalid"
+                            | "jwt-expired"
+                            | "jwt-identity-invalid"
+                            | "jwt-scopes-missing"
+                            | "character-save-failed"
+                    )
+                })
+                && status.character.is_none()
         }
         _ => false,
     }
@@ -426,6 +541,7 @@ fn launch_sidecar(
         u32,
         RuntimeDataSnapshot,
         RuntimeUpdaterSnapshot,
+        RuntimeAppearanceSnapshot,
     ),
     &'static str,
 > {
@@ -492,6 +608,7 @@ fn launch_sidecar(
             || ready.database.location != DATABASE_LOCATION
             || !data_snapshot_is_valid(&ready.data)
             || !updater_snapshot_is_valid(&ready.updater)
+            || !appearance_snapshot_is_valid(&ready.appearance)
         {
             return Err("sidecar-ready-invalid");
         }
@@ -501,11 +618,12 @@ fn launch_sidecar(
             ready.database.schema_version,
             ready.data,
             ready.updater,
+            ready.appearance,
         ))
     })();
 
     match result {
-        Ok((port, schema_version, data, updater)) => Ok((
+        Ok((port, schema_version, data, updater, appearance)) => Ok((
             SidecarProcess {
                 child,
                 session_token: token,
@@ -514,6 +632,7 @@ fn launch_sidecar(
             schema_version,
             data,
             updater,
+            appearance,
         )),
         Err(error_code) => {
             terminate_child(&mut child);
@@ -529,7 +648,7 @@ fn start_sidecar(app: AppHandle) {
     }
 
     match launch_sidecar(&app) {
-        Ok((mut process, schema_version, data, updater)) => {
+        Ok((mut process, schema_version, data, updater, appearance)) => {
             if state.shutting_down.load(Ordering::Acquire) {
                 terminate_child(&mut process.child);
                 return;
@@ -538,7 +657,12 @@ fn start_sidecar(app: AppHandle) {
                 .sidecar
                 .lock()
                 .unwrap_or_else(|error| error.into_inner()) = Some(process);
-            state.set_snapshot(RuntimeSnapshot::ready(schema_version, data, updater));
+            state.set_snapshot(RuntimeSnapshot::ready(
+                schema_version,
+                data,
+                updater,
+                appearance,
+            ));
         }
         Err(error_code) => state.set_snapshot(RuntimeSnapshot::failed(error_code)),
     }
@@ -662,6 +786,66 @@ fn set_update_channel(channel: String, state: State<'_, RuntimeState>) -> Result
 }
 
 #[tauri::command]
+fn set_font_scale(font_scale: String, state: State<'_, RuntimeState>) -> Result<String, String> {
+    if !FONT_SCALES.contains(&font_scale.as_str()) {
+        return Err("unsupported-font-scale".to_owned());
+    }
+    refresh_sidecar_status(&state);
+    let body = serde_json::json!({ "fontScale": font_scale.clone() }).to_string();
+    let response = {
+        let sidecar = state
+            .sidecar
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let process = sidecar
+            .as_ref()
+            .ok_or_else(|| "sidecar-unavailable".to_owned())?;
+        sidecar_json_request(process, "PUT", "/settings/appearance", &body)
+            .map_err(str::to_owned)?
+    };
+    let appearance: RuntimeAppearanceSnapshot =
+        serde_json::from_str(&response).map_err(|_| "sidecar-response-invalid".to_owned())?;
+    if !appearance_snapshot_is_valid(&appearance) || appearance.font_scale != font_scale {
+        return Err("sidecar-response-invalid".to_owned());
+    }
+    state
+        .snapshot
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .appearance = appearance.clone();
+    serde_json::to_string(&appearance).map_err(|_| "status-serialization-failed".to_owned())
+}
+
+#[tauri::command]
+fn list_eve_characters(state: State<'_, RuntimeState>) -> Result<String, String> {
+    refresh_sidecar_status(&state);
+    let response = {
+        let sidecar = state
+            .sidecar
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let process = sidecar
+            .as_ref()
+            .ok_or_else(|| "sidecar-unavailable".to_owned())?;
+        sidecar_json_request(process, "GET", "/characters", "").map_err(str::to_owned)?
+    };
+    let characters: EveCharactersResponse =
+        serde_json::from_str(&response).map_err(|_| "sidecar-response-invalid".to_owned())?;
+    if characters.characters.iter().any(|character| !eve_character_record_is_valid(character))
+        || characters
+            .characters
+            .iter()
+            .map(|character| character.character_id)
+            .collect::<HashSet<_>>()
+            .len()
+            != characters.characters.len()
+    {
+        return Err("sidecar-response-invalid".to_owned());
+    }
+    serde_json::to_string(&characters).map_err(|_| "status-serialization-failed".to_owned())
+}
+
+#[tauri::command]
 fn start_eve_sso(
     scope_packages: Vec<String>,
     state: State<'_, RuntimeState>,
@@ -760,7 +944,7 @@ fn desktop_runtime_status(state: State<'_, RuntimeState>) -> String {
             .unwrap_or_else(|error| error.into_inner()),
     )
     .unwrap_or_else(|_| {
-        r#"{"state":"ready","version":"unknown","desktopShell":true,"singleInstance":true,"sidecar":"error","database":"error","databaseLocation":"data/foundry.sqlite3","schemaVersion":null,"errorCode":"status-serialization-failed","data":{"state":"error","hasCachedData":false,"observedAt":null,"expiresAt":null,"ageSeconds":null,"lastSyncStatus":"never","errorCode":"status-serialization-failed"},"updater":{"channel":"stable","manifestState":"unavailable","publicDistribution":false}}"#.to_owned()
+        r#"{"state":"ready","version":"unknown","desktopShell":true,"singleInstance":true,"sidecar":"error","database":"error","databaseLocation":"data/foundry.sqlite3","schemaVersion":null,"errorCode":"status-serialization-failed","data":{"state":"error","hasCachedData":false,"observedAt":null,"expiresAt":null,"ageSeconds":null,"lastSyncStatus":"never","errorCode":"status-serialization-failed"},"updater":{"channel":"stable","manifestState":"unavailable","publicDistribution":false},"appearance":{"fontScale":"normal"}}"#.to_owned()
     })
 }
 
@@ -787,6 +971,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             desktop_runtime_status,
             set_update_channel,
+            set_font_scale,
+            list_eve_characters,
             start_eve_sso,
             eve_sso_status,
             cancel_eve_sso
@@ -803,7 +989,10 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::{authorization_url_is_valid, sso_login_status_is_valid, SsoLoginStatus};
+    use super::{
+        authorization_url_is_valid, sso_login_status_is_valid, SsoCharacterIdentity,
+        SsoLoginStatus,
+    };
 
     fn valid_authorization_url() -> String {
         concat!(
@@ -842,13 +1031,25 @@ mod tests {
             scope_packages: vec!["industry-core".to_owned()],
             expires_at: Some("2026-09-09T12:00:00Z".to_owned()),
             error_code: None,
+            character: None,
         };
         assert!(sso_login_status_is_valid(&waiting));
 
         let invalid = SsoLoginStatus {
             scope_packages: vec!["industry-core".to_owned(), "industry-core".to_owned()],
-            ..waiting
+            ..waiting.clone()
         };
         assert!(!sso_login_status_is_valid(&invalid));
+
+        let connected = SsoLoginStatus {
+            state: "connected".to_owned(),
+            character: Some(SsoCharacterIdentity {
+                character_id: 2_112_345_678,
+                name: "Synthetic Pilot".to_owned(),
+                scopes: vec!["esi-assets.read_assets.v1".to_owned()],
+            }),
+            ..waiting
+        };
+        assert!(sso_login_status_is_valid(&connected));
     }
 }

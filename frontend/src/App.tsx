@@ -20,13 +20,16 @@ import {
   LineChart,
   type LucideIcon,
   MoreHorizontal,
+  Minus,
   Orbit,
   PackageSearch,
   RefreshCw,
+  Plus,
   Search,
   ShieldCheck,
   Sparkles,
   TrendingUp,
+  Type,
   UserRound,
   UsersRound,
   X,
@@ -48,18 +51,24 @@ import {
 } from "./demo";
 import {
   cancelEveSso,
+  fontScales,
   initialRuntimeStatus,
+  loadEveCharacters,
   loadEveSsoStatus,
   loadDesktopRuntimeStatus,
   setDesktopUpdateChannel,
+  setDesktopFontScale,
   startEveSso,
   ssoScopePackages,
   type DesktopRuntimeStatus,
+  type EveCharacter,
+  type FontScale,
   type LocalDataState,
   type SsoLoginStatus,
   type SsoScopePackage,
   type UpdateChannel,
   type UpdaterStatus,
+  type AppearanceStatus,
 } from "./runtime";
 
 type Locale = "de" | "en";
@@ -71,6 +80,7 @@ const initialSsoStatus: SsoLoginStatus = {
   scopePackages: [],
   expiresAt: null,
   errorCode: null,
+  character: null,
 };
 
 const navigation: ReadonlyArray<{ id: ModuleId; icon: LucideIcon }> = [
@@ -203,9 +213,13 @@ const copy = {
           title: "Browser-Anmeldung läuft",
           detail: "EVE SSO ist im Systembrowser geöffnet. Die App wartet bis zu drei Minuten auf den sicheren Rückruf.",
         },
-        "authorization-received": {
-          title: "EVE-Autorisierung bestätigt",
-          detail: "Der Rückruf war gültig. Tokenaustausch und geprüfte Charakterzuordnung folgen sicher in Paket 13.",
+        exchanging: {
+          title: "EVE-Identität wird geprüft",
+          detail: "Der Rückruf ist gültig. Signatur, Aussteller, Zielgruppe, Ablauf, Scopes und Charakter-ID werden geprüft.",
+        },
+        connected: {
+          title: "EVE-Charakter verbunden",
+          detail: "Die geprüfte Charakteridentität wurde sicher in der lokalen Datenbank gespeichert.",
         },
         cancelled: {
           title: "Anmeldung abgebrochen",
@@ -228,12 +242,33 @@ const copy = {
       commandError: "Die Anmeldung konnte nicht gestartet oder abgefragt werden.",
       scopeTitle: "Berechtigungspakete für diesen Charakter",
       security: "Systembrowser · S256 · zufälliger state · 3-Minuten-Zeitfenster",
+      connectedName: "Verbunden: {name}",
       packageLabels: {
         "industry-core": "Industrie-Basis",
         market: "Markt",
         "planetary-industry": "Planetary Industry",
         projects: "Projekte & Fittings",
         "private-structures": "Private Strukturen",
+      },
+    },
+    characters: {
+      title: "Verbundene EVE-Charaktere",
+      empty: "Noch kein geprüfter Charakter verbunden",
+      unavailable: "Charakterliste konnte nicht geladen werden",
+      count: "{count} lokal verbunden",
+      scopes: "Bestätigte Scopes: {count}",
+      ungrouped: "Nicht gruppiert",
+    },
+    fontSize: {
+      label: "Schriftgröße",
+      smaller: "Schrift kleiner",
+      larger: "Schrift größer",
+      levels: {
+        "very-small": "Sehr klein",
+        small: "Klein",
+        normal: "Normal",
+        large: "Groß",
+        "very-large": "Sehr groß",
       },
     },
     scope: {
@@ -335,7 +370,7 @@ const copy = {
     },
     planned: "Geplant",
     previewOnly: "Noch ohne Live-Funktion",
-    footerVersion: "v0.0.4-preview.3",
+    footerVersion: "v0.0.4-preview.4",
   },
   en: {
     nav: {
@@ -455,9 +490,13 @@ const copy = {
           title: "Browser sign-in in progress",
           detail: "EVE SSO is open in your system browser. The app waits up to three minutes for the secure callback.",
         },
-        "authorization-received": {
-          title: "EVE authorization confirmed",
-          detail: "The callback was valid. Token exchange and verified character assignment follow safely in package 13.",
+        exchanging: {
+          title: "Verifying EVE identity",
+          detail: "The callback is valid. Signature, issuer, audience, expiry, scopes and character ID are being verified.",
+        },
+        connected: {
+          title: "EVE character connected",
+          detail: "The verified character identity was safely stored in the local database.",
         },
         cancelled: {
           title: "Sign-in cancelled",
@@ -480,12 +519,33 @@ const copy = {
       commandError: "The sign-in could not be started or checked.",
       scopeTitle: "Permission packages for this character",
       security: "System browser · S256 · random state · 3-minute window",
+      connectedName: "Connected: {name}",
       packageLabels: {
         "industry-core": "Industry core",
         market: "Market",
         "planetary-industry": "Planetary industry",
         projects: "Projects & fittings",
         "private-structures": "Private structures",
+      },
+    },
+    characters: {
+      title: "Connected EVE characters",
+      empty: "No verified character connected yet",
+      unavailable: "Character list could not be loaded",
+      count: "{count} connected locally",
+      scopes: "Confirmed scopes: {count}",
+      ungrouped: "Ungrouped",
+    },
+    fontSize: {
+      label: "Font size",
+      smaller: "Decrease font size",
+      larger: "Increase font size",
+      levels: {
+        "very-small": "Very small",
+        small: "Small",
+        normal: "Normal",
+        large: "Large",
+        "very-large": "Very large",
       },
     },
     scope: {
@@ -587,7 +647,7 @@ const copy = {
     },
     planned: "Planned",
     previewOnly: "No live function yet",
-    footerVersion: "v0.0.4-preview.3",
+    footerVersion: "v0.0.4-preview.4",
   },
 } as const;
 
@@ -691,12 +751,16 @@ export function App({
   ssoStarter = startEveSso,
   ssoStatusLoader = loadEveSsoStatus,
   ssoCanceller = cancelEveSso,
+  charactersLoader = loadEveCharacters,
+  fontScaleSetter = setDesktopFontScale,
 }: {
   runtimeLoader?: () => Promise<DesktopRuntimeStatus>;
   updateChannelSetter?: (channel: UpdateChannel) => Promise<UpdaterStatus>;
   ssoStarter?: (scopePackages: SsoScopePackage[]) => Promise<SsoLoginStatus>;
   ssoStatusLoader?: () => Promise<SsoLoginStatus>;
   ssoCanceller?: () => Promise<SsoLoginStatus>;
+  charactersLoader?: () => Promise<EveCharacter[]>;
+  fontScaleSetter?: (fontScale: FontScale) => Promise<AppearanceStatus>;
 }) {
   const [locale, setLocale] = useState<Locale>("de");
   const [activeModule, setActiveModule] = useState<ModuleId>("overview");
@@ -710,6 +774,10 @@ export function App({
   const [ssoStatus, setSsoStatus] = useState(initialSsoStatus);
   const [ssoBusy, setSsoBusy] = useState(false);
   const [ssoCommandError, setSsoCommandError] = useState(false);
+  const [characters, setCharacters] = useState<EveCharacter[]>([]);
+  const [charactersError, setCharactersError] = useState(false);
+  const [fontScale, setFontScale] = useState<FontScale>("normal");
+  const [fontScaleBusy, setFontScaleBusy] = useState(false);
   const [selectedScopePackages, setSelectedScopePackages] = useState<SsoScopePackage[]>([
     "industry-core",
   ]);
@@ -720,12 +788,17 @@ export function App({
   }, [locale]);
 
   useEffect(() => {
+    document.documentElement.dataset.fontScale = fontScale;
+  }, [fontScale]);
+
+  useEffect(() => {
     let active = true;
     let pollTimer: number | undefined;
     const refreshRuntimeStatus = async () => {
       const status = await runtimeLoader();
       if (!active) return;
       setRuntimeStatus(status);
+      if (status.state === "ready") setFontScale(status.appearance.fontScale);
       if (status.state === "ready" && status.sidecar === "starting") {
         pollTimer = window.setTimeout(refreshRuntimeStatus, 250);
       }
@@ -742,20 +815,27 @@ export function App({
   useEffect(() => {
     if (!nativeCoreReady) return;
     let active = true;
-    void ssoStatusLoader()
-      .then((status) => {
-        if (active) setSsoStatus(status);
+    void Promise.all([ssoStatusLoader(), charactersLoader()])
+      .then(([status, loadedCharacters]) => {
+        if (active) {
+          setSsoStatus(status);
+          setCharacters(loadedCharacters);
+          setCharactersError(false);
+        }
       })
       .catch(() => {
-        if (active) setSsoCommandError(true);
+        if (active) {
+          setSsoCommandError(true);
+          setCharactersError(true);
+        }
       });
     return () => {
       active = false;
     };
-  }, [nativeCoreReady, ssoStatusLoader]);
+  }, [charactersLoader, nativeCoreReady, ssoStatusLoader]);
 
   useEffect(() => {
-    if (!nativeCoreReady || ssoStatus.state !== "waiting") return;
+    if (!nativeCoreReady || !["waiting", "exchanging"].includes(ssoStatus.state)) return;
     let active = true;
     let pollTimer: number | undefined;
     const poll = async () => {
@@ -764,9 +844,14 @@ export function App({
         if (!active) return;
         setSsoStatus(status);
         setSsoCommandError(false);
-        if (status.state === "waiting") pollTimer = window.setTimeout(poll, 750);
+        if (status.state === "waiting" || status.state === "exchanging") {
+          pollTimer = window.setTimeout(poll, 750);
+        }
       } catch {
-        if (active) setSsoCommandError(true);
+        if (active) {
+          setSsoCommandError(true);
+          pollTimer = window.setTimeout(poll, 1_500);
+        }
       }
     };
     pollTimer = window.setTimeout(poll, 750);
@@ -775,6 +860,24 @@ export function App({
       if (pollTimer !== undefined) window.clearTimeout(pollTimer);
     };
   }, [nativeCoreReady, ssoStatus.state, ssoStatusLoader]);
+
+  useEffect(() => {
+    if (!nativeCoreReady || ssoStatus.state !== "connected") return;
+    let active = true;
+    void charactersLoader()
+      .then((loadedCharacters) => {
+        if (active) {
+          setCharacters(loadedCharacters);
+          setCharactersError(false);
+        }
+      })
+      .catch(() => {
+        if (active) setCharactersError(true);
+      });
+    return () => {
+      active = false;
+    };
+  }, [charactersLoader, nativeCoreReady, ssoStatus.state]);
 
   const runtimePresentationState =
     runtimeStatus.state === "ready" ? runtimeStatus.sidecar : runtimeStatus.state;
@@ -836,15 +939,41 @@ export function App({
     }
   };
 
+  const changeFontScale = async (direction: -1 | 1) => {
+    if (fontScaleBusy) return;
+    const currentIndex = fontScales.indexOf(fontScale);
+    const nextIndex = Math.min(fontScales.length - 1, Math.max(0, currentIndex + direction));
+    const nextScale = fontScales[nextIndex];
+    if (nextScale === fontScale) return;
+    const previousScale = fontScale;
+    setFontScale(nextScale);
+    setFontScaleBusy(true);
+    try {
+      const appearance = await fontScaleSetter(nextScale);
+      setFontScale(appearance.fontScale);
+      setRuntimeStatus((current) => current.state === "ready"
+        ? { ...current, appearance }
+        : current);
+    } catch {
+      setFontScale(previousScale);
+    } finally {
+      setFontScaleBusy(false);
+    }
+  };
+
   const toggleScopePackage = (scopePackage: SsoScopePackage) => {
-    if (scopePackage === "industry-core" || ssoStatus.state === "waiting") return;
+    if (
+      scopePackage === "industry-core" ||
+      ssoStatus.state === "waiting" ||
+      ssoStatus.state === "exchanging"
+    ) return;
     setSelectedScopePackages((current) => current.includes(scopePackage)
       ? current.filter((item) => item !== scopePackage)
       : ssoScopePackages.filter((item) => current.includes(item) || item === scopePackage));
   };
 
   const beginSsoLogin = async () => {
-    if (!nativeCoreReady || ssoStatus.state === "waiting") return;
+    if (!nativeCoreReady || ssoStatus.state === "waiting" || ssoStatus.state === "exchanging") return;
     setSsoBusy(true);
     setSsoCommandError(false);
     try {
@@ -857,7 +986,7 @@ export function App({
   };
 
   const abortSsoLogin = async () => {
-    if (!nativeCoreReady || ssoStatus.state !== "waiting") return;
+    if (!nativeCoreReady || !["waiting", "exchanging"].includes(ssoStatus.state)) return;
     setSsoBusy(true);
     setSsoCommandError(false);
     try {
@@ -1007,6 +1136,29 @@ export function App({
             <span>{nativeSyncLabel ?? (syncing ? t.syncNow : t.syncFresh)}</span>
           </button>
 
+          <div className="font-size-control" aria-label={t.fontSize.label}>
+            <Type size={15} aria-hidden="true" />
+            <button
+              type="button"
+              onClick={() => void changeFontScale(-1)}
+              disabled={fontScaleBusy || fontScale === fontScales[0]}
+              aria-label={t.fontSize.smaller}
+              title={t.fontSize.smaller}
+            >
+              <Minus size={13} />
+            </button>
+            <span title={t.fontSize.levels[fontScale]}>{fontScales.indexOf(fontScale) + 1}/5</span>
+            <button
+              type="button"
+              onClick={() => void changeFontScale(1)}
+              disabled={fontScaleBusy || fontScale === fontScales[fontScales.length - 1]}
+              aria-label={t.fontSize.larger}
+              title={t.fontSize.larger}
+            >
+              <Plus size={13} />
+            </button>
+          </div>
+
           <div className="language-switch" aria-label="Language">
             <Languages size={15} />
             {(["de", "en"] as const).map((language) => (
@@ -1037,15 +1189,26 @@ export function App({
 
         <section className={`sso-panel sso-panel--${ssoStatus.state}`} aria-labelledby="sso-title">
           <div className="sso-panel__icon" aria-hidden="true">
-            {ssoStatus.state === "waiting" ? <RefreshCw className="spin" size={20} /> : <LogIn size={20} />}
+            {ssoStatus.state === "waiting" || ssoStatus.state === "exchanging"
+              ? <RefreshCw className="spin" size={20} />
+              : <LogIn size={20} />}
           </div>
           <div className="sso-panel__copy" aria-live="polite">
             <span>{t.sso.eyebrow}</span>
             <strong id="sso-title">{t.sso.states[ssoStatus.state].title}</strong>
-            <p>{ssoCommandError ? t.sso.commandError : t.sso.states[ssoStatus.state].detail}</p>
+            <p>
+              {ssoCommandError
+                ? t.sso.commandError
+                : ssoStatus.state === "connected" && ssoStatus.character
+                  ? t.sso.connectedName.replace("{name}", ssoStatus.character.name)
+                  : t.sso.states[ssoStatus.state].detail}
+            </p>
             <small>{nativeCoreReady ? t.sso.security : t.sso.desktopOnly}</small>
           </div>
-          <fieldset className="sso-scopes" disabled={!nativeCoreReady || ssoStatus.state === "waiting"}>
+          <fieldset
+            className="sso-scopes"
+            disabled={!nativeCoreReady || ssoStatus.state === "waiting" || ssoStatus.state === "exchanging"}
+          >
             <legend>{t.sso.scopeTitle}</legend>
             <div>
               {ssoScopePackages.map((scopePackage) => (
@@ -1053,7 +1216,12 @@ export function App({
                   <input
                     type="checkbox"
                     checked={selectedScopePackages.includes(scopePackage)}
-                    disabled={scopePackage === "industry-core" || !nativeCoreReady || ssoStatus.state === "waiting"}
+                    disabled={
+                      scopePackage === "industry-core" ||
+                      !nativeCoreReady ||
+                      ssoStatus.state === "waiting" ||
+                      ssoStatus.state === "exchanging"
+                    }
                     onChange={() => toggleScopePackage(scopePackage)}
                   />
                   <span>{t.sso.packageLabels[scopePackage]}</span>
@@ -1062,7 +1230,7 @@ export function App({
             </div>
           </fieldset>
           <div className="sso-panel__actions">
-            {ssoStatus.state === "waiting" ? (
+            {ssoStatus.state === "waiting" || ssoStatus.state === "exchanging" ? (
               <button type="button" className="sso-cancel" onClick={() => void abortSsoLogin()} disabled={ssoBusy}>
                 <X size={15} />
                 {t.sso.cancel}
@@ -1070,13 +1238,44 @@ export function App({
             ) : (
               <button type="button" className="sso-start" onClick={() => void beginSsoLogin()} disabled={!nativeCoreReady || ssoBusy}>
                 <LogIn size={15} />
-                {ssoStatus.state === "authorization-received"
+                {ssoStatus.state === "connected"
                   ? t.sso.startAnother
                   : ssoStatus.state === "idle"
                     ? t.sso.start
                     : t.sso.retry}
               </button>
             )}
+          </div>
+        </section>
+
+        <section className="character-roster" aria-label={t.characters.title}>
+          <div className="character-roster__heading">
+            <div><UsersRound size={17} aria-hidden="true" /></div>
+            <span>
+              <strong>{t.characters.title}</strong>
+              <small>{t.characters.count.replace("{count}", String(characters.length))}</small>
+            </span>
+          </div>
+          <div className="character-roster__list" aria-live="polite">
+            {charactersError ? (
+              <span className="character-roster__empty character-roster__empty--error">
+                {t.characters.unavailable}
+              </span>
+            ) : characters.length === 0 ? (
+              <span className="character-roster__empty">{t.characters.empty}</span>
+            ) : characters.map((character) => (
+              <article className="character-chip" key={character.characterId}>
+                <span className="character-chip__avatar"><UserRound size={16} /></span>
+                <span>
+                  <strong>{character.name}</strong>
+                  <small>{character.accountGroupLabel ?? t.characters.ungrouped}</small>
+                </span>
+                <span className="character-chip__scopes">
+                  <ShieldCheck size={13} />
+                  {t.characters.scopes.replace("{count}", String(character.scopes.length))}
+                </span>
+              </article>
+            ))}
           </div>
         </section>
 

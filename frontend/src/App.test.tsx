@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { App } from "./App";
-import type { DesktopRuntimeStatus, SsoLoginStatus } from "./runtime";
+import type { DesktopRuntimeStatus, EveCharacter, SsoLoginStatus } from "./runtime";
 
 const idleSso: SsoLoginStatus = {
   state: "idle",
@@ -10,12 +10,13 @@ const idleSso: SsoLoginStatus = {
   scopePackages: [],
   expiresAt: null,
   errorCode: null,
+  character: null,
 };
 
 const nativeRuntime = (overrides: Partial<Extract<DesktopRuntimeStatus, { state: "ready" }>> = {}) =>
   Promise.resolve<DesktopRuntimeStatus>({
     state: "ready",
-    version: "0.0.4-preview.3",
+    version: "0.0.4-preview.4",
     desktopShell: true,
     singleInstance: true,
     sidecar: "ready",
@@ -37,6 +38,7 @@ const nativeRuntime = (overrides: Partial<Extract<DesktopRuntimeStatus, { state:
       manifestState: "verified",
       publicDistribution: false,
     },
+    appearance: { fontScale: "normal" },
     ...overrides,
   });
 
@@ -66,6 +68,18 @@ describe("New Eden Foundry design preview", () => {
     expect(screen.getByText(/synthetic data/i)).toBeInTheDocument();
   });
 
+  it("changes all interface typography through five global stages", async () => {
+    const fontScaleSetter = vi.fn().mockResolvedValue({ fontScale: "large" });
+    render(<App fontScaleSetter={fontScaleSetter} />);
+
+    expect(document.documentElement.dataset.fontScale).toBe("normal");
+    fireEvent.click(screen.getByRole("button", { name: "Schrift größer" }));
+
+    await waitFor(() => expect(fontScaleSetter).toHaveBeenCalledWith("large"));
+    expect(document.documentElement.dataset.fontScale).toBe("large");
+    expect(screen.getByText("4/5")).toHaveAttribute("title", "Groß");
+  });
+
   it("does not claim that the native desktop core is active in a browser", async () => {
     render(<App />);
 
@@ -75,7 +89,7 @@ describe("New Eden Foundry design preview", () => {
   it("credits Savoxmedia as the app creator next to the version", () => {
     render(<App />);
 
-    expect(screen.getByText("v0.0.4-preview.3")).toBeInTheDocument();
+    expect(screen.getByText("v0.0.4-preview.4")).toBeInTheDocument();
     expect(screen.getByText("Savoxmedia")).toBeInTheDocument();
     expect(screen.getByText("Erstellt von", { exact: false })).toBeInTheDocument();
     expect(screen.queryByText("Lokaler Betreiber")).not.toBeInTheDocument();
@@ -178,6 +192,7 @@ describe("New Eden Foundry design preview", () => {
       scopePackages: ["industry-core", "market"],
       expiresAt: "2026-09-09T12:03:00Z",
       errorCode: null,
+      character: null,
     };
     const cancelled: SsoLoginStatus = { ...waiting, state: "cancelled" };
     const ssoStarter = vi.fn().mockResolvedValue(waiting);
@@ -204,6 +219,40 @@ describe("New Eden Foundry design preview", () => {
 
     await waitFor(() => expect(ssoCanceller).toHaveBeenCalledTimes(1));
     expect(await screen.findByText("Anmeldung abgebrochen")).toBeInTheDocument();
+  });
+
+  it("shows a JWT-verified character immediately and in the persistent roster", async () => {
+    const identity = {
+      characterId: 2_112_345_678,
+      name: "Synthetic Pilot",
+      scopes: ["esi-assets.read_assets.v1"],
+    };
+    const connected: SsoLoginStatus = {
+      state: "connected",
+      attemptId: "opaque-attempt",
+      scopePackages: ["industry-core"],
+      expiresAt: "2026-09-09T12:03:00Z",
+      errorCode: null,
+      character: identity,
+    };
+    const character: EveCharacter = {
+      ...identity,
+      accountGroupId: null,
+      accountGroupLabel: null,
+      enabled: true,
+    };
+    render(
+      <App
+        runtimeLoader={() => nativeRuntime()}
+        ssoStatusLoader={() => Promise.resolve(connected)}
+        charactersLoader={() => Promise.resolve([character])}
+      />,
+    );
+
+    expect(await screen.findByText("EVE-Charakter verbunden")).toBeInTheDocument();
+    expect(screen.getByText("Verbunden: Synthetic Pilot")).toBeInTheDocument();
+    expect(screen.getByText("1 lokal verbunden")).toBeInTheDocument();
+    expect(screen.getByText("Bestätigte Scopes: 1")).toBeInTheDocument();
   });
 
   it("keeps real EVE sign-in disabled in browser design preview", async () => {

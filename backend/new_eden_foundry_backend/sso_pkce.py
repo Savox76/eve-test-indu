@@ -1,9 +1,4 @@
-"""Short-lived EVE SSO authorization flow for the desktop application.
-
-WP12 intentionally stops after a verified authorization callback. The one-time
-authorization code and PKCE verifier are discarded until WP13 can exchange the
-code and validate the returned JWT before any character identity is trusted.
-"""
+"""Short-lived EVE SSO authorization and verified character binding."""
 
 from __future__ import annotations
 
@@ -15,6 +10,7 @@ import threading
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from collections.abc import Callable
 from typing import Final
 from urllib.parse import parse_qsl, urlencode, urlsplit
 
@@ -24,6 +20,7 @@ from .sso_registration import (
     SSO_CALLBACK_PORT,
     SsoRegistrationProfile,
 )
+from .sso_tokens import EveSsoClient, SsoTokenError, VerifiedCharacter
 
 
 SSO_AUTHORIZATION_ENDPOINT: Final = "https://login.eveonline.com/v2/oauth/authorize"
@@ -31,7 +28,7 @@ PKCE_LOGIN_TIMEOUT_SECONDS: Final = 180
 MAXIMUM_CALLBACK_TARGET_LENGTH: Final = 8_192
 MAXIMUM_AUTHORIZATION_CODE_LENGTH: Final = 4_096
 TERMINAL_STATES: Final = frozenset(
-    {"authorization-received", "cancelled", "timed-out", "failed"}
+    {"connected", "cancelled", "timed-out", "failed"}
 )
 
 
@@ -53,6 +50,7 @@ class _Attempt:
     expires_at: datetime
     state: str = "waiting"
     error_code: str | None = None
+    character: VerifiedCharacter | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,6 +102,8 @@ class SsoPkceManager:
         callback_port: int = SSO_CALLBACK_PORT,
         callback_path: str = SSO_CALLBACK_PATH,
         timeout_seconds: float = PKCE_LOGIN_TIMEOUT_SECONDS,
+        sso_client: EveSsoClient | None = None,
+        identity_handler: Callable[[VerifiedCharacter], None] | None = None,
     ) -> None:
         if not profile.is_registered or profile.client_id is None:
             raise SsoPkceError("sso-not-registered")
@@ -119,6 +119,8 @@ class SsoPkceManager:
         self._callback_port = callback_port
         self._callback_path = callback_path
         self._timeout_seconds = timeout_seconds
+        self._sso_client = sso_client or EveSsoClient(profile.client_id)
+        self._identity_handler = identity_handler or (lambda _identity: None)
         self._lock = threading.RLock()
         self._attempt: _Attempt | None = None
         self._server: _CallbackServer | None = None
@@ -193,7 +195,10 @@ class SsoPkceManager:
 
         with self._lock:
             self._expire_if_needed_locked()
-            if self._attempt is not None and self._attempt.state == "waiting":
+            if (
+                self._attempt is not None
+                and self._attempt.state in {"waiting", "exchanging"}
+            ):
                 raise SsoPkceError("login-already-active")
 
             attempt_id = secrets.token_urlsafe(18)
@@ -261,7 +266,7 @@ class SsoPkceManager:
             self._expire_if_needed_locked()
             if self._attempt is None:
                 return self._status_locked()
-            if self._attempt.state == "waiting":
+            if self._attempt.state in {"waiting", "exchanging"}:
                 self._finish_locked("cancelled")
             return self._status_locked()
 
@@ -303,21 +308,50 @@ class SsoPkceManager:
                 self._finish_locked("failed", "callback-invalid")
                 return CallbackResult(400, "Ungültiger Rückruf", "Der Autorisierungscode fehlt oder ist ungültig.")
 
-            # WP12 verifies the browser response but deliberately does not retain the
-            # one-time code. WP13 will perform exchange + JWT validation atomically.
-            _authorization_code = codes[0]
-            self._finish_locked("authorization-received")
+            authorization_code = codes[0]
+            code_verifier = attempt.code_verifier
+            if code_verifier is None:
+                self._finish_locked("failed", "pkce-state-missing")
+                return CallbackResult(
+                    410,
+                    "Anmeldung beendet",
+                    "Der sichere Anmeldeversuch ist nicht mehr vollständig.",
+                )
+            expected_scopes = tuple(
+                scope
+                for package_name in attempt.scope_packages
+                for scope in self._profile.scope_packages[package_name]
+            )
+            attempt.state = "exchanging"
+            attempt.state_secret = None
+            attempt.code_verifier = None
+            server, timer = self._detach_server_locked()
+            if timer is not None:
+                timer.cancel()
+            if server is not None:
+                threading.Thread(
+                    target=self._shutdown_server,
+                    args=(server,),
+                    name="foundry-sso-callback-stop",
+                    daemon=True,
+                ).start()
+            threading.Thread(
+                target=self._exchange_identity,
+                args=(attempt_id, authorization_code, code_verifier, expected_scopes),
+                name="foundry-sso-token-exchange",
+                daemon=True,
+            ).start()
             return CallbackResult(
                 200,
-                "EVE-Autorisierung empfangen",
-                "New Eden Foundry hat den sicheren Browser-Rückruf bestätigt.",
+                "EVE-Autorisierung wird geprüft",
+                "New Eden Foundry prüft jetzt Token, Signatur und Charakteridentität.",
             )
 
     def close(self) -> None:
         server: _CallbackServer | None
         timer: threading.Timer | None
         with self._lock:
-            if self._attempt is not None and self._attempt.state == "waiting":
+            if self._attempt is not None and self._attempt.state in {"waiting", "exchanging"}:
                 self._attempt.state = "cancelled"
                 self._attempt.state_secret = None
                 self._attempt.code_verifier = None
@@ -344,6 +378,47 @@ class SsoPkceManager:
             and _utc_now() >= self._attempt.expires_at
         ):
             self._finish_locked("timed-out", "login-timeout")
+
+    def _exchange_identity(
+        self,
+        attempt_id: str,
+        authorization_code: str,
+        code_verifier: str,
+        expected_scopes: tuple[str, ...],
+    ) -> None:
+        try:
+            identity = self._sso_client.exchange_and_validate(
+                authorization_code,
+                code_verifier,
+                expected_scopes,
+            )
+        except SsoTokenError as error:
+            with self._lock:
+                if (
+                    self._attempt is not None
+                    and self._attempt.attempt_id == attempt_id
+                    and self._attempt.state == "exchanging"
+                ):
+                    self._finish_locked("failed", error.code)
+            return
+        finally:
+            authorization_code = ""
+            code_verifier = ""
+
+        with self._lock:
+            if (
+                self._attempt is None
+                or self._attempt.attempt_id != attempt_id
+                or self._attempt.state != "exchanging"
+            ):
+                return
+            try:
+                self._identity_handler(identity)
+            except Exception:
+                self._finish_locked("failed", "character-save-failed")
+                return
+            self._attempt.character = identity
+            self._finish_locked("connected")
 
     def _finish_locked(self, state: str, error_code: str | None = None) -> None:
         if state not in TERMINAL_STATES or self._attempt is None:
@@ -385,6 +460,7 @@ class SsoPkceManager:
                 "scopePackages": [],
                 "expiresAt": None,
                 "errorCode": None,
+                "character": None,
             }
         return {
             "state": self._attempt.state,
@@ -392,4 +468,9 @@ class SsoPkceManager:
             "scopePackages": list(self._attempt.scope_packages),
             "expiresAt": _iso8601(self._attempt.expires_at),
             "errorCode": self._attempt.error_code,
+            "character": (
+                self._attempt.character.as_api_payload()
+                if self._attempt.character is not None
+                else None
+            ),
         }

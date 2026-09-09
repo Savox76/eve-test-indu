@@ -19,7 +19,9 @@ from new_eden_foundry_backend.sidecar import (
     StartupProtocolError,
     is_authorized,
     parse_startup_configuration,
+    store_verified_character,
 )
+from new_eden_foundry_backend.sso_tokens import VerifiedCharacter
 
 
 SYNTHETIC_SESSION_TOKEN = "a" * 64
@@ -57,6 +59,26 @@ class SidecarProtocolTests(unittest.TestCase):
         self.assertFalse(is_authorized(None, SYNTHETIC_SESSION_TOKEN))
         self.assertFalse(is_authorized("Bearer wrong", SYNTHETIC_SESSION_TOKEN))
         self.assertFalse(is_authorized(SYNTHETIC_SESSION_TOKEN, SYNTHETIC_SESSION_TOKEN))
+
+    def test_verified_character_is_persisted_idempotently(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            database_path = Path(temporary_directory) / "foundry.sqlite3"
+            from new_eden_foundry_backend.database import initialize_database
+
+            initialize_database(database_path)
+            identity = VerifiedCharacter(
+                2_112_345_678,
+                "Synthetic Pilot",
+                ("esi-assets.read_assets.v1",),
+            )
+            store_verified_character(database_path, identity)
+            store_verified_character(database_path, identity)
+
+            with contextlib.closing(sqlite3.connect(database_path)) as connection:
+                self.assertEqual(
+                    connection.execute("SELECT COUNT(*) FROM characters").fetchone()[0],
+                    1,
+                )
 
 
 class SidecarIntegrationTests(unittest.TestCase):
@@ -100,6 +122,7 @@ class SidecarIntegrationTests(unittest.TestCase):
             self.assertEqual(ready["updater"]["channel"], "stable")
             self.assertEqual(ready["updater"]["manifestState"], "verified")
             self.assertFalse(ready["updater"]["publicDistribution"])
+            self.assertEqual(ready["appearance"], {"fontScale": "normal"})
             self.assertEqual(ready["ssoRegistration"]["state"], "registered")
             self.assertEqual(
                 ready["ssoRegistration"]["clientId"],
@@ -144,6 +167,8 @@ class SidecarIntegrationTests(unittest.TestCase):
             self.assertEqual(health["updater"]["channel"], "stable")
             self.assertEqual(health["updater"]["manifestState"], "verified")
             self.assertFalse(health["updater"]["publicDistribution"])
+            self.assertEqual(health["appearance"], {"fontScale": "normal"})
+            self.assertEqual(health["characters"], {"connected": 0})
             self.assertEqual(health["ssoRegistration"]["state"], "registered")
 
             sso_login_url = f"{base_url}/sso/login"
@@ -154,6 +179,15 @@ class SidecarIntegrationTests(unittest.TestCase):
             with opener.open(sso_status_request, timeout=3) as response:
                 sso_status = json.loads(response.read())
             self.assertEqual(sso_status["state"], "idle")
+            self.assertIsNone(sso_status["character"])
+
+            characters_request = urllib.request.Request(
+                f"{base_url}/characters",
+                headers={"Authorization": f"Bearer {SYNTHETIC_SESSION_TOKEN}"},
+            )
+            with opener.open(characters_request, timeout=3) as response:
+                characters = json.loads(response.read())
+            self.assertEqual(characters, {"characters": []})
 
             sso_start_request = urllib.request.Request(
                 sso_login_url,
@@ -201,6 +235,20 @@ class SidecarIntegrationTests(unittest.TestCase):
                 updated_health = json.loads(response.read())
             self.assertEqual(updated_health["updater"]["channel"], "beta")
 
+            appearance_url = f"{base_url}/settings/appearance"
+            appearance_request = urllib.request.Request(
+                appearance_url,
+                data=json.dumps({"fontScale": "very-large"}).encode(),
+                method="PUT",
+                headers={
+                    "Authorization": f"Bearer {SYNTHETIC_SESSION_TOKEN}",
+                    "Content-Type": "application/json",
+                },
+            )
+            with opener.open(appearance_request, timeout=3) as response:
+                appearance = json.loads(response.read())
+            self.assertEqual(appearance, {"fontScale": "very-large"})
+
             invalid_request = urllib.request.Request(
                 update_settings_url,
                 data=json.dumps({"channel": "nightly"}).encode(),
@@ -221,7 +269,11 @@ class SidecarIntegrationTests(unittest.TestCase):
                 channel = connection.execute(
                     "SELECT value FROM app_settings WHERE key = 'update_channel'"
                 ).fetchone()[0]
+                font_scale = connection.execute(
+                    "SELECT value FROM app_settings WHERE key = 'font_scale'"
+                ).fetchone()[0]
             self.assertEqual(channel, "beta")
+            self.assertEqual(font_scale, "very-large")
 
             process.stdin.write('{"command":"shutdown"}\n')
             process.stdin.flush()

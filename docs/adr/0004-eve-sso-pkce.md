@@ -32,11 +32,11 @@ Eine nutzbare Client-ID und exakte Callback-URI müssen im EVE Developers Portal
 
 Tests decken PKCE-Vektor, `state`, Callback-Bindung, Timeout, JWT-Fehler, Scope-Differenz und atomare Refresh-Token-Rotation ab. Ein Golden-Pfad funktioniert ohne Client Secret in Paket oder Prozessumgebung.
 
-### Umsetzungsstand Paket 12
+### Umsetzungsstand Pakete 12 und 13
 
 Systembrowser, fester IPv4-Loopback-Listener, unabhängiger 256-Bit-`state`, neuer 256-Bit-Verifier mit `S256`-Challenge, funktionsbezogene Scopeauswahl, Drei-Minuten-Timeout und manueller Abbruch sind implementiert. Der native Shell-Prozess öffnet nur eine vollständig geprüfte URL unter dem festen EVE-Autorisierungsendpunkt. Die Sidecar-API gibt weder `state` noch Verifier oder Autorisierungscode an die Weboberfläche zurück.
 
-Der in Paket 12 empfangene Code wird nach der Callback-Prüfung bewusst verworfen. Erst Paket 13 erweitert denselben atomaren Abschluss um Codeaustausch und vollständige JWT-Prüfung; erst danach darf eine Charakteridentität als vertrauenswürdig gelten. Paket 14 speichert anschließend ausschließlich den geprüften Refresh Token im Betriebssystem-Schlüsselbund.
+Paket 13 tauscht den Code über den aus den offiziellen Metadaten bezogenen Token-Endpunkt aus. Metadaten-, Token- und JWKS-Ziele sind auf HTTPS bei `login.eveonline.com` begrenzt; HTTP-Weiterleitungen werden nicht verfolgt. Das Access Token muss `RS256`, eine eindeutige veröffentlichte Schlüssel-ID, gültige Signatur, akzeptierten Issuer, die Audiences `EVE Online` und öffentliche Client-ID, gültigen Ablauf, ein Charakter-Subject, Name sowie mindestens alle angeforderten Scopes enthalten. Erst danach werden ID, Name und Scopes gespeichert. Access und Refresh Token werden anschließend verworfen, bis Paket 14 den geprüften Refresh Token atomar im Betriebssystem-Schlüsselbund ablegt.
 
 ## Referenzen
 

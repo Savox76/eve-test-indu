@@ -3,7 +3,9 @@ import { describe, expect, it, vi } from "vitest";
 import {
   cancelEveSso,
   loadDesktopRuntimeStatus,
+  loadEveCharacters,
   loadEveSsoStatus,
+  setDesktopFontScale,
   setDesktopUpdateChannel,
   startEveSso,
   type RuntimeAdapter,
@@ -22,7 +24,7 @@ const emptyData = {
 function nativeStatus(overrides: Record<string, unknown> = {}) {
   return JSON.stringify({
     state: "ready",
-    version: "0.0.4-preview.3",
+    version: "0.0.4-preview.4",
     desktopShell: true,
     singleInstance: true,
     sidecar: "ready",
@@ -36,6 +38,7 @@ function nativeStatus(overrides: Record<string, unknown> = {}) {
       manifestState: "verified",
       publicDistribution: false,
     },
+    appearance: { fontScale: "normal" },
     ...overrides,
   });
 }
@@ -57,7 +60,7 @@ describe("desktop runtime status", () => {
       loadDesktopRuntimeStatus({ isAvailable: () => true, invoke }),
     ).resolves.toEqual({
       state: "ready",
-      version: "0.0.4-preview.3",
+      version: "0.0.4-preview.4",
       desktopShell: true,
       singleInstance: true,
       sidecar: "ready",
@@ -71,6 +74,7 @@ describe("desktop runtime status", () => {
         manifestState: "verified",
         publicDistribution: false,
       },
+      appearance: { fontScale: "normal" },
     });
     expect(invoke).toHaveBeenCalledWith("desktop_runtime_status");
   });
@@ -84,6 +88,7 @@ describe("desktop runtime status", () => {
       ageSeconds: 7_200,
       lastSyncStatus: "completed",
       errorCode: null,
+      character: null,
     };
     const invoke = vi.fn<RuntimeAdapter["invoke"]>().mockResolvedValue(nativeStatus({ data }));
 
@@ -215,6 +220,54 @@ describe("desktop runtime status", () => {
     expect(invoke).toHaveBeenCalledWith("set_update_channel", { channel: "beta" });
   });
 
+  it("stores one of five global font-size stages through native IPC", async () => {
+    const invoke = vi.fn<RuntimeAdapter["invoke"]>().mockResolvedValue(
+      JSON.stringify({ fontScale: "large" }),
+    );
+
+    await expect(
+      setDesktopFontScale("large", { isAvailable: () => true, invoke }),
+    ).resolves.toEqual({ fontScale: "large" });
+    expect(invoke).toHaveBeenCalledWith("set_font_scale", { fontScale: "large" });
+  });
+
+  it("loads strictly validated persisted EVE characters", async () => {
+    const payload = {
+      characters: [{
+        characterId: 2_112_345_678,
+        name: "Synthetic Pilot",
+        accountGroupId: null,
+        accountGroupLabel: null,
+        enabled: true,
+        scopes: ["esi-assets.read_assets.v1"],
+      }],
+    };
+    const invoke = vi.fn<RuntimeAdapter["invoke"]>().mockResolvedValue(JSON.stringify(payload));
+
+    await expect(
+      loadEveCharacters({ isAvailable: () => true, invoke }),
+    ).resolves.toEqual(payload.characters);
+    expect(invoke).toHaveBeenCalledWith("list_eve_characters");
+  });
+
+  it("rejects duplicate or malformed persisted character identities", async () => {
+    const character = {
+      characterId: 2_112_345_678,
+      name: "Synthetic Pilot",
+      accountGroupId: null,
+      accountGroupLabel: null,
+      enabled: true,
+      scopes: ["esi-assets.read_assets.v1"],
+    };
+    const invoke = vi.fn<RuntimeAdapter["invoke"]>().mockResolvedValue(
+      JSON.stringify({ characters: [character, character] }),
+    );
+
+    await expect(
+      loadEveCharacters({ isAvailable: () => true, invoke }),
+    ).rejects.toThrow("duplicate EVE characters");
+  });
+
   it("rejects updater responses that enable public distribution", async () => {
     const invoke = vi.fn<RuntimeAdapter["invoke"]>().mockResolvedValue(
       JSON.stringify({
@@ -236,6 +289,7 @@ describe("desktop runtime status", () => {
       scopePackages: ["industry-core", "market"],
       expiresAt: "2026-09-09T12:03:00Z",
       errorCode: null,
+      character: null,
     };
     const invoke = vi.fn<RuntimeAdapter["invoke"]>().mockResolvedValue(JSON.stringify(status));
 
@@ -254,6 +308,7 @@ describe("desktop runtime status", () => {
       scopePackages: ["industry-core"],
       expiresAt: "2026-09-09T12:03:00Z",
       errorCode: null,
+      character: null,
     });
     const cancelled = JSON.stringify({
       state: "cancelled",
@@ -261,6 +316,7 @@ describe("desktop runtime status", () => {
       scopePackages: ["industry-core"],
       expiresAt: "2026-09-09T12:03:00Z",
       errorCode: null,
+      character: null,
     });
     const invoke = vi.fn<RuntimeAdapter["invoke"]>()
       .mockResolvedValueOnce(waiting)
@@ -271,6 +327,26 @@ describe("desktop runtime status", () => {
     await expect(cancelEveSso(adapter)).resolves.toMatchObject({ state: "cancelled" });
     expect(invoke).toHaveBeenNthCalledWith(1, "eve_sso_status", undefined);
     expect(invoke).toHaveBeenNthCalledWith(2, "cancel_eve_sso", undefined);
+  });
+
+  it("accepts only a fully verified connected-character status", async () => {
+    const connected = {
+      state: "connected",
+      attemptId: "opaque-attempt",
+      scopePackages: ["industry-core"],
+      expiresAt: "2026-09-09T12:03:00Z",
+      errorCode: null,
+      character: {
+        characterId: 2_112_345_678,
+        name: "Synthetic Pilot",
+        scopes: ["esi-assets.read_assets.v1"],
+      },
+    };
+    const invoke = vi.fn<RuntimeAdapter["invoke"]>().mockResolvedValue(JSON.stringify(connected));
+
+    await expect(
+      loadEveSsoStatus({ isAvailable: () => true, invoke }),
+    ).resolves.toEqual(connected);
   });
 
   it("rejects malformed or secret-bearing-equivalent SSO state combinations", async () => {
@@ -284,7 +360,7 @@ describe("desktop runtime status", () => {
 
     await expect(
       loadEveSsoStatus({ isAvailable: () => true, invoke }),
-    ).rejects.toThrow("inconsistent SSO metadata");
+    ).rejects.toThrow("invalid SSO metadata");
   });
 
   it("does not expose EVE SSO commands in browser preview mode", async () => {
