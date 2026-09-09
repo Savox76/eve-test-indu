@@ -8,6 +8,8 @@ New Eden Foundry wird eine lokale Desktop-Anwendung für nachvollziehbare EVE-On
 
 Die Mehrcharakter-Oberfläche arbeitet weiterhin mit drei klar synthetischen Figuren und liest diese Vorschauwerte noch nicht aus SQLite. EVE SSO, ESI, SDE, echte Synchronisierung und fachliche Berechnungen sind noch nicht angeschlossen. Eine neue Installation meldet deshalb korrekt, dass noch keine lokalen Daten vorhanden sind. Versionen werden weiterhin manuell über [GitHub Releases](https://github.com/Savox76/eve-test-indu/releases) bezogen; das vollständige Windows-Installationsgate bleibt Voraussetzung für die erste technische Alpha.
 
+Für den nächsten SSO-Schritt sind Callback-URI, Entwicklerkontakt und minimale Funktions-Scopes bereits im [verbindlichen Registrierungsprofil](docs/sso-registration.md) festgelegt und automatisiert gegen Drift geschützt. Die echte öffentliche Client-ID muss noch durch die App-Registrierung im EVE Developers Portal erzeugt werden; bis dahin bleibt der Login bewusst deaktiviert.
+
 ## Verbindliche Grundlagen
 
 - Windows-first, Einzelplatz und local-first

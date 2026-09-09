@@ -11,6 +11,7 @@ from typing import Sequence
 
 from .database import connect_database, initialize_database
 from .startup_state import inspect_startup_data_state
+from .sso_registration import load_bundled_sso_registration_profile
 from .updater import read_update_channel, verify_bundled_test_manifest
 from .version import project_version
 
@@ -33,6 +34,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         data_state = inspect_startup_data_state(connection)
         update_channel = read_update_channel(connection)
     verified_manifest = verify_bundled_test_manifest()
+    sso_registration = load_bundled_sso_registration_profile()
     result = {
         "service": "new-eden-foundry-core",
         "state": "foundation-ready",
@@ -45,6 +47,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "test_manifest_version": verified_manifest.version,
             "public_distribution": False,
         },
+        "sso_registration": sso_registration.as_status_payload(),
     }
     print(json.dumps(result, sort_keys=True))
     return 0

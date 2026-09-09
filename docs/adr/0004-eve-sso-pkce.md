@@ -16,7 +16,7 @@ New Eden Foundry nutzt EVE SSO mit Authorization Code und PKCE (`S256`) als öff
 - Anmeldung erfolgt im Systembrowser direkt bei EVE.
 - Pro Anmeldeversuch werden ein kryptografischer `state`-Wert und ein neuer PKCE-Verifier erzeugt und nach einmaliger Nutzung verworfen.
 - Es gibt genau eine fest registrierte Loopback-Callback-URI. Sie ist vom dynamischen Port der internen Sidecar-API getrennt.
-- Die exakte URI wird vor Implementierung mit der tatsächlich akzeptierten Registrierung abgeglichen und anschließend identisch in Portal, Konfiguration, Tests und Dokumentation geführt.
+- Die exakte URI `http://127.0.0.1:17891/oauth/callback` ist in [ADR-012](0012-fixed-eve-sso-registration-profile.md) und dem maschinenlesbaren Registrierungsprofil festgelegt. Vor Login-Implementierung wird sie mit der tatsächlich akzeptierten Portalregistrierung abgeglichen.
 - Callback mit falschem `state`, verspäteter Callback, Abbruch und bereits verwendeter Code werden abgewiesen.
 - Endpunkte werden aus der offiziellen OAuth-Metadatenadresse bezogen und angemessen gecacht.
 - Access Tokens werden anhand von Signatur/JWKS, Issuer, erwarteter Audience, Ablauf und Charakterbindung validiert.

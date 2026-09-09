@@ -19,6 +19,10 @@ from fastapi.responses import JSONResponse
 from .database import DatabaseStatus, connect_database, initialize_database
 from .storage import ProgramStorage, ProgramStorageError, prepare_program_storage
 from .startup_state import StartupDataState, inspect_startup_data_state
+from .sso_registration import (
+    SsoRegistrationProfile,
+    load_bundled_sso_registration_profile,
+)
 from .updater import (
     UpdateChannel,
     UpdateManifestError,
@@ -109,6 +113,7 @@ def create_application(
     database: DatabaseStatus,
     data_state: StartupDataState,
     manifest_state: str,
+    sso_registration: SsoRegistrationProfile,
 ) -> FastAPI:
     app = FastAPI(
         title="New Eden Foundry local core",
@@ -149,6 +154,7 @@ def create_application(
                 "manifestState": manifest_state,
                 "publicDistribution": False,
             },
+            "ssoRegistration": sso_registration.as_status_payload(),
         }
 
     @app.get("/settings/update")
@@ -253,12 +259,15 @@ def run_sidecar(input_stream: TextIO = sys.stdin, output_stream: TextIO = sys.st
     except UpdateManifestError:
         manifest_state = "invalid"
 
+    sso_registration = load_bundled_sso_registration_profile()
+
     application = create_application(
         startup,
         storage,
         database,
         data_state,
         manifest_state,
+        sso_registration,
     )
     server = uvicorn.Server(
         uvicorn.Config(
@@ -300,6 +309,7 @@ def run_sidecar(input_stream: TextIO = sys.stdin, output_stream: TextIO = sys.st
                 "manifestState": manifest_state,
                 "publicDistribution": False,
             },
+            "ssoRegistration": sso_registration.as_status_payload(),
         },
     )
 

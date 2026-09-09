@@ -100,6 +100,11 @@ class SidecarIntegrationTests(unittest.TestCase):
             self.assertEqual(ready["updater"]["channel"], "stable")
             self.assertEqual(ready["updater"]["manifestState"], "verified")
             self.assertFalse(ready["updater"]["publicDistribution"])
+            self.assertEqual(ready["ssoRegistration"]["state"], "pending-client-id")
+            self.assertEqual(
+                ready["ssoRegistration"]["redirectUri"],
+                "http://127.0.0.1:17891/oauth/callback",
+            )
             self.assertNotIn(SYNTHETIC_SESSION_TOKEN, ready_line)
 
             base_url = f"http://127.0.0.1:{ready['port']}"
@@ -135,6 +140,7 @@ class SidecarIntegrationTests(unittest.TestCase):
             self.assertEqual(health["updater"]["channel"], "stable")
             self.assertEqual(health["updater"]["manifestState"], "verified")
             self.assertFalse(health["updater"]["publicDistribution"])
+            self.assertEqual(health["ssoRegistration"]["state"], "pending-client-id")
 
             update_settings_url = f"{base_url}/settings/update"
             put_request = urllib.request.Request(
