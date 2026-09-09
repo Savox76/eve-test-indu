@@ -831,7 +831,10 @@ fn list_eve_characters(state: State<'_, RuntimeState>) -> Result<String, String>
     };
     let characters: EveCharactersResponse =
         serde_json::from_str(&response).map_err(|_| "sidecar-response-invalid".to_owned())?;
-    if characters.characters.iter().any(|character| !eve_character_record_is_valid(character))
+    if characters
+        .characters
+        .iter()
+        .any(|character| !eve_character_record_is_valid(character))
         || characters
             .characters
             .iter()
@@ -990,8 +993,7 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::{
-        authorization_url_is_valid, sso_login_status_is_valid, SsoCharacterIdentity,
-        SsoLoginStatus,
+        authorization_url_is_valid, sso_login_status_is_valid, SsoCharacterIdentity, SsoLoginStatus,
     };
 
     fn valid_authorization_url() -> String {
