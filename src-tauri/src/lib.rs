@@ -257,9 +257,10 @@ fn updater_snapshot_is_valid(updater: &RuntimeUpdaterSnapshot) -> bool {
 
 fn sso_login_status_is_valid(status: &SsoLoginStatus) -> bool {
     let packages_are_valid = !status.scope_packages.is_empty()
-        && status.scope_packages.iter().all(|package| {
-            EVE_SSO_SCOPE_PACKAGES.contains(&package.as_str())
-        })
+        && status
+            .scope_packages
+            .iter()
+            .all(|package| EVE_SSO_SCOPE_PACKAGES.contains(&package.as_str()))
         && status.scope_packages.iter().collect::<HashSet<_>>().len()
             == status.scope_packages.len();
     match status.state.as_str() {
@@ -270,21 +271,39 @@ fn sso_login_status_is_valid(status: &SsoLoginStatus) -> bool {
                 && status.error_code.is_none()
         }
         "waiting" | "authorization-received" | "cancelled" => {
-            status.attempt_id.as_ref().is_some_and(|value| !value.is_empty())
+            status
+                .attempt_id
+                .as_ref()
+                .is_some_and(|value| !value.is_empty())
                 && packages_are_valid
-                && status.expires_at.as_ref().is_some_and(|value| !value.is_empty())
+                && status
+                    .expires_at
+                    .as_ref()
+                    .is_some_and(|value| !value.is_empty())
                 && status.error_code.is_none()
         }
         "timed-out" => {
-            status.attempt_id.as_ref().is_some_and(|value| !value.is_empty())
+            status
+                .attempt_id
+                .as_ref()
+                .is_some_and(|value| !value.is_empty())
                 && packages_are_valid
-                && status.expires_at.as_ref().is_some_and(|value| !value.is_empty())
+                && status
+                    .expires_at
+                    .as_ref()
+                    .is_some_and(|value| !value.is_empty())
                 && status.error_code.as_deref() == Some("login-timeout")
         }
         "failed" => {
-            status.attempt_id.as_ref().is_some_and(|value| !value.is_empty())
+            status
+                .attempt_id
+                .as_ref()
+                .is_some_and(|value| !value.is_empty())
                 && packages_are_valid
-                && status.expires_at.as_ref().is_some_and(|value| !value.is_empty())
+                && status
+                    .expires_at
+                    .as_ref()
+                    .is_some_and(|value| !value.is_empty())
                 && matches!(
                     status.error_code.as_deref(),
                     Some("authorization-denied")
@@ -315,7 +334,10 @@ fn authorization_url_is_valid(value: &str) -> bool {
 
     let mut parameters: HashMap<String, String> = HashMap::new();
     for (key, value) in url.query_pairs() {
-        if parameters.insert(key.into_owned(), value.into_owned()).is_some() {
+        if parameters
+            .insert(key.into_owned(), value.into_owned())
+            .is_some()
+        {
             return false;
         }
     }
@@ -330,7 +352,12 @@ fn authorization_url_is_valid(value: &str) -> bool {
     ]
     .into_iter()
     .collect();
-    if parameters.keys().map(String::as_str).collect::<HashSet<_>>() != expected_keys {
+    if parameters
+        .keys()
+        .map(String::as_str)
+        .collect::<HashSet<_>>()
+        != expected_keys
+    {
         return false;
     }
     let is_pkce_token = |candidate: &str| {
@@ -801,9 +828,10 @@ mod tests {
         assert!(!authorization_url_is_valid(
             &valid_authorization_url().replace("S256", "plain")
         ));
-        assert!(!authorization_url_is_valid(
-            &format!("{}&state=duplicate", valid_authorization_url())
-        ));
+        assert!(!authorization_url_is_valid(&format!(
+            "{}&state=duplicate",
+            valid_authorization_url()
+        )));
     }
 
     #[test]
