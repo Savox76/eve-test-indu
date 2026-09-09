@@ -12,6 +12,19 @@ export type LocalDataState =
 export type LastSyncStatus = "never" | "running" | "completed" | "failed" | "cancelled";
 export type UpdateChannel = "stable" | "beta" | "preview";
 export type ManifestState = "checking" | "verified" | "invalid" | "unavailable";
+export type SsoLoginState =
+  | "idle"
+  | "waiting"
+  | "authorization-received"
+  | "cancelled"
+  | "timed-out"
+  | "failed";
+export type SsoScopePackage =
+  | "industry-core"
+  | "market"
+  | "planetary-industry"
+  | "projects"
+  | "private-structures";
 
 export interface LocalDataStatus {
   state: LocalDataState;
@@ -27,6 +40,14 @@ export interface UpdaterStatus {
   channel: UpdateChannel;
   manifestState: ManifestState;
   publicDistribution: false;
+}
+
+export interface SsoLoginStatus {
+  state: SsoLoginState;
+  attemptId: string | null;
+  scopePackages: SsoScopePackage[];
+  expiresAt: string | null;
+  errorCode: string | null;
 }
 
 export type DesktopRuntimeStatus =
@@ -79,6 +100,21 @@ const manifestStates: readonly ManifestState[] = [
   "verified",
   "invalid",
   "unavailable",
+];
+const ssoLoginStates: readonly SsoLoginState[] = [
+  "idle",
+  "waiting",
+  "authorization-received",
+  "cancelled",
+  "timed-out",
+  "failed",
+];
+export const ssoScopePackages: readonly SsoScopePackage[] = [
+  "industry-core",
+  "market",
+  "planetary-industry",
+  "projects",
+  "private-structures",
 ];
 
 export const initialRuntimeStatus: DesktopRuntimeStatus = { state: "checking" };
@@ -150,6 +186,40 @@ function parseUpdaterStatus(candidate: unknown): UpdaterStatus {
     throw new Error("The native runtime returned invalid updater metadata.");
   }
   return candidate as unknown as UpdaterStatus;
+}
+
+function parseSsoLoginStatus(candidate: unknown): SsoLoginStatus {
+  if (
+    !isRecord(candidate) ||
+    typeof candidate.state !== "string" ||
+    !ssoLoginStates.includes(candidate.state as SsoLoginState) ||
+    !isNullableText(candidate.attemptId) ||
+    !Array.isArray(candidate.scopePackages) ||
+    !candidate.scopePackages.every(
+      (value) => typeof value === "string" && ssoScopePackages.includes(value as SsoScopePackage),
+    ) ||
+    new Set(candidate.scopePackages).size !== candidate.scopePackages.length ||
+    !isNullableText(candidate.expiresAt) ||
+    !isNullableText(candidate.errorCode)
+  ) {
+    throw new Error("The native runtime returned invalid SSO metadata.");
+  }
+
+  const status = candidate as unknown as SsoLoginStatus;
+  const attemptFieldsAreValid = status.state === "idle"
+    ? status.attemptId === null && status.scopePackages.length === 0 && status.expiresAt === null
+    : status.attemptId !== null && status.scopePackages.length > 0 && status.expiresAt !== null;
+  const errorIsValid = status.state === "timed-out"
+    ? status.errorCode === "login-timeout"
+    : status.state === "failed"
+      ? ["authorization-denied", "authorization-failed", "callback-invalid"].includes(
+          status.errorCode ?? "",
+        )
+      : status.errorCode === null;
+  if (!attemptFieldsAreValid || !errorIsValid) {
+    throw new Error("The native runtime returned inconsistent SSO metadata.");
+  }
+  return status;
 }
 
 function parseReadyStatus(rawStatus: string): DesktopRuntimeStatus {
@@ -240,6 +310,51 @@ export async function setDesktopUpdateChannel(
   const status = parseUpdaterStatus(JSON.parse(rawStatus));
   if (status.channel !== channel) {
     throw new Error("The desktop updater returned a different channel.");
+  }
+  return status;
+}
+
+async function invokeSsoCommand(
+  command: string,
+  adapter: RuntimeAdapter,
+  arguments_?: Record<string, unknown>,
+): Promise<SsoLoginStatus> {
+  if (!adapter.isAvailable()) {
+    throw new Error("EVE SSO is available only in the desktop application.");
+  }
+  return parseSsoLoginStatus(JSON.parse(await adapter.invoke(command, arguments_)));
+}
+
+export async function startEveSso(
+  scopePackages: SsoScopePackage[],
+  adapter: RuntimeAdapter = tauriAdapter,
+): Promise<SsoLoginStatus> {
+  if (
+    scopePackages.length === 0 ||
+    new Set(scopePackages).size !== scopePackages.length ||
+    !scopePackages.every((value) => ssoScopePackages.includes(value))
+  ) {
+    throw new Error("At least one unique SSO scope package is required.");
+  }
+  const status = await invokeSsoCommand("start_eve_sso", adapter, { scopePackages });
+  if (status.state !== "waiting") {
+    throw new Error("The EVE SSO attempt did not start waiting for a callback.");
+  }
+  return status;
+}
+
+export async function loadEveSsoStatus(
+  adapter: RuntimeAdapter = tauriAdapter,
+): Promise<SsoLoginStatus> {
+  return invokeSsoCommand("eve_sso_status", adapter);
+}
+
+export async function cancelEveSso(
+  adapter: RuntimeAdapter = tauriAdapter,
+): Promise<SsoLoginStatus> {
+  const status = await invokeSsoCommand("cancel_eve_sso", adapter);
+  if (!["idle", "cancelled"].includes(status.state)) {
+    throw new Error("The EVE SSO attempt was not cancelled.");
   }
   return status;
 }

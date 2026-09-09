@@ -24,6 +24,40 @@ Alle bemerkenswerten Änderungen an New Eden Foundry werden hier festgehalten. D
 
 - Keine.
 
+## 0.0.4-preview.3 – 9. September 2026
+
+### Neu hinzugefügt
+
+- Echter EVE-SSO-Autorisierungsstart im Systembrowser für jeweils einen Charakter.
+- Kurzlebiger Callback-Listener an `http://127.0.0.1:17891/oauth/callback` mit kryptografischem `state`, neuem PKCE-Verifier und `S256`-Challenge je Versuch.
+- Auswahl minimaler Funktions-Scopes pro Charakter sowie sichtbare Zustände für Warten, Erfolg, EVE-Ablehnung, Timeout und Abbruch.
+- Durchgängige Backend-, Sidecar-, native IPC- und Oberflächentests einschließlich Frozen-Smoke-Prüfung.
+
+### Geändert
+
+- Tauri öffnet nur vollständig geprüfte EVE-Autorisierungs-URLs und gibt keine PKCE-Geheimnisse an die Weboberfläche weiter.
+- Mehrere Charaktere werden weiterhin einzeln autorisiert; gemeinsame und getrennte Übersichten bleiben unverändert vorbereitet.
+- Masterplan 2.0 führt Arbeitspaket 12 als abgeschlossen und JWT-Validierung als nächsten Schritt.
+- Die sichtbare Versionsnummer wurde auf `v0.0.4-preview.3` aktualisiert; `Savoxmedia` bleibt ausschließlich als Ersteller der App neben der Version genannt.
+
+### Behobene Fehler
+
+- Falsche, fehlende oder doppelte `state`- und Code-Parameter können keinen erfolgreichen lokalen Rückruf mehr erzeugen.
+- Timeout, Abbruch, Fehler und App-Ende lassen keinen aktiven Callback-Listener und keine temporären PKCE-Werte zurück.
+- Der Frozen-Smoke-Test erhält mehr Zeit für einen sauberen Prozess-Shutdown unter paralleler Windows-CI-Last.
+
+### Bekannte Einschränkungen
+
+- Paket 12 endet nach dem verifizierten Browser-Rückruf. Codeaustausch, JWT-Validierung und dauerhafte Charakterzuordnung folgen in Paket 13; der Autorisierungscode wird in dieser Preview bewusst verworfen.
+- Die Mehrcharakter-Oberfläche verwendet weiterhin synthetische Fachwerte und liest ihre Inhalte noch nicht aus SQLite.
+- ESI, SDE, echte Synchronisierung und Fachberechnungen sind noch nicht angeschlossen.
+- Öffentliche Updateverteilung und Codesignierung bleiben deaktiviert; das manuelle Windows-Laufzeitgate und der Schutz von `main` sind offen.
+
+### Update und Datenbankmigration
+
+- Keine Datenbankmigration; Schema-Version 5 und alle Daten unter `data` bleiben unverändert.
+- Für ein portables Update die Anwendung schließen und den bisherigen Ordner `data` vollständig in den neuen Programmordner übernehmen.
+
 ## 0.0.4-preview.2 – 9. September 2026
 
 ### Neu hinzugefügt

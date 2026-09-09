@@ -14,6 +14,7 @@ import {
   Factory,
   FlaskConical,
   FolderKanban,
+  LogIn,
   Languages,
   LayoutDashboard,
   LineChart,
@@ -28,6 +29,7 @@ import {
   TrendingUp,
   UserRound,
   UsersRound,
+  X,
   Zap,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -45,17 +47,31 @@ import {
   type OverviewScopeId,
 } from "./demo";
 import {
+  cancelEveSso,
   initialRuntimeStatus,
+  loadEveSsoStatus,
   loadDesktopRuntimeStatus,
   setDesktopUpdateChannel,
+  startEveSso,
+  ssoScopePackages,
   type DesktopRuntimeStatus,
   type LocalDataState,
+  type SsoLoginStatus,
+  type SsoScopePackage,
   type UpdateChannel,
   type UpdaterStatus,
 } from "./runtime";
 
 type Locale = "de" | "en";
 type ModuleId = "overview" | keyof typeof modulePreview;
+
+const initialSsoStatus: SsoLoginStatus = {
+  state: "idle",
+  attemptId: null,
+  scopePackages: [],
+  expiresAt: null,
+  errorCode: null,
+};
 
 const navigation: ReadonlyArray<{ id: ModuleId; icon: LucideIcon }> = [
   { id: "overview", icon: LayoutDashboard },
@@ -176,6 +192,50 @@ const copy = {
       saveError: "Kanal konnte nicht gespeichert werden",
       desktopOnly: "In der Desktop-App wählbar",
     },
+    sso: {
+      eyebrow: "EVE SSO · PKCE",
+      states: {
+        idle: {
+          title: "EVE-Charakter verbinden",
+          detail: "Jede Anmeldung autorisiert genau einen Charakter. Weitere Charaktere können danach einzeln ergänzt werden.",
+        },
+        waiting: {
+          title: "Browser-Anmeldung läuft",
+          detail: "EVE SSO ist im Systembrowser geöffnet. Die App wartet bis zu drei Minuten auf den sicheren Rückruf.",
+        },
+        "authorization-received": {
+          title: "EVE-Autorisierung bestätigt",
+          detail: "Der Rückruf war gültig. Tokenaustausch und geprüfte Charakterzuordnung folgen sicher in Paket 13.",
+        },
+        cancelled: {
+          title: "Anmeldung abgebrochen",
+          detail: "Der lokale Listener wurde beendet und alle temporären PKCE-Werte wurden verworfen.",
+        },
+        "timed-out": {
+          title: "Zeitfenster abgelaufen",
+          detail: "Der Anmeldeversuch wurde nach drei Minuten beendet. Du kannst sofort neu starten.",
+        },
+        failed: {
+          title: "Anmeldung nicht abgeschlossen",
+          detail: "EVE SSO hat den Rückruf abgelehnt oder die Freigabe wurde nicht erteilt.",
+        },
+      },
+      start: "Charakter verbinden",
+      startAnother: "Weiteren Charakter verbinden",
+      cancel: "Abbrechen",
+      retry: "Erneut versuchen",
+      desktopOnly: "Die echte Anmeldung ist in der Windows-App verfügbar.",
+      commandError: "Die Anmeldung konnte nicht gestartet oder abgefragt werden.",
+      scopeTitle: "Berechtigungspakete für diesen Charakter",
+      security: "Systembrowser · S256 · zufälliger state · 3-Minuten-Zeitfenster",
+      packageLabels: {
+        "industry-core": "Industrie-Basis",
+        market: "Markt",
+        "planetary-industry": "Planetary Industry",
+        projects: "Projekte & Fittings",
+        "private-structures": "Private Strukturen",
+      },
+    },
     scope: {
       label: "Übersichtsbereich",
       select: "Ansicht wählen",
@@ -193,7 +253,7 @@ const copy = {
     },
     creatorLabel: "Erstellt von",
     preview: "Design Preview",
-    synthetic: "Ausschließlich synthetische Daten – noch keine EVE-Verbindung",
+    synthetic: "Fachansichten verwenden synthetische Daten – sichere EVE-Autorisierung jetzt verfügbar",
     dateLine: "OPERATIONS-BRIEF · YC 128.09.08",
     greeting: "Guten Morgen, Pilot.",
     heroText:
@@ -275,7 +335,7 @@ const copy = {
     },
     planned: "Geplant",
     previewOnly: "Noch ohne Live-Funktion",
-    footerVersion: "v0.0.4-preview.2",
+    footerVersion: "v0.0.4-preview.3",
   },
   en: {
     nav: {
@@ -384,6 +444,50 @@ const copy = {
       saveError: "Channel could not be saved",
       desktopOnly: "Selectable in the desktop app",
     },
+    sso: {
+      eyebrow: "EVE SSO · PKCE",
+      states: {
+        idle: {
+          title: "Connect an EVE character",
+          detail: "Each sign-in authorizes exactly one character. Additional characters can be added individually afterwards.",
+        },
+        waiting: {
+          title: "Browser sign-in in progress",
+          detail: "EVE SSO is open in your system browser. The app waits up to three minutes for the secure callback.",
+        },
+        "authorization-received": {
+          title: "EVE authorization confirmed",
+          detail: "The callback was valid. Token exchange and verified character assignment follow safely in package 13.",
+        },
+        cancelled: {
+          title: "Sign-in cancelled",
+          detail: "The local listener was stopped and all temporary PKCE values were discarded.",
+        },
+        "timed-out": {
+          title: "Sign-in window expired",
+          detail: "The attempt ended after three minutes. You can start again immediately.",
+        },
+        failed: {
+          title: "Sign-in not completed",
+          detail: "EVE SSO rejected the callback or permission was not granted.",
+        },
+      },
+      start: "Connect character",
+      startAnother: "Connect another character",
+      cancel: "Cancel",
+      retry: "Try again",
+      desktopOnly: "Real sign-in is available in the Windows app.",
+      commandError: "The sign-in could not be started or checked.",
+      scopeTitle: "Permission packages for this character",
+      security: "System browser · S256 · random state · 3-minute window",
+      packageLabels: {
+        "industry-core": "Industry core",
+        market: "Market",
+        "planetary-industry": "Planetary industry",
+        projects: "Projects & fittings",
+        "private-structures": "Private structures",
+      },
+    },
     scope: {
       label: "Overview scope",
       select: "Choose view",
@@ -401,7 +505,7 @@ const copy = {
     },
     creatorLabel: "Created by",
     preview: "Design Preview",
-    synthetic: "Synthetic data only – no EVE connection yet",
+    synthetic: "Domain views use synthetic data – secure EVE authorization is now available",
     dateLine: "OPERATIONS BRIEF · YC 128.09.08",
     greeting: "Good morning, pilot.",
     heroText:
@@ -483,7 +587,7 @@ const copy = {
     },
     planned: "Planned",
     previewOnly: "No live function yet",
-    footerVersion: "v0.0.4-preview.2",
+    footerVersion: "v0.0.4-preview.3",
   },
 } as const;
 
@@ -584,9 +688,15 @@ function DataStateNotice({
 export function App({
   runtimeLoader = loadDesktopRuntimeStatus,
   updateChannelSetter = setDesktopUpdateChannel,
+  ssoStarter = startEveSso,
+  ssoStatusLoader = loadEveSsoStatus,
+  ssoCanceller = cancelEveSso,
 }: {
   runtimeLoader?: () => Promise<DesktopRuntimeStatus>;
   updateChannelSetter?: (channel: UpdateChannel) => Promise<UpdaterStatus>;
+  ssoStarter?: (scopePackages: SsoScopePackage[]) => Promise<SsoLoginStatus>;
+  ssoStatusLoader?: () => Promise<SsoLoginStatus>;
+  ssoCanceller?: () => Promise<SsoLoginStatus>;
 }) {
   const [locale, setLocale] = useState<Locale>("de");
   const [activeModule, setActiveModule] = useState<ModuleId>("overview");
@@ -597,6 +707,12 @@ export function App({
   const [overviewScope, setOverviewScope] = useState<OverviewScopeId>("all");
   const [savingUpdateChannel, setSavingUpdateChannel] = useState(false);
   const [updateChannelError, setUpdateChannelError] = useState(false);
+  const [ssoStatus, setSsoStatus] = useState(initialSsoStatus);
+  const [ssoBusy, setSsoBusy] = useState(false);
+  const [ssoCommandError, setSsoCommandError] = useState(false);
+  const [selectedScopePackages, setSelectedScopePackages] = useState<SsoScopePackage[]>([
+    "industry-core",
+  ]);
   const t = copy[locale];
 
   useEffect(() => {
@@ -620,6 +736,45 @@ export function App({
       if (pollTimer !== undefined) window.clearTimeout(pollTimer);
     };
   }, [runtimeLoader]);
+
+  const nativeCoreReady = runtimeStatus.state === "ready" && runtimeStatus.sidecar === "ready";
+
+  useEffect(() => {
+    if (!nativeCoreReady) return;
+    let active = true;
+    void ssoStatusLoader()
+      .then((status) => {
+        if (active) setSsoStatus(status);
+      })
+      .catch(() => {
+        if (active) setSsoCommandError(true);
+      });
+    return () => {
+      active = false;
+    };
+  }, [nativeCoreReady, ssoStatusLoader]);
+
+  useEffect(() => {
+    if (!nativeCoreReady || ssoStatus.state !== "waiting") return;
+    let active = true;
+    let pollTimer: number | undefined;
+    const poll = async () => {
+      try {
+        const status = await ssoStatusLoader();
+        if (!active) return;
+        setSsoStatus(status);
+        setSsoCommandError(false);
+        if (status.state === "waiting") pollTimer = window.setTimeout(poll, 750);
+      } catch {
+        if (active) setSsoCommandError(true);
+      }
+    };
+    pollTimer = window.setTimeout(poll, 750);
+    return () => {
+      active = false;
+      if (pollTimer !== undefined) window.clearTimeout(pollTimer);
+    };
+  }, [nativeCoreReady, ssoStatus.state, ssoStatusLoader]);
 
   const runtimePresentationState =
     runtimeStatus.state === "ready" ? runtimeStatus.sidecar : runtimeStatus.state;
@@ -678,6 +833,39 @@ export function App({
       setUpdateChannelError(true);
     } finally {
       setSavingUpdateChannel(false);
+    }
+  };
+
+  const toggleScopePackage = (scopePackage: SsoScopePackage) => {
+    if (scopePackage === "industry-core" || ssoStatus.state === "waiting") return;
+    setSelectedScopePackages((current) => current.includes(scopePackage)
+      ? current.filter((item) => item !== scopePackage)
+      : ssoScopePackages.filter((item) => current.includes(item) || item === scopePackage));
+  };
+
+  const beginSsoLogin = async () => {
+    if (!nativeCoreReady || ssoStatus.state === "waiting") return;
+    setSsoBusy(true);
+    setSsoCommandError(false);
+    try {
+      setSsoStatus(await ssoStarter(selectedScopePackages));
+    } catch {
+      setSsoCommandError(true);
+    } finally {
+      setSsoBusy(false);
+    }
+  };
+
+  const abortSsoLogin = async () => {
+    if (!nativeCoreReady || ssoStatus.state !== "waiting") return;
+    setSsoBusy(true);
+    setSsoCommandError(false);
+    try {
+      setSsoStatus(await ssoCanceller());
+    } catch {
+      setSsoCommandError(true);
+    } finally {
+      setSsoBusy(false);
     }
   };
 
@@ -846,6 +1034,51 @@ export function App({
           <span>{t.synthetic}</span>
           <span className="preview-strip__meta">synthetic: {String(demoMetadata.synthetic)}</span>
         </div>
+
+        <section className={`sso-panel sso-panel--${ssoStatus.state}`} aria-labelledby="sso-title">
+          <div className="sso-panel__icon" aria-hidden="true">
+            {ssoStatus.state === "waiting" ? <RefreshCw className="spin" size={20} /> : <LogIn size={20} />}
+          </div>
+          <div className="sso-panel__copy" aria-live="polite">
+            <span>{t.sso.eyebrow}</span>
+            <strong id="sso-title">{t.sso.states[ssoStatus.state].title}</strong>
+            <p>{ssoCommandError ? t.sso.commandError : t.sso.states[ssoStatus.state].detail}</p>
+            <small>{nativeCoreReady ? t.sso.security : t.sso.desktopOnly}</small>
+          </div>
+          <fieldset className="sso-scopes" disabled={!nativeCoreReady || ssoStatus.state === "waiting"}>
+            <legend>{t.sso.scopeTitle}</legend>
+            <div>
+              {ssoScopePackages.map((scopePackage) => (
+                <label key={scopePackage}>
+                  <input
+                    type="checkbox"
+                    checked={selectedScopePackages.includes(scopePackage)}
+                    disabled={scopePackage === "industry-core" || !nativeCoreReady || ssoStatus.state === "waiting"}
+                    onChange={() => toggleScopePackage(scopePackage)}
+                  />
+                  <span>{t.sso.packageLabels[scopePackage]}</span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+          <div className="sso-panel__actions">
+            {ssoStatus.state === "waiting" ? (
+              <button type="button" className="sso-cancel" onClick={() => void abortSsoLogin()} disabled={ssoBusy}>
+                <X size={15} />
+                {t.sso.cancel}
+              </button>
+            ) : (
+              <button type="button" className="sso-start" onClick={() => void beginSsoLogin()} disabled={!nativeCoreReady || ssoBusy}>
+                <LogIn size={15} />
+                {ssoStatus.state === "authorization-received"
+                  ? t.sso.startAnother
+                  : ssoStatus.state === "idle"
+                    ? t.sso.start
+                    : t.sso.retry}
+              </button>
+            )}
+          </div>
+        </section>
 
         {localData && (
           <DataStateNotice

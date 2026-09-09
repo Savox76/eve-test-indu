@@ -2,7 +2,7 @@
 
 Dieses Verzeichnis enthält den lokalen fachlichen Kern von New Eden Foundry. Die aktuelle Ausbaustufe umfasst den gebündelten FastAPI-Sidecar, die versionierte SQLite-Grundlage mit automatischer Migrationssicherung und Wiederherstellung, cache-first Startzustände, lokale Kontogruppen, getrennte Charakterdatensätze und deren jeweilige SSO-Scopes. Hinzu kommt das Updater-Skelett mit lokaler Kanalpräferenz und einem gebündelten Ed25519-signierten Testmanifest. Tauri startet den Dienst als Kindprozess auf einem dynamischen Loopback-Port und übergibt das kurzlebige Sitzungstoken ausschließlich über die Standardeingabe.
 
-Der Sidecar bündelt außerdem das vollständige öffentliche EVE-SSO-Registrierungsprofil und meldet dessen Zustand als `registered`. Das Profil enthält die öffentliche Client-ID und ausdrücklich kein Client Secret. Der eigentliche PKCE-Login folgt im nächsten Arbeitspaket.
+Der Sidecar bündelt außerdem das vollständige öffentliche EVE-SSO-Registrierungsprofil und meldet dessen Zustand als `registered`. Das Profil enthält die öffentliche Client-ID und ausdrücklich kein Client Secret. Für jeden Anmeldeversuch erzeugt er unabhängige 256-Bit-Werte für `state` und PKCE-Verifier, bindet kurzzeitig den festen Callback `127.0.0.1:17891`, prüft den Rückruf exakt und unterstützt Status, Drei-Minuten-Timeout und Abbruch über die authentifizierte interne API. Autorisierungscode, `state` und Verifier verlassen den Sidecar nicht und werden nach Abschluss verworfen; Tokenaustausch und JWT-Prüfung folgen in Paket 13.
 
 EVE autorisiert jeden Charakter einzeln. Eine lokale Kontogruppe dient nur der vom Nutzer vergebenen Organisation mehrerer Charaktere; sie speichert weder EVE-Accountnamen noch Zugangsdaten. Token werden in einer späteren Ausbaustufe pro Charakter im Windows-Anmeldespeicher abgelegt und gehören nicht in SQLite.
 
@@ -24,4 +24,4 @@ Alle Tests laufen ohne Netzwerkzugriff und verwenden temporäre, vollständig sy
 python -m unittest discover -s tests -v
 ```
 
-Für Laufzeit- und Build-Abhängigkeiten gelten die getrennten, fest versionierten Dateien `requirements-runtime.txt` und `requirements-build.txt`. Der eingefrorene Sidecar wird über `scripts/build_sidecar.py` erzeugt und mit `scripts/smoke_sidecar.py` gegen Startprotokoll, Authentifizierung, Datenbankpfad, Migration, Testmanifest, Kanalpersistenz und Shutdown geprüft.
+Für Laufzeit- und Build-Abhängigkeiten gelten die getrennten, fest versionierten Dateien `requirements-runtime.txt` und `requirements-build.txt`. Der eingefrorene Sidecar wird über `scripts/build_sidecar.py` erzeugt und mit `scripts/smoke_sidecar.py` gegen Startprotokoll, Authentifizierung, PKCE-Start/Abbruch, Datenbankpfad, Migration, Testmanifest, Kanalpersistenz und Shutdown geprüft.

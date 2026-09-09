@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, HashSet};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{Ipv4Addr, SocketAddrV4, TcpStream};
 use std::process::{Child, Command, Stdio};
@@ -15,6 +16,16 @@ const SIDECAR_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(4);
 const SIDECAR_REQUEST_TIMEOUT: Duration = Duration::from_secs(3);
 const SIDECAR_MAX_RESPONSE_BYTES: u64 = 65_536;
 const WINDOWS_CREATE_NO_WINDOW: u32 = 0x0800_0000;
+const EVE_SSO_AUTHORIZATION_ENDPOINT: &str = "https://login.eveonline.com/v2/oauth/authorize";
+const EVE_SSO_CLIENT_ID: &str = "a8409de72d5b4cab9b0424819d0abdec";
+const EVE_SSO_REDIRECT_URI: &str = "http://127.0.0.1:17891/oauth/callback";
+const EVE_SSO_SCOPE_PACKAGES: [&str; 5] = [
+    "industry-core",
+    "market",
+    "planetary-industry",
+    "projects",
+    "private-structures",
+];
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -72,6 +83,23 @@ struct RuntimeUpdaterSnapshot {
     channel: String,
     manifest_state: String,
     public_distribution: bool,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SsoLoginStatus {
+    state: String,
+    attempt_id: Option<String>,
+    scope_packages: Vec<String>,
+    expires_at: Option<String>,
+    error_code: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SsoLoginStart {
+    authorization_url: String,
+    status: SsoLoginStatus,
 }
 
 impl RuntimeUpdaterSnapshot {
@@ -225,6 +253,169 @@ fn updater_snapshot_is_valid(updater: &RuntimeUpdaterSnapshot) -> bool {
     matches!(updater.channel.as_str(), "stable" | "beta" | "preview")
         && matches!(updater.manifest_state.as_str(), "verified" | "invalid")
         && !updater.public_distribution
+}
+
+fn sso_login_status_is_valid(status: &SsoLoginStatus) -> bool {
+    let packages_are_valid = !status.scope_packages.is_empty()
+        && status
+            .scope_packages
+            .iter()
+            .all(|package| EVE_SSO_SCOPE_PACKAGES.contains(&package.as_str()))
+        && status.scope_packages.iter().collect::<HashSet<_>>().len()
+            == status.scope_packages.len();
+    match status.state.as_str() {
+        "idle" => {
+            status.attempt_id.is_none()
+                && status.scope_packages.is_empty()
+                && status.expires_at.is_none()
+                && status.error_code.is_none()
+        }
+        "waiting" | "authorization-received" | "cancelled" => {
+            status
+                .attempt_id
+                .as_ref()
+                .is_some_and(|value| !value.is_empty())
+                && packages_are_valid
+                && status
+                    .expires_at
+                    .as_ref()
+                    .is_some_and(|value| !value.is_empty())
+                && status.error_code.is_none()
+        }
+        "timed-out" => {
+            status
+                .attempt_id
+                .as_ref()
+                .is_some_and(|value| !value.is_empty())
+                && packages_are_valid
+                && status
+                    .expires_at
+                    .as_ref()
+                    .is_some_and(|value| !value.is_empty())
+                && status.error_code.as_deref() == Some("login-timeout")
+        }
+        "failed" => {
+            status
+                .attempt_id
+                .as_ref()
+                .is_some_and(|value| !value.is_empty())
+                && packages_are_valid
+                && status
+                    .expires_at
+                    .as_ref()
+                    .is_some_and(|value| !value.is_empty())
+                && matches!(
+                    status.error_code.as_deref(),
+                    Some("authorization-denied")
+                        | Some("authorization-failed")
+                        | Some("callback-invalid")
+                )
+        }
+        _ => false,
+    }
+}
+
+fn authorization_url_is_valid(value: &str) -> bool {
+    let Ok(url) = tauri::Url::parse(value) else {
+        return false;
+    };
+    if url.as_str().len() > 8_192
+        || url.scheme() != "https"
+        || url.host_str() != Some("login.eveonline.com")
+        || url.port_or_known_default() != Some(443)
+        || url.path() != "/v2/oauth/authorize"
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.fragment().is_some()
+        || !value.starts_with(EVE_SSO_AUTHORIZATION_ENDPOINT)
+    {
+        return false;
+    }
+
+    let mut parameters: HashMap<String, String> = HashMap::new();
+    for (key, value) in url.query_pairs() {
+        if parameters
+            .insert(key.into_owned(), value.into_owned())
+            .is_some()
+        {
+            return false;
+        }
+    }
+    let expected_keys: HashSet<&str> = [
+        "response_type",
+        "client_id",
+        "redirect_uri",
+        "scope",
+        "state",
+        "code_challenge",
+        "code_challenge_method",
+    ]
+    .into_iter()
+    .collect();
+    if parameters
+        .keys()
+        .map(String::as_str)
+        .collect::<HashSet<_>>()
+        != expected_keys
+    {
+        return false;
+    }
+    let is_pkce_token = |candidate: &str| {
+        candidate.len() == 43
+            && candidate
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+    };
+    parameters.get("response_type").map(String::as_str) == Some("code")
+        && parameters.get("client_id").map(String::as_str) == Some(EVE_SSO_CLIENT_ID)
+        && parameters.get("redirect_uri").map(String::as_str) == Some(EVE_SSO_REDIRECT_URI)
+        && parameters.get("code_challenge_method").map(String::as_str) == Some("S256")
+        && parameters
+            .get("state")
+            .is_some_and(|candidate| is_pkce_token(candidate))
+        && parameters
+            .get("code_challenge")
+            .is_some_and(|candidate| is_pkce_token(candidate))
+        && parameters.get("scope").is_some_and(|scope| {
+            !scope.is_empty()
+                && scope.split(' ').all(|item| {
+                    item.starts_with("esi-")
+                        && item.ends_with(".v1")
+                        && item.bytes().all(|byte| {
+                            byte.is_ascii_lowercase()
+                                || byte.is_ascii_digit()
+                                || matches!(byte, b'-' | b'_' | b'.')
+                        })
+                })
+        })
+}
+
+fn open_system_browser(url: &str) -> Result<(), &'static str> {
+    if !authorization_url_is_valid(url) {
+        return Err("sso-authorization-url-invalid");
+    }
+
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        Command::new("rundll32.exe")
+            .arg("url.dll,FileProtocolHandler")
+            .arg(url)
+            .creation_flags(WINDOWS_CREATE_NO_WINDOW)
+            .spawn()
+            .map_err(|_| "system-browser-unavailable")?;
+    }
+    #[cfg(target_os = "macos")]
+    Command::new("open")
+        .arg(url)
+        .spawn()
+        .map_err(|_| "system-browser-unavailable")?;
+    #[cfg(all(unix, not(target_os = "macos")))]
+    Command::new("xdg-open")
+        .arg(url)
+        .spawn()
+        .map_err(|_| "system-browser-unavailable")?;
+    Ok(())
 }
 
 fn launch_sidecar(
@@ -471,6 +662,95 @@ fn set_update_channel(channel: String, state: State<'_, RuntimeState>) -> Result
 }
 
 #[tauri::command]
+fn start_eve_sso(
+    scope_packages: Vec<String>,
+    state: State<'_, RuntimeState>,
+) -> Result<String, String> {
+    if scope_packages.is_empty()
+        || scope_packages
+            .iter()
+            .any(|package| !EVE_SSO_SCOPE_PACKAGES.contains(&package.as_str()))
+        || scope_packages.iter().collect::<HashSet<_>>().len() != scope_packages.len()
+    {
+        return Err("invalid-scope-packages".to_owned());
+    }
+    refresh_sidecar_status(&state);
+    let body = serde_json::json!({ "scopePackages": scope_packages }).to_string();
+    let response = {
+        let sidecar = state
+            .sidecar
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let process = sidecar
+            .as_ref()
+            .ok_or_else(|| "sidecar-unavailable".to_owned())?;
+        sidecar_json_request(process, "POST", "/sso/login", &body).map_err(str::to_owned)?
+    };
+    let started: SsoLoginStart =
+        serde_json::from_str(&response).map_err(|_| "sidecar-response-invalid".to_owned())?;
+    if started.status.state != "waiting"
+        || !sso_login_status_is_valid(&started.status)
+        || !authorization_url_is_valid(&started.authorization_url)
+    {
+        return Err("sidecar-response-invalid".to_owned());
+    }
+    if let Err(error_code) = open_system_browser(&started.authorization_url) {
+        let sidecar = state
+            .sidecar
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        if let Some(process) = sidecar.as_ref() {
+            let _ = sidecar_json_request(process, "DELETE", "/sso/login", "");
+        }
+        return Err(error_code.to_owned());
+    }
+    serde_json::to_string(&started.status).map_err(|_| "status-serialization-failed".to_owned())
+}
+
+#[tauri::command]
+fn eve_sso_status(state: State<'_, RuntimeState>) -> Result<String, String> {
+    refresh_sidecar_status(&state);
+    let response = {
+        let sidecar = state
+            .sidecar
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let process = sidecar
+            .as_ref()
+            .ok_or_else(|| "sidecar-unavailable".to_owned())?;
+        sidecar_json_request(process, "GET", "/sso/login", "").map_err(str::to_owned)?
+    };
+    let status: SsoLoginStatus =
+        serde_json::from_str(&response).map_err(|_| "sidecar-response-invalid".to_owned())?;
+    if !sso_login_status_is_valid(&status) {
+        return Err("sidecar-response-invalid".to_owned());
+    }
+    serde_json::to_string(&status).map_err(|_| "status-serialization-failed".to_owned())
+}
+
+#[tauri::command]
+fn cancel_eve_sso(state: State<'_, RuntimeState>) -> Result<String, String> {
+    refresh_sidecar_status(&state);
+    let response = {
+        let sidecar = state
+            .sidecar
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let process = sidecar
+            .as_ref()
+            .ok_or_else(|| "sidecar-unavailable".to_owned())?;
+        sidecar_json_request(process, "DELETE", "/sso/login", "").map_err(str::to_owned)?
+    };
+    let status: SsoLoginStatus =
+        serde_json::from_str(&response).map_err(|_| "sidecar-response-invalid".to_owned())?;
+    if !sso_login_status_is_valid(&status) || !matches!(status.state.as_str(), "idle" | "cancelled")
+    {
+        return Err("sidecar-response-invalid".to_owned());
+    }
+    serde_json::to_string(&status).map_err(|_| "status-serialization-failed".to_owned())
+}
+
+#[tauri::command]
 fn desktop_runtime_status(state: State<'_, RuntimeState>) -> String {
     refresh_sidecar_status(&state);
     serde_json::to_string(
@@ -506,7 +786,10 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             desktop_runtime_status,
-            set_update_channel
+            set_update_channel,
+            start_eve_sso,
+            eve_sso_status,
+            cancel_eve_sso
         ])
         .build(tauri::generate_context!())
         .expect("New Eden Foundry could not start");
@@ -516,4 +799,56 @@ pub fn run() {
             stop_sidecar(app);
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{authorization_url_is_valid, sso_login_status_is_valid, SsoLoginStatus};
+
+    fn valid_authorization_url() -> String {
+        concat!(
+            "https://login.eveonline.com/v2/oauth/authorize?",
+            "response_type=code&",
+            "client_id=a8409de72d5b4cab9b0424819d0abdec&",
+            "redirect_uri=http%3A%2F%2F127.0.0.1%3A17891%2Foauth%2Fcallback&",
+            "scope=esi-assets.read_assets.v1&",
+            "state=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&",
+            "code_challenge=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&",
+            "code_challenge_method=S256"
+        )
+        .to_owned()
+    }
+
+    #[test]
+    fn accepts_only_the_fixed_eve_pkce_authorization_target() {
+        assert!(authorization_url_is_valid(&valid_authorization_url()));
+        assert!(!authorization_url_is_valid(
+            &valid_authorization_url().replace("login.eveonline.com", "login.invalid")
+        ));
+        assert!(!authorization_url_is_valid(
+            &valid_authorization_url().replace("S256", "plain")
+        ));
+        assert!(!authorization_url_is_valid(&format!(
+            "{}&state=duplicate",
+            valid_authorization_url()
+        )));
+    }
+
+    #[test]
+    fn validates_public_sso_status_without_sensitive_values() {
+        let waiting = SsoLoginStatus {
+            state: "waiting".to_owned(),
+            attempt_id: Some("opaque-attempt".to_owned()),
+            scope_packages: vec!["industry-core".to_owned()],
+            expires_at: Some("2026-09-09T12:00:00Z".to_owned()),
+            error_code: None,
+        };
+        assert!(sso_login_status_is_valid(&waiting));
+
+        let invalid = SsoLoginStatus {
+            scope_packages: vec!["industry-core".to_owned(), "industry-core".to_owned()],
+            ..waiting
+        };
+        assert!(!sso_login_status_is_valid(&invalid));
+    }
 }
