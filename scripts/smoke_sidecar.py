@@ -146,6 +146,13 @@ def seed_previous_release_database(program_directory: Path) -> Path:
                 size_bytes INTEGER NOT NULL,
                 created_at TEXT NOT NULL
             );
+            CREATE TABLE app_settings (
+                key TEXT PRIMARY KEY NOT NULL,
+                value TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            INSERT INTO app_settings (key, value, updated_at)
+                VALUES ('update_channel', 'stable', '2026-09-09T12:00:00Z');
             INSERT INTO schema_migrations (version, name)
                 VALUES (1, 'initial_local_core');
             INSERT INTO schema_migrations (version, name)
@@ -154,9 +161,11 @@ def seed_previous_release_database(program_directory: Path) -> Path:
                 VALUES (3, 'migration_backup_history');
             INSERT INTO schema_migrations (version, name)
                 VALUES (4, 'cache_freshness_metadata');
+            INSERT INTO schema_migrations (version, name)
+                VALUES (5, 'local_update_preferences');
             INSERT INTO app_metadata (key, value)
                 VALUES ('smoke-marker', 'portable-smoke-preserved');
-            PRAGMA user_version = 4;
+            PRAGMA user_version = 5;
             """
         )
         connection.commit()
@@ -213,7 +222,7 @@ def main() -> int:
             database = health.get("database")
             if not isinstance(database, dict) or database.get("location") != "data/foundry.sqlite3":
                 raise RuntimeError("The sidecar reported an unexpected database location.")
-            if database.get("schemaVersion") != 5 or database.get("integrity") != "ok":
+            if database.get("schemaVersion") != 6 or database.get("integrity") != "ok":
                 raise RuntimeError("The sidecar database health is invalid.")
             data_state = health.get("data")
             if not isinstance(data_state, dict) or data_state.get("state") != "empty":
@@ -335,8 +344,8 @@ def main() -> int:
             with contextlib.closing(sqlite3.connect(database_path)) as connection:
                 if connection.execute("PRAGMA quick_check").fetchone()[0] != "ok":
                     raise RuntimeError("The created SQLite database failed quick_check.")
-                if connection.execute("PRAGMA user_version").fetchone()[0] != 5:
-                    raise RuntimeError("The packaged sidecar did not migrate to schema 5.")
+                if connection.execute("PRAGMA user_version").fetchone()[0] != 6:
+                    raise RuntimeError("The packaged sidecar did not migrate to schema 6.")
                 marker = connection.execute(
                     "SELECT value FROM app_metadata WHERE key = 'smoke-marker'"
                 ).fetchone()[0]
@@ -346,6 +355,9 @@ def main() -> int:
                 font_scale = connection.execute(
                     "SELECT value FROM app_settings WHERE key = 'font_scale'"
                 ).fetchone()[0]
+                character_columns = {
+                    row[1] for row in connection.execute("PRAGMA table_info(characters)")
+                }
                 backup_record = connection.execute(
                     "SELECT filename, sha256 FROM migration_backups"
                 ).fetchone()
@@ -353,6 +365,7 @@ def main() -> int:
                 marker != SYNTHETIC_MIGRATION_MARKER
                 or update_channel != "preview"
                 or font_scale != "very-large"
+                or "alias" not in character_columns
                 or backup_record[0] != backup_name
             ):
                 raise RuntimeError("The packaged migration did not preserve its source data.")
@@ -366,8 +379,8 @@ def main() -> int:
             with contextlib.closing(sqlite3.connect(backup_path)) as backup_connection:
                 if backup_connection.execute("PRAGMA quick_check").fetchone()[0] != "ok":
                     raise RuntimeError("The packaged migration backup failed quick_check.")
-                if backup_connection.execute("PRAGMA user_version").fetchone()[0] != 4:
-                    raise RuntimeError("The packaged backup does not contain schema 4.")
+                if backup_connection.execute("PRAGMA user_version").fetchone()[0] != 5:
+                    raise RuntimeError("The packaged backup does not contain schema 5.")
                 backup_marker = backup_connection.execute(
                     "SELECT value FROM app_metadata WHERE key = 'smoke-marker'"
                 ).fetchone()[0]

@@ -18,13 +18,20 @@ from pathlib import Path
 from new_eden_foundry_backend.sidecar import (
     PROTOCOL_VERSION,
     StartupProtocolError,
+    delete_character_completely,
     is_authorized,
+    managed_character_payload,
     parse_startup_configuration,
     store_verified_authorization,
     store_verified_character,
 )
+from new_eden_foundry_backend.sso_registration import load_bundled_sso_registration_profile
 from new_eden_foundry_backend.sso_tokens import VerifiedAuthorization, VerifiedCharacter
-from new_eden_foundry_backend.token_vault import MemoryCredentialStore, RefreshTokenVault
+from new_eden_foundry_backend.token_vault import (
+    MemoryCredentialStore,
+    RefreshTokenVault,
+    TokenVaultError,
+)
 
 
 SYNTHETIC_SESSION_TOKEN = "a" * 64
@@ -138,6 +145,153 @@ class SidecarProtocolTests(unittest.TestCase):
             self.assertFalse(store.values)
 
 
+    def test_managed_character_payload_reports_scope_and_credential_state(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            database_path = Path(temporary_directory) / "foundry.sqlite3"
+            from new_eden_foundry_backend.database import (
+                connect_database,
+                initialize_database,
+            )
+            from new_eden_foundry_backend.identity import (
+                list_characters,
+                upsert_character,
+            )
+
+            initialize_database(database_path)
+            with contextlib.closing(connect_database(database_path)) as connection:
+                upsert_character(
+                    connection,
+                    character_id=2_112_345_681,
+                    name="Scope Pilot",
+                    account_group_id=None,
+                    scopes=("esi-assets.read_assets.v1",),
+                )
+                character = list_characters(connection)[0]
+            vault = RefreshTokenVault(MemoryCredentialStore())
+            profile = load_bundled_sso_registration_profile()
+
+            missing = managed_character_payload(character, profile, vault)
+            self.assertEqual(missing["credentialState"], "missing")
+            self.assertEqual(
+                missing["scopePackages"][0],
+                {
+                    "id": "industry-core",
+                    "status": "partial",
+                    "grantedCount": 1,
+                    "requiredCount": 4,
+                },
+            )
+            self.assertTrue(
+                all(
+                    package["status"] == "missing"
+                    for package in missing["scopePackages"][1:]
+                )
+            )
+
+            vault.replace(2_112_345_681, "synthetic-refresh-token")
+            stored = managed_character_payload(character, profile, vault)
+            self.assertEqual(stored["credentialState"], "stored")
+
+    def test_complete_character_delete_removes_credential_and_database_rows(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            database_path = Path(temporary_directory) / "foundry.sqlite3"
+            from new_eden_foundry_backend.database import (
+                connect_database,
+                initialize_database,
+            )
+            from new_eden_foundry_backend.identity import upsert_character
+
+            initialize_database(database_path)
+            character_id = 2_112_345_682
+            with contextlib.closing(connect_database(database_path)) as connection:
+                upsert_character(
+                    connection,
+                    character_id=character_id,
+                    name="Delete Pilot",
+                    account_group_id=None,
+                    scopes=("esi-assets.read_assets.v1",),
+                )
+                sync = connection.execute(
+                    """
+                    INSERT INTO sync_runs (
+                        source, status, started_at, completed_at, character_id
+                    ) VALUES (?, 'completed', ?, ?, ?)
+                    """,
+                    (
+                        "synthetic-delete-test",
+                        "2026-09-09T12:00:00Z",
+                        "2026-09-09T12:01:00Z",
+                        character_id,
+                    ),
+                )
+                connection.execute(
+                    """
+                    INSERT INTO cached_snapshots (
+                        sync_run_id, resource, payload_json, observed_at
+                    ) VALUES (?, 'assets', '{}', ?)
+                    """,
+                    (sync.lastrowid, "2026-09-09T12:01:00Z"),
+                )
+            vault = RefreshTokenVault(MemoryCredentialStore())
+            vault.replace(character_id, "synthetic-refresh-token")
+
+            self.assertTrue(
+                delete_character_completely(database_path, vault, character_id)
+            )
+            self.assertIsNone(vault.read(character_id))
+            with contextlib.closing(sqlite3.connect(database_path)) as connection:
+                self.assertEqual(
+                    connection.execute("SELECT COUNT(*) FROM characters").fetchone()[0],
+                    0,
+                )
+                self.assertEqual(
+                    connection.execute("SELECT COUNT(*) FROM sync_runs").fetchone()[0],
+                    0,
+                )
+                self.assertEqual(
+                    connection.execute("SELECT COUNT(*) FROM cached_snapshots").fetchone()[0],
+                    0,
+                )
+
+    def test_credential_delete_failure_rolls_back_database_delete(self) -> None:
+        class DeleteFailingStore(MemoryCredentialStore):
+            def delete(self, target: str) -> None:
+                del target
+                raise TokenVaultError("credential-delete-failed")
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            database_path = Path(temporary_directory) / "foundry.sqlite3"
+            from new_eden_foundry_backend.database import (
+                connect_database,
+                initialize_database,
+            )
+            from new_eden_foundry_backend.identity import upsert_character
+
+            initialize_database(database_path)
+            character_id = 2_112_345_683
+            with contextlib.closing(connect_database(database_path)) as connection:
+                upsert_character(
+                    connection,
+                    character_id=character_id,
+                    name="Rollback Pilot",
+                    account_group_id=None,
+                    scopes=("esi-assets.read_assets.v1",),
+                )
+            vault = RefreshTokenVault(DeleteFailingStore())
+
+            with self.assertRaisesRegex(TokenVaultError, "credential-delete-failed"):
+                delete_character_completely(database_path, vault, character_id)
+
+            with contextlib.closing(sqlite3.connect(database_path)) as connection:
+                self.assertEqual(
+                    connection.execute(
+                        "SELECT COUNT(*) FROM characters WHERE character_id = ?",
+                        (character_id,),
+                    ).fetchone()[0],
+                    1,
+                )
+
+
 class SidecarIntegrationTests(unittest.TestCase):
     def test_loopback_health_requires_token_and_shutdown_is_clean(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -222,7 +376,7 @@ class SidecarIntegrationTests(unittest.TestCase):
             with opener.open(valid_request, timeout=3) as response:
                 health = json.loads(response.read())
             self.assertEqual(health["state"], "ready")
-            self.assertEqual(health["database"]["schemaVersion"], 5)
+            self.assertEqual(health["database"]["schemaVersion"], 6)
             self.assertEqual(health["database"]["location"], "data/foundry.sqlite3")
             self.assertIsNone(health["database"]["lastMigrationBackup"])
             self.assertEqual(health["data"]["state"], "empty")
