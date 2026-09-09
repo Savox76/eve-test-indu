@@ -227,7 +227,9 @@ def main() -> int:
             sso_registration = health.get("ssoRegistration")
             if (
                 not isinstance(sso_registration, dict)
-                or sso_registration.get("state") != "pending-client-id"
+                or sso_registration.get("state") != "registered"
+                or sso_registration.get("clientId")
+                != "a8409de72d5b4cab9b0424819d0abdec"
                 or sso_registration.get("redirectUri")
                 != "http://127.0.0.1:17891/oauth/callback"
             ):

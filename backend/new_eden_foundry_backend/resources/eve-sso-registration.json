@@ -1,7 +1,7 @@
 {
   "applicationName": "New Eden Foundry",
   "applicationType": "native-public-pkce",
-  "clientId": null,
+  "clientId": "a8409de72d5b4cab9b0424819d0abdec",
   "redirectUri": "http://127.0.0.1:17891/oauth/callback",
   "developerContact": {
     "name": "Savox76",

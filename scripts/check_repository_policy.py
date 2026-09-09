@@ -202,7 +202,7 @@ def check_documentation(errors: list[str]) -> None:
             "Savox76",
             "esi-assets.read_assets.v1",
             "esi-planets.manage_planets.v1",
-            "Ausstehend",
+            "a8409de72d5b4cab9b0424819d0abdec",
         ):
             if marker not in sso_content:
                 errors.append(f"SSO registration documentation is missing marker: {marker}")
@@ -349,13 +349,25 @@ def check_backend_foundation(errors: list[str]) -> None:
         for marker in (
             'SSO_REDIRECT_URI: Final = "http://127.0.0.1:17891/oauth/callback"',
             "EXPECTED_SCOPE_PACKAGES",
-            "pending-client-id",
+            "registered",
             "Savox76",
         ):
             if marker not in sso_content:
                 errors.append(f"SSO registration profile is missing marker: {marker}")
         if "client_secret" in sso_content.lower():
             errors.append("The SSO registration module must not contain a client secret.")
+
+    sso_profile = (
+        ROOT
+        / "backend"
+        / "new_eden_foundry_backend"
+        / "resources"
+        / "eve-sso-registration.json"
+    )
+    if sso_profile.is_file():
+        profile = json.loads(sso_profile.read_text(encoding="utf-8"))
+        if profile.get("clientId") != "a8409de72d5b4cab9b0424819d0abdec":
+            errors.append("The bundled public EVE SSO client ID has drifted.")
 
     sidecar_build = ROOT / "scripts" / "build_sidecar.py"
     if sidecar_build.is_file() and "SSO_REGISTRATION_PROFILE" not in sidecar_build.read_text(
@@ -364,10 +376,13 @@ def check_backend_foundation(errors: list[str]) -> None:
         errors.append("The frozen sidecar must include the SSO registration profile.")
 
     sidecar_smoke = ROOT / "scripts" / "smoke_sidecar.py"
-    if sidecar_smoke.is_file() and "pending-client-id" not in sidecar_smoke.read_text(
-        encoding="utf-8"
-    ):
-        errors.append("The frozen sidecar smoke test must verify the SSO profile.")
+    if sidecar_smoke.is_file():
+        smoke_content = sidecar_smoke.read_text(encoding="utf-8")
+        for marker in ("registered", "a8409de72d5b4cab9b0424819d0abdec"):
+            if marker not in smoke_content:
+                errors.append(
+                    f"The frozen sidecar smoke test is missing SSO marker: {marker}"
+                )
 
     runtime_requirements = ROOT / "backend" / "requirements-runtime.txt"
     if runtime_requirements.is_file() and "cryptography==50.0.1" not in runtime_requirements.read_text(

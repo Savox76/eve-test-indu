@@ -68,6 +68,7 @@ class SsoRegistrationProfile:
     def as_status_payload(self) -> dict[str, object]:
         return {
             "state": "registered" if self.is_registered else "pending-client-id",
+            "clientId": self.client_id,
             "redirectUri": self.redirect_uri,
             "scopePackages": sorted(self.scope_packages),
         }

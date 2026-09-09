@@ -13,14 +13,19 @@ from new_eden_foundry_backend.sso_registration import (
 
 
 class SsoRegistrationProfileTests(unittest.TestCase):
-    def test_bundled_profile_is_valid_and_honestly_pending(self) -> None:
+    def test_bundled_profile_is_valid_and_registered(self) -> None:
         profile = load_bundled_sso_registration_profile()
 
         self.assertEqual(profile.redirect_uri, SSO_REDIRECT_URI)
         self.assertEqual(profile.scope_packages, EXPECTED_SCOPE_PACKAGES)
         self.assertEqual(profile.developer_contact.name, "Savox76")
-        self.assertFalse(profile.is_registered)
-        self.assertEqual(profile.as_status_payload()["state"], "pending-client-id")
+        self.assertEqual(profile.client_id, "a8409de72d5b4cab9b0424819d0abdec")
+        self.assertTrue(profile.is_registered)
+        self.assertEqual(profile.as_status_payload()["state"], "registered")
+        self.assertEqual(
+            profile.as_status_payload()["clientId"],
+            "a8409de72d5b4cab9b0424819d0abdec",
+        )
 
     def test_registered_profile_accepts_a_public_client_id(self) -> None:
         profile = load_bundled_sso_registration_profile()

@@ -1,7 +1,7 @@
 # EVE-SSO-App-Registrierung
 
 **Stand:** 9. September 2026  
-**Status:** Registrierung im EVE Developers Portal ausstehend
+**Status:** Im EVE Developers Portal registriert
 
 Dieses Dokument ist die verbindliche Vorlage für die öffentliche EVE-SSO-App von New Eden Foundry. Die identischen Werte stehen maschinenlesbar in `backend/new_eden_foundry_backend/resources/eve-sso-registration.json` und werden automatisiert geprüft.
 
@@ -13,7 +13,7 @@ Dieses Dokument ist die verbindliche Vorlage für die öffentliche EVE-SSO-App v
 | Anwendungstyp | Native öffentliche Desktop-App, Authorization Code mit PKCE (`S256`) |
 | Beschreibung | Lokale Windows-Desktop-App zur nachvollziehbaren EVE-Online-Industrieplanung für mehrere separat autorisierte Charaktere. |
 | Callback-URI | `http://127.0.0.1:17891/oauth/callback` |
-| Öffentliche Client-ID | **Ausstehend – wird nach der Portalregistrierung hier und in der JSON-Datei eingetragen.** |
+| Öffentliche Client-ID | `a8409de72d5b4cab9b0424819d0abdec` |
 | Entwicklerkontakt | `Savox76` über [private GitHub-Sicherheitsmeldung](https://github.com/Savox76/eve-test-indu/security/advisories/new) |
 | Quellcode | `https://github.com/Savox76/eve-test-indu` |
 
@@ -37,11 +37,11 @@ Der technisch schreibend klingende PI-Scope wird nur für die ESI-Lesewege zu ei
 
 1. Unter [EVE Developers – My Applications](https://developers.eveonline.com/applications) mit dem vorgesehenen Entwicklerkonto eine neue Anwendung anlegen.
 2. Name, Beschreibung, Callback-URI und sämtliche oben gelisteten Scopes exakt übernehmen.
-3. Die vom Portal ausgegebene öffentliche Client-ID in diesem Dokument und als `clientId` in `eve-sso-registration.json` eintragen. Kein Client Secret übernehmen.
+3. Die vom Portal ausgegebene öffentliche Client-ID `a8409de72d5b4cab9b0424819d0abdec` mit diesem Dokument und dem Feld `clientId` in `eve-sso-registration.json` abgleichen. Kein Client Secret übernehmen.
 4. Repository- und Backendtests ausführen. Sie blockieren eine abweichende Callback-URI, unbekannte Scopepakete und ungültige Profilfelder.
 5. Vor dem Merge die gespeicherte Portalansicht noch einmal Zeichen für Zeichen mit dieser Tabelle vergleichen.
 
-Arbeitspaket 11 gilt erst als abgeschlossen, wenn die echte Client-ID eingetragen und die Callback-URI im Portal erfolgreich gespeichert wurde. Paket 12 implementiert anschließend Listener, Systembrowser, `state`, PKCE, Timeout und Abbruch.
+Die echte Client-ID ist eingetragen und das Registrierungsprofil damit vollständig. Paket 12 implementiert anschließend Listener, Systembrowser, `state`, PKCE, Timeout und Abbruch.
 
 ## Quellen
 

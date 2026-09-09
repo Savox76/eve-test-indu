@@ -18,13 +18,13 @@ Das Repository führt ein streng validiertes, maschinenlesbares SSO-Registrierun
 - `Savox76` ist als Entwicklerkontakt über die privaten GitHub Security Advisories des Repositories erreichbar.
 - Scopes sind in die kleinsten funktionsbezogenen Pakete `industry-core`, `private-structures`, `market`, `projects` und `planetary-industry` getrennt.
 - Das Portal erhält die gesamte für Version 1.0 vorgesehene Scope-Menge; ein einzelner Charakter-Login fordert nur die für aktivierte Funktionen erforderlichen Pakete an.
-- Die öffentliche Client-ID bleibt ausdrücklich `null`, bis das EVE Developers Portal sie erzeugt hat. Ein erfundener oder scheinbar produktiver Platzhalter ist verboten.
+- Die vom EVE Developers Portal erzeugte öffentliche Client-ID lautet `a8409de72d5b4cab9b0424819d0abdec`. Ein Client Secret wird weder übernommen noch ausgeliefert.
 
 ## Folgen
 
 Der spätere Login kann Callback und Scopes aus einer geprüften Quelle lesen. Eine belegte Änderung an Callback oder Scope-Menge erfordert eine bewusste Profil-, Test- und Dokumentationsänderung sowie einen Abgleich im Portal. Ein belegter Portkonflikt kann deshalb nicht still zur Laufzeit auf einen anderen Port ausweichen, sondern muss verständlich zum erneuten Versuch auffordern.
 
-Arbeitspaket 11 bleibt bis zum Eintrag der echten Client-ID und dem erfolgreichen Speichern der URI im Portal offen. Diese externe Registrierung kann nicht durch Repository-Code ersetzt werden.
+Arbeitspaket 11 ist mit dem Eintrag der echten Client-ID und dem bestätigten Portalprofil abgeschlossen. Eine spätere Portaländerung muss gleichzeitig in Profil, Dokumentation und Tests nachvollzogen werden.
 
 ## Verifikation
 

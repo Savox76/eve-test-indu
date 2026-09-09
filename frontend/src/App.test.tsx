@@ -7,7 +7,7 @@ import type { DesktopRuntimeStatus } from "./runtime";
 const nativeRuntime = (overrides: Partial<Extract<DesktopRuntimeStatus, { state: "ready" }>> = {}) =>
   Promise.resolve<DesktopRuntimeStatus>({
     state: "ready",
-    version: "0.0.4-preview.1",
+    version: "0.0.4-preview.2",
     desktopShell: true,
     singleInstance: true,
     sidecar: "ready",
@@ -67,7 +67,7 @@ describe("New Eden Foundry design preview", () => {
   it("credits Savoxmedia as the app creator next to the version", () => {
     render(<App />);
 
-    expect(screen.getByText("v0.0.4-preview.1")).toBeInTheDocument();
+    expect(screen.getByText("v0.0.4-preview.2")).toBeInTheDocument();
     expect(screen.getByText("Savoxmedia")).toBeInTheDocument();
     expect(screen.getByText("Erstellt von", { exact: false })).toBeInTheDocument();
     expect(screen.queryByText("Lokaler Betreiber")).not.toBeInTheDocument();

@@ -36,7 +36,11 @@ class FoundationStatusTests(unittest.TestCase):
         self.assertEqual(result["updater"]["manifest_state"], "verified")
         self.assertEqual(result["updater"]["test_manifest_version"], "0.0.4-preview.1")
         self.assertFalse(result["updater"]["public_distribution"])
-        self.assertEqual(result["sso_registration"]["state"], "pending-client-id")
+        self.assertEqual(result["sso_registration"]["state"], "registered")
+        self.assertEqual(
+            result["sso_registration"]["clientId"],
+            "a8409de72d5b4cab9b0424819d0abdec",
+        )
         self.assertEqual(
             result["sso_registration"]["redirectUri"],
             "http://127.0.0.1:17891/oauth/callback",

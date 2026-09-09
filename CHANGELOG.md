@@ -24,6 +24,39 @@ Alle bemerkenswerten Änderungen an New Eden Foundry werden hier festgehalten. D
 
 - Keine.
 
+## 0.0.4-preview.2 – 9. September 2026
+
+### Neu hinzugefügt
+
+- Verbindliches öffentliches EVE-SSO-App-Profil mit fester Loopback-Callback-URI, öffentlicher Client-ID und Entwicklerkontakt.
+- Minimale Scopepakete für Industrie, private Strukturen, Markt, Projekte und Planetary Industry.
+- Strikte Profil-, Sidecar- und Frozen-Pakettests gegen Callback-, Scope- und Client-ID-Drift.
+- ADR-012 und dokumentierte Portalwerte für reproduzierbare spätere Abgleiche.
+
+### Geändert
+
+- Sidecar und Selbsttest melden das gebündelte SSO-Profil als registriert.
+- Der feste Browser-Callback-Port ist ausdrücklich vom dynamischen internen Sidecar-Port getrennt.
+- Arbeitspaket 11 ist abgeschlossen; als Nächstes folgt der eigentliche PKCE-Login.
+- Die sichtbare Versionsnummer wurde auf `v0.0.4-preview.2` aktualisiert.
+
+### Behobene Fehler
+
+- Callback-URI, öffentliche Client-ID und Scope-Menge können nicht mehr unbemerkt zwischen Portalvorlage, Code, Paket und Tests auseinanderlaufen.
+- Ein fehlender oder ungültiger Client-ID-Wert wird nicht als abgeschlossene Registrierung gemeldet.
+
+### Bekannte Einschränkungen
+
+- Die Registrierung ist vollständig, aber eine echte EVE-Anmeldung folgt erst mit PKCE-, Callback- und JWT-Implementierung in den nächsten Arbeitspaketen.
+- Die Mehrcharakter-Oberfläche arbeitet weiterhin mit synthetischen Daten.
+- ESI, SDE, echte Synchronisierung und Fachberechnungen fehlen noch.
+- Öffentliche Updateverteilung und Codesignierung bleiben deaktiviert; das manuelle Windows-Laufzeitgate und der Schutz von `main` sind offen.
+
+### Update und Datenbankmigration
+
+- Keine Datenbankmigration; Schema-Version 5 und alle Daten unter `data` bleiben unverändert.
+- Für ein portables Update die Anwendung schließen und den bisherigen Ordner `data` vollständig in den neuen Programmordner übernehmen.
+
 ## 0.0.4-preview.1 – 9. September 2026
 
 ### Neu hinzugefügt

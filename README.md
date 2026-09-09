@@ -4,11 +4,11 @@ New Eden Foundry wird eine lokale Desktop-Anwendung für nachvollziehbare EVE-On
 
 ## Projektstatus
 
-**Technische Preview – `v0.0.4-preview.1`.** Die Desktop-App besitzt jetzt ein sicheres Updater-Skelett: „Offiziell“, „Beta“ und „Vorschau / Test“ sind wählbar, die Präferenz bleibt lokal in `data\foundry.sqlite3`, und ein gebündeltes Ed25519-signiertes Testmanifest wird vor der Statusfreigabe geprüft. Öffentliche Downloads und automatische Installation sind in diesem Schritt ausdrücklich deaktiviert. Cache-first Startzustände, der geschützte Sidecar sowie gemeinsame und getrennte Mehrcharakter-Übersichten bleiben die technische Grundlage.
+**Technische Preview – `v0.0.4-preview.2`.** Die Desktop-App besitzt jetzt ein vollständig registriertes und strikt geprüftes EVE-SSO-App-Profil mit fester Loopback-Callback-URI, öffentlicher Client-ID und minimalen Funktions-Scopes. Das sichere Updater-Skelett, cache-first Startzustände, der geschützte Sidecar sowie gemeinsame und getrennte Mehrcharakter-Übersichten bleiben die technische Grundlage.
 
 Die Mehrcharakter-Oberfläche arbeitet weiterhin mit drei klar synthetischen Figuren und liest diese Vorschauwerte noch nicht aus SQLite. EVE SSO, ESI, SDE, echte Synchronisierung und fachliche Berechnungen sind noch nicht angeschlossen. Eine neue Installation meldet deshalb korrekt, dass noch keine lokalen Daten vorhanden sind. Versionen werden weiterhin manuell über [GitHub Releases](https://github.com/Savox76/eve-test-indu/releases) bezogen; das vollständige Windows-Installationsgate bleibt Voraussetzung für die erste technische Alpha.
 
-Für den nächsten SSO-Schritt sind Callback-URI, Entwicklerkontakt und minimale Funktions-Scopes bereits im [verbindlichen Registrierungsprofil](docs/sso-registration.md) festgelegt und automatisiert gegen Drift geschützt. Die echte öffentliche Client-ID muss noch durch die App-Registrierung im EVE Developers Portal erzeugt werden; bis dahin bleibt der Login bewusst deaktiviert.
+Für den nächsten SSO-Schritt sind Callback-URI, öffentliche Client-ID, Entwicklerkontakt und minimale Funktions-Scopes im [verbindlichen Registrierungsprofil](docs/sso-registration.md) vollständig festgelegt und automatisiert gegen Drift geschützt. Der eigentliche PKCE-Login folgt in Arbeitspaket 12 und bleibt bis dahin bewusst deaktiviert.
 
 ## Verbindliche Grundlagen
 
