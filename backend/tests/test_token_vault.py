@@ -46,95 +46,76 @@ class RefreshTokenVaultTests(unittest.TestCase):
         candidate = self.vault.stage(CHARACTER_ID, "refresh-new")
         self.store.fail_active_write = True
 
-        with self.assertRaisesRegex(TokenVaultError, "cr{×M6¶‰žËkºwµçom": {
-          "optional": true
-        },
-        "vite": {
-          "optional": false
-        }
-      }
-    },
-    "node_modules/w3c-xmlserializer": {
-      "version": "5.0.0",
-      "resolved": "https://registry.npmjs.org/w3c-xmlserializer/-/w3c-xmlserializer-5.0.0.tgz",
-      "integrity": "sha512-o8qghlI8NZHU1lLPrpi2+Uq7abh4GGPpYANlalzWxyWteJOCsr/P+oPBA49TOLu5FTZO4d3F9MnWJfiMo4BkmA==",
-      "dev": true,
-      "license": "MIT",
-      "dependencies": {
-        "xml-name-validator": "^5.0.0"
-      },
-      "engines": {
-        "node": ">=18"
-      }
-    },
-    "node_modules/webidl-conversions": {
-      "version": "8.0.1",
-      "resolved": "https://registry.npmjs.org/webidl-conversions/-/webidl-conversions-8.0.1.tgz",
-      "integrity": "sha512-BMhLD/Sw+GbJC21C/UgyaZX41nPt8bUTg+jWyDeg7e7YN4xOM05YPSIXceACnXVtqyEw/LMClUQMtMZ+PGGpqQ==",
-      "dev": true,
-      "license": "BSD-2-Clause",
-      "engines": {
-        "node": ">=20"
-      }
-    },
-    "node_modules/whatwg-mimetype": {
-      "version": "5.0.0",
-      "resolved": "https://registry.npmjs.org/whatwg-mimetype/-/whatwg-mimetype-5.0.0.tgz",
-      "integrity": "sha512-sXcNcHOC51uPGF0P/D4NVtrkjSU2fNsm9iog4ZvZJsL3rjoDAzXZhkm2MWt1y+PUdggKAYVoMAIYcs78wJ51Cw==",
-      "dev": true,
-      "license": "MIT",
-      "engines": {
-        "node": ">=20"
-      }
-    },
-    "node_modules/whatwg-url": {
-      "version": "17.1.0",
-      "resolved": "https://registry.npmjs.org/whatwg-url/-/whatwg-url-17.1.0.tgz",
-      "integrity": "sha512-3GeworPmc2ZfEEHP7lEbUfBX/L75wdEsi0rLNhXcXxnoN5jyq0SL5gCy06SGW2cyTIZdTvWIDQNQoza++vKeaw==",
-      "dev": true,
-      "license": "MIT",
-      "dependencies": {
-        "@exodus/bytes": "^1.15.1",
-        "tr46": "^6.0.0",
-        "webidl-conversions": "^8.0.1"
-      },
-      "engines": {
-        "node": "^22.14.0 || >=24.0.0"
-      }
-    },
-    "node_modules/why-is-node-running": {
-      "version": "2.3.0",
-      "resolved": "https://registry.npmjs.org/why-is-node-running/-/why-is-node-running-2.3.0.tgz",
-      "integrity": "sha512-hUrmaWBdVDcxvYqnyh09zunKzROWjbZTiNy8dBEjkS7ehEDQibXJ7XvlmtbwuTclUiIyN+CyXQD4Vmko8fNm8w==",
-      "dev": true,
-      "license": "MIT",
-      "dependencies": {
-        "siginfo": "^2.0.0",
-        "stackback": "0.0.2"
-      },
-      "bin": {
-        "why-is-node-running": "cli.js"
-      },
-      "engines": {
-        "node": ">=8"
-      }
-    },
-    "node_modules/xml-name-validator": {
-      "version": "5.0.0",
-      "resolved": "https://registry.npmjs.org/xml-name-validator/-/xml-name-validator-5.0.0.tgz",
-      "integrity": "sha512-EvGK8EJ3DhaHfbRlETOWAS5pO9MZITeauHKJyb8wyajUfQUenkIg2MvLDTZ4T/TgIcm3HU0TFBgWWboAZ30UHg==",
-      "dev": true,
-      "license": "Apache-2.0",
-      "engines": {
-        "node": ">=18"
-      }
-    },
-    "node_modules/xmlchars": {
-      "version": "2.2.0",
-      "resolved": "https://registry.npmjs.org/xmlchars/-/xmlchars-2.2.0.tgz",
-      "integrity": "sha512-JZnDKK8B0RCDw84FNdDAIpZK+JuJw+s7Lz8nksI7SIuU3UXJJslUthsi+uWBUYOwPFwW7W7PRLRfUKpxjtjFCw==",
-      "dev": true,
-      "license": "MIT"
-    }
-  }
-}
+        with self.assertRaisesRegex(TokenVaultError, "credential-write-failed"):
+            self.vault.commit(candidate)
+
+        self.assertEqual(
+            self.store.values[f"{SERVICE_PREFIX}/{CHARACTER_ID}/refresh"],
+            "refresh-old",
+        )
+        self.assertEqual(
+            self.store.values[f"{SERVICE_PREFIX}/{CHARACTER_ID}/refresh.pending"],
+            "refresh-new",
+        )
+
+        self.store.fail_active_write = False
+        self.assertEqual(self.vault.read(CHARACTER_ID), "refresh-new")
+
+    def test_rotation_rejects_a_stale_expected_token(self) -> None:
+        self.vault.replace(CHARACTER_ID, "refresh-current")
+
+        with self.assertRaisesRegex(TokenVaultError, "credential-rotation-conflict"):
+            self.vault.rotate(CHARACTER_ID, "refresh-stale", "refresh-new")
+
+        self.assertEqual(self.vault.read(CHARACTER_ID), "refresh-current")
+
+    def test_discard_keeps_active_token(self) -> None:
+        self.vault.replace(CHARACTER_ID, "refresh-active")
+        candidate = self.vault.stage(CHARACTER_ID, "refresh-candidate")
+
+        self.vault.discard(candidate)
+
+        self.assertEqual(self.vault.read(CHARACTER_ID), "refresh-active")
+
+    def test_delete_removes_active_and_recovery_slots(self) -> None:
+        self.vault.replace(CHARACTER_ID, "refresh-active")
+        self.vault.stage(CHARACTER_ID, "refresh-candidate")
+
+        self.vault.delete(CHARACTER_ID)
+
+        self.assertFalse(self.store.values)
+
+    def test_secret_values_never_appear_in_candidate_or_error_text(self) -> None:
+        candidate = self.vault.stage(CHARACTER_ID, "super-secret-refresh")
+
+        self.assertNotIn("super-secret-refresh", repr(candidate))
+        with self.assertRaises(TokenVaultError) as raised:
+            self.vault.rotate(CHARACTER_ID, "another-secret", "new-secret")
+        self.assertNotIn("secret", str(raised.exception))
+
+    def test_invalid_values_are_rejected_before_storage(self) -> None:
+        for character_id, token in ((0, "token"), (CHARACTER_ID, ""), (CHARACTER_ID, " x")):
+            with self.subTest(character_id=character_id, token=token):
+                with self.assertRaises(TokenVaultError):
+                    self.vault.replace(character_id, token)
+        self.assertFalse(self.store.values)
+
+
+@unittest.skipUnless(sys.platform == "win32", "Windows Credential Manager test")
+class WindowsCredentialStoreIntegrationTests(unittest.TestCase):
+    def test_writes_reads_replaces_and_deletes_a_synthetic_credential(self) -> None:
+        store = WindowsCredentialStore()
+        target = f"{SERVICE_PREFIX}/test/{uuid.uuid4()}"
+        self.addCleanup(store.delete, target)
+
+        store.write(target, "synthetic-first")
+        self.assertEqual(store.read(target), "synthetic-first")
+
+        store.write(target, "synthetic-second")
+        self.assertEqual(store.read(target), "synthetic-second")
+
+        store.delete(target)
+        self.assertIsNone(store.read(target))
+
+if __name__ == "__main__":
+    unittest.main()
