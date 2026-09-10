@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { App } from "./App";
 import type {
+  AssetDeltaPage,
   AssetPage,
   DesktopRuntimeStatus,
   EveCharacter,
@@ -80,6 +81,49 @@ const assetPage = (overrides: Partial<AssetPage> = {}): AssetPage => ({
   locationStatuses: ["resolved", "restricted", "unresolved", "cycle", "pending"],
   observedAt: "2026-09-10T10:00:00Z",
   ageSeconds: 3_600,
+  ...overrides,
+});
+
+const assetDeltaPage = (overrides: Partial<AssetDeltaPage> = {}): AssetDeltaPage => ({
+  items: [{
+    eventId: "a".repeat(64),
+    itemId: 9_800_001,
+    typeId: 98_001,
+    typeName: "Synthetic Component",
+    ownerCharacterId: 90_888_001,
+    ownerName: "Builder",
+    changeTypes: ["quantity", "location"],
+    quantityBefore: 17,
+    quantityAfter: 9,
+    quantityDelta: -8,
+    locationIdBefore: 60_888_001,
+    locationIdAfter: 60_888_002,
+    locationTypeBefore: "station",
+    locationTypeAfter: "station",
+    locationFlagBefore: "Input",
+    locationFlagAfter: "Output",
+    previousAssetSnapshotId: 4,
+    currentAssetSnapshotId: 6,
+    currentAssetSyncRunId: 9,
+    observedAt: "2026-09-10T11:00:00Z",
+    ageSeconds: 60,
+    jobCorrelation: {
+      state: "unmatched",
+      key: "90888001:98001",
+      direction: "outbound",
+      windowStart: "2026-09-10T10:00:00Z",
+      windowEnd: "2026-09-10T11:00:00Z",
+    },
+  }],
+  total: 1,
+  offset: 0,
+  limit: 50,
+  owners: [{ characterId: 90_888_001, name: "Builder" }],
+  changeTypes: ["added", "removed", "quantity", "location"],
+  summary: { added: 0, removed: 0, quantity: 1, location: 1 },
+  hasBaseline: true,
+  observedAt: "2026-09-10T11:00:00Z",
+  ageSeconds: 60,
   ...overrides,
 });
 
@@ -189,6 +233,48 @@ describe("New Eden Foundry design preview", () => {
       .toBeInTheDocument();
   });
 
+  it("shows traceable delta evidence and filters the bounded history", async () => {
+    const assetDeltasLoader = vi.fn().mockResolvedValue(assetDeltaPage());
+    render(
+      <App
+        runtimeLoader={() => nativeRuntime()}
+        ssoStatusLoader={() => Promise.resolve(idleSso)}
+        charactersLoader={() => Promise.resolve([])}
+        accountGroupsLoader={() => Promise.resolve([])}
+        assetsLoader={() => Promise.resolve(assetPage())}
+        assetDeltasLoader={assetDeltasLoader}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Assets/i }));
+
+    expect(await screen.findByText("Nachvollziehbare Änderungen")).toBeInTheDocument();
+    expect(await screen.findByText("Jobzuordnung vorbereitet")).toBeInTheDocument();
+    expect(screen.getAllByText("Menge geändert").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Verschoben").length).toBeGreaterThan(0);
+    expect(screen.getByText((_, element) => element?.tagName === "STRONG" && element.textContent === "17 → 9"))
+      .toBeInTheDocument();
+    expect(screen.getByText((_, element) => element?.tagName === "STRONG" && element.textContent === "Input → Output"))
+      .toBeInTheDocument();
+    expect(assetDeltasLoader).toHaveBeenCalledWith({
+      search: "",
+      ownerCharacterId: null,
+      changeType: null,
+      offset: 0,
+      limit: 50,
+    });
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Änderungsart" }), {
+      target: { value: "location" },
+    });
+    await waitFor(() => expect(assetDeltasLoader).toHaveBeenLastCalledWith({
+      search: "",
+      ownerCharacterId: null,
+      changeType: "location",
+      offset: 0,
+      limit: 50,
+    }));
+  });
+
   it("switches the visible interface language", () => {
     render(<App />);
 
@@ -208,6 +294,8 @@ describe("New Eden Foundry design preview", () => {
       .toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "Owner" })).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "Location status" })).toBeInTheDocument();
+    expect(screen.getByText("Traceable changes")).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Change type" })).toBeInTheDocument();
   });
 
   it("changes all interface typography through five global stages", async () => {

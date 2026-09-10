@@ -41,3 +41,5 @@ Die Desktop-Brücke erhält nur Dateiname, relativen Pfad und Zeilenzahl. Auch e
 ## Fehler- und Leerzustände
 
 Die Oberfläche unterscheidet Desktop-Kern nicht verfügbar, Laden, noch kein vollständiger Snapshot, keine Filtertreffer, Lesefehler und Exportfehler. Das Datenalter des ältesten einbezogenen Besitzers bleibt in aggregierten Ergebnissen sichtbar. Beschädigte angeblich vollständige Snapshots werden abgewiesen, statt unvollständige oder inkonsistente Zeilen anzuzeigen.
+
+Unter der Bestandsansicht zeigt Paket 21 zusätzlich den [nachvollziehbaren Asset-Änderungsverlauf](asset-deltas.md). Er verwendet dasselbe Suchfeld und denselben Besitzerfilter, ergänzt einen Filter nach Änderungsart und überträgt höchstens 50 Ereignisse pro sichtbarer Seite.

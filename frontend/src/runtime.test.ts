@@ -7,6 +7,7 @@ import {
   deleteEveCharacter,
   exportAssetsCsv,
   loadAccountGroups,
+  loadAssetDeltas,
   loadAssets,
   loadDesktopRuntimeStatus,
   loadEveCharacters,
@@ -376,6 +377,69 @@ describe("desktop runtime status", () => {
       { search: "", ownerCharacterId: null, locationStatus: null, offset: 0, limit: 200 },
       { isAvailable: () => true, invoke },
     )).rejects.toThrow("invalid asset page");
+  });
+
+  it("accepts only bounded and internally consistent asset-delta history", async () => {
+    const query = {
+      search: "synthetic input",
+      ownerCharacterId: 90_888_001,
+      changeType: "quantity" as const,
+      offset: 0,
+      limit: 50,
+    };
+    const page = {
+      items: [{
+        eventId: "a".repeat(64),
+        itemId: 9_800_001,
+        typeId: 98_001,
+        typeName: "Synthetic Input",
+        ownerCharacterId: 90_888_001,
+        ownerName: "Builder",
+        changeTypes: ["quantity"],
+        quantityBefore: 17,
+        quantityAfter: 9,
+        quantityDelta: -8,
+        locationIdBefore: 60_888_001,
+        locationIdAfter: 60_888_001,
+        locationTypeBefore: "station",
+        locationTypeAfter: "station",
+        locationFlagBefore: "SyntheticHangar",
+        locationFlagAfter: "SyntheticHangar",
+        previousAssetSnapshotId: 4,
+        currentAssetSnapshotId: 6,
+        currentAssetSyncRunId: 9,
+        observedAt: "2026-09-10T11:00:00Z",
+        ageSeconds: 60,
+        jobCorrelation: {
+          state: "unmatched",
+          key: "90888001:98001",
+          direction: "outbound",
+          windowStart: "2026-09-10T10:00:00Z",
+          windowEnd: "2026-09-10T11:00:00Z",
+        },
+      }],
+      total: 1,
+      offset: 0,
+      limit: 50,
+      owners: [{ characterId: 90_888_001, name: "Builder" }],
+      changeTypes: ["added", "removed", "quantity", "location"],
+      summary: { added: 0, removed: 0, quantity: 1, location: 0 },
+      hasBaseline: true,
+      observedAt: "2026-09-10T11:00:00Z",
+      ageSeconds: 60,
+    };
+    const invoke = vi.fn<RuntimeAdapter["invoke"]>().mockResolvedValue(JSON.stringify(page));
+
+    await expect(loadAssetDeltas(query, { isAvailable: () => true, invoke }))
+      .resolves.toEqual(page);
+    expect(invoke).toHaveBeenCalledWith("query_asset_deltas", query);
+
+    invoke.mockResolvedValueOnce(JSON.stringify({
+      ...page,
+      items: [{ ...page.items[0], quantityDelta: 8 }],
+    }));
+    await expect(loadAssetDeltas(query, { isAvailable: () => true, invoke }))
+      .rejects.toThrow("inconsistent asset-delta metadata");
   });
 
   it("requests a filtered CSV and accepts only a safe program-relative path", async () => {

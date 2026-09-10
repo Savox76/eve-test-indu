@@ -54,6 +54,7 @@ REQUIRED_BACKEND_FILES = tuple(
     for path in (
         "backend/new_eden_foundry_backend/__main__.py",
         "backend/new_eden_foundry_backend/appearance.py",
+        "backend/new_eden_foundry_backend/asset_delta.py",
         "backend/new_eden_foundry_backend/asset_view.py",
         "backend/new_eden_foundry_backend/database.py",
         "backend/new_eden_foundry_backend/esi_client.py",
@@ -79,6 +80,7 @@ REQUIRED_BACKEND_FILES = tuple(
         "backend/tests/test_database.py",
         "backend/tests/test_esi_client.py",
         "backend/tests/test_appearance.py",
+        "backend/tests/test_asset_delta.py",
         "backend/tests/test_asset_view.py",
         "backend/tests/test_foundation_status.py",
         "backend/tests/test_identity.py",
@@ -287,6 +289,23 @@ def check_documentation(errors: list[str]) -> None:
                     f"Asset-UI documentation is missing marker: {marker}"
                 )
 
+    asset_delta_documentation = ROOT / "docs" / "asset-deltas.md"
+    if not asset_delta_documentation.is_file():
+        errors.append("Missing asset-delta operating documentation.")
+    else:
+        asset_delta_content = asset_delta_documentation.read_text(encoding="utf-8")
+        for marker in (
+            "BEGIN IMMEDIATE",
+            "asset_deltas:<character_id>",
+            "deterministischen SHA-256-Fingerabdruck",
+            "Jobkorrelation",
+            "höchstens 200",
+        ):
+            if marker not in asset_delta_content:
+                errors.append(
+                    f"Asset-delta documentation is missing marker: {marker}"
+                )
+
     esi_documentation = ROOT / "docs" / "esi-client.md"
     if not esi_documentation.is_file():
         errors.append("Missing central ESI-client operating documentation.")
@@ -426,6 +445,7 @@ def check_backend_foundation(errors: list[str]) -> None:
             'app.get("/account-groups")',
             'app.post("/assets/query")',
             'app.post("/assets/export")',
+            'app.post("/assets/deltas/query")',
             "delete_character_completely",
             '"esiClient"',
             "EsiClient",
@@ -434,6 +454,20 @@ def check_backend_foundation(errors: list[str]) -> None:
         ):
             if marker not in sidecar_content:
                 errors.append(f"Sidecar security is missing required marker: {marker}")
+
+    asset_delta_source = (
+        ROOT / "backend" / "new_eden_foundry_backend" / "asset_delta.py"
+    )
+    if asset_delta_source.is_file():
+        asset_delta_content = asset_delta_source.read_text(encoding="utf-8")
+        for marker in (
+            "build_asset_delta_payload",
+            '"state": "unmatched"',
+            "hashlib.sha256",
+            "MAX_DELTA_PAGE_SIZE: Final = 200",
+        ):
+            if marker not in asset_delta_content:
+                errors.append(f"Asset-delta core is missing required marker: {marker}")
 
     updater_source = ROOT / "backend" / "new_eden_foundry_backend" / "updater.py"
     if updater_source.is_file():

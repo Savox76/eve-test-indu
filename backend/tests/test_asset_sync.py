@@ -32,15 +32,15 @@ class AssetSyncTests(unittest.TestCase):
         result=sync_character_assets(self.db,client,90000001)
         self.assertEqual((result.pages,result.assets),(2,3))
         run=self.db.execute("SELECT status,error_code FROM sync_runs WHERE id=?",(result.sync_run_id,)).fetchone(); self.assertEqual(run[0],"completed"); self.assertIsNone(run[1])
-        snap=self.db.execute("SELECT payload_json FROM cached_snapshots WHERE sync_run_id=?",(result.sync_run_id,)).fetchone(); payload=json.loads(snap[0]); self.assertEqual([a["item_id"] for a in payload["assets"]],[1,2,3])
+        snap=self.db.execute("SELECT payload_json FROM cached_snapshots WHERE sync_run_id=? AND resource=?",(result.sync_run_id,"character_assets:90000001")).fetchone(); payload=json.loads(snap[0]); self.assertEqual([a["item_id"] for a in payload["assets"]],[1,2,3])
         self.assertEqual(client.last_scope,("esi-assets.read_assets.v1",))
 
     def test_failed_page_never_publishes_partial_snapshot(self):
         good=sync_character_assets(self.db,FakeClient([[asset(10)]]),90000001)
         with self.assertRaises(EsiClientError): sync_character_assets(self.db,FakeClient([[asset(20)],[asset(21)]],fail_page=2),90000001)
-        completed=self.db.execute("SELECT COUNT(*) FROM cached_snapshots").fetchone()[0]; self.assertEqual(completed,1)
+        completed=self.db.execute("SELECT COUNT(*) FROM cached_snapshots").fetchone()[0]; self.assertEqual(completed,2)
         latest=self.db.execute("SELECT status,error_code FROM sync_runs ORDER BY id DESC LIMIT 1").fetchone(); self.assertEqual(latest[0],"failed"); self.assertEqual(latest[1],"esi-network-unavailable")
-        old=json.loads(self.db.execute("SELECT payload_json FROM cached_snapshots WHERE sync_run_id=?",(good.sync_run_id,)).fetchone()[0]); self.assertEqual(old["assets"][0]["item_id"],10)
+        old=json.loads(self.db.execute("SELECT payload_json FROM cached_snapshots WHERE sync_run_id=? AND resource=?",(good.sync_run_id,"character_assets:90000001")).fetchone()[0]); self.assertEqual(old["assets"][0]["item_id"],10)
 
     def test_duplicate_items_across_pages_reject_whole_run(self):
         with self.assertRaises(AssetSyncError): sync_character_assets(self.db,FakeClient([[asset(1)],[asset(1)]]),90000001)

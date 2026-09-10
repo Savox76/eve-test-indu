@@ -1,10 +1,10 @@
 # Masterplan – New Eden Foundry
 
-**Fassung:** 2.7 (lebendes Repository-Dokument)
+**Fassung:** 2.8 (lebendes Repository-Dokument)
 
 **Stand:** 10. September 2026
 
-**Status:** In Umsetzung – Phase 3 mit vollständiger Asset-Oberfläche
+**Status:** In Umsetzung – Phase 3 mit nachvollziehbaren Asset-Deltas vollständig
 
 **Geltungsbereich:** `Savox76/eve-test-indu`
 
@@ -209,8 +209,9 @@ Die Reihenfolge ist verbindlicher als eine Kalenderangabe.
 - **Abgeschlossen:** 18 – aktivierte Charaktere können Assets über den zentralen ESI-Client vollständig paginiert synchronisieren. Jeder Charakter erhält einen eigenen Lauf und Snapshot; nur vollständige Läufe werden veröffentlicht, während Abbruch und Fehler den letzten gültigen Cache erhalten.
 - **Abgeschlossen:** 19 – der letzte vollständige Asset-Snapshot jedes Charakters wird in root-first Standort- und Containerpfade aufgelöst. SDE-Standorte und Typnamen werden lokal genutzt, Stationen und erlaubte Spielerstrukturen über den zentralen ESI-Client ergänzt. Struktur-403 und fehlende Scopes bleiben als eingeschränkte Fachzustände sichtbar; fehlende Container und Zyklen erhalten stabile Fehlercodes. Nur vollständig verarbeitete Läufe veröffentlichen einen neuen Standort-Snapshot.
 - **Abgeschlossen:** 20 – die zweisprachige Asset-Oberfläche liest ausschließlich die letzten vollständigen charaktergetrennten Snapshots, verbindet nur exakt passende Standort-Snapshots und zeigt Typ, Besitzer, Standortpfad und -status, Bereich, Menge und Datenalter. Suche sowie Besitzer- und Standortstatusfilter laufen serverseitig; höchstens 100 Zeilen werden gleichzeitig übertragen und gerendert. Ein synthetischer 100.000-Zeilen-Test sichert den begrenzten Transport. Der gefilterte CSV-Export schreibt atomar und formelneutralisiert unter `data\exports`.
+- **Abgeschlossen:** 21 – jeder vollständige Charakter-Asset-Sync veröffentlicht atomar eine Baseline oder ein Delta zum vorherigen vollständigen Snapshot. Hinzufügungen, Entfernungen, Mengen- und Standortänderungen tragen deterministische Fingerabdrücke, Snapshot-/Run-IDs und ein Beobachtungsfenster. Die zweisprachige Historie ist serverseitig such- und filterbar und überträgt höchstens 50 Ereignisse pro Seite. Charakter-/Typ-Schlüssel, Richtung und Mengendifferenz bereiten die spätere Jobkorrelation vor, ohne bereits unbelegte Zuordnungen zu behaupten.
 - **Zusätzlich umgesetzt:** Die vollständige sichtbare Oberfläche unterstützt fünf globale Schriftgrößenstufen; die Auswahl bleibt in der bestehenden `app_settings`-Tabelle im Programmordner erhalten.
-- **Als Nächstes:** Arbeitspaket 21 erzeugt nachvollziehbare Asset-Deltas ausschließlich aus vollständigen Läufen und bereitet die spätere Jobkorrelation vor. Parallel bleibt das A0-Windows-Gate für Installation, zweiten Start, Migration/Update und Entfernung auf einem freigegebenen Windows-Testgerät offen.
+- **Als Nächstes:** Arbeitspaket 22 führt die Phase-3-Gates zusammen und bereitet die erste Alpha-Freigabe vor. Das A0-Windows-Gate für Installation, zweiten Start, Migration/Update und Entfernung auf einem freigegebenen Windows-Testgerät bleibt dabei der offene manuelle Abnahmepunkt.
 - Architektur-Gate A0 ist technisch weitgehend umgesetzt, aber bis zur vollständigen Windows-Abnahme noch nicht erfüllt; breite Fachentwicklung beginnt erst danach.
 
 ## 13. Entscheidungs- und Quellenrang

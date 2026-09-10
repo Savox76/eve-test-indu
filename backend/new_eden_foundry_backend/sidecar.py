@@ -18,6 +18,11 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from .appearance import appearance_payload, read_font_scale, set_font_scale
+from .asset_delta import (
+    AssetDeltaError,
+    query_asset_deltas,
+    validate_asset_delta_query,
+)
 from .asset_view import (
     AssetViewError,
     export_assets_csv,
@@ -451,6 +456,44 @@ def create_application(
                 content={"detail": code},
             )
         return JSONResponse(content=exported.as_payload())
+
+    @app.post("/assets/deltas/query")
+    async def post_asset_delta_query(request: Request) -> JSONResponse:
+        try:
+            payload = await request.json()
+        except Exception:
+            return JSONResponse(
+                status_code=422,
+                content={"detail": "asset_delta_query_invalid"},
+            )
+        if not isinstance(payload, dict) or set(payload) != {
+            "search",
+            "ownerCharacterId",
+            "changeType",
+            "offset",
+            "limit",
+        }:
+            return JSONResponse(
+                status_code=422,
+                content={"detail": "asset_delta_query_invalid"},
+            )
+        try:
+            delta_query = validate_asset_delta_query(
+                search=payload["search"],
+                owner_character_id=payload["ownerCharacterId"],
+                change_type=payload["changeType"],
+                offset=payload["offset"],
+                limit=payload["limit"],
+            )
+            with closing(connect_database(storage.database_path)) as connection:
+                result = query_asset_deltas(connection, delta_query)
+        except AssetDeltaError as error:
+            code = str(error)
+            return JSONResponse(
+                status_code=422 if code == "asset_delta_query_invalid" else 500,
+                content={"detail": code},
+            )
+        return JSONResponse(content=result)
 
     @app.get("/characters")
     async def get_characters() -> dict[str, object]:

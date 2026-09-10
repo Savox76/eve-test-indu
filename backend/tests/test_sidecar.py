@@ -440,6 +440,30 @@ class SidecarIntegrationTests(unittest.TestCase):
             self.assertEqual(asset_page["total"], 0)
             self.assertEqual(asset_page["limit"], 100)
 
+            delta_query_request = urllib.request.Request(
+                f"{base_url}/assets/deltas/query",
+                data=json.dumps(
+                    {
+                        "search": "",
+                        "ownerCharacterId": None,
+                        "changeType": None,
+                        "offset": 0,
+                        "limit": 50,
+                    }
+                ).encode(),
+                method="POST",
+                headers={
+                    "Authorization": f"Bearer {SYNTHETIC_SESSION_TOKEN}",
+                    "Content-Type": "application/json",
+                },
+            )
+            with opener.open(delta_query_request, timeout=3) as response:
+                delta_page = json.loads(response.read())
+            self.assertEqual(delta_page["items"], [])
+            self.assertEqual(delta_page["total"], 0)
+            self.assertEqual(delta_page["limit"], 50)
+            self.assertFalse(delta_page["hasBaseline"])
+
             asset_export_request = urllib.request.Request(
                 f"{base_url}/assets/export",
                 data=json.dumps(
