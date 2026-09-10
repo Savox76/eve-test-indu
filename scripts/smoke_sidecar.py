@@ -313,7 +313,7 @@ def main() -> int:
                 raise RuntimeError("The packaged PKCE login could not be cancelled.")
             backup_name = database.get("lastMigrationBackup")
             if not isinstance(backup_name, str) or not backup_name.startswith(
-                "foundry-schema-v0005-to-v0006-"
+                "foundry-schema-v0005-to-v0007-"
             ):
                 raise RuntimeError("The packaged migration did not report its backup.")
 
@@ -355,7 +355,7 @@ def main() -> int:
                 if connection.execute("PRAGMA quick_check").fetchone()[0] != "ok":
                     raise RuntimeError("The created SQLite database failed quick_check.")
                 if connection.execute("PRAGMA user_version").fetchone()[0] != 7:
-                    raise RuntimeError("The packaged sidecar did not migrate to schema 6.")
+                    raise RuntimeError("The packaged sidecar did not migrate to schema 7.")
                 marker = connection.execute(
                     "SELECT value FROM app_metadata WHERE key = 'smoke-marker'"
                 ).fetchone()[0]
