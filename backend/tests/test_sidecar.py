@@ -417,6 +417,56 @@ class SidecarIntegrationTests(unittest.TestCase):
                 characters = json.loads(response.read())
             self.assertEqual(characters, {"characters": []})
 
+            asset_query_request = urllib.request.Request(
+                f"{base_url}/assets/query",
+                data=json.dumps(
+                    {
+                        "search": "",
+                        "ownerCharacterId": None,
+                        "locationStatus": None,
+                        "offset": 0,
+                        "limit": 100,
+                    }
+                ).encode(),
+                method="POST",
+                headers={
+                    "Authorization": f"Bearer {SYNTHETIC_SESSION_TOKEN}",
+                    "Content-Type": "application/json",
+                },
+            )
+            with opener.open(asset_query_request, timeout=3) as response:
+                asset_page = json.loads(response.read())
+            self.assertEqual(asset_page["items"], [])
+            self.assertEqual(asset_page["total"], 0)
+            self.assertEqual(asset_page["limit"], 100)
+
+            asset_export_request = urllib.request.Request(
+                f"{base_url}/assets/export",
+                data=json.dumps(
+                    {
+                        "search": "",
+                        "ownerCharacterId": None,
+                        "locationStatus": None,
+                    }
+                ).encode(),
+                method="POST",
+                headers={
+                    "Authorization": f"Bearer {SYNTHETIC_SESSION_TOKEN}",
+                    "Content-Type": "application/json",
+                },
+            )
+            with opener.open(asset_export_request, timeout=3) as response:
+                asset_export = json.loads(response.read())
+            self.assertEqual(asset_export["rows"], 0)
+            self.assertTrue(asset_export["filename"].startswith("assets-"))
+            self.assertEqual(
+                asset_export["relativePath"],
+                f"data/exports/{asset_export['filename']}",
+            )
+            self.assertTrue(
+                (program_directory / asset_export["relativePath"]).is_file()
+            )
+
             sso_start_request = urllib.request.Request(
                 sso_login_url,
                 data=json.dumps({"scopePackages": ["industry-core"]}).encode(),

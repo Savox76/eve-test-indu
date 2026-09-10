@@ -54,6 +54,7 @@ REQUIRED_BACKEND_FILES = tuple(
     for path in (
         "backend/new_eden_foundry_backend/__main__.py",
         "backend/new_eden_foundry_backend/appearance.py",
+        "backend/new_eden_foundry_backend/asset_view.py",
         "backend/new_eden_foundry_backend/database.py",
         "backend/new_eden_foundry_backend/esi_client.py",
         "backend/new_eden_foundry_backend/identity.py",
@@ -78,6 +79,7 @@ REQUIRED_BACKEND_FILES = tuple(
         "backend/tests/test_database.py",
         "backend/tests/test_esi_client.py",
         "backend/tests/test_appearance.py",
+        "backend/tests/test_asset_view.py",
         "backend/tests/test_foundation_status.py",
         "backend/tests/test_identity.py",
         "backend/tests/test_location_resolution.py",
@@ -268,6 +270,23 @@ def check_documentation(errors: list[str]) -> None:
                     f"Character-management documentation is missing marker: {marker}"
                 )
 
+    asset_ui_documentation = ROOT / "docs" / "asset-ui.md"
+    if not asset_ui_documentation.is_file():
+        errors.append("Missing asset-UI operating documentation.")
+    else:
+        asset_ui_content = asset_ui_documentation.read_text(encoding="utf-8")
+        for marker in (
+            "100.000-Zeilen-Vertrag",
+            "assetSnapshotId",
+            "data\\exports",
+            "Formel",
+            "höchstens 200",
+        ):
+            if marker not in asset_ui_content:
+                errors.append(
+                    f"Asset-UI documentation is missing marker: {marker}"
+                )
+
     esi_documentation = ROOT / "docs" / "esi-client.md"
     if not esi_documentation.is_file():
         errors.append("Missing central ESI-client operating documentation.")
@@ -405,6 +424,8 @@ def check_backend_foundation(errors: list[str]) -> None:
             'app.patch("/characters/{character_id}")',
             'app.delete("/characters/{character_id}")',
             'app.get("/account-groups")',
+            'app.post("/assets/query")',
+            'app.post("/assets/export")',
             "delete_character_completely",
             '"esiClient"',
             "EsiClient",

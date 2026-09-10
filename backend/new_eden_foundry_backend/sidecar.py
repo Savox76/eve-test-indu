@@ -18,6 +18,12 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from .appearance import appearance_payload, read_font_scale, set_font_scale
+from .asset_view import (
+    AssetViewError,
+    export_assets_csv,
+    query_assets,
+    validate_asset_query,
+)
 from .database import DatabaseStatus, connect_database, initialize_database
 from .esi_client import EsiClient
 from .identity import (
@@ -381,6 +387,70 @@ def create_application(
                 content={"detail": "The selected font scale is unsupported."},
             )
         return JSONResponse(content=appearance_payload(font_scale))
+
+    @app.post("/assets/query")
+    async def post_asset_query(request: Request) -> JSONResponse:
+        try:
+            payload = await request.json()
+        except Exception:
+            return JSONResponse(status_code=422, content={"detail": "asset_query_invalid"})
+        if not isinstance(payload, dict) or set(payload) != {
+            "search",
+            "ownerCharacterId",
+            "locationStatus",
+            "offset",
+            "limit",
+        }:
+            return JSONResponse(status_code=422, content={"detail": "asset_query_invalid"})
+        try:
+            asset_query = validate_asset_query(
+                search=payload["search"],
+                owner_character_id=payload["ownerCharacterId"],
+                location_status=payload["locationStatus"],
+                offset=payload["offset"],
+                limit=payload["limit"],
+            )
+            with closing(connect_database(storage.database_path)) as connection:
+                result = query_assets(connection, asset_query)
+        except AssetViewError as error:
+            code = str(error)
+            return JSONResponse(
+                status_code=422 if code == "asset_query_invalid" else 500,
+                content={"detail": code},
+            )
+        return JSONResponse(content=result)
+
+    @app.post("/assets/export")
+    async def post_asset_export(request: Request) -> JSONResponse:
+        try:
+            payload = await request.json()
+        except Exception:
+            return JSONResponse(status_code=422, content={"detail": "asset_query_invalid"})
+        if not isinstance(payload, dict) or set(payload) != {
+            "search",
+            "ownerCharacterId",
+            "locationStatus",
+        }:
+            return JSONResponse(status_code=422, content={"detail": "asset_query_invalid"})
+        try:
+            asset_query = validate_asset_query(
+                search=payload["search"],
+                owner_character_id=payload["ownerCharacterId"],
+                location_status=payload["locationStatus"],
+            )
+            with closing(connect_database(storage.database_path)) as connection:
+                exported = export_assets_csv(
+                    connection,
+                    asset_query,
+                    storage.export_directory,
+                )
+        except AssetViewError as error:
+            code = str(error)
+            return JSONResponse(
+                status_code=422 if code == "asset_query_invalid" else 500,
+                content={"detail": code},
+            )
+        return JSONResponse(content=exported.as_payload())
 
     @app.get("/characters")
     async def get_characters() -> dict[str, object]:

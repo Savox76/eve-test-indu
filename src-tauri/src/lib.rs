@@ -14,7 +14,7 @@ const DATABASE_LOCATION: &str = "data/foundry.sqlite3";
 const SIDECAR_READY_TIMEOUT: Duration = Duration::from_secs(25);
 const SIDECAR_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(4);
 const SIDECAR_REQUEST_TIMEOUT: Duration = Duration::from_secs(3);
-const SIDECAR_MAX_RESPONSE_BYTES: u64 = 65_536;
+const SIDECAR_MAX_RESPONSE_BYTES: u64 = 4_194_304;
 const WINDOWS_CREATE_NO_WINDOW: u32 = 0x0800_0000;
 const EVE_SSO_AUTHORIZATION_ENDPOINT: &str = "https://login.eveonline.com/v2/oauth/authorize";
 const EVE_SSO_CLIENT_ID: &str = "a8409de72d5b4cab9b0424819d0abdec";
@@ -27,6 +27,11 @@ const EVE_SSO_SCOPE_PACKAGES: [&str; 5] = [
     "private-structures",
 ];
 const FONT_SCALES: [&str; 5] = ["very-small", "small", "normal", "large", "very-large"];
+const ASSET_LOCATION_STATUSES: [&str; 5] =
+    ["resolved", "restricted", "unresolved", "cycle", "pending"];
+const MAX_ASSET_PAGE_SIZE: u64 = 200;
+const MAX_ASSET_SEARCH_CHARACTERS: usize = 120;
+const JAVASCRIPT_MAX_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -183,6 +188,62 @@ struct CharacterDeletionResponse {
 struct AccountGroupDeletionResponse {
     deleted: bool,
     group_id: u64,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AssetLocationNode {
+    location_id: u64,
+    kind: String,
+    name: Option<String>,
+    access: String,
+    type_id: Option<u64>,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AssetRecord {
+    item_id: u64,
+    type_id: u64,
+    type_name: String,
+    quantity: u64,
+    owner_character_id: u64,
+    owner_name: String,
+    location_flag: String,
+    location_status: String,
+    location_path: String,
+    location_nodes: Vec<AssetLocationNode>,
+    observed_at: String,
+    age_seconds: u64,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AssetOwner {
+    character_id: u64,
+    name: String,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AssetQueryResponse {
+    items: Vec<AssetRecord>,
+    total: u64,
+    quantity_total: u64,
+    offset: u64,
+    limit: u64,
+    owners: Vec<AssetOwner>,
+    location_statuses: Vec<String>,
+    observed_at: Option<String>,
+    age_seconds: Option<u64>,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AssetExportResponse {
+    filename: String,
+    relative_path: String,
+    rows: u64,
 }
 
 impl RuntimeUpdaterSnapshot {
@@ -400,6 +461,98 @@ fn scope_package_status_is_valid(package: &ScopePackageStatus) -> bool {
 
 fn account_group_record_is_valid(group: &AccountGroupRecord) -> bool {
     group.id > 0 && management_label_is_valid(&group.label)
+}
+
+fn asset_text_is_valid(value: &str, maximum: usize) -> bool {
+    !value.is_empty() && value.trim() == value && value.chars().count() <= maximum
+}
+
+fn asset_query_response_is_valid(response: &AssetQueryResponse) -> bool {
+    let owner_ids = response
+        .owners
+        .iter()
+        .map(|owner| owner.character_id)
+        .collect::<HashSet<_>>();
+    let item_ids = response
+        .items
+        .iter()
+        .map(|item| item.item_id)
+        .collect::<HashSet<_>>();
+    let statuses = response
+        .location_statuses
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>();
+    response.limit > 0
+        && response.limit <= MAX_ASSET_PAGE_SIZE
+        && response.total <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && response.quantity_total <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && response.offset <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && response.items.len() as u64 <= response.limit
+        && response.items.len() as u64 <= response.total
+        && item_ids.len() == response.items.len()
+        && owner_ids.len() == response.owners.len()
+        && response.owners.iter().all(|owner| {
+            owner.character_id > 0
+                && owner.character_id <= JAVASCRIPT_MAX_SAFE_INTEGER
+                && asset_text_is_valid(&owner.name, 100)
+        })
+        && statuses.as_slice() == ASSET_LOCATION_STATUSES.as_slice()
+        && response.observed_at.is_some() == response.age_seconds.is_some()
+        && response
+            .observed_at
+            .as_ref()
+            .is_none_or(|value| asset_text_is_valid(value, 64))
+        && response.items.iter().all(|item| {
+            item.item_id > 0
+                && item.item_id <= JAVASCRIPT_MAX_SAFE_INTEGER
+                && item.type_id > 0
+                && item.type_id <= JAVASCRIPT_MAX_SAFE_INTEGER
+                && item.quantity <= JAVASCRIPT_MAX_SAFE_INTEGER
+                && owner_ids.contains(&item.owner_character_id)
+                && response.owners.iter().any(|owner| {
+                    owner.character_id == item.owner_character_id && owner.name == item.owner_name
+                })
+                && asset_text_is_valid(&item.type_name, 220)
+                && asset_text_is_valid(&item.owner_name, 100)
+                && asset_text_is_valid(&item.location_flag, 100)
+                && ASSET_LOCATION_STATUSES.contains(&item.location_status.as_str())
+                && asset_text_is_valid(&item.observed_at, 64)
+                && ((item.location_status == "pending"
+                    && item.location_path.is_empty()
+                    && item.location_nodes.is_empty())
+                    || (item.location_status != "pending"
+                        && !item.location_path.is_empty()
+                        && !item.location_nodes.is_empty()))
+                && item.location_path.chars().count() <= 20_000
+                && item.location_nodes.len() <= 64
+                && item.location_nodes.iter().all(|node| {
+                    node.location_id > 0
+                        && node.location_id <= JAVASCRIPT_MAX_SAFE_INTEGER
+                        && asset_text_is_valid(&node.kind, 40)
+                        && asset_text_is_valid(&node.access, 40)
+                        && node
+                            .name
+                            .as_ref()
+                            .is_none_or(|name| asset_text_is_valid(name, 200))
+                        && node.type_id != Some(0)
+                        && node
+                            .type_id
+                            .is_none_or(|type_id| type_id <= JAVASCRIPT_MAX_SAFE_INTEGER)
+                })
+        })
+}
+
+fn asset_export_response_is_valid(response: &AssetExportResponse) -> bool {
+    response.rows <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && response.filename.starts_with("assets-")
+        && response.filename.ends_with(".csv")
+        && response.filename.len() <= 64
+        && response
+            .filename
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.'))
+        && response.relative_path == format!("data/exports/{}", response.filename)
 }
 
 fn eve_character_record_is_valid(character: &EveCharacterRecord) -> bool {
@@ -984,6 +1137,97 @@ fn list_account_groups(state: State<'_, RuntimeState>) -> Result<String, String>
 }
 
 #[tauri::command]
+fn query_assets(
+    search: String,
+    owner_character_id: Option<u64>,
+    location_status: Option<String>,
+    offset: u64,
+    limit: u64,
+    state: State<'_, RuntimeState>,
+) -> Result<String, String> {
+    if search.chars().count() > MAX_ASSET_SEARCH_CHARACTERS
+        || search.trim() != search
+        || owner_character_id == Some(0)
+        || owner_character_id.is_some_and(|value| value > JAVASCRIPT_MAX_SAFE_INTEGER)
+        || location_status
+            .as_deref()
+            .is_some_and(|status| !ASSET_LOCATION_STATUSES.contains(&status))
+        || limit == 0
+        || limit > MAX_ASSET_PAGE_SIZE
+        || offset > JAVASCRIPT_MAX_SAFE_INTEGER
+    {
+        return Err("asset-query-invalid".to_owned());
+    }
+    refresh_sidecar_status(&state);
+    let body = serde_json::json!({
+        "search": search,
+        "ownerCharacterId": owner_character_id,
+        "locationStatus": location_status,
+        "offset": offset,
+        "limit": limit,
+    })
+    .to_string();
+    let response = {
+        let sidecar = state
+            .sidecar
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let process = sidecar
+            .as_ref()
+            .ok_or_else(|| "sidecar-unavailable".to_owned())?;
+        sidecar_json_request(process, "POST", "/assets/query", &body).map_err(str::to_owned)?
+    };
+    let page: AssetQueryResponse =
+        serde_json::from_str(&response).map_err(|_| "sidecar-response-invalid".to_owned())?;
+    if !asset_query_response_is_valid(&page) || page.offset != offset || page.limit != limit {
+        return Err("sidecar-response-invalid".to_owned());
+    }
+    serde_json::to_string(&page).map_err(|_| "status-serialization-failed".to_owned())
+}
+
+#[tauri::command]
+fn export_assets_csv(
+    search: String,
+    owner_character_id: Option<u64>,
+    location_status: Option<String>,
+    state: State<'_, RuntimeState>,
+) -> Result<String, String> {
+    if search.chars().count() > MAX_ASSET_SEARCH_CHARACTERS
+        || search.trim() != search
+        || owner_character_id == Some(0)
+        || owner_character_id.is_some_and(|value| value > JAVASCRIPT_MAX_SAFE_INTEGER)
+        || location_status
+            .as_deref()
+            .is_some_and(|status| !ASSET_LOCATION_STATUSES.contains(&status))
+    {
+        return Err("asset-query-invalid".to_owned());
+    }
+    refresh_sidecar_status(&state);
+    let body = serde_json::json!({
+        "search": search,
+        "ownerCharacterId": owner_character_id,
+        "locationStatus": location_status,
+    })
+    .to_string();
+    let response = {
+        let sidecar = state
+            .sidecar
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let process = sidecar
+            .as_ref()
+            .ok_or_else(|| "sidecar-unavailable".to_owned())?;
+        sidecar_json_request(process, "POST", "/assets/export", &body).map_err(str::to_owned)?
+    };
+    let exported: AssetExportResponse =
+        serde_json::from_str(&response).map_err(|_| "sidecar-response-invalid".to_owned())?;
+    if !asset_export_response_is_valid(&exported) {
+        return Err("sidecar-response-invalid".to_owned());
+    }
+    serde_json::to_string(&exported).map_err(|_| "status-serialization-failed".to_owned())
+}
+
+#[tauri::command]
 fn update_eve_character(
     character_id: u64,
     alias: Option<String>,
@@ -1284,6 +1528,8 @@ pub fn run() {
             set_font_scale,
             list_eve_characters,
             list_account_groups,
+            query_assets,
+            export_assets_csv,
             update_eve_character,
             delete_eve_character,
             create_account_group,
@@ -1306,8 +1552,10 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::{
-        account_group_record_is_valid, authorization_url_is_valid, eve_character_record_is_valid,
-        sso_login_status_is_valid, AccountGroupRecord, EveCharacterRecord, ScopePackageStatus,
+        account_group_record_is_valid, asset_export_response_is_valid,
+        asset_query_response_is_valid, authorization_url_is_valid, eve_character_record_is_valid,
+        sso_login_status_is_valid, AccountGroupRecord, AssetExportResponse, AssetLocationNode,
+        AssetOwner, AssetQueryResponse, AssetRecord, EveCharacterRecord, ScopePackageStatus,
         SsoCharacterIdentity, SsoLoginStatus,
     };
 
@@ -1442,6 +1690,63 @@ mod tests {
             label: "Invalid".to_owned(),
             sort_order: 0,
             character_count: 0,
+        }));
+    }
+
+    #[test]
+    fn validates_bounded_asset_page_and_safe_export_path() {
+        let page = AssetQueryResponse {
+            items: vec![AssetRecord {
+                item_id: 9_800_001,
+                type_id: 98_001,
+                type_name: "Synthetic Component".to_owned(),
+                quantity: 17,
+                owner_character_id: 90_888_001,
+                owner_name: "Builder".to_owned(),
+                location_flag: "SyntheticHangar".to_owned(),
+                location_status: "resolved".to_owned(),
+                location_path: "Synthetic System / Synthetic Station".to_owned(),
+                location_nodes: vec![AssetLocationNode {
+                    location_id: 30_888_001,
+                    kind: "solar_system".to_owned(),
+                    name: Some("Synthetic System".to_owned()),
+                    access: "available".to_owned(),
+                    type_id: None,
+                }],
+                observed_at: "2026-09-10T10:00:00Z".to_owned(),
+                age_seconds: 3_600,
+            }],
+            total: 100_000,
+            quantity_total: 230_000,
+            offset: 0,
+            limit: 100,
+            owners: vec![AssetOwner {
+                character_id: 90_888_001,
+                name: "Builder".to_owned(),
+            }],
+            location_statuses: vec![
+                "resolved".to_owned(),
+                "restricted".to_owned(),
+                "unresolved".to_owned(),
+                "cycle".to_owned(),
+                "pending".to_owned(),
+            ],
+            observed_at: Some("2026-09-10T10:00:00Z".to_owned()),
+            age_seconds: Some(3_600),
+        };
+        assert!(asset_query_response_is_valid(&page));
+
+        let oversized = AssetQueryResponse { limit: 201, ..page };
+        assert!(!asset_query_response_is_valid(&oversized));
+        assert!(asset_export_response_is_valid(&AssetExportResponse {
+            filename: "assets-20260910-110203.csv".to_owned(),
+            relative_path: "data/exports/assets-20260910-110203.csv".to_owned(),
+            rows: 100_000,
+        }));
+        assert!(!asset_export_response_is_valid(&AssetExportResponse {
+            filename: "outside.csv".to_owned(),
+            relative_path: "../../outside.csv".to_owned(),
+            rows: 1,
         }));
     }
 }

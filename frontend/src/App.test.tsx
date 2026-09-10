@@ -2,7 +2,12 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { App } from "./App";
-import type { DesktopRuntimeStatus, EveCharacter, SsoLoginStatus } from "./runtime";
+import type {
+  AssetPage,
+  DesktopRuntimeStatus,
+  EveCharacter,
+  SsoLoginStatus,
+} from "./runtime";
 
 const idleSso: SsoLoginStatus = {
   state: "idle",
@@ -42,6 +47,42 @@ const nativeRuntime = (overrides: Partial<Extract<DesktopRuntimeStatus, { state:
     ...overrides,
   });
 
+const assetPage = (overrides: Partial<AssetPage> = {}): AssetPage => ({
+  items: [
+    {
+      itemId: 9_800_001,
+      typeId: 98_001,
+      typeName: "Synthetic Component",
+      quantity: 17,
+      ownerCharacterId: 90_888_001,
+      ownerName: "Builder",
+      locationFlag: "SyntheticHangar",
+      locationStatus: "resolved",
+      locationPath: "Synthetic System / Synthetic Station",
+      locationNodes: [
+        {
+          locationId: 30_888_001,
+          kind: "solar_system",
+          name: "Synthetic System",
+          access: "available",
+          typeId: null,
+        },
+      ],
+      observedAt: "2026-09-10T10:00:00Z",
+      ageSeconds: 3_600,
+    },
+  ],
+  total: 100_000,
+  quantityTotal: 230_000,
+  offset: 0,
+  limit: 100,
+  owners: [{ characterId: 90_888_001, name: "Builder" }],
+  locationStatuses: ["resolved", "restricted", "unresolved", "cycle", "pending"],
+  observedAt: "2026-09-10T10:00:00Z",
+  ageSeconds: 3_600,
+  ...overrides,
+});
+
 describe("New Eden Foundry design preview", () => {
   it("marks every displayed value as synthetic preview data", () => {
     render(<App />);
@@ -50,13 +91,102 @@ describe("New Eden Foundry design preview", () => {
     expect(screen.getByText(/synthetische Daten/i)).toBeInTheDocument();
   });
 
-  it("opens a planned module from the navigation", () => {
+  it("opens the asset workspace without presenting preview values as live data", () => {
     render(<App />);
 
     fireEvent.click(screen.getByRole("button", { name: /Assets/i }));
 
     expect(screen.getByRole("heading", { name: "Assets" })).toBeInTheDocument();
-    expect(screen.getByText("1,284")).toBeInTheDocument();
+    expect(screen.getByText(/echte Asset-Ansicht ist in der laufenden Desktop-App/)).toBeInTheDocument();
+    expect(screen.queryByText("1,284")).not.toBeInTheDocument();
+  });
+
+  it("queries and pages only bounded asset windows while exposing every required field", async () => {
+    const assetsLoader = vi.fn().mockImplementation((query) => Promise.resolve(assetPage({
+      offset: query.offset,
+      items: [{ ...assetPage().items[0], itemId: 9_800_001 + query.offset }],
+    })));
+    render(
+      <App
+        runtimeLoader={() => nativeRuntime()}
+        ssoStatusLoader={() => Promise.resolve(idleSso)}
+        charactersLoader={() => Promise.resolve([])}
+        accountGroupsLoader={() => Promise.resolve([])}
+        assetsLoader={assetsLoader}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Assets/i }));
+
+    expect(await screen.findByText("Synthetic Component")).toBeInTheDocument();
+    expect(screen.getAllByText("Builder")).toHaveLength(2);
+    expect(screen.getByText("Synthetic System / Synthetic Station")).toBeInTheDocument();
+    expect(screen.getByText("17")).toBeInTheDocument();
+    expect(screen.getAllByText("1 Std.").length).toBeGreaterThan(0);
+    expect(assetsLoader).toHaveBeenCalledWith({
+      search: "",
+      ownerCharacterId: null,
+      locationStatus: null,
+      offset: 0,
+      limit: 100,
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Nächste Seite" }));
+    await waitFor(() => expect(assetsLoader).toHaveBeenLastCalledWith({
+      search: "",
+      ownerCharacterId: null,
+      locationStatus: null,
+      offset: 100,
+      limit: 100,
+    }));
+    expect((await screen.findByText(/101–101 von 100\.000/))).toBeInTheDocument();
+  });
+
+  it("composes asset search and filters and reports the local CSV target", async () => {
+    const assetsLoader = vi.fn().mockResolvedValue(assetPage());
+    const assetsCsvExporter = vi.fn().mockResolvedValue({
+      filename: "assets-20260910-110203.csv",
+      relativePath: "data/exports/assets-20260910-110203.csv",
+      rows: 1,
+    });
+    render(
+      <App
+        runtimeLoader={() => nativeRuntime()}
+        ssoStatusLoader={() => Promise.resolve(idleSso)}
+        charactersLoader={() => Promise.resolve([])}
+        accountGroupsLoader={() => Promise.resolve([])}
+        assetsLoader={assetsLoader}
+        assetsCsvExporter={assetsCsvExporter}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Assets/i }));
+    await screen.findByText("Synthetic Component");
+
+    fireEvent.change(screen.getByPlaceholderText(/Typ, Standort, Besitzer oder ID suchen/), {
+      target: { value: "  component   station " },
+    });
+    fireEvent.change(screen.getByRole("combobox", { name: "Besitzer" }), {
+      target: { value: "90888001" },
+    });
+    fireEvent.change(screen.getByRole("combobox", { name: "Standortstatus" }), {
+      target: { value: "resolved" },
+    });
+
+    await waitFor(() => expect(assetsLoader).toHaveBeenLastCalledWith({
+      search: "component station",
+      ownerCharacterId: 90_888_001,
+      locationStatus: "resolved",
+      offset: 0,
+      limit: 100,
+    }));
+    fireEvent.click(screen.getByRole("button", { name: "Treffer als CSV" }));
+    await waitFor(() => expect(assetsCsvExporter).toHaveBeenCalledWith({
+      search: "component station",
+      ownerCharacterId: 90_888_001,
+      locationStatus: "resolved",
+    }));
+    expect(await screen.findByText(/data\/exports\/assets-20260910-110203\.csv/))
+      .toBeInTheDocument();
   });
 
   it("switches the visible interface language", () => {
@@ -66,6 +196,18 @@ describe("New Eden Foundry design preview", () => {
 
     expect(screen.getByText("Good morning, pilot.")).toBeInTheDocument();
     expect(screen.getByText(/synthetic data/i)).toBeInTheDocument();
+  });
+
+  it("keeps the asset workspace fully bilingual", () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: /Assets/i }));
+    fireEvent.click(screen.getByRole("button", { name: "EN" }));
+
+    expect(screen.getByText("LOCAL ASSET INVENTORY")).toBeInTheDocument();
+    expect(screen.getByText(/live asset view is available in the running desktop app/i))
+      .toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Owner" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Location status" })).toBeInTheDocument();
   });
 
   it("changes all interface typography through five global stages", async () => {

@@ -12,6 +12,7 @@ from uuid import uuid4
 DATA_DIRECTORY_NAME: Final = "data"
 DATABASE_FILENAME: Final = "foundry.sqlite3"
 BACKUP_DIRECTORY_NAME: Final = "backups"
+EXPORT_DIRECTORY_NAME: Final = "exports"
 
 
 class ProgramStorageError(RuntimeError):
@@ -24,6 +25,7 @@ class ProgramStorage:
     data_directory: Path
     database_path: Path
     backup_directory: Path
+    export_directory: Path
 
     @property
     def relative_database_path(self) -> Path:
@@ -44,11 +46,13 @@ def resolve_program_storage(program_directory: Path) -> ProgramStorage:
     data_directory = resolved_program_directory / DATA_DIRECTORY_NAME
     database_path = data_directory / DATABASE_FILENAME
     backup_directory = data_directory / BACKUP_DIRECTORY_NAME
+    export_directory = data_directory / EXPORT_DIRECTORY_NAME
 
     for path, label in (
         (data_directory, "data directory"),
         (database_path, "database"),
         (backup_directory, "backup directory"),
+        (export_directory, "export directory"),
     ):
         if path.is_symlink():
             raise ProgramStorageError(
@@ -63,6 +67,7 @@ def resolve_program_storage(program_directory: Path) -> ProgramStorage:
         data_directory=data_directory,
         database_path=database_path,
         backup_directory=backup_directory,
+        export_directory=export_directory,
     )
 
 
@@ -73,12 +78,17 @@ def prepare_program_storage(program_directory: Path) -> ProgramStorage:
     try:
         storage.data_directory.mkdir(exist_ok=True)
         storage.backup_directory.mkdir(exist_ok=True)
+        storage.export_directory.mkdir(exist_ok=True)
     except OSError as error:
         raise ProgramStorageError(
             "The data directory could not be created inside the program directory."
         ) from error
 
-    if storage.data_directory.is_symlink() or storage.backup_directory.is_symlink():
+    if (
+        storage.data_directory.is_symlink()
+        or storage.backup_directory.is_symlink()
+        or storage.export_directory.is_symlink()
+    ):
         raise ProgramStorageError(
             "Program-folder storage must not redirect through a symbolic link."
         )
