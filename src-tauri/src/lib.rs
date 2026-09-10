@@ -1050,8 +1050,7 @@ fn select_storage_root(app: &AppHandle, executable_dir: &Path) -> Result<PathBuf
         }
         if let Err(error) = copy_directory_without_links(&legacy_data, &staging).and_then(|_| {
             fs::rename(&staging, &stable_data).map_err(|_| "program-storage-migration-failed")
-        })
-        {
+        }) {
             let _ = fs::remove_dir_all(&staging);
             return Err(error);
         }
@@ -1293,9 +1292,13 @@ fn sidecar_json_request_with_timeout(
 
 fn asset_sync_response_is_valid(response: &AssetSyncResponse) -> bool {
     response.completed.checked_add(response.failed) == Some(response.characters.len() as u64)
-        && response.characters.iter().try_fold(0_u64, |total, character| {
-            total.checked_add(character.assets)
-        }) == Some(response.assets)
+        && response
+            .characters
+            .iter()
+            .try_fold(0_u64, |total, character| {
+                total.checked_add(character.assets)
+            })
+            == Some(response.assets)
         && response.characters.iter().all(|character| {
             character.character_id > 0
                 && character.character_id <= JAVASCRIPT_MAX_SAFE_INTEGER
