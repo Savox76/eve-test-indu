@@ -634,7 +634,11 @@ fn asset_delta_response_is_valid(response: &AssetDeltaQueryResponse) -> bool {
         && response.offset <= JAVASCRIPT_MAX_SAFE_INTEGER
         && response.items.len() as u64 <= response.limit
         && response.items.len() as u64 <= response.total
-        && response.change_types.iter().map(String::as_str).collect::<Vec<_>>()
+        && response
+            .change_types
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>()
             == ASSET_DELTA_CHANGE_TYPES
         && event_ids.len() == response.items.len()
         && owner_ids.len() == response.owners.len()
@@ -2051,10 +2055,7 @@ mod tests {
         };
         assert!(asset_delta_response_is_valid(&page));
 
-        let invalid = AssetDeltaQueryResponse {
-            limit: 201,
-            ..page
-        };
+        let invalid = AssetDeltaQueryResponse { limit: 201, ..page };
         assert!(!asset_delta_response_is_valid(&invalid));
     }
 }
