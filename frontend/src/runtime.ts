@@ -86,6 +86,67 @@ export interface CharacterUpdate {
   enabled: boolean;
 }
 
+export type AssetLocationStatus =
+  | "resolved"
+  | "restricted"
+  | "unresolved"
+  | "cycle"
+  | "pending";
+
+export interface AssetLocationNode {
+  locationId: number;
+  kind: string;
+  name: string | null;
+  access: string;
+  typeId: number | null;
+}
+
+export interface AssetRecord {
+  itemId: number;
+  typeId: number;
+  typeName: string;
+  quantity: number;
+  ownerCharacterId: number;
+  ownerName: string;
+  locationFlag: string;
+  locationStatus: AssetLocationStatus;
+  locationPath: string;
+  locationNodes: AssetLocationNode[];
+  observedAt: string;
+  ageSeconds: number;
+}
+
+export interface AssetOwner {
+  characterId: number;
+  name: string;
+}
+
+export interface AssetQuery {
+  search: string;
+  ownerCharacterId: number | null;
+  locationStatus: AssetLocationStatus | null;
+  offset: number;
+  limit: number;
+}
+
+export interface AssetPage {
+  items: AssetRecord[];
+  total: number;
+  quantityTotal: number;
+  offset: number;
+  limit: number;
+  owners: AssetOwner[];
+  locationStatuses: AssetLocationStatus[];
+  observedAt: string | null;
+  ageSeconds: number | null;
+}
+
+export interface AssetCsvExport {
+  filename: string;
+  relativePath: string;
+  rows: number;
+}
+
 export interface SsoLoginStatus {
   state: SsoLoginState;
   attemptId: string | null;
@@ -180,6 +241,14 @@ const scopePackageRequirements: Readonly<Record<SsoScopePackage, number>> = {
 };
 const credentialStates: readonly CredentialState[] = ["stored", "missing", "unavailable"];
 const scopePackageStates: readonly ScopePackageState[] = ["granted", "partial", "missing"];
+export const assetLocationStatuses: readonly AssetLocationStatus[] = [
+  "resolved",
+  "restricted",
+  "unresolved",
+  "cycle",
+  "pending",
+];
+export const assetPageSize = 100;
 
 export const initialRuntimeStatus: DesktopRuntimeStatus = { state: "checking" };
 
@@ -367,6 +436,125 @@ function parseAccountGroup(candidate: unknown): AccountGroup {
     throw new Error("The native runtime returned invalid account-group metadata.");
   }
   return candidate as unknown as AccountGroup;
+}
+
+function isPositiveSafeInteger(value: unknown): value is number {
+  return Number.isSafeInteger(value) && Number(value) > 0;
+}
+
+function isNonNegativeSafeInteger(value: unknown): value is number {
+  return Number.isSafeInteger(value) && Number(value) >= 0;
+}
+
+function isBoundedText(value: unknown, maximum: number): value is string {
+  return typeof value === "string" && value.trim() === value && value.length >= 1 && value.length <= maximum;
+}
+
+function parseAssetLocationNode(candidate: unknown): AssetLocationNode {
+  if (
+    !isRecord(candidate) ||
+    !isPositiveSafeInteger(candidate.locationId) ||
+    !isBoundedText(candidate.kind, 40) ||
+    !(candidate.name === null || isBoundedText(candidate.name, 200)) ||
+    !isBoundedText(candidate.access, 40) ||
+    !(candidate.typeId === null || isPositiveSafeInteger(candidate.typeId))
+  ) {
+    throw new Error("The native runtime returned invalid asset-location metadata.");
+  }
+  return candidate as unknown as AssetLocationNode;
+}
+
+function parseAssetRecord(candidate: unknown): AssetRecord {
+  if (
+    !isRecord(candidate) ||
+    !isPositiveSafeInteger(candidate.itemId) ||
+    !isPositiveSafeInteger(candidate.typeId) ||
+    !isBoundedText(candidate.typeName, 200) ||
+    !isNonNegativeSafeInteger(candidate.quantity) ||
+    !isPositiveSafeInteger(candidate.ownerCharacterId) ||
+    !isBoundedText(candidate.ownerName, 100) ||
+    !isBoundedText(candidate.locationFlag, 100) ||
+    typeof candidate.locationStatus !== "string" ||
+    !assetLocationStatuses.includes(candidate.locationStatus as AssetLocationStatus) ||
+    typeof candidate.locationPath !== "string" ||
+    candidate.locationPath.length > 20_000 ||
+    !Array.isArray(candidate.locationNodes) ||
+    candidate.locationNodes.length > 64 ||
+    !isBoundedText(candidate.observedAt, 50) ||
+    !isNonNegativeSafeInteger(candidate.ageSeconds)
+  ) {
+    throw new Error("The native runtime returned invalid asset metadata.");
+  }
+  const locationNodes = candidate.locationNodes.map(parseAssetLocationNode);
+  if (
+    (candidate.locationStatus === "pending" &&
+      (candidate.locationPath !== "" || locationNodes.length !== 0)) ||
+    (candidate.locationStatus !== "pending" &&
+      (candidate.locationPath === "" || locationNodes.length === 0))
+  ) {
+    throw new Error("The native runtime returned inconsistent asset-location metadata.");
+  }
+  return { ...candidate, locationNodes } as unknown as AssetRecord;
+}
+
+function parseAssetPage(candidate: unknown): AssetPage {
+  if (
+    !isRecord(candidate) ||
+    !Array.isArray(candidate.items) ||
+    !isNonNegativeSafeInteger(candidate.total) ||
+    !isNonNegativeSafeInteger(candidate.quantityTotal) ||
+    !isNonNegativeSafeInteger(candidate.offset) ||
+    !Number.isSafeInteger(candidate.limit) ||
+    Number(candidate.limit) < 1 ||
+    Number(candidate.limit) > 200 ||
+    !Array.isArray(candidate.owners) ||
+    !Array.isArray(candidate.locationStatuses) ||
+    candidate.locationStatuses.length !== assetLocationStatuses.length ||
+    !assetLocationStatuses.every((status) =>
+      (candidate.locationStatuses as unknown[]).includes(status)) ||
+    !(candidate.observedAt === null || isBoundedText(candidate.observedAt, 50)) ||
+    !(candidate.ageSeconds === null || isNonNegativeSafeInteger(candidate.ageSeconds)) ||
+    (candidate.observedAt === null) !== (candidate.ageSeconds === null)
+  ) {
+    throw new Error("The native runtime returned an invalid asset page.");
+  }
+  const items = candidate.items.map(parseAssetRecord);
+  const owners = candidate.owners.map((owner): AssetOwner => {
+    if (
+      !isRecord(owner) ||
+      !isPositiveSafeInteger(owner.characterId) ||
+      !isBoundedText(owner.name, 100)
+    ) {
+      throw new Error("The native runtime returned invalid asset-owner metadata.");
+    }
+    return owner as unknown as AssetOwner;
+  });
+  if (
+    items.length > Number(candidate.limit) ||
+    items.length > Number(candidate.total) ||
+    new Set(items.map(({ itemId }) => itemId)).size !== items.length ||
+    new Set(owners.map(({ characterId }) => characterId)).size !== owners.length ||
+    items.some((item) => !owners.some((owner) => owner.characterId === item.ownerCharacterId))
+  ) {
+    throw new Error("The native runtime returned inconsistent asset-page metadata.");
+  }
+  return { ...candidate, items, owners } as unknown as AssetPage;
+}
+
+function validateAssetQuery(query: AssetQuery): AssetQuery {
+  const search = query.search.trim().replace(/\s+/g, " ");
+  if (
+    search.length > 120 ||
+    !(query.ownerCharacterId === null || isPositiveSafeInteger(query.ownerCharacterId)) ||
+    !(query.locationStatus === null || assetLocationStatuses.includes(query.locationStatus)) ||
+    !isNonNegativeSafeInteger(query.offset) ||
+    !Number.isSafeInteger(query.limit) ||
+    query.limit < 1 ||
+    query.limit > 200
+  ) {
+    throw new Error("The asset query is invalid.");
+  }
+  return { ...query, search };
 }
 
 function parseSsoLoginStatus(candidate: unknown): SsoLoginStatus {
@@ -606,6 +794,67 @@ export async function loadAccountGroups(
     throw new Error("The native runtime returned duplicate account groups.");
   }
   return groups;
+}
+
+export async function loadAssets(
+  query: AssetQuery,
+  adapter: RuntimeAdapter = tauriAdapter,
+): Promise<AssetPage> {
+  const validated = validateAssetQuery(query);
+  if (!adapter.isAvailable()) {
+    return {
+      items: [],
+      total: 0,
+      quantityTotal: 0,
+      offset: validated.offset,
+      limit: validated.limit,
+      owners: [],
+      locationStatuses: [...assetLocationStatuses],
+      observedAt: null,
+      ageSeconds: null,
+    };
+  }
+  const page = parseAssetPage(
+    JSON.parse(await adapter.invoke("query_assets", {
+      search: validated.search,
+      ownerCharacterId: validated.ownerCharacterId,
+      locationStatus: validated.locationStatus,
+      offset: validated.offset,
+      limit: validated.limit,
+    })),
+  );
+  if (page.offset !== validated.offset || page.limit !== validated.limit) {
+    throw new Error("The native runtime returned a different asset window.");
+  }
+  return page;
+}
+
+export async function exportAssetsCsv(
+  query: Omit<AssetQuery, "offset" | "limit">,
+  adapter: RuntimeAdapter = tauriAdapter,
+): Promise<AssetCsvExport> {
+  if (!adapter.isAvailable()) {
+    throw new Error("Asset export is available only in the desktop application.");
+  }
+  const validated = validateAssetQuery({ ...query, offset: 0, limit: assetPageSize });
+  const candidate: unknown = JSON.parse(
+    await adapter.invoke("export_assets_csv", {
+      search: validated.search,
+      ownerCharacterId: validated.ownerCharacterId,
+      locationStatus: validated.locationStatus,
+    }),
+  );
+  if (
+    !isRecord(candidate) ||
+    typeof candidate.filename !== "string" ||
+    !/^[a-z0-9][a-z0-9.-]*\.csv$/i.test(candidate.filename) ||
+    candidate.filename.length > 80 ||
+    candidate.relativePath !== `data/exports/${candidate.filename}` ||
+    !isNonNegativeSafeInteger(candidate.rows)
+  ) {
+    throw new Error("The native runtime returned invalid asset-export metadata.");
+  }
+  return candidate as unknown as AssetCsvExport;
 }
 
 function requireDesktopAdapter(adapter: RuntimeAdapter): void {

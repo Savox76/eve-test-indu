@@ -11,6 +11,7 @@ import {
   Clock3,
   Command,
   Database,
+  Download,
   Factory,
   FlaskConical,
   FolderKanban,
@@ -50,16 +51,20 @@ import {
   type OverviewScopeId,
 } from "./demo";
 import {
+  assetLocationStatuses,
+  assetPageSize,
   cancelEveSso,
   createAccountGroup,
   deleteAccountGroup,
   deleteEveCharacter,
   fontScales,
   initialRuntimeStatus,
+  exportAssetsCsv,
   loadAccountGroups,
   loadEveCharacters,
   loadEveSsoStatus,
   loadDesktopRuntimeStatus,
+  loadAssets,
   renameAccountGroup,
   setDesktopUpdateChannel,
   setDesktopFontScale,
@@ -67,6 +72,10 @@ import {
   updateEveCharacter,
   ssoScopePackages,
   type AccountGroup,
+  type AssetCsvExport,
+  type AssetLocationStatus,
+  type AssetPage,
+  type AssetQuery,
   type CharacterUpdate,
   type DesktopRuntimeStatus,
   type EveCharacter,
@@ -387,6 +396,43 @@ const copy = {
     confidenceValue: "Hoch",
     cache: "Cache vollständig",
     localOnly: "Lokal verarbeitet",
+    assets: {
+      kicker: "LOKALER ASSET-BESTAND",
+      subtitle: "Vollständige Snapshots durchsuchen, nach Besitzer und Standortstatus filtern und als CSV sichern.",
+      search: "Typ, Standort, Besitzer oder ID suchen",
+      owner: "Besitzer",
+      allOwners: "Alle Besitzer",
+      status: "Standortstatus",
+      allStatuses: "Alle Status",
+      statusLabels: {
+        resolved: "Aufgelöst",
+        restricted: "Eingeschränkt",
+        unresolved: "Unaufgelöst",
+        cycle: "Container-Zyklus",
+        pending: "Auflösung ausstehend",
+      },
+      positions: "Positionen",
+      units: "Einheiten",
+      type: "Typ",
+      location: "Standort",
+      quantity: "Menge",
+      age: "Datenalter",
+      flag: "Hangar / Bereich",
+      export: "Treffer als CSV",
+      exporting: "CSV wird erstellt …",
+      exported: "{rows} Zeilen gespeichert · {path}",
+      exportError: "CSV konnte nicht sicher erstellt werden.",
+      loading: "Asset-Bestand wird geladen …",
+      unavailable: "Die echte Asset-Ansicht ist in der laufenden Desktop-App verfügbar.",
+      noData: "Noch kein vollständiger Asset-Snapshot vorhanden.",
+      noMatches: "Keine Assets entsprechen der Suche und den Filtern.",
+      queryError: "Der lokale Asset-Bestand konnte nicht gelesen werden.",
+      pendingLocation: "Standortauflösung ausstehend",
+      resultRange: "{from}–{to} von {total}",
+      previous: "Vorherige Seite",
+      next: "Nächste Seite",
+      liveNotice: "Echte lokale Asset-Snapshots · keine synthetischen Fachwerte",
+    },
     moduleKicker: "MODULVORSCHAU",
     moduleText:
       "Dieser Bereich zeigt bereits die geplante Informationsarchitektur. Fachlogik und echte EVE-Daten werden in den kommenden Releases schrittweise angeschlossen.",
@@ -696,6 +742,43 @@ const copy = {
     confidenceValue: "High",
     cache: "Cache complete",
     localOnly: "Processed locally",
+    assets: {
+      kicker: "LOCAL ASSET INVENTORY",
+      subtitle: "Search complete snapshots, filter by owner and location status, and save the result as CSV.",
+      search: "Search type, location, owner, or ID",
+      owner: "Owner",
+      allOwners: "All owners",
+      status: "Location status",
+      allStatuses: "All statuses",
+      statusLabels: {
+        resolved: "Resolved",
+        restricted: "Restricted",
+        unresolved: "Unresolved",
+        cycle: "Container cycle",
+        pending: "Resolution pending",
+      },
+      positions: "positions",
+      units: "units",
+      type: "Type",
+      location: "Location",
+      quantity: "Quantity",
+      age: "Data age",
+      flag: "Hangar / division",
+      export: "Export results as CSV",
+      exporting: "Creating CSV …",
+      exported: "{rows} rows saved · {path}",
+      exportError: "The CSV could not be created safely.",
+      loading: "Loading asset inventory …",
+      unavailable: "The live asset view is available in the running desktop app.",
+      noData: "No complete asset snapshot is available yet.",
+      noMatches: "No assets match the search and filters.",
+      queryError: "The local asset inventory could not be read.",
+      pendingLocation: "Location resolution pending",
+      resultRange: "{from}–{to} of {total}",
+      previous: "Previous page",
+      next: "Next page",
+      liveNotice: "Live local asset snapshots · no synthetic domain values",
+    },
     moduleKicker: "MODULE PREVIEW",
     moduleText:
       "This area already shows the planned information architecture. Domain logic and real EVE data will be connected incrementally in upcoming releases.",
@@ -830,6 +913,8 @@ export function App({
   accountGroupCreator = createAccountGroup,
   accountGroupRenamer = renameAccountGroup,
   accountGroupDeleter = deleteAccountGroup,
+  assetsLoader = loadAssets,
+  assetsCsvExporter = exportAssetsCsv,
   fontScaleSetter = setDesktopFontScale,
 }: {
   runtimeLoader?: () => Promise<DesktopRuntimeStatus>;
@@ -844,6 +929,10 @@ export function App({
   accountGroupCreator?: (label: string) => Promise<AccountGroup>;
   accountGroupRenamer?: (groupId: number, label: string) => Promise<AccountGroup>;
   accountGroupDeleter?: (groupId: number) => Promise<void>;
+  assetsLoader?: (query: AssetQuery) => Promise<AssetPage>;
+  assetsCsvExporter?: (
+    query: Omit<AssetQuery, "offset" | "limit">,
+  ) => Promise<AssetCsvExport>;
   fontScaleSetter?: (fontScale: FontScale) => Promise<AppearanceStatus>;
 }) {
   const [locale, setLocale] = useState<Locale>("de");
@@ -1282,12 +1371,20 @@ export function App({
           </button>
         </header>
 
-        <div className="preview-strip" role="status">
-          <FlaskConical size={15} />
-          <strong>{t.preview}</strong>
-          <span>{t.synthetic}</span>
-          <span className="preview-strip__meta">synthetic: {String(demoMetadata.synthetic)}</span>
-        </div>
+        {activeModule === "assets" && nativeCoreReady ? (
+          <div className="preview-strip preview-strip--live" role="status">
+            <Database size={15} />
+            <strong>LOCAL</strong>
+            <span>{t.assets.liveNotice}</span>
+          </div>
+        ) : (
+          <div className="preview-strip" role="status">
+            <FlaskConical size={15} />
+            <strong>{t.preview}</strong>
+            <span>{t.synthetic}</span>
+            <span className="preview-strip__meta">synthetic: {String(demoMetadata.synthetic)}</span>
+          </div>
+        )}
 
         <section className={`sso-panel sso-panel--${ssoStatus.state}`} aria-labelledby="sso-title">
           <div className="sso-panel__icon" aria-hidden="true">
@@ -1383,6 +1480,14 @@ export function App({
             onOpenProduction={() => selectModule("production")}
             onInspect={scrollToAttention}
           />
+        ) : activeModule === "assets" ? (
+          <AssetWorkspace
+            available={nativeCoreReady}
+            locale={locale}
+            t={t}
+            loadAssets={assetsLoader}
+            exportCsv={assetsCsvExporter}
+          />
         ) : (
           <ModulePreview activeModule={activeModule} t={t} />
         )}
@@ -1392,6 +1497,282 @@ export function App({
 }
 
 type Translation = (typeof copy)[Locale];
+
+function AssetWorkspace({
+  available,
+  locale,
+  t,
+  loadAssets: loadAssetPage,
+  exportCsv,
+}: {
+  available: boolean;
+  locale: Locale;
+  t: Translation;
+  loadAssets: (query: AssetQuery) => Promise<AssetPage>;
+  exportCsv: (query: Omit<AssetQuery, "offset" | "limit">) => Promise<AssetCsvExport>;
+}) {
+  const [search, setSearch] = useState("");
+  const [appliedSearch, setAppliedSearch] = useState("");
+  const [ownerCharacterId, setOwnerCharacterId] = useState<number | null>(null);
+  const [locationStatus, setLocationStatus] = useState<AssetLocationStatus | null>(null);
+  const [offset, setOffset] = useState(0);
+  const [page, setPage] = useState<AssetPage | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [exported, setExported] = useState<AssetCsvExport | null>(null);
+  const [exportFailed, setExportFailed] = useState(false);
+  const numberFormat = useMemo(
+    () => new Intl.NumberFormat(locale === "de" ? "de-DE" : "en-US"),
+    [locale],
+  );
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setAppliedSearch(search.trim().replace(/\s+/g, " "));
+      setOffset(0);
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [search]);
+
+  useEffect(() => {
+    if (!available) return;
+    let active = true;
+    setLoading(true);
+    setFailed(false);
+    void loadAssetPage({
+      search: appliedSearch,
+      ownerCharacterId,
+      locationStatus,
+      offset,
+      limit: assetPageSize,
+    })
+      .then((loadedPage) => {
+        if (!active) return;
+        if (loadedPage.total > 0 && loadedPage.offset >= loadedPage.total) {
+          setOffset(Math.floor((loadedPage.total - 1) / assetPageSize) * assetPageSize);
+          return;
+        }
+        setPage(loadedPage);
+        setFailed(false);
+      })
+      .catch(() => {
+        if (active) setFailed(true);
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [appliedSearch, available, loadAssetPage, locationStatus, offset, ownerCharacterId]);
+
+  const createExport = async () => {
+    if (!available || exporting) return;
+    setExporting(true);
+    setExported(null);
+    setExportFailed(false);
+    try {
+      setExported(await exportCsv({ search: appliedSearch, ownerCharacterId, locationStatus }));
+    } catch {
+      setExportFailed(true);
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const total = page?.total ?? 0;
+  const from = total === 0 ? 0 : offset + 1;
+  const to = Math.min(offset + (page?.items.length ?? 0), total);
+  const resultRange = t.assets.resultRange
+    .replace("{from}", numberFormat.format(from))
+    .replace("{to}", numberFormat.format(to))
+    .replace("{total}", numberFormat.format(total));
+  const statusTone = (status: AssetLocationStatus) =>
+    status === "resolved"
+      ? "good"
+      : status === "restricted" || status === "pending"
+        ? "warn"
+        : "critical";
+
+  return (
+    <div className="workspace asset-workspace">
+      <section className="asset-hero">
+        <div>
+          <span className="eyebrow">{t.assets.kicker}</span>
+          <h1>{t.nav.assets}</h1>
+          <p>{t.assets.subtitle}</p>
+        </div>
+        <div className="asset-hero__metrics" aria-live="polite">
+          <span>
+            <strong>{numberFormat.format(total)}</strong>
+            <small>{t.assets.positions}</small>
+          </span>
+          <span>
+            <strong>{numberFormat.format(page?.quantityTotal ?? 0)}</strong>
+            <small>{t.assets.units}</small>
+          </span>
+          <span>
+            <strong>
+              {page?.ageSeconds === null || page?.ageSeconds === undefined
+                ? "—"
+                : formatDataAge(page.ageSeconds, locale)}
+            </strong>
+            <small>{t.assets.age}</small>
+          </span>
+        </div>
+      </section>
+
+      <section className="asset-browser" aria-busy={loading}>
+        <div className="asset-toolbar">
+          <label className="asset-search">
+            <span>{t.assets.search}</span>
+            <div>
+              <Search size={16} aria-hidden="true" />
+              <input
+                value={search}
+                maxLength={120}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder={t.assets.search}
+                disabled={!available}
+              />
+            </div>
+          </label>
+          <label>
+            <span>{t.assets.owner}</span>
+            <select
+              aria-label={t.assets.owner}
+              value={ownerCharacterId ?? ""}
+              onChange={(event) => {
+                setOwnerCharacterId(event.target.value ? Number(event.target.value) : null);
+                setOffset(0);
+              }}
+              disabled={!available}
+            >
+              <option value="">{t.assets.allOwners}</option>
+              {(page?.owners ?? []).map((owner) => (
+                <option value={owner.characterId} key={owner.characterId}>{owner.name}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>{t.assets.status}</span>
+            <select
+              aria-label={t.assets.status}
+              value={locationStatus ?? ""}
+              onChange={(event) => {
+                setLocationStatus((event.target.value || null) as AssetLocationStatus | null);
+                setOffset(0);
+              }}
+              disabled={!available}
+            >
+              <option value="">{t.assets.allStatuses}</option>
+              {assetLocationStatuses.map((status) => (
+                <option value={status} key={status}>{t.assets.statusLabels[status]}</option>
+              ))}
+            </select>
+          </label>
+          <button
+            className="secondary-button asset-export"
+            type="button"
+            onClick={() => void createExport()}
+            disabled={!available || exporting || loading}
+          >
+            {exporting ? <RefreshCw className="spin" size={15} /> : <Download size={15} />}
+            {exporting ? t.assets.exporting : t.assets.export}
+          </button>
+        </div>
+
+        {(exported || exportFailed) && (
+          <div className={`asset-export-status ${exportFailed ? "asset-export-status--error" : ""}`} role="status">
+            {exportFailed
+              ? t.assets.exportError
+              : t.assets.exported
+                  .replace("{rows}", numberFormat.format(exported?.rows ?? 0))
+                  .replace("{path}", exported?.relativePath ?? "")}
+          </div>
+        )}
+
+        {!available ? (
+          <div className="asset-empty"><Database size={22} />{t.assets.unavailable}</div>
+        ) : failed ? (
+          <div className="asset-empty asset-empty--error" role="alert">
+            <AlertTriangle size={22} />{t.assets.queryError}
+          </div>
+        ) : loading && page === null ? (
+          <div className="asset-empty"><RefreshCw className="spin" size={22} />{t.assets.loading}</div>
+        ) : page && page.items.length === 0 ? (
+          <div className="asset-empty">
+            <PackageSearch size={22} />
+            {page.observedAt === null ? t.assets.noData : t.assets.noMatches}
+          </div>
+        ) : page ? (
+          <div className="asset-table-wrap">
+            <table className="asset-table">
+              <thead>
+                <tr>
+                  <th>{t.assets.type}</th>
+                  <th>{t.assets.owner}</th>
+                  <th>{t.assets.location}</th>
+                  <th>{t.assets.flag}</th>
+                  <th className="asset-table__number">{t.assets.quantity}</th>
+                  <th>{t.assets.age}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {page.items.map((item) => (
+                  <tr key={item.itemId}>
+                    <td>
+                      <strong>{item.typeName}</strong>
+                      <small>Type {item.typeId} · Item {item.itemId}</small>
+                    </td>
+                    <td><strong>{item.ownerName}</strong><small>EVE ID {item.ownerCharacterId}</small></td>
+                    <td>
+                      <span className={`asset-status asset-status--${statusTone(item.locationStatus)}`}>
+                        <StatusDot tone={statusTone(item.locationStatus)} />
+                        {t.assets.statusLabels[item.locationStatus]}
+                      </span>
+                      <small title={item.locationPath}>
+                        {item.locationPath || t.assets.pendingLocation}
+                      </small>
+                    </td>
+                    <td>{item.locationFlag}</td>
+                    <td className="asset-table__number"><strong>{numberFormat.format(item.quantity)}</strong></td>
+                    <td>{formatDataAge(item.ageSeconds, locale)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
+
+        {available && page && (
+          <footer className="asset-pagination">
+            <span>{resultRange}</span>
+            <div>
+              <button
+                type="button"
+                onClick={() => setOffset(Math.max(0, offset - assetPageSize))}
+                disabled={loading || offset === 0}
+              >
+                <ChevronRight className="asset-pagination__previous" size={15} />
+                {t.assets.previous}
+              </button>
+              <button
+                type="button"
+                onClick={() => setOffset(offset + assetPageSize)}
+                disabled={loading || offset + assetPageSize >= total}
+              >
+                {t.assets.next}
+                <ChevronRight size={15} />
+              </button>
+            </div>
+          </footer>
+        )}
+      </section>
+    </div>
+  );
+}
 
 function CharacterManager({
   characters,

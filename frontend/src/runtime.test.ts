@@ -5,7 +5,9 @@ import {
   createAccountGroup,
   deleteAccountGroup,
   deleteEveCharacter,
+  exportAssetsCsv,
   loadAccountGroups,
+  loadAssets,
   loadDesktopRuntimeStatus,
   loadEveCharacters,
   loadEveSsoStatus,
@@ -311,6 +313,94 @@ describe("desktop runtime status", () => {
       loadAccountGroups({ isAvailable: () => true, invoke }),
     ).resolves.toEqual(groups);
     expect(invoke).toHaveBeenCalledWith("list_account_groups");
+  });
+
+  it("loads one strictly bounded, joined asset page", async () => {
+    const query = {
+      search: "component",
+      ownerCharacterId: 90_888_001,
+      locationStatus: "resolved" as const,
+      offset: 100,
+      limit: 100,
+    };
+    const page = {
+      items: [{
+        itemId: 9_800_001,
+        typeId: 98_001,
+        typeName: "Synthetic Component",
+        quantity: 17,
+        ownerCharacterId: 90_888_001,
+        ownerName: "Builder",
+        locationFlag: "SyntheticHangar",
+        locationStatus: "resolved",
+        locationPath: "Synthetic System / Synthetic Station",
+        locationNodes: [{
+          locationId: 30_888_001,
+          kind: "solar_system",
+          name: "Synthetic System",
+          access: "available",
+          typeId: null,
+        }],
+        observedAt: "2026-09-10T10:00:00Z",
+        ageSeconds: 3_600,
+      }],
+      total: 100_000,
+      quantityTotal: 230_000,
+      offset: 100,
+      limit: 100,
+      owners: [{ characterId: 90_888_001, name: "Builder" }],
+      locationStatuses: ["resolved", "restricted", "unresolved", "cycle", "pending"],
+      observedAt: "2026-09-10T10:00:00Z",
+      ageSeconds: 3_600,
+    };
+    const invoke = vi.fn<RuntimeAdapter["invoke"]>().mockResolvedValue(JSON.stringify(page));
+
+    await expect(loadAssets(query, { isAvailable: () => true, invoke })).resolves.toEqual(page);
+    expect(invoke).toHaveBeenCalledWith("query_assets", query);
+  });
+
+  it("rejects oversized or internally inconsistent asset pages", async () => {
+    const invoke = vi.fn<RuntimeAdapter["invoke"]>().mockResolvedValue(JSON.stringify({
+      items: [],
+      total: 100_000,
+      quantityTotal: 0,
+      offset: 0,
+      limit: 201,
+      owners: [],
+      locationStatuses: ["resolved", "restricted", "unresolved", "cycle", "pending"],
+      observedAt: null,
+      ageSeconds: null,
+    }));
+
+    await expect(loadAssets(
+      { search: "", ownerCharacterId: null, locationStatus: null, offset: 0, limit: 200 },
+      { isAvailable: () => true, invoke },
+    )).rejects.toThrow("invalid asset page");
+  });
+
+  it("requests a filtered CSV and accepts only a safe program-relative path", async () => {
+    const exported = {
+      filename: "assets-20260910-110203.csv",
+      relativePath: "data/exports/assets-20260910-110203.csv",
+      rows: 100_000,
+    };
+    const invoke = vi.fn<RuntimeAdapter["invoke"]>().mockResolvedValue(JSON.stringify(exported));
+    const filters = {
+      search: "component",
+      ownerCharacterId: 90_888_001,
+      locationStatus: "restricted" as const,
+    };
+
+    await expect(exportAssetsCsv(filters, { isAvailable: () => true, invoke }))
+      .resolves.toEqual(exported);
+    expect(invoke).toHaveBeenCalledWith("export_assets_csv", filters);
+
+    invoke.mockResolvedValueOnce(JSON.stringify({
+      ...exported,
+      relativePath: "../../outside.csv",
+    }));
+    await expect(exportAssetsCsv(filters, { isAvailable: () => true, invoke }))
+      .rejects.toThrow("invalid asset-export metadata");
   });
 
   it("updates and fully deletes one character through native IPC", async () => {

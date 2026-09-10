@@ -27,9 +27,14 @@ class ProgramStorageTests(unittest.TestCase):
                 storage.backup_directory,
                 program_directory / "data" / "backups",
             )
+            self.assertEqual(
+                storage.export_directory,
+                program_directory / "data" / "exports",
+            )
             self.assertEqual(storage.relative_database_path.as_posix(), "data/foundry.sqlite3")
             self.assertTrue(storage.data_directory.is_dir())
             self.assertTrue(storage.backup_directory.is_dir())
+            self.assertTrue(storage.export_directory.is_dir())
             self.assertEqual(list(storage.data_directory.glob(".foundry-write-test-*")), [])
 
     def test_missing_program_directory_is_rejected(self) -> None:

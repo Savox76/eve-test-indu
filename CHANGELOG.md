@@ -10,26 +10,33 @@ Alle bemerkenswerten Änderungen an New Eden Foundry werden hier festgehalten. D
 - Root-first-Containerpfade mit SDE-Typnamen und kontrollierter Erkennung zyklischer Beziehungen.
 - Vollständige Standort-Snapshots mit Referenz auf den zugrunde liegenden Asset-Snapshot und zusammengefassten Statuswerten.
 - Synthetische Golden-Fälle für Station, verschachtelte Container, Struktur-403, fehlenden Scope, Zyklen und Folgefehler.
+- Echte zweisprachige Asset-Oberfläche mit Suche, Besitzer- und Standortstatusfilter, Mengen, Datenalter und root-first Standortpfaden.
+- Serverseitig begrenzte 100-Zeilen-Seiten sowie ein synthetischer 100.000-Positionen-Regressionstest.
+- Gefilterter, atomarer UTF-8-CSV-Export nach `data\exports` mit Formelneutralisierung.
 
 ### Geändert
 
 - Eine nicht lesbare Spielerstruktur ist jetzt ein stabiler eingeschränkter Fachzustand und kein Fehler des gesamten Standortlaufs.
 - Wiederholte Stationen oder Strukturen werden innerhalb eines Auflösungslaufs nur einmal abgefragt.
+- Die Asset-Oberfläche verwendet nur den letzten vollständigen Snapshot je Charakter und lädt höchstens 100 Zeilen pro sichtbarer Seite.
+- Der lokale Antwortschutz erlaubt bounded Asset-Seiten, während große CSV-Inhalte als Datei geschrieben und nicht durch die Desktop-Brücke übertragen werden.
 
 ### Behobene Fehler
 
 - Fehlende Container und zyklische Containerbeziehungen können die Auflösung nicht mehr unkontrolliert abbrechen oder endlos rekursiv laufen.
 - Ein technischer Fehler während der Standortauflösung veröffentlicht keinen Teilstand und überschreibt keinen letzten vollständigen Snapshot.
+- Standortpfade eines älteren Snapshots können nach einem neueren Asset-Sync nicht versehentlich mit den neuen Positionen verbunden werden; bis zur passenden Auflösung erscheint `pending`.
+- Beschädigte vollständige Asset- oder Standort-Snapshots sowie unsichere CSV-Zielpfade werden geschlossen abgewiesen.
 
 ### Bekannte Einschränkungen
 
 - Schutzregeln für `main` sind noch nicht aktiviert.
-- Die aufgelösten Standorte werden erst mit Paket 20 in der vollständigen Asset-Oberfläche angezeigt.
 - Spielerstrukturen ohne erteilten Scope oder ohne Zugriffsrecht bleiben absichtlich ohne Namen und werden als eingeschränkt markiert.
+- Die Asset-Ansicht bietet noch keine Veränderungshistorie; nachvollziehbare Deltas folgen mit Paket 21.
 
 ### Update und Datenbankmigration
 
-- Keine Anwendungsmigration; SQLite-Schema 6 bleibt unverändert. Aufgelöste Standortdaten werden als ableitbare Snapshots gespeichert.
+- Keine Anwendungsmigration; SQLite-Schema 6 bleibt unverändert. Aufgelöste Standortdaten bleiben ableitbare Snapshots und CSV-Dateien werden im neuen Unterordner `data\exports` abgelegt.
 
 ## 0.0.5-preview.2 – 10. September 2026
 
