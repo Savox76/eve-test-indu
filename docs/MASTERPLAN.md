@@ -1,10 +1,10 @@
 # Masterplan – New Eden Foundry
 
-**Fassung:** 2.5 (lebendes Repository-Dokument)
+**Fassung:** 2.6 (lebendes Repository-Dokument)
 
 **Stand:** 10. September 2026
 
-**Status:** In Umsetzung – Phase 3 mit SDE-Basis und Multi-Character-Asset-Sync
+**Status:** In Umsetzung – Phase 3 mit vollständiger Asset-Standortauflösung
 
 **Geltungsbereich:** `Savox76/eve-test-indu`
 
@@ -207,8 +207,9 @@ Die Reihenfolge ist verbindlicher als eine Kalenderangabe.
 - **Abgeschlossen:** 16 – `EsiClient` bildet die einzige HTTP-Vertrauensgrenze für ESI. Er erzwingt festen Host, Compatibility-Date, User-Agent und charaktergetrennte Autorisierung, verarbeitet Cacheheader und bedingte 304-Antworten, begrenzt JSON und Wiederholungen und kapselt Retry-After, ESI-Fehlerbudget sowie Circuit Breaker. Der authentifizierte Sidecar-Status macht diese Policy ohne Zugangsdaten sichtbar.
 - **Abgeschlossen:** 17 – der minimale SDE-Bestand für Typen, Gruppen und Orte wird als abgeleitete Datenbasis atomar aufgebaut und über eine eindeutige Buildnummer identifiziert. Ein fehlerhafter Import lässt den vorherigen gültigen Stand unangetastet und verändert das Anwendungsschema nicht.
 - **Abgeschlossen:** 18 – aktivierte Charaktere können Assets über den zentralen ESI-Client vollständig paginiert synchronisieren. Jeder Charakter erhält einen eigenen Lauf und Snapshot; nur vollständige Läufe werden veröffentlicht, während Abbruch und Fehler den letzten gültigen Cache erhalten.
+- **Abgeschlossen:** 19 – der letzte vollständige Asset-Snapshot jedes Charakters wird in root-first Standort- und Containerpfade aufgelöst. SDE-Standorte und Typnamen werden lokal genutzt, Stationen und erlaubte Spielerstrukturen über den zentralen ESI-Client ergänzt. Struktur-403 und fehlende Scopes bleiben als eingeschränkte Fachzustände sichtbar; fehlende Container und Zyklen erhalten stabile Fehlercodes. Nur vollständig verarbeitete Läufe veröffentlichen einen neuen Standort-Snapshot.
 - **Zusätzlich umgesetzt:** Die vollständige sichtbare Oberfläche unterstützt fünf globale Schriftgrößenstufen; die Auswahl bleibt in der bestehenden `app_settings`-Tabelle im Programmordner erhalten.
-- **Als Nächstes:** Arbeitspaket 19 löst Asset-Standorte und Containerpfade belastbar auf, einschließlich Stationen, Struktur-403 und zyklischer Containerbeziehungen in synthetischen Golden-Fällen. Parallel bleibt das A0-Windows-Gate für Installation, zweiten Start, Migration/Update und Entfernung auf einem freigegebenen Windows-Testgerät offen.
+- **Als Nächstes:** Arbeitspaket 20 bindet die vollständige Asset-UI mit Suche, Filter, Besitzer, Standort, Menge, Datenalter und CSV an die echten Snapshots an und hält 100.000 Zeilen flüssig. Parallel bleibt das A0-Windows-Gate für Installation, zweiten Start, Migration/Update und Entfernung auf einem freigegebenen Windows-Testgerät offen.
 - Architektur-Gate A0 ist technisch weitgehend umgesetzt, aber bis zur vollständigen Windows-Abnahme noch nicht erfüllt; breite Fachentwicklung beginnt erst danach.
 
 ## 13. Entscheidungs- und Quellenrang

@@ -6,23 +6,30 @@ Alle bemerkenswerten Änderungen an New Eden Foundry werden hier festgehalten. D
 
 ### Neu hinzugefügt
 
-- Keine.
+- Charakterbezogene Asset-Standortauflösung für SDE-Standorte, NPC-Stationen und Spielerstrukturen.
+- Root-first-Containerpfade mit SDE-Typnamen und kontrollierter Erkennung zyklischer Beziehungen.
+- Vollständige Standort-Snapshots mit Referenz auf den zugrunde liegenden Asset-Snapshot und zusammengefassten Statuswerten.
+- Synthetische Golden-Fälle für Station, verschachtelte Container, Struktur-403, fehlenden Scope, Zyklen und Folgefehler.
 
 ### Geändert
 
-- Keine.
+- Eine nicht lesbare Spielerstruktur ist jetzt ein stabiler eingeschränkter Fachzustand und kein Fehler des gesamten Standortlaufs.
+- Wiederholte Stationen oder Strukturen werden innerhalb eines Auflösungslaufs nur einmal abgefragt.
 
 ### Behobene Fehler
 
-- Keine.
+- Fehlende Container und zyklische Containerbeziehungen können die Auflösung nicht mehr unkontrolliert abbrechen oder endlos rekursiv laufen.
+- Ein technischer Fehler während der Standortauflösung veröffentlicht keinen Teilstand und überschreibt keinen letzten vollständigen Snapshot.
 
 ### Bekannte Einschränkungen
 
 - Schutzregeln für `main` sind noch nicht aktiviert.
+- Die aufgelösten Standorte werden erst mit Paket 20 in der vollständigen Asset-Oberfläche angezeigt.
+- Spielerstrukturen ohne erteilten Scope oder ohne Zugriffsrecht bleiben absichtlich ohne Namen und werden als eingeschränkt markiert.
 
 ### Update und Datenbankmigration
 
-- Keine.
+- Keine Anwendungsmigration; SQLite-Schema 6 bleibt unverändert. Aufgelöste Standortdaten werden als ableitbare Snapshots gespeichert.
 
 ## 0.0.5-preview.2 – 10. September 2026
 
