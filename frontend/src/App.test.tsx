@@ -16,13 +16,13 @@ const idleSso: SsoLoginStatus = {
 const nativeRuntime = (overrides: Partial<Extract<DesktopRuntimeStatus, { state: "ready" }>> = {}) =>
   Promise.resolve<DesktopRuntimeStatus>({
     state: "ready",
-    version: "0.0.4-preview.5",
+    version: "0.0.4-preview.6",
     desktopShell: true,
     singleInstance: true,
     sidecar: "ready",
     database: "ready",
     databaseLocation: "data/foundry.sqlite3",
-    schemaVersion: 5,
+    schemaVersion: 6,
     errorCode: null,
     data: {
       state: "empty",
@@ -237,9 +237,18 @@ describe("New Eden Foundry design preview", () => {
     };
     const character: EveCharacter = {
       ...identity,
+      alias: null,
       accountGroupId: null,
       accountGroupLabel: null,
       enabled: true,
+      credentialState: "stored",
+      scopePackages: [
+        { id: "industry-core", status: "partial", grantedCount: 1, requiredCount: 4 },
+        { id: "market", status: "missing", grantedCount: 0, requiredCount: 2 },
+        { id: "planetary-industry", status: "missing", grantedCount: 0, requiredCount: 1 },
+        { id: "projects", status: "missing", grantedCount: 0, requiredCount: 1 },
+        { id: "private-structures", status: "missing", grantedCount: 0, requiredCount: 1 },
+      ],
     };
     render(
       <App
@@ -253,6 +262,51 @@ describe("New Eden Foundry design preview", () => {
     expect(screen.getByText("Verbunden: Synthetic Pilot")).toBeInTheDocument();
     expect(screen.getByText("1 lokal verbunden")).toBeInTheDocument();
     expect(screen.getByText("Bestätigte Scopes: 1")).toBeInTheDocument();
+  });
+
+  it("edits aliases, groups, activity, and exposes guarded full deletion", async () => {
+    const character: EveCharacter = {
+      characterId: 2_112_345_678,
+      name: "Synthetic Pilot",
+      alias: null,
+      accountGroupId: 3,
+      accountGroupLabel: "Industry",
+      enabled: true,
+      credentialState: "stored",
+      scopes: ["esi-assets.read_assets.v1"],
+      scopePackages: [
+        { id: "industry-core", status: "partial", grantedCount: 1, requiredCount: 4 },
+        { id: "market", status: "missing", grantedCount: 0, requiredCount: 2 },
+        { id: "planetary-industry", status: "missing", grantedCount: 0, requiredCount: 1 },
+        { id: "projects", status: "missing", grantedCount: 0, requiredCount: 1 },
+        { id: "private-structures", status: "missing", grantedCount: 0, requiredCount: 1 },
+      ],
+    };
+    const characterUpdater = vi.fn().mockResolvedValue({ ...character, alias: "Builder" });
+    render(
+      <App
+        runtimeLoader={() => nativeRuntime()}
+        ssoStatusLoader={() => Promise.resolve(idleSso)}
+        charactersLoader={() => Promise.resolve([character])}
+        accountGroupsLoader={() => Promise.resolve([
+          { id: 3, label: "Industry", sortOrder: 0, characterCount: 1 },
+        ])}
+        characterUpdater={characterUpdater}
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Verwalten" }));
+    expect(screen.getByText(/teilweise 1\/4/)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Lokaler Alias"), { target: { value: "Builder" } });
+    fireEvent.click(screen.getByRole("button", { name: "Änderungen speichern" }));
+
+    await waitFor(() => expect(characterUpdater).toHaveBeenCalledWith(
+      2_112_345_678,
+      { alias: "Builder", accountGroupId: 3, enabled: true },
+    ));
+    fireEvent.click(screen.getByRole("button", { name: "Charakter vollständig löschen" }));
+    expect(screen.getByRole("button", { name: "Löschen endgültig bestätigen" })).toBeInTheDocument();
+    expect(screen.getByText(/Refresh Token dauerhaft/)).toBeInTheDocument();
   });
 
   it("keeps real EVE sign-in disabled in browser design preview", async () => {

@@ -51,15 +51,23 @@ import {
 } from "./demo";
 import {
   cancelEveSso,
+  createAccountGroup,
+  deleteAccountGroup,
+  deleteEveCharacter,
   fontScales,
   initialRuntimeStatus,
+  loadAccountGroups,
   loadEveCharacters,
   loadEveSsoStatus,
   loadDesktopRuntimeStatus,
+  renameAccountGroup,
   setDesktopUpdateChannel,
   setDesktopFontScale,
   startEveSso,
+  updateEveCharacter,
   ssoScopePackages,
+  type AccountGroup,
+  type CharacterUpdate,
   type DesktopRuntimeStatus,
   type EveCharacter,
   type FontScale,
@@ -254,10 +262,42 @@ const copy = {
     characters: {
       title: "Verbundene EVE-Charaktere",
       empty: "Noch kein geprüfter Charakter verbunden",
-      unavailable: "Charakterliste konnte nicht geladen werden",
+      unavailable: "Charakterverwaltung konnte nicht geladen werden",
       count: "{count} lokal verbunden",
       scopes: "Bestätigte Scopes: {count}",
       ungrouped: "Nicht gruppiert",
+      manage: "Verwalten",
+      close: "Editor schließen",
+      alias: "Lokaler Alias",
+      aliasPlaceholder: "Optionaler Anzeigename",
+      group: "Kontogruppe",
+      active: "Charakter aktiv verwenden",
+      save: "Änderungen speichern",
+      saving: "Wird gespeichert …",
+      delete: "Charakter vollständig löschen",
+      confirmDelete: "Löschen endgültig bestätigen",
+      cancelDelete: "Löschen abbrechen",
+      deleteDetail: "Entfernt Identität, Scopes, Cache, Historie und Refresh Token dauerhaft.",
+      error: "Änderung konnte nicht sicher abgeschlossen werden.",
+      credential: "Anmeldedaten",
+      credentialStates: {
+        stored: "sicher gespeichert",
+        missing: "erneut verbinden",
+        unavailable: "Speicher nicht verfügbar",
+      },
+      scopeStates: {
+        granted: "vollständig",
+        partial: "teilweise",
+        missing: "fehlt",
+      },
+      inactive: "Inaktiv",
+      groupsTitle: "Lokale Kontogruppen",
+      newGroup: "Neue Gruppe",
+      createGroup: "Gruppe anlegen",
+      renameGroup: "Gruppe umbenennen",
+      deleteGroup: "Gruppe löschen",
+      noGroups: "Noch keine Kontogruppe angelegt",
+      members: "{count} Charaktere",
     },
     fontSize: {
       label: "Schriftgröße",
@@ -370,7 +410,7 @@ const copy = {
     },
     planned: "Geplant",
     previewOnly: "Noch ohne Live-Funktion",
-    footerVersion: "v0.0.4-preview.5",
+    footerVersion: "v0.0.4-preview.6",
   },
   en: {
     nav: {
@@ -531,10 +571,42 @@ const copy = {
     characters: {
       title: "Connected EVE characters",
       empty: "No verified character connected yet",
-      unavailable: "Character list could not be loaded",
+      unavailable: "Character management could not be loaded",
       count: "{count} connected locally",
       scopes: "Confirmed scopes: {count}",
       ungrouped: "Ungrouped",
+      manage: "Manage",
+      close: "Close editor",
+      alias: "Local alias",
+      aliasPlaceholder: "Optional display name",
+      group: "Account group",
+      active: "Use character actively",
+      save: "Save changes",
+      saving: "Saving …",
+      delete: "Delete character completely",
+      confirmDelete: "Confirm permanent deletion",
+      cancelDelete: "Cancel deletion",
+      deleteDetail: "Permanently removes identity, scopes, cache, history, and refresh token.",
+      error: "The change could not be completed safely.",
+      credential: "Credentials",
+      credentialStates: {
+        stored: "stored securely",
+        missing: "reconnect required",
+        unavailable: "store unavailable",
+      },
+      scopeStates: {
+        granted: "complete",
+        partial: "partial",
+        missing: "missing",
+      },
+      inactive: "Inactive",
+      groupsTitle: "Local account groups",
+      newGroup: "New group",
+      createGroup: "Create group",
+      renameGroup: "Rename group",
+      deleteGroup: "Delete group",
+      noGroups: "No account group created yet",
+      members: "{count} characters",
     },
     fontSize: {
       label: "Font size",
@@ -647,7 +719,7 @@ const copy = {
     },
     planned: "Planned",
     previewOnly: "No live function yet",
-    footerVersion: "v0.0.4-preview.5",
+    footerVersion: "v0.0.4-preview.6",
   },
 } as const;
 
@@ -752,6 +824,12 @@ export function App({
   ssoStatusLoader = loadEveSsoStatus,
   ssoCanceller = cancelEveSso,
   charactersLoader = loadEveCharacters,
+  accountGroupsLoader = loadAccountGroups,
+  characterUpdater = updateEveCharacter,
+  characterDeleter = deleteEveCharacter,
+  accountGroupCreator = createAccountGroup,
+  accountGroupRenamer = renameAccountGroup,
+  accountGroupDeleter = deleteAccountGroup,
   fontScaleSetter = setDesktopFontScale,
 }: {
   runtimeLoader?: () => Promise<DesktopRuntimeStatus>;
@@ -760,6 +838,12 @@ export function App({
   ssoStatusLoader?: () => Promise<SsoLoginStatus>;
   ssoCanceller?: () => Promise<SsoLoginStatus>;
   charactersLoader?: () => Promise<EveCharacter[]>;
+  accountGroupsLoader?: () => Promise<AccountGroup[]>;
+  characterUpdater?: (characterId: number, update: CharacterUpdate) => Promise<EveCharacter>;
+  characterDeleter?: (characterId: number) => Promise<void>;
+  accountGroupCreator?: (label: string) => Promise<AccountGroup>;
+  accountGroupRenamer?: (groupId: number, label: string) => Promise<AccountGroup>;
+  accountGroupDeleter?: (groupId: number) => Promise<void>;
   fontScaleSetter?: (fontScale: FontScale) => Promise<AppearanceStatus>;
 }) {
   const [locale, setLocale] = useState<Locale>("de");
@@ -775,6 +859,7 @@ export function App({
   const [ssoBusy, setSsoBusy] = useState(false);
   const [ssoCommandError, setSsoCommandError] = useState(false);
   const [characters, setCharacters] = useState<EveCharacter[]>([]);
+  const [managedGroups, setManagedGroups] = useState<AccountGroup[]>([]);
   const [charactersError, setCharactersError] = useState(false);
   const [fontScale, setFontScale] = useState<FontScale>("normal");
   const [fontScaleBusy, setFontScaleBusy] = useState(false);
@@ -815,11 +900,12 @@ export function App({
   useEffect(() => {
     if (!nativeCoreReady) return;
     let active = true;
-    void Promise.all([ssoStatusLoader(), charactersLoader()])
-      .then(([status, loadedCharacters]) => {
+    void Promise.all([ssoStatusLoader(), charactersLoader(), accountGroupsLoader()])
+      .then(([status, loadedCharacters, loadedGroups]) => {
         if (active) {
           setSsoStatus(status);
           setCharacters(loadedCharacters);
+          setManagedGroups(loadedGroups);
           setCharactersError(false);
         }
       })
@@ -832,7 +918,7 @@ export function App({
     return () => {
       active = false;
     };
-  }, [charactersLoader, nativeCoreReady, ssoStatusLoader]);
+  }, [accountGroupsLoader, charactersLoader, nativeCoreReady, ssoStatusLoader]);
 
   useEffect(() => {
     if (!nativeCoreReady || !["waiting", "exchanging"].includes(ssoStatus.state)) return;
@@ -864,10 +950,11 @@ export function App({
   useEffect(() => {
     if (!nativeCoreReady || ssoStatus.state !== "connected") return;
     let active = true;
-    void charactersLoader()
-      .then((loadedCharacters) => {
+    void Promise.all([charactersLoader(), accountGroupsLoader()])
+      .then(([loadedCharacters, loadedGroups]) => {
         if (active) {
           setCharacters(loadedCharacters);
+          setManagedGroups(loadedGroups);
           setCharactersError(false);
         }
       })
@@ -877,7 +964,22 @@ export function App({
     return () => {
       active = false;
     };
-  }, [charactersLoader, nativeCoreReady, ssoStatus.state]);
+  }, [accountGroupsLoader, charactersLoader, nativeCoreReady, ssoStatus.state]);
+
+  const refreshCharacterManagement = async () => {
+    try {
+      const [loadedCharacters, loadedGroups] = await Promise.all([
+        charactersLoader(),
+        accountGroupsLoader(),
+      ]);
+      setCharacters(loadedCharacters);
+      setManagedGroups(loadedGroups);
+      setCharactersError(false);
+    } catch {
+      setCharactersError(true);
+      throw new Error("character-management-refresh-failed");
+    }
+  };
 
   const runtimePresentationState =
     runtimeStatus.state === "ready" ? runtimeStatus.sidecar : runtimeStatus.state;
@@ -1248,36 +1350,19 @@ export function App({
           </div>
         </section>
 
-        <section className="character-roster" aria-label={t.characters.title}>
-          <div className="character-roster__heading">
-            <div><UsersRound size={17} aria-hidden="true" /></div>
-            <span>
-              <strong>{t.characters.title}</strong>
-              <small>{t.characters.count.replace("{count}", String(characters.length))}</small>
-            </span>
-          </div>
-          <div className="character-roster__list" aria-live="polite">
-            {charactersError ? (
-              <span className="character-roster__empty character-roster__empty--error">
-                {t.characters.unavailable}
-              </span>
-            ) : characters.length === 0 ? (
-              <span className="character-roster__empty">{t.characters.empty}</span>
-            ) : characters.map((character) => (
-              <article className="character-chip" key={character.characterId}>
-                <span className="character-chip__avatar"><UserRound size={16} /></span>
-                <span>
-                  <strong>{character.name}</strong>
-                  <small>{character.accountGroupLabel ?? t.characters.ungrouped}</small>
-                </span>
-                <span className="character-chip__scopes">
-                  <ShieldCheck size={13} />
-                  {t.characters.scopes.replace("{count}", String(character.scopes.length))}
-                </span>
-              </article>
-            ))}
-          </div>
-        </section>
+        <CharacterManager
+          characters={characters}
+          groups={managedGroups}
+          unavailable={charactersError}
+          disabled={!nativeCoreReady}
+          t={t}
+          updateCharacter={characterUpdater}
+          deleteCharacter={characterDeleter}
+          createGroup={accountGroupCreator}
+          renameGroup={accountGroupRenamer}
+          deleteGroup={accountGroupDeleter}
+          onRefresh={refreshCharacterManagement}
+        />
 
         {localData && (
           <DataStateNotice
@@ -1307,6 +1392,351 @@ export function App({
 }
 
 type Translation = (typeof copy)[Locale];
+
+function CharacterManager({
+  characters,
+  groups,
+  unavailable,
+  disabled,
+  t,
+  updateCharacter,
+  deleteCharacter,
+  createGroup,
+  renameGroup,
+  deleteGroup,
+  onRefresh,
+}: {
+  characters: EveCharacter[];
+  groups: AccountGroup[];
+  unavailable: boolean;
+  disabled: boolean;
+  t: Translation;
+  updateCharacter: (characterId: number, update: CharacterUpdate) => Promise<EveCharacter>;
+  deleteCharacter: (characterId: number) => Promise<void>;
+  createGroup: (label: string) => Promise<AccountGroup>;
+  renameGroup: (groupId: number, label: string) => Promise<AccountGroup>;
+  deleteGroup: (groupId: number) => Promise<void>;
+  onRefresh: () => Promise<void>;
+}) {
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [alias, setAlias] = useState("");
+  const [groupId, setGroupId] = useState("");
+  const [enabled, setEnabled] = useState(true);
+  const [newGroup, setNewGroup] = useState("");
+  const [groupLabels, setGroupLabels] = useState<Record<number, string>>({});
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const [deleteArmed, setDeleteArmed] = useState(false);
+  const selected = characters.find((character) => character.characterId === selectedId) ?? null;
+
+  const selectCharacter = (character: EveCharacter) => {
+    setSelectedId(character.characterId);
+    setAlias(character.alias ?? "");
+    setGroupId(character.accountGroupId === null ? "" : String(character.accountGroupId));
+    setEnabled(character.enabled);
+    setDeleteArmed(false);
+    setFailed(false);
+  };
+
+  const saveCharacter = async () => {
+    if (!selected || busy) return;
+    setBusy(true);
+    setFailed(false);
+    try {
+      await updateCharacter(selected.characterId, {
+        alias: alias.trim() || null,
+        accountGroupId: groupId === "" ? null : Number(groupId),
+        enabled,
+      });
+      await onRefresh();
+      setDeleteArmed(false);
+    } catch {
+      setFailed(true);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const removeCharacter = async () => {
+    if (!selected || busy) return;
+    if (!deleteArmed) {
+      setDeleteArmed(true);
+      return;
+    }
+    setBusy(true);
+    setFailed(false);
+    try {
+      await deleteCharacter(selected.characterId);
+      setSelectedId(null);
+      setDeleteArmed(false);
+      await onRefresh();
+    } catch {
+      setFailed(true);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const addGroup = async () => {
+    const label = newGroup.trim();
+    if (!label || busy) return;
+    setBusy(true);
+    setFailed(false);
+    try {
+      await createGroup(label);
+      setNewGroup("");
+      await onRefresh();
+    } catch {
+      setFailed(true);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const changeGroupLabel = async (group: AccountGroup) => {
+    const label = (groupLabels[group.id] ?? group.label).trim();
+    if (!label || label === group.label || busy) return;
+    setBusy(true);
+    setFailed(false);
+    try {
+      await renameGroup(group.id, label);
+      setGroupLabels((current) => ({ ...current, [group.id]: label }));
+      await onRefresh();
+    } catch {
+      setFailed(true);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const removeGroup = async (group: AccountGroup) => {
+    if (busy) return;
+    setBusy(true);
+    setFailed(false);
+    try {
+      await deleteGroup(group.id);
+      if (groupId === String(group.id)) setGroupId("");
+      await onRefresh();
+    } catch {
+      setFailed(true);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="character-roster" aria-label={t.characters.title}>
+      <div className="character-roster__heading">
+        <div><UsersRound size={17} aria-hidden="true" /></div>
+        <span>
+          <strong>{t.characters.title}</strong>
+          <small>{t.characters.count.replace("{count}", String(characters.length))}</small>
+        </span>
+      </div>
+      <div className="character-roster__list" aria-live="polite">
+        {unavailable ? (
+          <span className="character-roster__empty character-roster__empty--error">
+            {t.characters.unavailable}
+          </span>
+        ) : characters.length === 0 ? (
+          <span className="character-roster__empty">{t.characters.empty}</span>
+        ) : characters.map((character) => (
+          <article
+            className={`character-chip ${character.enabled ? "" : "character-chip--inactive"}`}
+            key={character.characterId}
+          >
+            <span className="character-chip__avatar"><UserRound size={16} /></span>
+            <span>
+              <strong>{character.alias ?? character.name}</strong>
+              <small>
+                {character.alias ? `${character.name} · ` : ""}
+                {character.accountGroupLabel ?? t.characters.ungrouped}
+              </small>
+            </span>
+            <span className="character-chip__scopes">
+              <ShieldCheck size={13} />
+              {t.characters.scopes.replace("{count}", String(character.scopes.length))}
+            </span>
+            {!character.enabled && <small className="status-pill">{t.characters.inactive}</small>}
+            <button
+              type="button"
+              className="character-chip__manage"
+              onClick={() => selectCharacter(character)}
+              disabled={disabled}
+              aria-expanded={selectedId === character.characterId}
+            >
+              {t.characters.manage}
+            </button>
+          </article>
+        ))}
+      </div>
+
+      {selected && (
+        <div className="character-manager" data-testid="character-manager">
+          <div className="character-manager__title">
+            <span>
+              <strong>{selected.alias ?? selected.name}</strong>
+              <small>{selected.name} · EVE ID {selected.characterId}</small>
+            </span>
+            <button
+              type="button"
+              className="icon-button"
+              onClick={() => setSelectedId(null)}
+              aria-label={t.characters.close}
+            >
+              <X size={16} />
+            </button>
+          </div>
+
+          <form
+            className="character-manager__form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void saveCharacter();
+            }}
+          >
+            <label>
+              <span>{t.characters.alias}</span>
+              <input
+                value={alias}
+                maxLength={80}
+                placeholder={t.characters.aliasPlaceholder}
+                onChange={(event) => setAlias(event.target.value)}
+                disabled={busy}
+              />
+            </label>
+            <label>
+              <span>{t.characters.group}</span>
+              <select
+                value={groupId}
+                onChange={(event) => setGroupId(event.target.value)}
+                disabled={busy}
+              >
+                <option value="">{t.characters.ungrouped}</option>
+                {groups.map((group) => (
+                  <option value={group.id} key={group.id}>{group.label}</option>
+                ))}
+              </select>
+            </label>
+            <label className="character-manager__toggle">
+              <input
+                type="checkbox"
+                checked={enabled}
+                onChange={(event) => setEnabled(event.target.checked)}
+                disabled={busy}
+              />
+              <span>{t.characters.active}</span>
+            </label>
+            <div className="character-manager__status">
+              <span>
+                {t.characters.credential}:{" "}
+                <strong>{t.characters.credentialStates[selected.credentialState]}</strong>
+              </span>
+              <div>
+                {selected.scopePackages.map((scopePackage) => (
+                  <span
+                    className={`scope-status scope-status--${scopePackage.status}`}
+                    key={scopePackage.id}
+                  >
+                    {t.sso.packageLabels[scopePackage.id]} ·{" "}
+                    {t.characters.scopeStates[scopePackage.status]}{" "}
+                    {scopePackage.grantedCount}/{scopePackage.requiredCount}
+                  </span>
+                ))}
+              </div>
+            </div>
+            {failed && <p className="character-manager__error" role="alert">{t.characters.error}</p>}
+            <div className="character-manager__actions">
+              <button type="submit" className="sso-start" disabled={busy}>
+                <Check size={15} />
+                {busy ? t.characters.saving : t.characters.save}
+              </button>
+              <button
+                type="button"
+                className={deleteArmed ? "danger-button danger-button--armed" : "danger-button"}
+                onClick={() => void removeCharacter()}
+                disabled={busy}
+              >
+                {deleteArmed ? t.characters.confirmDelete : t.characters.delete}
+              </button>
+              {deleteArmed && (
+                <button
+                  type="button"
+                  className="sso-cancel"
+                  onClick={() => setDeleteArmed(false)}
+                  disabled={busy}
+                >
+                  {t.characters.cancelDelete}
+                </button>
+              )}
+            </div>
+            {deleteArmed && <small className="character-manager__delete-detail">{t.characters.deleteDetail}</small>}
+          </form>
+
+          <div className="account-groups">
+            <strong>{t.characters.groupsTitle}</strong>
+            <form
+              className="account-groups__create"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void addGroup();
+              }}
+            >
+              <input
+                value={newGroup}
+                maxLength={80}
+                placeholder={t.characters.newGroup}
+                aria-label={t.characters.newGroup}
+                onChange={(event) => setNewGroup(event.target.value)}
+                disabled={busy}
+              />
+              <button type="submit" className="sso-start" disabled={busy || !newGroup.trim()}>
+                <Plus size={14} />
+                {t.characters.createGroup}
+              </button>
+            </form>
+            {groups.length === 0 ? (
+              <small>{t.characters.noGroups}</small>
+            ) : (
+              <div className="account-groups__list">
+                {groups.map((group) => (
+                  <div className="account-group-row" key={group.id}>
+                    <input
+                      value={groupLabels[group.id] ?? group.label}
+                      maxLength={80}
+                      aria-label={`${t.characters.renameGroup}: ${group.label}`}
+                      onChange={(event) => setGroupLabels((current) => ({
+                        ...current,
+                        [group.id]: event.target.value,
+                      }))}
+                      disabled={busy}
+                    />
+                    <small>{t.characters.members.replace("{count}", String(group.characterCount))}</small>
+                    <button
+                      type="button"
+                      onClick={() => void changeGroupLabel(group)}
+                      disabled={busy || (groupLabels[group.id] ?? group.label).trim() === group.label}
+                    >
+                      {t.characters.renameGroup}
+                    </button>
+                    <button
+                      type="button"
+                      className="danger-button"
+                      onClick={() => void removeGroup(group)}
+                      disabled={busy}
+                    >
+                      {t.characters.deleteGroup}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
 
 function Overview({
   locale,

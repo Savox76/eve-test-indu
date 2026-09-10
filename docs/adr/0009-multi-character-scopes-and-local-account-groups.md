@@ -17,7 +17,7 @@ Eine technische Gleichsetzung von EVE-Login, Account und Charakter wäre deshalb
 - Mehrere Charaktere dürfen optional in frei benannte, ausschließlich lokale **Kontogruppen** einsortiert werden. Diese Gruppen bilden die vom Nutzer gewünschte Accountstruktur ab, behaupten aber keine von EVE bestätigte Accountzugehörigkeit.
 - Ein erneutes Verbinden derselben Charakter-ID aktualisiert Name, Kontogruppe und Scopes atomar und erzeugt keinen doppelten Charakter.
 - Das Entfernen einer Kontogruppe löscht keinen Charakter und keine Autorisierung; die betroffenen Charaktere werden lediglich als nicht gruppiert geführt.
-- Das bewusste Löschen eines Charakters entfernt dagegen dessen lokale Scopes, Synchronisierungsläufe und abhängige Cache-Snapshots vollständig; Schlüsselbunddaten werden im späteren Löschablauf ebenfalls entfernt.
+- Das bewusste, zweistufig bestätigte Löschen eines Charakters entfernt dessen Refresh Token, Prozess-Token, lokale Identität, Scopes, Synchronisierungsläufe und abhängige Cache-Snapshots vollständig. Schlägt die Credential-Löschung fehl, wird die SQLite-Löschung zurückgerollt.
 - Eigentümerbezogene Daten und Synchronisierungsläufe tragen eine Charakter-ID. Gemeinsame Auswertungen aggregieren diese Datensätze, ohne den Eigentümerbezug zu verlieren.
 - Die Oberfläche bietet mindestens zwei Ebenen: **Alle Charaktere** als gemeinsame Gesamtübersicht und eine eigene Übersicht je Charakter. Lokale Kontogruppen strukturieren die Auswahl.
 - Datenalter, fehlende Scopes und fehlgeschlagene Synchronisierungen bleiben pro Charakter sichtbar. Die Gesamtübersicht darf unvollständige Charakterdaten nicht als Nullwerte ausgeben oder still aus der Summe entfernen.
@@ -30,10 +30,10 @@ Ein EVE-Account mit mehreren Charakteren benötigt mehrere bewusste SSO-Anmeldev
 
 ## Verifikation
 
-- Migrationstests aktualisieren eine Schema-Version-1-Datenbank ohne Datenverlust auf das Mehrcharakter-Schema.
-- Backendtests prüfen mit negativen synthetischen IDs mehrere Kontogruppen, mehrere Charaktere, getrennte Scopes, idempotentes Wiederverbinden, ungültige Gruppenzuordnung und das gruppenunabhängige Fortbestehen eines Charakters.
-- UI-Tests wechseln zwischen Gesamt- und Charakterübersicht, prüfen unterschiedliche Kennzahlen und halten den Erstellerhinweis von jeder Charakteridentität getrennt.
-- Spätere SSO-Integrationstests weisen nach, dass Token, Scopes, Fehler und Datenalter nie zwischen Charakteren vermischt werden.
+- Migrationstests aktualisieren eine Schema-Version-5-Datenbank ohne Datenverlust um lokale Charakteraliase.
+- Backendtests prüfen mehrere Kontogruppen, Alias und Aktivstatus, getrennte Scopes, idempotentes Wiederverbinden, ungültige Gruppenzuordnung sowie vollständiges Löschen einschließlich Rollback bei Credential-Fehlern.
+- IPC- und UI-Tests validieren Credential-/Scopepaket-Status, Editoraktionen und die zweite Bestätigung vor dem vollständigen Löschen.
+- SSO-Integrationstests weisen nach, dass Token, Scopes, Fehler und Datenalter nie zwischen Charakteren vermischt werden.
 
 ## Referenzen
 

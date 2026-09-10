@@ -303,7 +303,7 @@ def main() -> int:
                 raise RuntimeError("The packaged PKCE login could not be cancelled.")
             backup_name = database.get("lastMigrationBackup")
             if not isinstance(backup_name, str) or not backup_name.startswith(
-                "foundry-schema-v0004-to-v0005-"
+                "foundry-schema-v0005-to-v0006-"
             ):
                 raise RuntimeError("The packaged migration did not report its backup.")
 

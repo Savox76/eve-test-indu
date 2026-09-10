@@ -54,9 +54,35 @@ export interface EveCharacterIdentity {
   scopes: string[];
 }
 
+export type CredentialState = "stored" | "missing" | "unavailable";
+export type ScopePackageState = "granted" | "partial" | "missing";
+
+export interface ScopePackageStatus {
+  id: SsoScopePackage;
+  status: ScopePackageState;
+  grantedCount: number;
+  requiredCount: number;
+}
+
 export interface EveCharacter extends EveCharacterIdentity {
+  alias: string | null;
   accountGroupId: number | null;
   accountGroupLabel: string | null;
+  enabled: boolean;
+  credentialState: CredentialState;
+  scopePackages: ScopePackageStatus[];
+}
+
+export interface AccountGroup {
+  id: number;
+  label: string;
+  sortOrder: number;
+  characterCount: number;
+}
+
+export interface CharacterUpdate {
+  alias: string | null;
+  accountGroupId: number | null;
   enabled: boolean;
 }
 
@@ -144,6 +170,16 @@ export const ssoScopePackages: readonly SsoScopePackage[] = [
   "projects",
   "private-structures",
 ];
+
+const scopePackageRequirements: Readonly<Record<SsoScopePackage, number>> = {
+  "industry-core": 4,
+  market: 2,
+  "planetary-industry": 1,
+  projects: 1,
+  "private-structures": 1,
+};
+const credentialStates: readonly CredentialState[] = ["stored", "missing", "unavailable"];
+const scopePackageStates: readonly ScopePackageState[] = ["granted", "partial", "missing"];
 
 export const initialRuntimeStatus: DesktopRuntimeStatus = { state: "checking" };
 
@@ -252,14 +288,85 @@ function parseEveCharacter(candidate: unknown): EveCharacter {
   const identity = parseEveCharacterIdentity(candidate);
   if (
     !isRecord(candidate) ||
+    (candidate.alias !== null &&
+      (typeof candidate.alias !== "string" ||
+        candidate.alias.trim() !== candidate.alias ||
+        candidate.alias.length < 1 ||
+        candidate.alias.length > 80)) ||
     (candidate.accountGroupId !== null &&
       (!Number.isSafeInteger(candidate.accountGroupId) || Number(candidate.accountGroupId) <= 0)) ||
-    !isNullableText(candidate.accountGroupLabel) ||
-    typeof candidate.enabled !== "boolean"
+    !(candidate.accountGroupLabel === null ||
+      (typeof candidate.accountGroupLabel === "string" &&
+        candidate.accountGroupLabel.trim() === candidate.accountGroupLabel &&
+        candidate.accountGroupLabel.length >= 1 &&
+        candidate.accountGroupLabel.length <= 80)) ||
+    typeof candidate.enabled !== "boolean" ||
+    typeof candidate.credentialState !== "string" ||
+    !credentialStates.includes(candidate.credentialState as CredentialState) ||
+    !Array.isArray(candidate.scopePackages) ||
+    candidate.scopePackages.length !== ssoScopePackages.length
   ) {
     throw new Error("The native runtime returned invalid EVE character metadata.");
   }
-  return { ...candidate, ...identity } as unknown as EveCharacter;
+
+  const scopePackages = candidate.scopePackages.map((value): ScopePackageStatus => {
+    if (
+      !isRecord(value) ||
+      typeof value.id !== "string" ||
+      !ssoScopePackages.includes(value.id as SsoScopePackage) ||
+      typeof value.status !== "string" ||
+      !scopePackageStates.includes(value.status as ScopePackageState) ||
+      !Number.isSafeInteger(value.grantedCount) ||
+      !Number.isSafeInteger(value.requiredCount)
+    ) {
+      throw new Error("The native runtime returned invalid EVE character metadata.");
+    }
+    const status = value as unknown as ScopePackageStatus;
+    const expectedRequired = scopePackageRequirements[status.id];
+    const expectedState = status.grantedCount === 0
+      ? "missing"
+      : status.grantedCount === status.requiredCount
+        ? "granted"
+        : "partial";
+    if (
+      status.requiredCount !== expectedRequired ||
+      status.grantedCount < 0 ||
+      status.grantedCount > status.requiredCount ||
+      status.status !== expectedState
+    ) {
+      throw new Error("The native runtime returned inconsistent scope-package metadata.");
+    }
+    return status;
+  });
+  if (
+    new Set(scopePackages.map(({ id }) => id)).size !== ssoScopePackages.length ||
+    !ssoScopePackages.every((id) => scopePackages.some((scopePackage) => scopePackage.id === id))
+  ) {
+    throw new Error("The native runtime returned duplicate or incomplete scope-package metadata.");
+  }
+  if ((candidate.accountGroupId === null) !== (candidate.accountGroupLabel === null)) {
+    throw new Error("The native runtime returned inconsistent account-group metadata.");
+  }
+  return { ...candidate, ...identity, scopePackages } as unknown as EveCharacter;
+}
+
+function parseAccountGroup(candidate: unknown): AccountGroup {
+  if (
+    !isRecord(candidate) ||
+    !Number.isSafeInteger(candidate.id) ||
+    Number(candidate.id) <= 0 ||
+    typeof candidate.label !== "string" ||
+    candidate.label.trim() !== candidate.label ||
+    candidate.label.length < 1 ||
+    candidate.label.length > 80 ||
+    !Number.isSafeInteger(candidate.sortOrder) ||
+    Number(candidate.sortOrder) < 0 ||
+    !Number.isSafeInteger(candidate.characterCount) ||
+    Number(candidate.characterCount) < 0
+  ) {
+    throw new Error("The native runtime returned invalid account-group metadata.");
+  }
+  return candidate as unknown as AccountGroup;
 }
 
 function parseSsoLoginStatus(candidate: unknown): SsoLoginStatus {
@@ -483,4 +590,136 @@ export async function cancelEveSso(
     throw new Error("The EVE SSO attempt was not cancelled.");
   }
   return status;
+}
+
+
+export async function loadAccountGroups(
+  adapter: RuntimeAdapter = tauriAdapter,
+): Promise<AccountGroup[]> {
+  if (!adapter.isAvailable()) return [];
+  const candidate: unknown = JSON.parse(await adapter.invoke("list_account_groups"));
+  if (!isRecord(candidate) || !Array.isArray(candidate.groups)) {
+    throw new Error("The native runtime returned an invalid account-group list.");
+  }
+  const groups = candidate.groups.map(parseAccountGroup);
+  if (new Set(groups.map(({ id }) => id)).size !== groups.length) {
+    throw new Error("The native runtime returned duplicate account groups.");
+  }
+  return groups;
+}
+
+function requireDesktopAdapter(adapter: RuntimeAdapter): void {
+  if (!adapter.isAvailable()) {
+    throw new Error("Character management is available only in the desktop application.");
+  }
+}
+
+function requirePositiveIdentifier(value: number, field: string): void {
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new Error(`${field} must be a positive integer.`);
+  }
+}
+
+export async function updateEveCharacter(
+  characterId: number,
+  update: CharacterUpdate,
+  adapter: RuntimeAdapter = tauriAdapter,
+): Promise<EveCharacter> {
+  requireDesktopAdapter(adapter);
+  requirePositiveIdentifier(characterId, "Character ID");
+  if (
+    (update.alias !== null &&
+      (typeof update.alias !== "string" ||
+        update.alias.trim() !== update.alias ||
+        update.alias.length < 1 ||
+        update.alias.length > 80)) ||
+    (update.accountGroupId !== null &&
+      (!Number.isSafeInteger(update.accountGroupId) || update.accountGroupId <= 0)) ||
+    typeof update.enabled !== "boolean"
+  ) {
+    throw new Error("The character update is invalid.");
+  }
+  const candidate: unknown = JSON.parse(
+    await adapter.invoke("update_eve_character", {
+      characterId,
+      alias: update.alias,
+      accountGroupId: update.accountGroupId,
+      enabled: update.enabled,
+    }),
+  );
+  if (!isRecord(candidate) || !isRecord(candidate.character)) {
+    throw new Error("The native runtime returned an invalid character update.");
+  }
+  return parseEveCharacter(candidate.character);
+}
+
+export async function deleteEveCharacter(
+  characterId: number,
+  adapter: RuntimeAdapter = tauriAdapter,
+): Promise<void> {
+  requireDesktopAdapter(adapter);
+  requirePositiveIdentifier(characterId, "Character ID");
+  const candidate: unknown = JSON.parse(
+    await adapter.invoke("delete_eve_character", { characterId }),
+  );
+  if (!isRecord(candidate) || candidate.deleted !== true || candidate.characterId !== characterId) {
+    throw new Error("The native runtime returned an invalid character deletion.");
+  }
+}
+
+function validateGroupLabel(label: string): void {
+  if (
+    typeof label !== "string" ||
+    label.trim() !== label ||
+    label.length < 1 ||
+    label.length > 80
+  ) {
+    throw new Error("The account-group label is invalid.");
+  }
+}
+
+export async function createAccountGroup(
+  label: string,
+  adapter: RuntimeAdapter = tauriAdapter,
+): Promise<AccountGroup> {
+  requireDesktopAdapter(adapter);
+  validateGroupLabel(label);
+  const candidate: unknown = JSON.parse(
+    await adapter.invoke("create_account_group", { label }),
+  );
+  if (!isRecord(candidate) || !isRecord(candidate.group)) {
+    throw new Error("The native runtime returned an invalid account-group update.");
+  }
+  return parseAccountGroup(candidate.group);
+}
+
+export async function renameAccountGroup(
+  groupId: number,
+  label: string,
+  adapter: RuntimeAdapter = tauriAdapter,
+): Promise<AccountGroup> {
+  requireDesktopAdapter(adapter);
+  requirePositiveIdentifier(groupId, "Account-group ID");
+  validateGroupLabel(label);
+  const candidate: unknown = JSON.parse(
+    await adapter.invoke("rename_account_group", { groupId, label }),
+  );
+  if (!isRecord(candidate) || !isRecord(candidate.group)) {
+    throw new Error("The native runtime returned an invalid account-group update.");
+  }
+  return parseAccountGroup(candidate.group);
+}
+
+export async function deleteAccountGroup(
+  groupId: number,
+  adapter: RuntimeAdapter = tauriAdapter,
+): Promise<void> {
+  requireDesktopAdapter(adapter);
+  requirePositiveIdentifier(groupId, "Account-group ID");
+  const candidate: unknown = JSON.parse(
+    await adapter.invoke("delete_account_group", { groupId }),
+  );
+  if (!isRecord(candidate) || candidate.deleted !== true || candidate.groupId !== groupId) {
+    throw new Error("The native runtime returned an invalid account-group deletion.");
+  }
 }

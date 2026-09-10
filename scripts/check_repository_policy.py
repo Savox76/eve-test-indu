@@ -106,6 +106,7 @@ REQUIRED_SQLITE_MARKERS = (
     "ADD COLUMN expires_at",
     "CREATE TABLE app_settings",
     "VALUES ('update_channel', 'stable')",
+    "ADD COLUMN alias",
 )
 
 REQUIRED_RECOVERY_MARKERS = (
@@ -246,6 +247,23 @@ def check_documentation(errors: list[str]) -> None:
             if marker not in token_content:
                 errors.append(f"Token security documentation is missing marker: {marker}")
 
+    character_documentation = ROOT / "docs" / "character-management.md"
+    if not character_documentation.is_file():
+        errors.append("Missing character-management operating documentation.")
+    else:
+        character_content = character_documentation.read_text(encoding="utf-8")
+        for marker in (
+            "Lokaler Alias",
+            "Credential-Status",
+            "Scopepaket-Status",
+            "zweistufig",
+            "rollt der Sidecar die SQLite-Änderung zurück",
+        ):
+            if marker not in character_content:
+                errors.append(
+                    f"Character-management documentation is missing marker: {marker}"
+                )
+
     releasing = ROOT / "docs" / "RELEASING.md"
     if not releasing.is_file():
         errors.append("Missing release rules.")
@@ -364,6 +382,10 @@ def check_backend_foundation(errors: list[str]) -> None:
             'app.put("/settings/update")',
             'app.put("/settings/appearance")',
             'app.get("/characters")',
+            'app.patch("/characters/{character_id}")',
+            'app.delete("/characters/{character_id}")',
+            'app.get("/account-groups")',
+            "delete_character_completely",
             '"publicDistribution": False',
             "verify_bundled_test_manifest",
         ):
@@ -478,6 +500,12 @@ def check_backend_foundation(errors: list[str]) -> None:
             "set_update_channel",
             "set_font_scale",
             "list_eve_characters",
+            "list_account_groups",
+            "update_eve_character",
+            "delete_eve_character",
+            "create_account_group",
+            "rename_account_group",
+            "delete_account_group",
             "start_eve_sso",
             "eve_sso_status",
             "cancel_eve_sso",
