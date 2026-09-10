@@ -24,6 +24,35 @@ Keine.
 
 Keine.
 
+## 0.0.5-preview.6 – 10. September 2026
+
+### Neu hinzugefügt
+
+- Paket 23: echter, vollständig paginierter Blueprint-Sync für alle aktivierten Charaktere mit atomaren charaktergetrennten Snapshots.
+- Zweisprachige BPO/BPC-Ansicht mit echten Typnamen, Besitzer, ME/TE, Läufen, Inventarbereich, Datenalter, Suche, Filtern, Sortierung und begrenzten Seiten.
+- Sichtbarer Status **Anmeldung nötig** mit direkter erneuter EVE-SSO-Anmeldung, wenn einem gespeicherten Charakter aktuelle Scopes oder sein Credential fehlen.
+
+### Geändert
+
+- Neue und erneute Charakteranmeldungen fordern automatisch alle fünf aktuell registrierten SSO-Berechtigungspakete an; die manuelle Paketauswahl entfällt.
+- Der Hintergrundabgleich beim Programmstart und nach einer Charakteranmeldung aktualisiert nun Assets und Blueprints.
+- Die sichtbare Versionsnummer lautet `v0.0.5-preview.6`.
+
+### Behobene Fehler
+
+- Später ergänzte App-Berechtigungen führen nicht länger zu einer schwer erkennbaren Teilfunktion: betroffene Charaktere werden eindeutig markiert und bleiben bis zur idempotenten Neuanmeldung gespeichert.
+- Fehlgeschlagene oder unvollständige Blueprint-Abrufe können den letzten vollständigen Bestand nicht überschreiben.
+
+### Bekannte Einschränkungen
+
+- Persönliche Industrieaufträge und deren Korrelation mit Blueprint- und Asset-Änderungen folgen in Paket 24.
+- Paket 22 wartet weiterhin auf das vollständige Windows-A0-Protokoll.
+
+### Update und Datenbankmigration
+
+- Keine Schemaänderung. Bestehende Charaktere, Aliasse, Gruppen, Credentials und Snapshots bleiben erhalten.
+- Charaktere mit einem älteren Scope-Satz müssen einmal über den sichtbaren Hinweis erneut angemeldet werden.
+
 ## 0.0.5-preview.5 – 10. September 2026
 
 ### Neu hinzugefügt

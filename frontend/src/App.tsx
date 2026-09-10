@@ -68,7 +68,9 @@ import {
   loadDesktopRuntimeStatus,
   loadAssets,
   loadAssetDeltas,
+  loadBlueprints,
   syncAssets,
+  syncBlueprints,
   renameAccountGroup,
   setDesktopUpdateChannel,
   setDesktopFontScale,
@@ -85,6 +87,11 @@ import {
   type AssetSortField,
   type AssetSyncResult,
   type AssetQuery,
+  type BlueprintKind,
+  type BlueprintPage,
+  type BlueprintQuery,
+  type BlueprintSortField,
+  type BlueprintSyncResult,
   type CharacterUpdate,
   type DesktopRuntimeStatus,
   type EveCharacter,
@@ -96,6 +103,7 @@ import {
   type UpdateChannel,
   type UpdaterStatus,
   type AppearanceStatus,
+  blueprintPageSize,
 } from "./runtime";
 
 type Locale = "de" | "en";
@@ -267,7 +275,8 @@ const copy = {
       retry: "Erneut versuchen",
       desktopOnly: "Die echte Anmeldung ist in der Windows-App verfügbar.",
       commandError: "Die Anmeldung konnte nicht gestartet oder abgefragt werden.",
-      scopeTitle: "Berechtigungspakete für diesen Charakter",
+      scopeTitle: "Automatische Berechtigungen",
+      scopeAutomatic: "Alle aktuell benötigten SSO-Pakete werden automatisch angefordert.",
       security: "Systembrowser · S256 · zufälliger state · 3-Minuten-Zeitfenster",
       connectedName: "Verbunden: {name}",
       packageLabels: {
@@ -317,6 +326,10 @@ const copy = {
       deleteGroup: "Gruppe löschen",
       noGroups: "Noch keine Kontogruppe angelegt",
       members: "{count} Charaktere",
+      reauthorizationShort: "Anmeldung nötig",
+      reauthorizationTitle: "Berechtigungen müssen erneuert werden",
+      reauthorizationDetail: "Für diesen Charakter fehlen aktuelle Berechtigungen. Melde denselben Charakter erneut über EVE SSO an.",
+      reauthorize: "Jetzt neu anmelden",
     },
     fontSize: {
       label: "Schriftgröße",
@@ -472,6 +485,40 @@ const copy = {
         unmatched: "Jobzuordnung vorbereitet",
       },
     },
+    blueprints: {
+      kicker: "LOKALER BLUEPRINT-BESTAND",
+      subtitle: "BPOs und BPCs aller aktiven Charaktere mit ME, TE und verbleibenden Läufen.",
+      search: "Blueprint, Besitzer, Ort oder ID suchen",
+      owner: "Besitzer",
+      allOwners: "Alle Besitzer",
+      kind: "Art",
+      allKinds: "BPO & BPC",
+      original: "Original (BPO)",
+      copy: "Kopie (BPC)",
+      type: "Blueprint",
+      me: "ME",
+      te: "TE",
+      runs: "Läufe",
+      location: "Bereich",
+      age: "Datenalter",
+      count: "Blueprints",
+      unlimited: "unbegrenzt",
+      sync: "Blueprints aktualisieren",
+      syncing: "Blueprints werden aktualisiert …",
+      syncComplete: "{blueprints} Blueprints von {characters} Charakter(en) aktualisiert.",
+      syncPartial: "{completed} aktualisiert, {failed} fehlgeschlagen. Anmeldung oder Verbindung prüfen.",
+      syncEmpty: "Kein aktivierter Charakter für den Blueprint-Sync vorhanden.",
+      syncError: "Blueprint-Sync konnte nicht gestartet werden.",
+      loading: "Blueprint-Bestand wird geladen …",
+      unavailable: "Die echte Blueprint-Ansicht ist in der Windows-App verfügbar.",
+      noData: "Noch kein vollständiger Blueprint-Snapshot vorhanden.",
+      noMatches: "Keine Blueprints entsprechen der Auswahl.",
+      queryError: "Der lokale Blueprint-Bestand konnte nicht gelesen werden.",
+      resultRange: "{from}–{to} von {total}",
+      previous: "Vorherige Seite",
+      next: "Nächste Seite",
+      liveNotice: "Echte lokale Blueprint-Snapshots · automatisch beim Programmstart",
+    },
     moduleKicker: "MODULVORSCHAU",
     moduleText:
       "Dieser Bereich zeigt bereits die geplante Informationsarchitektur. Fachlogik und echte EVE-Daten werden in den kommenden Releases schrittweise angeschlossen.",
@@ -495,7 +542,7 @@ const copy = {
     },
     planned: "Geplant",
     previewOnly: "Noch ohne Live-Funktion",
-    footerVersion: "v0.0.5-preview.5",
+    footerVersion: "v0.0.5-preview.6",
   },
   en: {
     nav: {
@@ -642,7 +689,8 @@ const copy = {
       retry: "Try again",
       desktopOnly: "Real sign-in is available in the Windows app.",
       commandError: "The sign-in could not be started or checked.",
-      scopeTitle: "Permission packages for this character",
+      scopeTitle: "Automatic permissions",
+      scopeAutomatic: "All SSO packages currently required by the app are requested automatically.",
       security: "System browser · S256 · random state · 3-minute window",
       connectedName: "Connected: {name}",
       packageLabels: {
@@ -692,6 +740,10 @@ const copy = {
       deleteGroup: "Delete group",
       noGroups: "No account group created yet",
       members: "{count} characters",
+      reauthorizationShort: "Sign-in required",
+      reauthorizationTitle: "Permissions need to be renewed",
+      reauthorizationDetail: "This character is missing current permissions. Sign in again with the same character through EVE SSO.",
+      reauthorize: "Sign in again",
     },
     fontSize: {
       label: "Font size",
@@ -847,6 +899,40 @@ const copy = {
         unmatched: "Job correlation prepared",
       },
     },
+    blueprints: {
+      kicker: "LOCAL BLUEPRINT INVENTORY",
+      subtitle: "BPOs and BPCs for all active characters, including ME, TE, and remaining runs.",
+      search: "Search blueprint, owner, location, or ID",
+      owner: "Owner",
+      allOwners: "All owners",
+      kind: "Kind",
+      allKinds: "BPO & BPC",
+      original: "Original (BPO)",
+      copy: "Copy (BPC)",
+      type: "Blueprint",
+      me: "ME",
+      te: "TE",
+      runs: "Runs",
+      location: "Division",
+      age: "Data age",
+      count: "blueprints",
+      unlimited: "unlimited",
+      sync: "Refresh blueprints",
+      syncing: "Refreshing blueprints …",
+      syncComplete: "Updated {blueprints} blueprints from {characters} character(s).",
+      syncPartial: "{completed} updated, {failed} failed. Check sign-in or connection.",
+      syncEmpty: "No enabled character is available for blueprint sync.",
+      syncError: "Blueprint sync could not be started.",
+      loading: "Loading blueprint inventory …",
+      unavailable: "The live blueprint view is available in the Windows app.",
+      noData: "No complete blueprint snapshot is available yet.",
+      noMatches: "No blueprints match the selection.",
+      queryError: "The local blueprint inventory could not be read.",
+      resultRange: "{from}–{to} of {total}",
+      previous: "Previous page",
+      next: "Next page",
+      liveNotice: "Live local blueprint snapshots · automatic at application startup",
+    },
     moduleKicker: "MODULE PREVIEW",
     moduleText:
       "This area already shows the planned information architecture. Domain logic and real EVE data will be connected incrementally in upcoming releases.",
@@ -870,7 +956,7 @@ const copy = {
     },
     planned: "Planned",
     previewOnly: "No live function yet",
-    footerVersion: "v0.0.5-preview.5",
+    footerVersion: "v0.0.5-preview.6",
   },
 } as const;
 
@@ -985,6 +1071,8 @@ export function App({
   assetsCsvExporter = exportAssetsCsv,
   assetDeltasLoader = loadAssetDeltas,
   assetSyncer = syncAssets,
+  blueprintsLoader = loadBlueprints,
+  blueprintSyncer = syncBlueprints,
   fontScaleSetter = setDesktopFontScale,
 }: {
   runtimeLoader?: () => Promise<DesktopRuntimeStatus>;
@@ -1005,6 +1093,8 @@ export function App({
   ) => Promise<AssetCsvExport>;
   assetDeltasLoader?: (query: AssetDeltaQuery) => Promise<AssetDeltaPage>;
   assetSyncer?: () => Promise<AssetSyncResult>;
+  blueprintsLoader?: (query: BlueprintQuery) => Promise<BlueprintPage>;
+  blueprintSyncer?: () => Promise<BlueprintSyncResult>;
   fontScaleSetter?: (fontScale: FontScale) => Promise<AppearanceStatus>;
 }) {
   const [locale, setLocale] = useState<Locale>("de");
@@ -1013,6 +1103,7 @@ export function App({
   const [searchFocused, setSearchFocused] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [assetRevision, setAssetRevision] = useState(0);
+  const [blueprintRevision, setBlueprintRevision] = useState(0);
   const initialAssetSyncStarted = useRef(false);
   const [runtimeStatus, setRuntimeStatus] = useState(initialRuntimeStatus);
   const [overviewScope, setOverviewScope] = useState<OverviewScopeId>("all");
@@ -1026,9 +1117,6 @@ export function App({
   const [charactersError, setCharactersError] = useState(false);
   const [fontScale, setFontScale] = useState<FontScale>("normal");
   const [fontScaleBusy, setFontScaleBusy] = useState(false);
-  const [selectedScopePackages, setSelectedScopePackages] = useState<SsoScopePackage[]>([
-    "industry-core",
-  ]);
   const t = copy[locale];
 
   useEffect(() => {
@@ -1071,6 +1159,18 @@ export function App({
     }
   }, [assetSyncer]);
 
+  const runBlueprintSync = useCallback(async () => {
+    const result = await blueprintSyncer();
+    setBlueprintRevision((revision) => revision + 1);
+    return result;
+  }, [blueprintSyncer]);
+
+  const runAllSyncs = useCallback(async () => {
+    const [assets] = await Promise.allSettled([runAssetSync(), runBlueprintSync()]);
+    if (assets.status === "rejected") throw assets.reason;
+    return assets.value;
+  }, [runAssetSync, runBlueprintSync]);
+
   useEffect(() => {
     if (!nativeCoreReady) return;
     let active = true;
@@ -1087,7 +1187,7 @@ export function App({
             !initialAssetSyncStarted.current
           ) {
             initialAssetSyncStarted.current = true;
-            void runAssetSync().catch(() => undefined);
+            void runAllSyncs().catch(() => undefined);
           }
         }
       })
@@ -1100,7 +1200,7 @@ export function App({
     return () => {
       active = false;
     };
-  }, [accountGroupsLoader, charactersLoader, nativeCoreReady, runAssetSync, ssoStatusLoader]);
+  }, [accountGroupsLoader, charactersLoader, nativeCoreReady, runAllSyncs, ssoStatusLoader]);
 
   useEffect(() => {
     if (!nativeCoreReady || !["waiting", "exchanging"].includes(ssoStatus.state)) return;
@@ -1140,7 +1240,7 @@ export function App({
           setCharactersError(false);
           if (loadedCharacters.some((character) => character.enabled)) {
             initialAssetSyncStarted.current = true;
-            void runAssetSync().catch(() => undefined);
+            void runAllSyncs().catch(() => undefined);
           }
         }
       })
@@ -1150,7 +1250,7 @@ export function App({
     return () => {
       active = false;
     };
-  }, [accountGroupsLoader, charactersLoader, nativeCoreReady, runAssetSync, ssoStatus.state]);
+  }, [accountGroupsLoader, charactersLoader, nativeCoreReady, runAllSyncs, ssoStatus.state]);
 
   const refreshCharacterManagement = async () => {
     try {
@@ -1243,23 +1343,12 @@ export function App({
     }
   };
 
-  const toggleScopePackage = (scopePackage: SsoScopePackage) => {
-    if (
-      scopePackage === "industry-core" ||
-      ssoStatus.state === "waiting" ||
-      ssoStatus.state === "exchanging"
-    ) return;
-    setSelectedScopePackages((current) => current.includes(scopePackage)
-      ? current.filter((item) => item !== scopePackage)
-      : ssoScopePackages.filter((item) => current.includes(item) || item === scopePackage));
-  };
-
   const beginSsoLogin = async () => {
     if (!nativeCoreReady || ssoStatus.state === "waiting" || ssoStatus.state === "exchanging") return;
     setSsoBusy(true);
     setSsoCommandError(false);
     try {
-      setSsoStatus(await ssoStarter(selectedScopePackages));
+      setSsoStatus(await ssoStarter([...ssoScopePackages]));
     } catch {
       setSsoCommandError(true);
     } finally {
@@ -1407,7 +1496,7 @@ export function App({
           <button
             className={`sync-status ${localData ? `sync-status--${localData.state}` : ""}`}
             type="button"
-            onClick={() => void runAssetSync().catch(() => undefined)}
+            onClick={() => void runAllSyncs().catch(() => undefined)}
             aria-label={t.refresh}
             disabled={!nativeCoreReady || syncing}
           >
@@ -1462,11 +1551,11 @@ export function App({
           </button>
         </header>
 
-        {activeModule === "assets" && nativeCoreReady ? (
+        {(activeModule === "assets" || activeModule === "blueprints") && nativeCoreReady ? (
           <div className="preview-strip preview-strip--live" role="status">
             <Database size={15} />
             <strong>LOCAL</strong>
-            <span>{t.assets.liveNotice}</span>
+            <span>{activeModule === "blueprints" ? t.blueprints.liveNotice : t.assets.liveNotice}</span>
           </div>
         ) : (
           <div className="preview-strip" role="status">
@@ -1495,30 +1584,10 @@ export function App({
             </p>
             <small>{nativeCoreReady ? t.sso.security : t.sso.desktopOnly}</small>
           </div>
-          <fieldset
-            className="sso-scopes"
-            disabled={!nativeCoreReady || ssoStatus.state === "waiting" || ssoStatus.state === "exchanging"}
-          >
-            <legend>{t.sso.scopeTitle}</legend>
-            <div>
-              {ssoScopePackages.map((scopePackage) => (
-                <label key={scopePackage}>
-                  <input
-                    type="checkbox"
-                    checked={selectedScopePackages.includes(scopePackage)}
-                    disabled={
-                      scopePackage === "industry-core" ||
-                      !nativeCoreReady ||
-                      ssoStatus.state === "waiting" ||
-                      ssoStatus.state === "exchanging"
-                    }
-                    onChange={() => toggleScopePackage(scopePackage)}
-                  />
-                  <span>{t.sso.packageLabels[scopePackage]}</span>
-                </label>
-              ))}
-            </div>
-          </fieldset>
+          <div className="sso-scopes sso-scopes--automatic">
+            <strong>{t.sso.scopeTitle}</strong>
+            <span>{t.sso.scopeAutomatic}</span>
+          </div>
           <div className="sso-panel__actions">
             {ssoStatus.state === "waiting" || ssoStatus.state === "exchanging" ? (
               <button type="button" className="sso-cancel" onClick={() => void abortSsoLogin()} disabled={ssoBusy}>
@@ -1550,6 +1619,7 @@ export function App({
           renameGroup={accountGroupRenamer}
           deleteGroup={accountGroupDeleter}
           onRefresh={refreshCharacterManagement}
+          onReauthorize={beginSsoLogin}
         />
 
         {localData && (
@@ -1581,6 +1651,15 @@ export function App({
             loadDeltas={assetDeltasLoader}
             syncAssets={runAssetSync}
             refreshRevision={assetRevision}
+          />
+        ) : activeModule === "blueprints" ? (
+          <BlueprintWorkspace
+            available={nativeCoreReady}
+            locale={locale}
+            t={t}
+            loadBlueprints={blueprintsLoader}
+            syncBlueprints={runBlueprintSync}
+            refreshRevision={blueprintRevision}
           />
         ) : (
           <ModulePreview activeModule={activeModule} t={t} />
@@ -2123,6 +2202,7 @@ function CharacterManager({
   renameGroup,
   deleteGroup,
   onRefresh,
+  onReauthorize,
 }: {
   characters: EveCharacter[];
   groups: AccountGroup[];
@@ -2135,6 +2215,7 @@ function CharacterManager({
   renameGroup: (groupId: number, label: string) => Promise<AccountGroup>;
   deleteGroup: (groupId: number) => Promise<void>;
   onRefresh: () => Promise<void>;
+  onReauthorize: () => Promise<void>;
 }) {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [alias, setAlias] = useState("");
@@ -2258,9 +2339,12 @@ function CharacterManager({
           </span>
         ) : characters.length === 0 ? (
           <span className="character-roster__empty">{t.characters.empty}</span>
-        ) : characters.map((character) => (
+        ) : characters.map((character) => {
+          const authorizationRequired = character.credentialState !== "stored" ||
+            character.scopePackages.some((scopePackage) => scopePackage.status !== "granted");
+          return (
           <article
-            className={`character-chip ${character.enabled ? "" : "character-chip--inactive"}`}
+            className={`character-chip ${character.enabled ? "" : "character-chip--inactive"} ${authorizationRequired ? "character-chip--authorization" : ""}`}
             key={character.characterId}
           >
             <span className="character-chip__avatar"><UserRound size={16} /></span>
@@ -2276,6 +2360,7 @@ function CharacterManager({
               {t.characters.scopes.replace("{count}", String(character.scopes.length))}
             </span>
             {!character.enabled && <small className="status-pill">{t.characters.inactive}</small>}
+            {authorizationRequired && <small className="status-pill status-pill--warn">{t.characters.reauthorizationShort}</small>}
             <button
               type="button"
               className="character-chip__manage"
@@ -2286,7 +2371,8 @@ function CharacterManager({
               {t.characters.manage}
             </button>
           </article>
-        ))}
+          );
+        })}
       </div>
 
       {selected && (
@@ -2363,6 +2449,16 @@ function CharacterManager({
                 ))}
               </div>
             </div>
+            {(selected.credentialState !== "stored" || selected.scopePackages.some((scopePackage) => scopePackage.status !== "granted")) && (
+              <div className="character-manager__reauthorization" role="alert">
+                <strong>{t.characters.reauthorizationTitle}</strong>
+                <span>{t.characters.reauthorizationDetail}</span>
+                <button type="button" className="sso-start" onClick={() => void onReauthorize()} disabled={busy || disabled}>
+                  <LogIn size={15} />
+                  {t.characters.reauthorize}
+                </button>
+              </div>
+            )}
             {failed && <p className="character-manager__error" role="alert">{t.characters.error}</p>}
             <div className="character-manager__actions">
               <button type="submit" className="sso-start" disabled={busy}>
@@ -2734,6 +2830,117 @@ function PanelHeader({
       <div><h2>{title}</h2><p>{subtitle}</p></div>
       {action && <button type="button" onClick={onAction}>{action}<ArrowRight size={15} /></button>}
     </header>
+  );
+}
+
+function BlueprintWorkspace({
+  available, locale, t, loadBlueprints: loadPage, syncBlueprints: runSync, refreshRevision,
+}: {
+  available: boolean;
+  locale: Locale;
+  t: Translation;
+  loadBlueprints: (query: BlueprintQuery) => Promise<BlueprintPage>;
+  syncBlueprints: () => Promise<BlueprintSyncResult>;
+  refreshRevision: number;
+}) {
+  const [search, setSearch] = useState("");
+  const [appliedSearch, setAppliedSearch] = useState("");
+  const [ownerCharacterId, setOwnerCharacterId] = useState<number | null>(null);
+  const [kind, setKind] = useState<BlueprintKind | null>(null);
+  const [sortBy, setSortBy] = useState<BlueprintSortField>("type");
+  const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
+  const [offset, setOffset] = useState(0);
+  const [page, setPage] = useState<BlueprintPage | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const [syncingBlueprints, setSyncingBlueprints] = useState(false);
+  const [syncResult, setSyncResult] = useState<BlueprintSyncResult | null>(null);
+  const [syncFailed, setSyncFailed] = useState(false);
+  const numberFormat = useMemo(() => new Intl.NumberFormat(locale === "de" ? "de-DE" : "en-US"), [locale]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setAppliedSearch(search.trim().replace(/\s+/g, " "));
+      setOffset(0);
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [search]);
+
+  useEffect(() => {
+    if (!available) return;
+    let active = true;
+    setLoading(true);
+    setFailed(false);
+    void loadPage({ search: appliedSearch, ownerCharacterId, kind, offset, limit: blueprintPageSize, sortBy, sortDirection })
+      .then((result) => {
+        if (!active) return;
+        if (result.total > 0 && result.offset >= result.total) {
+          setOffset(Math.floor((result.total - 1) / blueprintPageSize) * blueprintPageSize);
+          return;
+        }
+        setPage(result);
+      })
+      .catch(() => { if (active) setFailed(true); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [appliedSearch, available, kind, loadPage, offset, ownerCharacterId, refreshRevision, sortBy, sortDirection]);
+
+  const refresh = async () => {
+    if (!available || syncingBlueprints) return;
+    setSyncingBlueprints(true);
+    setSyncFailed(false);
+    setSyncResult(null);
+    try {
+      setSyncResult(await runSync());
+      setOffset(0);
+    } catch {
+      setSyncFailed(true);
+    } finally {
+      setSyncingBlueprints(false);
+    }
+  };
+  const changeSort = (field: BlueprintSortField) => {
+    if (sortBy === field) setSortDirection((value) => value === "asc" ? "desc" : "asc");
+    else { setSortBy(field); setSortDirection("asc"); }
+    setOffset(0);
+  };
+  const header = (field: BlueprintSortField, label: string) => (
+    <button type="button" className="asset-sort" onClick={() => changeSort(field)}>
+      {label}{sortBy === field && <ChevronDown className={sortDirection === "asc" ? "asset-sort__asc" : ""} size={14} />}
+    </button>
+  );
+  const total = page?.total ?? 0;
+  const from = total === 0 ? 0 : offset + 1;
+  const to = Math.min(offset + (page?.items.length ?? 0), total);
+  const range = t.blueprints.resultRange.replace("{from}", numberFormat.format(from))
+    .replace("{to}", numberFormat.format(to)).replace("{total}", numberFormat.format(total));
+
+  return (
+    <div className="workspace asset-workspace blueprint-workspace">
+      <section className="asset-hero">
+        <div><span className="eyebrow">{t.blueprints.kicker}</span><h1>{t.nav.blueprints}</h1><p>{t.blueprints.subtitle}</p></div>
+        <div className="asset-hero__metrics"><span><strong>{numberFormat.format(total)}</strong><small>{t.blueprints.count}</small></span><span><strong>{page?.ageSeconds == null ? "—" : formatDataAge(page.ageSeconds, locale)}</strong><small>{t.blueprints.age}</small></span></div>
+      </section>
+      <section className="asset-browser" aria-busy={loading}>
+        <div className="asset-toolbar">
+          <label className="asset-search"><span>{t.blueprints.search}</span><div><Search size={16} /><input value={search} maxLength={120} onChange={(event) => setSearch(event.target.value)} placeholder={t.blueprints.search} disabled={!available} /></div></label>
+          <label><span>{t.blueprints.owner}</span><select value={ownerCharacterId ?? ""} onChange={(event) => { setOwnerCharacterId(event.target.value ? Number(event.target.value) : null); setOffset(0); }}><option value="">{t.blueprints.allOwners}</option>{(page?.owners ?? []).map((owner) => <option key={owner.characterId} value={owner.characterId}>{owner.name}</option>)}</select></label>
+          <label><span>{t.blueprints.kind}</span><select value={kind ?? ""} onChange={(event) => { setKind((event.target.value || null) as BlueprintKind | null); setOffset(0); }}><option value="">{t.blueprints.allKinds}</option><option value="original">{t.blueprints.original}</option><option value="copy">{t.blueprints.copy}</option></select></label>
+          <button className="secondary-button asset-export" type="button" onClick={() => void refresh()} disabled={!available || syncingBlueprints}><RefreshCw className={syncingBlueprints ? "spin" : ""} size={15} />{syncingBlueprints ? t.blueprints.syncing : t.blueprints.sync}</button>
+        </div>
+        {(syncResult || syncFailed) && <div className={`asset-export-status ${syncFailed || (syncResult?.failed ?? 0) > 0 ? "asset-export-status--error" : ""}`} role="status">{syncFailed ? t.blueprints.syncError : syncResult?.characters.length === 0 ? t.blueprints.syncEmpty : (syncResult?.failed ?? 0) > 0 ? t.blueprints.syncPartial.replace("{completed}", String(syncResult?.completed ?? 0)).replace("{failed}", String(syncResult?.failed ?? 0)) : t.blueprints.syncComplete.replace("{blueprints}", numberFormat.format(syncResult?.blueprints ?? 0)).replace("{characters}", String(syncResult?.completed ?? 0))}</div>}
+        {!available ? <div className="asset-empty"><Database size={22} />{t.blueprints.unavailable}</div>
+          : failed ? <div className="asset-empty asset-empty--error"><AlertTriangle size={22} />{t.blueprints.queryError}</div>
+          : loading && page === null ? <div className="asset-empty"><RefreshCw className="spin" size={22} />{t.blueprints.loading}</div>
+          : page && page.items.length === 0 ? <div className="asset-empty"><Boxes size={22} />{page.observedAt === null ? t.blueprints.noData : t.blueprints.noMatches}</div>
+          : page ? <div className="asset-table-wrap"><table className="asset-table blueprint-table"><thead><tr>
+              <th>{header("type", t.blueprints.type)}</th><th>{header("owner", t.blueprints.owner)}</th><th>{header("kind", t.blueprints.kind)}</th><th>{header("me", t.blueprints.me)}</th><th>{header("te", t.blueprints.te)}</th><th>{header("runs", t.blueprints.runs)}</th><th>{t.blueprints.location}</th><th>{header("age", t.blueprints.age)}</th>
+            </tr></thead><tbody>{page.items.map((item) => <tr key={item.itemId}>
+              <td><strong>{item.typeName}</strong><small>Type #{item.typeId}</small></td><td>{item.ownerName}</td><td><span className={`status-pill status-pill--${item.kind === "original" ? "good" : "info"}`}>{item.kind === "original" ? "BPO" : "BPC"}</span></td><td className="asset-table__number">{item.materialEfficiency}</td><td className="asset-table__number">{item.timeEfficiency}</td><td className="asset-table__number">{item.runs === -1 ? t.blueprints.unlimited : numberFormat.format(item.runs)}</td><td><strong>{item.locationFlag}</strong><small>#{item.locationId}</small></td><td>{formatDataAge(item.ageSeconds, locale)}</td>
+            </tr>)}</tbody></table></div> : null}
+        {page && total > 0 && <div className="asset-pagination"><span>{range}</span><div><button type="button" onClick={() => setOffset(Math.max(0, offset - blueprintPageSize))} disabled={offset === 0}>{t.blueprints.previous}</button><button type="button" onClick={() => setOffset(offset + blueprintPageSize)} disabled={offset + blueprintPageSize >= total}>{t.blueprints.next}</button></div></div>}
+      </section>
+    </div>
   );
 }
 

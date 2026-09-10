@@ -769,6 +769,22 @@ select:focus-visible {
   opacity: 0.72;
 }
 
+.sso-scopes--automatic {
+  display: grid;
+  gap: 4px;
+  max-width: 270px;
+  color: #87988e;
+  font-size: calc(8px * var(--font-scale));
+  line-height: 1.4;
+}
+
+.sso-scopes--automatic strong {
+  color: #a8cfc8;
+  font-size: calc(8px * var(--font-scale));
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .sso-panel__actions button {
   display: inline-flex;
   align-items: center;
@@ -974,6 +990,15 @@ select:focus-visible {
   background: var(--gold-soft);
 }
 
+.status-pill--warn,
+.character-chip--authorization {
+  border-color: rgba(223, 121, 104, 0.34);
+}
+
+.status-pill--warn { color: #e39a8e !important; background: var(--coral-soft); }
+.status-pill--good { color: var(--teal) !important; border-color: rgba(103, 198, 188, 0.28); background: var(--teal-soft); }
+.status-pill--info { color: #9eb6d8 !important; border-color: rgba(126, 158, 202, 0.28); background: rgba(87, 119, 164, 0.12); }
+
 .character-manager {
   grid-column: 1 / -1;
   display: grid;
@@ -1093,6 +1118,22 @@ select:focus-visible {
   display: flex;
   flex-wrap: wrap;
   gap: 7px;
+}
+
+.character-manager__reauthorization {
+  display: grid;
+  gap: 5px;
+  padding: 10px;
+  border: 1px solid rgba(223, 121, 104, 0.28);
+  border-radius: 7px;
+  color: #d99a8f;
+  background: var(--coral-soft);
+  font-size: calc(8px * var(--font-scale));
+}
+
+.character-manager__reauthorization button {
+  justify-self: start;
+  margin-top: 3px;
 }
 
 .character-manager__actions button,
@@ -2567,6 +2608,16 @@ select:focus-visible {
 .asset-table__number {
   text-align: right !important;
 }
+
+.blueprint-table { min-width: 1120px; }
+.blueprint-table th:nth-child(1) { width: 24%; }
+.blueprint-table th:nth-child(2) { width: 13%; }
+.blueprint-table th:nth-child(3) { width: 10%; }
+.blueprint-table th:nth-child(4),
+.blueprint-table th:nth-child(5),
+.blueprint-table th:nth-child(6) { width: 7%; }
+.blueprint-table th:nth-child(7) { width: 20%; }
+.blueprint-table th:nth-child(8) { width: 12%; }
 
 .asset-status {
   display: inline-flex;

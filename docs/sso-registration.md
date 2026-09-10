@@ -21,7 +21,7 @@ Der Callback-Port `17891` ist ausschließlich für den kurzlebigen Browser-Rück
 
 ## Im Portal einzutragende Scopes
 
-Die Portalregistrierung erhält alle unten aufgeführten Scopes, da EVE SSO nur Scopes ausgeben kann, die der App zuvor zugeordnet wurden. Beim Verbinden eines Charakters fordert New Eden Foundry trotzdem nur das kleinste für die aktivierte Funktion benötigte Paket an.
+Die Portalregistrierung erhält alle unten aufgeführten Scopes. Beim Verbinden oder erneuten Autorisieren eines Charakters fordert New Eden Foundry den vollständigen aktuell benötigten Satz automatisch an. Fehlen einem bereits gespeicherten Charakter nach einem Update neue Scopes, bleibt er erhalten und die Oberfläche fordert sichtbar zur erneuten Anmeldung desselben Charakters auf.
 
 | Paket | Scopes | Verwendungszweck |
 |---|---|---|

@@ -5,7 +5,7 @@
 
 ## Nutzerablauf
 
-1. In der Desktop-App werden die Berechtigungspakete für genau einen Charakter ausgewählt. `industry-core` bleibt das notwendige Basispaket; Markt, PI, Projekte und private Strukturen sind optional.
+1. Die Desktop-App stellt für genau einen Charakter automatisch den vollständigen aktuell registrierten Berechtigungssatz zusammen. Eine unvollständige oder anders sortierte Paketliste wird an jeder Prozessgrenze abgewiesen.
 2. „Charakter verbinden“ erzeugt einen neuen Anmeldeversuch und öffnet die EVE-Anmeldung im Systembrowser. Zugangsdaten werden ausschließlich bei EVE eingegeben.
 3. Der lokale Sidecar wartet höchstens drei Minuten am registrierten Callback `http://127.0.0.1:17891/oauth/callback`.
 4. Ein korrekter Rückruf startet den PKCE-Codeaustausch. Die App zeigt während der Signatur- und Claim-Prüfung einen eigenen Zustand.
@@ -41,7 +41,7 @@ Paket 13 führt Codeaustausch und vollständige JWT-Prüfung aus. Paket 14 über
 ## Automatisierte Verifikation
 
 - PKCE-Länge, Zeichensatz und Frische von Verifier und Challenge
-- exakter Autorisierungsendpunkt und vollständige Parameter einschließlich ausgewählter Scopepakete
+- exakter Autorisierungsendpunkt und vollständige Parameter einschließlich aller registrierten Scopepakete
 - falscher und korrekter `state`, einmalige Callback-Nutzung sowie bereinigte EVE-Ablehnung
 - Drei-Minuten-Timeout, manueller Abbruch und Löschen aller temporären Geheimnisse
 - authentifizierte Sidecar-Endpunkte in Quell- und Frozen-Smoke-Tests

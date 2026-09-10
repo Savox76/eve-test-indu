@@ -170,6 +170,60 @@ export interface AssetSyncResult {
   assets: number;
 }
 
+export type BlueprintKind = "original" | "copy";
+export type BlueprintSortField = "type" | "owner" | "kind" | "me" | "te" | "runs" | "age";
+export const blueprintSortFields: BlueprintSortField[] = ["type", "owner", "kind", "me", "te", "runs", "age"];
+export const blueprintPageSize = 100;
+
+export interface BlueprintRecord {
+  itemId: number;
+  typeId: number;
+  typeName: string;
+  ownerCharacterId: number;
+  ownerName: string;
+  kind: BlueprintKind;
+  materialEfficiency: number;
+  timeEfficiency: number;
+  runs: number;
+  locationId: number;
+  locationFlag: string;
+  observedAt: string;
+  ageSeconds: number;
+}
+
+export interface BlueprintQuery {
+  search: string;
+  ownerCharacterId: number | null;
+  kind: BlueprintKind | null;
+  offset: number;
+  limit: number;
+  sortBy: BlueprintSortField;
+  sortDirection: SortDirection;
+}
+
+export interface BlueprintPage {
+  items: BlueprintRecord[];
+  total: number;
+  offset: number;
+  limit: number;
+  owners: AssetOwner[];
+  observedAt: string | null;
+  ageSeconds: number | null;
+}
+
+export interface BlueprintSyncResult {
+  characters: Array<{
+    characterId: number;
+    status: "completed" | "failed";
+    pages: number;
+    blueprints: number;
+    errorCode: string | null;
+  }>;
+  completed: number;
+  failed: number;
+  blueprints: number;
+}
+
 export type AssetDeltaChangeType = "added" | "removed" | "quantity" | "location";
 export type AssetDeltaDirection = "inbound" | "outbound" | "neutral";
 
@@ -1005,12 +1059,15 @@ export async function startEveSso(
   scopePackages: SsoScopePackage[],
   adapter: RuntimeAdapter = tauriAdapter,
 ): Promise<SsoLoginStatus> {
+  if (!adapter.isAvailable()) {
+    throw new Error("EVE SSO is available only in the desktop application.");
+  }
   if (
-    scopePackages.length === 0 ||
+    scopePackages.length !== ssoScopePackages.length ||
     new Set(scopePackages).size !== scopePackages.length ||
-    !scopePackages.every((value) => ssoScopePackages.includes(value))
+    !scopePackages.every((value, index) => value === ssoScopePackages[index])
   ) {
-    throw new Error("At least one unique SSO scope package is required.");
+    throw new Error("Every required SSO scope package must be requested automatically.");
   }
   const status = await invokeSsoCommand("start_eve_sso", adapter, { scopePackages });
   if (status.state !== "waiting") {
@@ -1124,6 +1181,107 @@ export async function syncAssets(
     throw new Error("The native runtime returned an inconsistent asset-sync result.");
   }
   return { ...candidate, characters } as AssetSyncResult;
+}
+
+function validateBlueprintQuery(query: BlueprintQuery): BlueprintQuery {
+  const search = query.search.trim().replace(/\s+/g, " ");
+  if (
+    search.length > 120 ||
+    !(query.ownerCharacterId === null || isPositiveSafeInteger(query.ownerCharacterId)) ||
+    !(query.kind === null || ["original", "copy"].includes(query.kind)) ||
+    !isNonNegativeSafeInteger(query.offset) ||
+    !Number.isSafeInteger(query.limit) || query.limit < 1 || query.limit > 200 ||
+    !blueprintSortFields.includes(query.sortBy) ||
+    !["asc", "desc"].includes(query.sortDirection)
+  ) throw new Error("The blueprint query is invalid.");
+  return { ...query, search };
+}
+
+function parseBlueprintPage(candidate: unknown): BlueprintPage {
+  if (
+    !isRecord(candidate) || !Array.isArray(candidate.items) || !Array.isArray(candidate.owners) ||
+    !isNonNegativeSafeInteger(candidate.total) || !isNonNegativeSafeInteger(candidate.offset) ||
+    !Number.isSafeInteger(candidate.limit) || Number(candidate.limit) < 1 || Number(candidate.limit) > 200 ||
+    !(candidate.observedAt === null || isBoundedText(candidate.observedAt, 64)) ||
+    !(candidate.ageSeconds === null || isNonNegativeSafeInteger(candidate.ageSeconds)) ||
+    (candidate.observedAt === null) !== (candidate.ageSeconds === null)
+  ) throw new Error("The native runtime returned invalid blueprint data.");
+  const owners = candidate.owners.map((owner) => {
+    if (!isRecord(owner) || !isPositiveSafeInteger(owner.characterId) || !isBoundedText(owner.name, 100)) {
+      throw new Error("The native runtime returned invalid blueprint owners.");
+    }
+    return owner as unknown as AssetOwner;
+  });
+  const items = candidate.items.map((item) => {
+    if (
+      !isRecord(item) || !isPositiveSafeInteger(item.itemId) || !isPositiveSafeInteger(item.typeId) ||
+      !isBoundedText(item.typeName, 220) || !isPositiveSafeInteger(item.ownerCharacterId) ||
+      !isBoundedText(item.ownerName, 100) || !["original", "copy"].includes(String(item.kind)) ||
+      !Number.isInteger(item.materialEfficiency) || Number(item.materialEfficiency) < 0 || Number(item.materialEfficiency) > 10 ||
+      !Number.isInteger(item.timeEfficiency) || Number(item.timeEfficiency) < 0 || Number(item.timeEfficiency) > 20 ||
+      !Number.isSafeInteger(item.runs) || Number(item.runs) < -1 ||
+      !isPositiveSafeInteger(item.locationId) || !isBoundedText(item.locationFlag, 100) ||
+      !isBoundedText(item.observedAt, 64) || !isNonNegativeSafeInteger(item.ageSeconds)
+    ) throw new Error("The native runtime returned invalid blueprint records.");
+    return item as unknown as BlueprintRecord;
+  });
+  if (
+    items.length > Number(candidate.limit) || items.length > Number(candidate.total) ||
+    new Set(items.map(({ itemId }) => itemId)).size !== items.length ||
+    new Set(owners.map(({ characterId }) => characterId)).size !== owners.length ||
+    items.some((item) => !owners.some((owner) => owner.characterId === item.ownerCharacterId))
+  ) throw new Error("The native runtime returned inconsistent blueprint data.");
+  return { ...candidate, items, owners } as unknown as BlueprintPage;
+}
+
+export async function loadBlueprints(
+  query: BlueprintQuery,
+  adapter: RuntimeAdapter = tauriAdapter,
+): Promise<BlueprintPage> {
+  const validated = validateBlueprintQuery(query);
+  if (!adapter.isAvailable()) return {
+    items: [], total: 0, offset: validated.offset, limit: validated.limit,
+    owners: [], observedAt: null, ageSeconds: null,
+  };
+  const page = parseBlueprintPage(JSON.parse(await adapter.invoke("query_blueprints", {
+    search: validated.search,
+    ownerCharacterId: validated.ownerCharacterId,
+    kind: validated.kind,
+    offset: validated.offset,
+    limit: validated.limit,
+    sortBy: validated.sortBy,
+    sortDirection: validated.sortDirection,
+  })));
+  if (page.offset !== validated.offset || page.limit !== validated.limit) {
+    throw new Error("The native runtime returned a different blueprint window.");
+  }
+  return page;
+}
+
+export async function syncBlueprints(
+  adapter: RuntimeAdapter = tauriAdapter,
+): Promise<BlueprintSyncResult> {
+  if (!adapter.isAvailable()) throw new Error("Blueprint sync is available only in the desktop application.");
+  const candidate: unknown = JSON.parse(await adapter.invoke("sync_blueprints"));
+  if (!isRecord(candidate) || !Array.isArray(candidate.characters) ||
+    !isNonNegativeSafeInteger(candidate.completed) || !isNonNegativeSafeInteger(candidate.failed) ||
+    !isNonNegativeSafeInteger(candidate.blueprints)) {
+    throw new Error("The native runtime returned an invalid blueprint-sync result.");
+  }
+  const characters = candidate.characters.map((value) => {
+    if (!isRecord(value) || !isPositiveSafeInteger(value.characterId) ||
+      !["completed", "failed"].includes(String(value.status)) ||
+      !isNonNegativeSafeInteger(value.pages) || !isNonNegativeSafeInteger(value.blueprints) ||
+      !(value.errorCode === null || (typeof value.errorCode === "string" && value.errorCode.length <= 120))) {
+      throw new Error("The native runtime returned an invalid blueprint-sync result.");
+    }
+    return value as unknown as BlueprintSyncResult["characters"][number];
+  });
+  if (candidate.completed + candidate.failed !== characters.length ||
+    candidate.blueprints !== characters.reduce((sum, value) => sum + value.blueprints, 0)) {
+    throw new Error("The native runtime returned an inconsistent blueprint-sync result.");
+  }
+  return { ...candidate, characters } as unknown as BlueprintSyncResult;
 }
 
 export async function exportAssetsCsv(

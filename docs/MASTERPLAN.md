@@ -1,10 +1,10 @@
 # Masterplan – New Eden Foundry
 
-**Fassung:** 3.1 (lebendes Repository-Dokument)
+**Fassung:** 3.2 (lebendes Repository-Dokument)
 
 **Stand:** 10. September 2026
 
-**Status:** Paket 22 – Phase-3-Abnahmekandidat für Windows vorbereitet
+**Status:** Paket 23 – Blueprint-Bestand technisch abgeschlossen; Windows-A0 für Paket 22 bleibt offen
 
 **Geltungsbereich:** `Savox76/eve-test-indu`
 
@@ -92,7 +92,7 @@ Scheitert dieser Durchstich, wird die Sidecar-Entscheidung vor weiterem Fachcode
 - `state`, Callback-Timeout und Abbruch werden geprüft.
 - Access Tokens werden anhand der veröffentlichten Metadaten und JWKS validiert.
 - Refresh-Token-Rotation gilt erst nach erfolgreicher atomarer Ablage im Schlüsselbund als abgeschlossen.
-- Scopes werden funktionsweise und so spät wie möglich angefordert.
+- Jede Charakteranmeldung fordert automatisch den vollständigen aktuell benötigten Scope-Satz an. Scope-Drift nach einem Update wird sichtbar und führt über eine geführte erneute Anmeldung zur idempotenten Autorisierung desselben Charakters.
 - Jeder Charakter wird separat autorisiert. Frei benannte lokale Kontogruppen ordnen Charaktere mehreren gewünschten Accountstrukturen zu, ohne EVE-Accountnamen oder Zugangsdaten zu speichern.
 - Die Gesamtübersicht aggregiert alle aktiv verbundenen Charaktere; jede Einzelübersicht erhält Datenalter, Scope- und Fehlerstatus des gewählten Charakters.
 - Die exakte Callback-URI, öffentliche Client-ID, Scopepakete und der Entwicklerkontakt werden vor SSO-Implementierung dokumentiert.
@@ -188,6 +188,8 @@ Die Reihenfolge ist verbindlicher als eine Kalenderangabe.
 | 20 | Asset-UI | Suche, Filter, Besitzer, Standort, Menge, Datenalter und CSV bei 100.000 Zeilen flüssig |
 | 21 | Asset-Deltas | nur vollständige Läufe erzeugen nachvollziehbare Änderungen; Jobkorrelation vorbereitet |
 | 22 | Erste Alpha-Freigabe | Phase-3-Gates grün; Installation und Update auf freigegebenem Windows-Testgerät bestanden |
+| 23 | Blueprint-Bestand | BPO/BPC werden charaktergetrennt vollständig synchronisiert und mit Namen, ME/TE, Läufen, Besitzer, Ort, Alter, Suche, Filter und Sortierung angezeigt |
+| 24 | Charakter-Jobs | persönliche Industrieaufträge werden vollständig synchronisiert, mit Blueprint- und Asset-Änderungen nachvollziehbar korreliert und nach Status dargestellt |
 
 ### Aktueller Stand
 
@@ -200,7 +202,7 @@ Die Reihenfolge ist verbindlicher als eine Kalenderangabe.
 - **Abgeschlossen:** 09 – der lokale Startpfad bewertet nur Snapshots vollständig abgeschlossener Läufe und zeigt Laden, Aktualisieren, leer, aktuell, veraltet, offline und fehlerhaft zweisprachig mit Datenalter. Vorhandene Cache-Daten bleiben bei Ablauf oder Folgfehlern sichtbar; echte Nutzdaten folgen mit ESI.
 - **Abgeschlossen:** 10 – die Desktop-Oberfläche kann `stable`, `beta` und `preview` wählen und speichert die Präferenz in Schema 5 im Programmordner. Ein gebündeltes Ed25519-signiertes Testmanifest wird streng und offline geprüft; die reservierte Domain `updates.invalid` sowie `publicDistribution: false` verhindern eine vorzeitige öffentliche Verteilung.
 - **Abgeschlossen:** 11 – Callback-URI, öffentliche Client-ID, Entwicklerkontakt und funktionsbezogene Scopepakete sind im EVE Developers Portal registriert, verbindlich dokumentiert, maschinenlesbar hinterlegt, im Sidecar-Paket enthalten und gegen Drift getestet.
-- **Abgeschlossen:** 12 – die Desktop-App startet EVE SSO im Systembrowser, erzeugt je Versuch unabhängigen kryptografischen `state` und PKCE-Verifier mit `S256`, prüft den Rückruf am festen Callback und beendet Listener und Geheimnisse bei Fehler, Drei-Minuten-Timeout, Abbruch oder App-Ende. Scopepakete werden pro einzeln zu autorisierendem Charakter gewählt.
+- **Abgeschlossen:** 12 – die Desktop-App startet EVE SSO im Systembrowser, erzeugt je Versuch unabhängigen kryptografischen `state` und PKCE-Verifier mit `S256`, prüft den Rückruf am festen Callback und beendet Listener und Geheimnisse bei Fehler, Drei-Minuten-Timeout, Abbruch oder App-Ende. Jeder Charakter wird einzeln autorisiert; seit ADR-015 wird dabei der vollständige aktuell benötigte Paketsatz automatisch angefordert.
 - **Abgeschlossen:** 13 – der Sidecar tauscht den einmaligen Code ohne Client Secret per PKCE aus, bezieht Token- und JWKS-Endpunkte aus streng begrenzten EVE-Metadaten und prüft `RS256`-Signatur, Schlüssel-ID, Issuer, beide Audience-Werte, Ablauf, Charakter-Subject, Name und Scopes. Nur danach werden Identität und Scope-Status idempotent in SQLite gespeichert und in der echten Charakterliste angezeigt.
 - **Abgeschlossen:** 14 – der ausschließlich nach erfolgreicher JWT-Prüfung erhaltene Refresh Token wird pro Charakter in einem verifizierten Zwei-Slot-Verfahren im Windows-Anmeldespeicher aktiviert. Der bisherige aktive Wert bleibt bei Schreibfehlern erhalten; unterbrochene und konkurrierende Rotationen werden ohne Tokenverlust behandelt. Access Tokens verbleiben nur im Sidecar-Speicher, Geheimnisse erreichen weder SQLite noch API-Antworten oder Logs, und nicht unterstützte Schlüsselbundumgebungen schlagen geschlossen fehl.
 - **Abgeschlossen:** 15 – verbundene Charaktere lassen sich mit lokalem Alias, Aktivstatus und frei benannten Kontogruppen verwalten. Credential- und Scopepaket-Status werden charakterbezogen angezeigt. Der zweistufig bestätigte Löschablauf entfernt Identität, Scopes, Sync-Historie, Cache-Snapshots, Prozess-Token und Refresh Token; Credential-Fehler rollen die SQLite-Löschung zurück.
@@ -211,8 +213,9 @@ Die Reihenfolge ist verbindlicher als eine Kalenderangabe.
 - **Abgeschlossen:** 20 – die zweisprachige Asset-Oberfläche liest ausschließlich die letzten vollständigen charaktergetrennten Snapshots, verbindet nur exakt passende Standort-Snapshots und zeigt Typ, Besitzer, Standortpfad und -status, Bereich, Menge und Datenalter. Suche sowie Besitzer- und Standortstatusfilter laufen serverseitig; höchstens 100 Zeilen werden gleichzeitig übertragen und gerendert. Ein synthetischer 100.000-Zeilen-Test sichert den begrenzten Transport. Der gefilterte CSV-Export schreibt atomar und formelneutralisiert unter `data\exports`.
 - **Abgeschlossen:** 21 – jeder vollständige Charakter-Asset-Sync veröffentlicht atomar eine Baseline oder ein Delta zum vorherigen vollständigen Snapshot. Hinzufügungen, Entfernungen, Mengen- und Standortänderungen tragen deterministische Fingerabdrücke, Snapshot-/Run-IDs und ein Beobachtungsfenster. Die zweisprachige Historie ist serverseitig such- und filterbar und überträgt höchstens 50 Ereignisse pro Seite. Charakter-/Typ-Schlüssel, Richtung und Mengendifferenz bereiten die spätere Jobkorrelation vor, ohne bereits unbelegte Zuordnungen zu behaupten.
 - **Zusätzlich umgesetzt:** Die vollständige sichtbare Oberfläche unterstützt fünf globale Schriftgrößenstufen; die Auswahl bleibt in der bestehenden `app_settings`-Tabelle am updatefesten Datenort erhalten.
-- **In Arbeit:** 22 – Der Gerätetest bestätigte Einzelinstanz, zweiten Start und updatefesten Speicher. `v0.0.5-preview.5` ergänzt den automatischen Hintergrund-Sync beim Start, persistente ESI-Typnamen und serverseitige Spaltensortierung. Das vollständige A0-Protokoll bleibt vor der ersten `0.2.0`-Alpha erforderlich.
-- **Als Nächstes:** Windows-A0-Abnahme von `v0.0.5-preview.2` auf `v0.0.5-preview.5` auf einem freigegebenen Windows-Testgerät; danach Abschluss von Paket 22 und erste `0.2.0`-Alpha-Freigabe.
+- **In Arbeit:** 22 – Der Gerätetest bestätigte Einzelinstanz, zweiten Start und updatefesten Speicher. `v0.0.5-preview.6` ist der aktuelle technische Kandidat. Das vollständige A0-Protokoll bleibt vor der ersten `0.2.0`-Alpha erforderlich.
+- **Abgeschlossen:** 23 – vollständige charaktergetrennte Blueprint-Snapshots werden automatisch und manuell aktualisiert. Die echte BPO/BPC-Ansicht bietet Namen, ME/TE, Läufe, Besitzer, Bereich, Datenalter, Suche, Filter, serverseitige Sortierung und begrenzte Seiten. Unvollständige Läufe überschreiben keinen gültigen Bestand. Die SSO-Anmeldung fordert alle benötigten Pakete automatisch an und weist bei Scope-Drift sichtbar auf die erforderliche Neuanmeldung hin.
+- **Als Nächstes:** Paket 24 – persönliche Industrieaufträge und nachvollziehbare Korrelation mit Blueprints und Asset-Änderungen. Parallel bleibt die Windows-A0-Abnahme von `v0.0.5-preview.2` auf den aktuellen Kandidaten auf einem freigegebenen Windows-Testgerät offen.
 - Architektur-Gate A0 ist technisch weitgehend umgesetzt, aber bis zur vollständigen Windows-Abnahme noch nicht erfüllt; breite Fachentwicklung beginnt erst danach.
 
 ## 13. Entscheidungs- und Quellenrang
