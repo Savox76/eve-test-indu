@@ -28,6 +28,11 @@ Wichtig:
   Versionen werden weiterhin manuell von GitHub Releases geladen.
 - Zum Umziehen oder Sichern die Anwendung zuerst schließen und anschließend den
   vollständigen Programmordner einschließlich "data" kopieren.
+- Das Archiv verwendet dauerhaft den Ordner "New Eden Foundry Portable". Für
+  spätere Updates die App schließen und die neue ZIP in denselben übergeordneten
+  Ordner entpacken; der nicht enthaltene "data"-Ordner bleibt bestehen.
+- Beim einmaligen Wechsel von einer älteren, versionsabhängigen Ausgabe den
+  bisherigen "data"-Ordner nach "New Eden Foundry Portable" kopieren.
 - Spätere EVE-Zugangsdaten bleiben im Windows-Anmeldespeicher und werden beim
   Kopieren des Programmordners nicht mitgeführt.
 
@@ -63,6 +68,11 @@ Important:
   still downloaded manually from GitHub Releases.
 - To move or back up the app, close it first and then copy the complete program
   folder including "data".
+- The archive always uses the folder "New Eden Foundry Portable". For later
+  updates, close the app and extract the new ZIP into the same parent folder;
+  the unbundled "data" directory remains in place.
+- When moving once from an older version-specific package, copy its existing
+  "data" directory into "New Eden Foundry Portable".
 - Future EVE credentials remain in Windows Credential Manager and do not travel
   with a copied program folder.
 

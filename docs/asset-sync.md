@@ -16,6 +16,8 @@ Der Asset-Sync lädt für jeden aktivierten Charakter `/characters/{character_id
 
 `sync_enabled_characters` ermittelt alle lokal aktivierten Charaktere. Jeder Charakter besitzt einen eigenen Sync-Run und einen eigenen Ressourcen-Schlüssel `character_assets:<character_id>`. Tokens und ESI-Cache bleiben durch den zentralen ESI-Client charaktergebunden.
 
+Die Desktop-Oberfläche löst den produktiven Lauf über `POST /assets/sync` aus. Der Sidecar synchronisiert jeden aktivierten Charakter getrennt und führt nach einem vollständigen Asset-Snapshot unmittelbar die Standortauflösung aus. Ein Fehler eines Charakters verhindert nicht die erfolgreichen Snapshots anderer Charaktere; die Antwort enthält nur zusammengefasste, geheimnisfreie Statuswerte.
+
 ## Fehler
 
 ESI-Fehler werden nur über ihre bereinigten Fehlercodes in `sync_runs.error_code` gespeichert. Access-/Refresh-Tokens und Rohantworten werden nicht persistiert.

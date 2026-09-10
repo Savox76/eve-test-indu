@@ -147,6 +147,23 @@ export interface AssetCsvExport {
   rows: number;
 }
 
+export interface AssetSyncResult {
+  characters: Array<{
+    characterId: number;
+    status: "completed" | "failed";
+    pages: number;
+    assets: number;
+    resolved: number;
+    restricted: number;
+    unresolved: number;
+    cycles: number;
+    errorCode: string | null;
+  }>;
+  completed: number;
+  failed: number;
+  assets: number;
+}
+
 export type AssetDeltaChangeType = "added" | "removed" | "quantity" | "location";
 export type AssetDeltaDirection = "inbound" | "outbound" | "neutral";
 
@@ -1057,6 +1074,46 @@ export async function loadAssets(
     throw new Error("The native runtime returned a different asset window.");
   }
   return page;
+}
+
+export async function syncAssets(
+  adapter: RuntimeAdapter = tauriAdapter,
+): Promise<AssetSyncResult> {
+  if (!adapter.isAvailable()) {
+    throw new Error("Asset sync is available only in the desktop application.");
+  }
+  const candidate: unknown = JSON.parse(await adapter.invoke("sync_assets"));
+  if (
+    !isRecord(candidate) ||
+    !Array.isArray(candidate.characters) ||
+    !isNonNegativeSafeInteger(candidate.completed) ||
+    !isNonNegativeSafeInteger(candidate.failed) ||
+    !isNonNegativeSafeInteger(candidate.assets)
+  ) {
+    throw new Error("The native runtime returned an invalid asset-sync result.");
+  }
+  const characters = candidate.characters.map((value) => {
+    if (
+      !isRecord(value) ||
+      !Number.isSafeInteger(value.characterId) ||
+      Number(value.characterId) <= 0 ||
+      !["completed", "failed"].includes(String(value.status)) ||
+      !["pages", "assets", "resolved", "restricted", "unresolved", "cycles"].every(
+        (key) => isNonNegativeSafeInteger(value[key]),
+      ) ||
+      !(value.errorCode === null || (typeof value.errorCode === "string" && value.errorCode.length <= 120))
+    ) {
+      throw new Error("The native runtime returned an invalid asset-sync result.");
+    }
+    return value as unknown as AssetSyncResult["characters"][number];
+  });
+  if (
+    candidate.completed + candidate.failed !== characters.length ||
+    candidate.assets !== characters.reduce((total, character) => total + character.assets, 0)
+  ) {
+    throw new Error("The native runtime returned an inconsistent asset-sync result.");
+  }
+  return { ...candidate, characters } as AssetSyncResult;
 }
 
 export async function exportAssetsCsv(

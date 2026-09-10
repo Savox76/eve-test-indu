@@ -16,6 +16,7 @@ import {
   setDesktopFontScale,
   setDesktopUpdateChannel,
   startEveSso,
+  syncAssets,
   updateEveCharacter,
   type RuntimeAdapter,
 } from "./runtime";
@@ -56,7 +57,7 @@ function managedCharacter(overrides: Record<string, unknown> = {}) {
 function nativeStatus(overrides: Record<string, unknown> = {}) {
   return JSON.stringify({
     state: "ready",
-    version: "0.0.5-preview.3",
+    version: "0.0.5-preview.4",
     desktopShell: true,
     singleInstance: true,
     sidecar: "ready",
@@ -92,7 +93,7 @@ describe("desktop runtime status", () => {
       loadDesktopRuntimeStatus({ isAvailable: () => true, invoke }),
     ).resolves.toEqual({
       state: "ready",
-      version: "0.0.5-preview.3",
+      version: "0.0.5-preview.4",
       desktopShell: true,
       singleInstance: true,
       sidecar: "ready",
@@ -616,5 +617,28 @@ describe("desktop runtime status", () => {
       startEveSso(["industry-core"], { isAvailable: () => false, invoke }),
     ).rejects.toThrow("desktop application");
     expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it("validates and returns a bounded asset-sync summary", async () => {
+    const result = {
+      characters: [{
+        characterId: 2_112_345_678,
+        status: "completed",
+        pages: 2,
+        assets: 120,
+        resolved: 118,
+        restricted: 2,
+        unresolved: 0,
+        cycles: 0,
+        errorCode: null,
+      }],
+      completed: 1,
+      failed: 0,
+      assets: 120,
+    };
+    const invoke = vi.fn<RuntimeAdapter["invoke"]>().mockResolvedValue(JSON.stringify(result));
+
+    await expect(syncAssets({ isAvailable: () => true, invoke })).resolves.toEqual(result);
+    expect(invoke).toHaveBeenCalledWith("sync_assets");
   });
 });

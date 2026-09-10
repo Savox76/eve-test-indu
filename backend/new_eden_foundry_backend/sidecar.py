@@ -29,8 +29,9 @@ from .asset_view import (
     query_assets,
     validate_asset_query,
 )
+from .asset_sync import AssetSyncError, sync_character_assets
 from .database import DatabaseStatus, connect_database, initialize_database
-from .esi_client import EsiClient
+from .esi_client import EsiClient, EsiClientError
 from .identity import (
     CharacterRecord,
     create_account_group,
@@ -40,6 +41,10 @@ from .identity import (
     update_account_group,
     update_character,
     upsert_character,
+)
+from .location_resolution import (
+    LocationResolutionError,
+    resolve_latest_character_asset_locations,
 )
 from .storage import ProgramStorage, ProgramStorageError, prepare_program_storage
 from .startup_state import StartupDataState, inspect_startup_data_state
@@ -424,6 +429,61 @@ def create_application(
                 content={"detail": code},
             )
         return JSONResponse(content=result)
+
+    @app.post("/assets/sync")
+    async def post_asset_sync() -> JSONResponse:
+        if esi_client is None:
+            return JSONResponse(status_code=503, content={"detail": "esi_client_unavailable"})
+        with closing(connect_database(storage.database_path)) as connection:
+            character_ids = [
+                int(row[0])
+                for row in connection.execute(
+                    "SELECT character_id FROM characters WHERE enabled=1 ORDER BY character_id"
+                ).fetchall()
+            ]
+            results: list[dict[str, object]] = []
+            for character_id in character_ids:
+                try:
+                    synced = sync_character_assets(connection, esi_client, character_id)
+                    resolved = resolve_latest_character_asset_locations(
+                        connection, esi_client, character_id
+                    )
+                    results.append(
+                        {
+                            "characterId": character_id,
+                            "status": "completed",
+                            "pages": synced.pages,
+                            "assets": synced.assets,
+                            "resolved": resolved.resolved,
+                            "restricted": resolved.restricted,
+                            "unresolved": resolved.unresolved,
+                            "cycles": resolved.cycles,
+                            "errorCode": None,
+                        }
+                    )
+                except (AssetSyncError, LocationResolutionError, EsiClientError) as error:
+                    results.append(
+                        {
+                            "characterId": character_id,
+                            "status": "failed",
+                            "pages": 0,
+                            "assets": 0,
+                            "resolved": 0,
+                            "restricted": 0,
+                            "unresolved": 0,
+                            "cycles": 0,
+                            "errorCode": str(error)[:120],
+                        }
+                    )
+        completed = sum(result["status"] == "completed" for result in results)
+        return JSONResponse(
+            content={
+                "characters": results,
+                "completed": completed,
+                "failed": len(results) - completed,
+                "assets": sum(int(result["assets"]) for result in results),
+            }
+        )
 
     @app.post("/assets/export")
     async def post_asset_export(request: Request) -> JSONResponse:

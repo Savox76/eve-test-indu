@@ -38,7 +38,7 @@ if (-not (Test-Path -LiteralPath $sourceReadme -PathType Leaf)) {
 
 $archiveBaseName = "New.Eden.Foundry_${Version}_${Architecture}-portable"
 $archivePath = Join-Path $OutputDirectory "$archiveBaseName.zip"
-$packageFolderName = "New Eden Foundry $Version"
+$packageFolderName = "New Eden Foundry Portable"
 $stagingRoot = Join-Path ([IO.Path]::GetTempPath()) "$archiveBaseName-$([Guid]::NewGuid().ToString('N'))"
 $packageRoot = Join-Path $stagingRoot $packageFolderName
 

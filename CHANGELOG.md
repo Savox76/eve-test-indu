@@ -24,6 +24,34 @@ Keine.
 
 Keine.
 
+## 0.0.5-preview.4 – 10. September 2026
+
+### Neu hinzugefügt
+
+- Ein echter, manuell auslösbarer Asset-Sync lädt alle aktivierten Charaktere, löst ihre Standorte auf und aktualisiert Bestand und Änderungen direkt in der Asset-Ansicht.
+
+### Geändert
+
+- Installationen speichern Daten dauerhaft im benutzerspezifischen Windows-App-Datenordner statt neben der austauschbaren Programmdatei.
+- Die portable Ausgabe verwendet den versionsunabhängigen Ordner `New Eden Foundry Portable`, damit ein Update im gleichen Zielordner den vorhandenen `data`-Ordner behält.
+- Die sichtbare Versionsnummer lautet `v0.0.5-preview.4`; diese Preview ersetzt den vorherigen Windows-Abnahmekandidaten.
+
+### Behobene Fehler
+
+- Charaktere, Einstellungen und lokale Snapshots gehen nach einem Installer-Update nicht mehr durch einen wechselnden Programmordner verloren.
+- Ein vorhandener alter `data`-Ordner wird bei der ersten installierten Ausführung sicher kopiert und atomar übernommen; das Original bleibt als Rückfallebene erhalten.
+- Die Asset-Ansicht bleibt nicht länger leer, weil der zuvor fehlende Aufruf vom Desktop über den Sidecar bis zum ESI-Asset- und Standortlauf geschlossen wurde.
+
+### Bekannte Einschränkungen
+
+- Bereits vor dieser Korrektur durch einen Installer entfernte lokale Daten können nicht automatisch rekonstruiert werden; der Charakter muss in diesem Fall einmal neu verbunden werden und bleibt danach erhalten.
+- Paket 22 wartet weiterhin auf den vollständigen Windows-A0-Gerätetest einschließlich Update und Entfernung.
+
+### Update und Datenbankmigration
+
+- SQLite-Schema 6 bleibt unverändert. Nur der Speicherort der installierten Ausgabe wird einmalig migriert.
+- Portable Nutzer kopieren bei diesem einmaligen Übergang den bisherigen `data`-Ordner in `New Eden Foundry Portable`; spätere Updates können denselben Zielordner verwenden.
+
 ## 0.0.5-preview.3 – 10. September 2026
 
 ### Neu hinzugefügt
