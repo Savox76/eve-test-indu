@@ -29,6 +29,8 @@ Eine spätere Aktivierung benötigt ein eigenes geprüftes Arbeitspaket mit Prod
 
 Ein fehlgeschlagener Pflichtcheck, ein offener Blocker oder ein ungeklärter kritischer Sicherheitsfund stoppt die Veröffentlichung.
 
+Für Architektur-Gate A0 gilt das verbindliche, datensparsame Verfahren unter [`windows-a0-acceptance.md`](windows-a0-acceptance.md). Ein CI-Build oder eine reine Paket-Inhaltsprüfung darf dort nicht als bestandene Geräteabnahme eingetragen werden.
+
 ## Verbindliche Release Notes
 
 Jedes GitHub Release enthält alle folgenden Überschriften. Ein leerer Bereich wird ausdrücklich mit „Keine“ dokumentiert.
