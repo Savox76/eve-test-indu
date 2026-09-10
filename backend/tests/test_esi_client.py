@@ -142,8 +142,14 @@ class EsiClientTests(unittest.TestCase):
             response(body=b'{"owner":1}', cache_control="max-age=60"),
             response(body=b'{"owner":2}', cache_control="max-age=60"),
         )
+        provider_calls: list[int] = []
+
+        def token_provider(character_id: int, _scopes: tuple[str, ...]) -> str:
+            provider_calls.append(character_id)
+            return f"synthetic-token-{character_id}"
+
         client = EsiClient(
-            lambda character_id, _scopes: f"synthetic-token-{character_id}",
+            token_provider,
             transport=transport,
             sleep=lambda _: None,
         )
@@ -168,6 +174,7 @@ class EsiClientTests(unittest.TestCase):
         self.assertEqual({"owner": 2}, second.payload)
         self.assertTrue(cached_first.from_cache)
         self.assertEqual(2, len(transport.calls))
+        self.assertEqual([2_112_345_678, 2_112_345_679], provider_calls)
         self.assertNotEqual(
             transport.calls[0][1]["Authorization"],
             transport.calls[1][1]["Authorization"],

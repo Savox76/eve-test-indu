@@ -298,34 +298,21 @@ class EsiClient:
         if character_id is None:
             if scopes:
                 raise EsiClientError("esi-auth-request-invalid")
-            token = None
-        else:
-            if (
-                isinstance(character_id, bool)
-                or not isinstance(character_id, int)
-                or character_id <= 0
-                or not scopes
-                or any(
-                    not isinstance(scope, str)
-                    or not scope.startswith("esi-")
-                    or not scope.endswith(".v1")
-                    or len(scope) > 200
-                    for scope in scopes
-                )
-                or self._token_provider is None
-            ):
-                raise EsiClientError("esi-auth-request-invalid")
-            try:
-                token = self._token_provider(character_id, scopes)
-            except Exception as error:
-                raise EsiClientError("esi-access-token-unavailable") from error
-            if (
-                not isinstance(token, str)
-                or not token
-                or any(character.isspace() for character in token)
-                or len(token) > 8_192
-            ):
-                raise EsiClientError("esi-access-token-invalid")
+        elif (
+            isinstance(character_id, bool)
+            or not isinstance(character_id, int)
+            or character_id <= 0
+            or not scopes
+            or any(
+                not isinstance(scope, str)
+                or not scope.startswith("esi-")
+                or not scope.endswith(".v1")
+                or len(scope) > 200
+                for scope in scopes
+            )
+            or self._token_provider is None
+        ):
+            raise EsiClientError("esi-auth-request-invalid")
 
         cache_key = (url, character_id)
         now = self._monotonic()
@@ -338,6 +325,20 @@ class EsiClient:
                     headers=dict(cached.headers),
                     from_cache=True,
                 )
+
+        token = None
+        if character_id is not None:
+            try:
+                token = self._token_provider(character_id, scopes)  # type: ignore[misc]
+            except Exception as error:
+                raise EsiClientError("esi-access-token-unavailable") from error
+            if (
+                not isinstance(token, str)
+                or not token
+                or any(character.isspace() for character in token)
+                or len(token) > 8_192
+            ):
+                raise EsiClientError("esi-access-token-invalid")
 
         headers = {
             "Accept": "application/json",
