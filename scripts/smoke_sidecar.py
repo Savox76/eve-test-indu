@@ -283,7 +283,15 @@ def main() -> int:
 
             sso_start_request = urllib.request.Request(
                 sso_login_url,
-                data=json.dumps({"scopePackages": ["industry-core"]}).encode("utf-8"),
+                data=json.dumps({
+                    "scopePackages": [
+                        "industry-core",
+                        "market",
+                        "planetary-industry",
+                        "projects",
+                        "private-structures",
+                    ]
+                }).encode("utf-8"),
                 method="POST",
                 headers={
                     "Authorization": f"Bearer {token}",
