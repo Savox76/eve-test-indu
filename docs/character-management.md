@@ -14,6 +14,8 @@ Die Desktop-Oberfläche lädt Charaktere und Kontogruppen ausschließlich über 
 - **Credential-Status:** zeigt nur `stored`, `missing` oder `unavailable`; Credential-Namen und Tokenwerte verlassen den Sidecar nie.
 - **Scopepaket-Status:** zeigt je registriertem Paket `granted`, `partial` oder `missing` sowie bestätigte und erforderliche Scope-Anzahl.
 
+Die Paketauswahl erfolgt nicht manuell: jede Anmeldung fordert automatisch alle aktuell benötigten Pakete an. Fehlt nach einem Update ein Scope oder ein Credential, erhält der Charakter den sichtbaren Status **Anmeldung nötig**. Die Schaltfläche **Jetzt neu anmelden** öffnet EVE SSO; wird dort derselbe Charakter gewählt, werden Autorisierung und Scope-Status idempotent erneuert. Alias, lokale Kontogruppe und vorhandene vollständige Snapshots bleiben erhalten.
+
 Alle Eingaben werden im React-Client, in der Tauri-Brücke und im Python-Sidecar erneut begrenzt und validiert. API-Antworten enthalten keine Access oder Refresh Tokens.
 
 ## Vollständiges Löschen

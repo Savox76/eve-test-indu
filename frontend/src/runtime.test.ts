@@ -9,6 +9,7 @@ import {
   loadAccountGroups,
   loadAssetDeltas,
   loadAssets,
+  loadBlueprints,
   loadDesktopRuntimeStatus,
   loadEveCharacters,
   loadEveSsoStatus,
@@ -16,7 +17,9 @@ import {
   setDesktopFontScale,
   setDesktopUpdateChannel,
   startEveSso,
+  ssoScopePackages,
   syncAssets,
+  syncBlueprints,
   updateEveCharacter,
   type RuntimeAdapter,
 } from "./runtime";
@@ -57,7 +60,7 @@ function managedCharacter(overrides: Record<string, unknown> = {}) {
 function nativeStatus(overrides: Record<string, unknown> = {}) {
   return JSON.stringify({
     state: "ready",
-    version: "0.0.5-preview.5",
+    version: "0.0.5-preview.6",
     desktopShell: true,
     singleInstance: true,
     sidecar: "ready",
@@ -93,7 +96,7 @@ describe("desktop runtime status", () => {
       loadDesktopRuntimeStatus({ isAvailable: () => true, invoke }),
     ).resolves.toEqual({
       state: "ready",
-      version: "0.0.5-preview.5",
+      version: "0.0.5-preview.6",
       desktopShell: true,
       singleInstance: true,
       sidecar: "ready",
@@ -541,11 +544,11 @@ describe("desktop runtime status", () => {
     ).rejects.toThrow("invalid updater metadata");
   });
 
-  it("starts a PKCE login with selected per-character scope packages", async () => {
+  it("starts a PKCE login with every required scope package", async () => {
     const status = {
       state: "waiting",
       attemptId: "opaque-attempt",
-      scopePackages: ["industry-core", "market"],
+      scopePackages: [...ssoScopePackages],
       expiresAt: "2026-09-09T12:03:00Z",
       errorCode: null,
       character: null,
@@ -553,10 +556,10 @@ describe("desktop runtime status", () => {
     const invoke = vi.fn<RuntimeAdapter["invoke"]>().mockResolvedValue(JSON.stringify(status));
 
     await expect(
-      startEveSso(["industry-core", "market"], { isAvailable: () => true, invoke }),
+      startEveSso([...ssoScopePackages], { isAvailable: () => true, invoke }),
     ).resolves.toEqual(status);
     expect(invoke).toHaveBeenCalledWith("start_eve_sso", {
-      scopePackages: ["industry-core", "market"],
+      scopePackages: [...ssoScopePackages],
     });
   });
 
@@ -652,5 +655,24 @@ describe("desktop runtime status", () => {
 
     await expect(syncAssets({ isAvailable: () => true, invoke })).resolves.toEqual(result);
     expect(invoke).toHaveBeenCalledWith("sync_assets");
+  });
+
+  it("validates blueprint pages and sync summaries", async () => {
+    const page = {
+      items: [{ itemId: 9, typeId: 681, typeName: "Bantam Blueprint", ownerCharacterId: 7,
+        ownerName: "Pilot", kind: "original", materialEfficiency: 10, timeEfficiency: 20,
+        runs: -1, locationId: 60_003_760, locationFlag: "Hangar",
+        observedAt: "2026-09-10T00:00:00Z", ageSeconds: 1 }],
+      total: 1, offset: 0, limit: 100, owners: [{ characterId: 7, name: "Pilot" }],
+      observedAt: "2026-09-10T00:00:00Z", ageSeconds: 1,
+    };
+    const invoke = vi.fn<RuntimeAdapter["invoke"]>().mockResolvedValueOnce(JSON.stringify(page));
+    await expect(loadBlueprints({ search: "", ownerCharacterId: null, kind: null, offset: 0,
+      limit: 100, sortBy: "type", sortDirection: "asc" }, { isAvailable: () => true, invoke }))
+      .resolves.toEqual(page);
+    const result = { characters: [{ characterId: 7, status: "completed", pages: 1,
+      blueprints: 1, errorCode: null }], completed: 1, failed: 0, blueprints: 1 };
+    invoke.mockResolvedValueOnce(JSON.stringify(result));
+    await expect(syncBlueprints({ isAvailable: () => true, invoke })).resolves.toEqual(result);
   });
 });

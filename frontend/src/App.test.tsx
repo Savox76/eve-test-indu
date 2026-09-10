@@ -5,6 +5,7 @@ import { App } from "./App";
 import type {
   AssetDeltaPage,
   AssetPage,
+  BlueprintPage,
   DesktopRuntimeStatus,
   EveCharacter,
   SsoLoginStatus,
@@ -22,7 +23,7 @@ const idleSso: SsoLoginStatus = {
 const nativeRuntime = (overrides: Partial<Extract<DesktopRuntimeStatus, { state: "ready" }>> = {}) =>
   Promise.resolve<DesktopRuntimeStatus>({
     state: "ready",
-    version: "0.0.5-preview.5",
+    version: "0.0.5-preview.6",
     desktopShell: true,
     singleInstance: true,
     sidecar: "ready",
@@ -83,6 +84,17 @@ const assetPage = (overrides: Partial<AssetPage> = {}): AssetPage => ({
   ageSeconds: 3_600,
   ...overrides,
 });
+
+const blueprintPage: BlueprintPage = {
+  items: [{ itemId: 7_001, typeId: 681, typeName: "Bantam Blueprint",
+    ownerCharacterId: 90_888_001, ownerName: "Builder", kind: "copy",
+    materialEfficiency: 8, timeEfficiency: 16, runs: 12,
+    locationId: 60_003_760, locationFlag: "Hangar",
+    observedAt: "2026-09-10T10:00:00Z", ageSeconds: 3_600 }],
+  total: 1, offset: 0, limit: 100,
+  owners: [{ characterId: 90_888_001, name: "Builder" }],
+  observedAt: "2026-09-10T10:00:00Z", ageSeconds: 3_600,
+};
 
 const assetDeltaPage = (overrides: Partial<AssetDeltaPage> = {}): AssetDeltaPage => ({
   items: [{
@@ -389,7 +401,7 @@ describe("New Eden Foundry design preview", () => {
   it("credits Savoxmedia as the app creator next to the version", () => {
     render(<App />);
 
-    expect(screen.getByText("v0.0.5-preview.5")).toBeInTheDocument();
+    expect(screen.getByText("v0.0.5-preview.6")).toBeInTheDocument();
     expect(screen.getByText("Savoxmedia")).toBeInTheDocument();
     expect(screen.getByText("Erstellt von", { exact: false })).toBeInTheDocument();
     expect(screen.queryByText("Lokaler Betreiber")).not.toBeInTheDocument();
@@ -508,12 +520,12 @@ describe("New Eden Foundry design preview", () => {
 
     const startButton = await screen.findByRole("button", { name: "Charakter verbinden" });
     await waitFor(() => expect(startButton).toBeEnabled());
-    expect(screen.getByRole("checkbox", { name: "Industrie-Basis" })).toBeChecked();
-    expect(screen.getByRole("checkbox", { name: "Industrie-Basis" })).toBeDisabled();
-    fireEvent.click(screen.getByRole("checkbox", { name: "Markt" }));
+    expect(screen.getByText("Alle aktuell benötigten SSO-Pakete werden automatisch angefordert.")).toBeInTheDocument();
     fireEvent.click(startButton);
 
-    await waitFor(() => expect(ssoStarter).toHaveBeenCalledWith(["industry-core", "market"]));
+    await waitFor(() => expect(ssoStarter).toHaveBeenCalledWith([
+      "industry-core", "market", "planetary-industry", "projects", "private-structures",
+    ]));
     expect(await screen.findByText("Browser-Anmeldung läuft")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Abbrechen" }));
 
@@ -553,12 +565,16 @@ describe("New Eden Foundry design preview", () => {
     const assetSyncer = vi.fn().mockResolvedValue({
       characters: [], completed: 0, failed: 0, assets: 0,
     });
+    const blueprintSyncer = vi.fn().mockResolvedValue({
+      characters: [], completed: 0, failed: 0, blueprints: 0,
+    });
     render(
       <App
         runtimeLoader={() => nativeRuntime()}
         ssoStatusLoader={() => Promise.resolve(connected)}
         charactersLoader={() => Promise.resolve([character])}
         assetSyncer={assetSyncer}
+        blueprintSyncer={blueprintSyncer}
       />,
     );
 
@@ -567,6 +583,7 @@ describe("New Eden Foundry design preview", () => {
     expect(screen.getByText("1 lokal verbunden")).toBeInTheDocument();
     expect(screen.getByText("Bestätigte Scopes: 1")).toBeInTheDocument();
     await waitFor(() => expect(assetSyncer).toHaveBeenCalledTimes(1));
+    expect(blueprintSyncer).toHaveBeenCalledTimes(1);
   });
 
   it("edits aliases, groups, activity, and exposes guarded full deletion", async () => {
@@ -588,6 +605,10 @@ describe("New Eden Foundry design preview", () => {
       ],
     };
     const characterUpdater = vi.fn().mockResolvedValue({ ...character, alias: "Builder" });
+    const ssoStarter = vi.fn().mockResolvedValue({
+      ...idleSso, state: "waiting", attemptId: "reauthorize", expiresAt: "2026-09-10T12:03:00Z",
+      scopePackages: ["industry-core", "market", "planetary-industry", "projects", "private-structures"],
+    });
     render(
       <App
         runtimeLoader={() => nativeRuntime()}
@@ -597,10 +618,16 @@ describe("New Eden Foundry design preview", () => {
           { id: 3, label: "Industry", sortOrder: 0, characterCount: 1 },
         ])}
         characterUpdater={characterUpdater}
+        ssoStarter={ssoStarter}
       />,
     );
 
     fireEvent.click(await screen.findByRole("button", { name: "Verwalten" }));
+    expect(screen.getByText("Berechtigungen müssen erneuert werden")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Jetzt neu anmelden" }));
+    await waitFor(() => expect(ssoStarter).toHaveBeenCalledWith([
+      "industry-core", "market", "planetary-industry", "projects", "private-structures",
+    ]));
     expect(screen.getByText(/teilweise 1\/4/)).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Lokaler Alias"), { target: { value: "Builder" } });
     fireEvent.click(screen.getByRole("button", { name: "Änderungen speichern" }));
@@ -619,5 +646,16 @@ describe("New Eden Foundry design preview", () => {
 
     expect(await screen.findByRole("button", { name: "Charakter verbinden" })).toBeDisabled();
     expect(screen.getByText("Die echte Anmeldung ist in der Windows-App verfügbar.")).toBeInTheDocument();
+  });
+
+  it("shows sortable live BPO and BPC inventory", async () => {
+    const blueprintsLoader = vi.fn().mockResolvedValue(blueprintPage);
+    render(<App runtimeLoader={() => nativeRuntime()} ssoStatusLoader={() => Promise.resolve(idleSso)} blueprintsLoader={blueprintsLoader} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Blueprints & Jobs" }));
+    expect(await screen.findByText("Bantam Blueprint")).toBeInTheDocument();
+    expect(screen.getByText("BPC")).toBeInTheDocument();
+    expect(screen.getByText("12")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "ME" }));
+    await waitFor(() => expect(blueprintsLoader).toHaveBeenLastCalledWith(expect.objectContaining({ sortBy: "me", sortDirection: "asc" })));
   });
 });

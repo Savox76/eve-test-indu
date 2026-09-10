@@ -35,6 +35,7 @@ const ASSET_LOCATION_STATUSES: [&str; 5] =
     ["resolved", "restricted", "unresolved", "cycle", "pending"];
 const ASSET_DELTA_CHANGE_TYPES: [&str; 4] = ["added", "removed", "quantity", "location"];
 const ASSET_SORT_FIELDS: [&str; 6] = ["type", "owner", "location", "flag", "quantity", "age"];
+const BLUEPRINT_SORT_FIELDS: [&str; 7] = ["type", "owner", "kind", "me", "te", "runs", "age"];
 const SORT_DIRECTIONS: [&str; 2] = ["asc", "desc"];
 const MAX_ASSET_PAGE_SIZE: u64 = 200;
 const MAX_ASSET_SEARCH_CHARACTERS: usize = 120;
@@ -273,6 +274,54 @@ struct AssetSyncResponse {
     completed: u64,
     failed: u64,
     assets: u64,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BlueprintRecord {
+    item_id: u64,
+    type_id: u64,
+    type_name: String,
+    owner_character_id: u64,
+    owner_name: String,
+    kind: String,
+    material_efficiency: u8,
+    time_efficiency: u8,
+    runs: i64,
+    location_id: u64,
+    location_flag: String,
+    observed_at: String,
+    age_seconds: u64,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BlueprintQueryResponse {
+    items: Vec<BlueprintRecord>,
+    total: u64,
+    offset: u64,
+    limit: u64,
+    owners: Vec<AssetOwner>,
+    observed_at: Option<String>,
+    age_seconds: Option<u64>,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BlueprintSyncCharacterResponse {
+    character_id: u64,
+    status: String,
+    pages: u64,
+    blueprints: u64,
+    error_code: Option<String>,
+}
+
+#[derive(Deserialize, Serialize)]
+struct BlueprintSyncResponse {
+    characters: Vec<BlueprintSyncCharacterResponse>,
+    completed: u64,
+    failed: u64,
+    blueprints: u64,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -629,6 +678,78 @@ fn asset_query_response_is_valid(response: &AssetQueryResponse) -> bool {
                             .type_id
                             .is_none_or(|type_id| type_id <= JAVASCRIPT_MAX_SAFE_INTEGER)
                 })
+        })
+}
+
+fn blueprint_query_response_is_valid(response: &BlueprintQueryResponse) -> bool {
+    let owner_ids = response
+        .owners
+        .iter()
+        .map(|owner| owner.character_id)
+        .collect::<HashSet<_>>();
+    let item_ids = response
+        .items
+        .iter()
+        .map(|item| item.item_id)
+        .collect::<HashSet<_>>();
+    response.limit > 0
+        && response.limit <= MAX_ASSET_PAGE_SIZE
+        && response.total <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && response.offset <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && response.items.len() as u64 <= response.limit
+        && response.items.len() as u64 <= response.total
+        && item_ids.len() == response.items.len()
+        && owner_ids.len() == response.owners.len()
+        && response.observed_at.is_some() == response.age_seconds.is_some()
+        && response
+            .observed_at
+            .as_ref()
+            .is_none_or(|value| asset_text_is_valid(value, 64))
+        && response.owners.iter().all(|owner| {
+            owner.character_id > 0
+                && owner.character_id <= JAVASCRIPT_MAX_SAFE_INTEGER
+                && asset_text_is_valid(&owner.name, 100)
+        })
+        && response.items.iter().all(|item| {
+            item.item_id > 0
+                && item.item_id <= JAVASCRIPT_MAX_SAFE_INTEGER
+                && item.type_id > 0
+                && item.type_id <= JAVASCRIPT_MAX_SAFE_INTEGER
+                && owner_ids.contains(&item.owner_character_id)
+                && asset_text_is_valid(&item.type_name, 220)
+                && asset_text_is_valid(&item.owner_name, 100)
+                && matches!(item.kind.as_str(), "original" | "copy")
+                && item.material_efficiency <= 10
+                && item.time_efficiency <= 20
+                && item.runs >= -1
+                && item.runs <= JAVASCRIPT_MAX_SAFE_INTEGER as i64
+                && item.location_id > 0
+                && item.location_id <= JAVASCRIPT_MAX_SAFE_INTEGER
+                && asset_text_is_valid(&item.location_flag, 100)
+                && asset_text_is_valid(&item.observed_at, 64)
+        })
+}
+
+fn blueprint_sync_response_is_valid(response: &BlueprintSyncResponse) -> bool {
+    response.completed + response.failed == response.characters.len() as u64
+        && response.blueprints
+            == response
+                .characters
+                .iter()
+                .map(|item| item.blueprints)
+                .sum::<u64>()
+        && response.characters.iter().all(|item| {
+            item.character_id > 0
+                && item.character_id <= JAVASCRIPT_MAX_SAFE_INTEGER
+                && matches!(item.status.as_str(), "completed" | "failed")
+                && ((item.status == "completed" && item.error_code.is_none())
+                    || (item.status == "failed"
+                        && item.pages == 0
+                        && item.blueprints == 0
+                        && item
+                            .error_code
+                            .as_ref()
+                            .is_some_and(|code| !code.is_empty() && code.len() <= 120)))
         })
 }
 
@@ -1462,6 +1583,84 @@ fn sync_assets(state: State<'_, RuntimeState>) -> Result<String, String> {
 }
 
 #[tauri::command]
+fn sync_blueprints(state: State<'_, RuntimeState>) -> Result<String, String> {
+    refresh_sidecar_status(&state);
+    let response = {
+        let sidecar = state
+            .sidecar
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let process = sidecar
+            .as_ref()
+            .ok_or_else(|| "sidecar-unavailable".to_owned())?;
+        sidecar_json_request_with_timeout(
+            process,
+            "POST",
+            "/blueprints/sync",
+            "{}",
+            ASSET_SYNC_TIMEOUT,
+        )
+        .map_err(str::to_owned)?
+    };
+    let result: BlueprintSyncResponse =
+        serde_json::from_str(&response).map_err(|_| "sidecar-response-invalid".to_owned())?;
+    if !blueprint_sync_response_is_valid(&result) {
+        return Err("sidecar-response-invalid".to_owned());
+    }
+    serde_json::to_string(&result).map_err(|_| "status-serialization-failed".to_owned())
+}
+
+#[tauri::command]
+fn query_blueprints(
+    search: String,
+    owner_character_id: Option<u64>,
+    kind: Option<String>,
+    offset: u64,
+    limit: u64,
+    sort_by: String,
+    sort_direction: String,
+    state: State<'_, RuntimeState>,
+) -> Result<String, String> {
+    if search.chars().count() > MAX_ASSET_SEARCH_CHARACTERS
+        || search.trim() != search
+        || owner_character_id == Some(0)
+        || owner_character_id.is_some_and(|value| value > JAVASCRIPT_MAX_SAFE_INTEGER)
+        || kind
+            .as_deref()
+            .is_some_and(|value| !matches!(value, "original" | "copy"))
+        || limit == 0
+        || limit > MAX_ASSET_PAGE_SIZE
+        || offset > JAVASCRIPT_MAX_SAFE_INTEGER
+        || !BLUEPRINT_SORT_FIELDS.contains(&sort_by.as_str())
+        || !SORT_DIRECTIONS.contains(&sort_direction.as_str())
+    {
+        return Err("blueprint-query-invalid".to_owned());
+    }
+    refresh_sidecar_status(&state);
+    let body = serde_json::json!({
+        "search": search, "ownerCharacterId": owner_character_id, "kind": kind,
+        "offset": offset, "limit": limit, "sortBy": sort_by, "sortDirection": sort_direction,
+    })
+    .to_string();
+    let response = {
+        let sidecar = state
+            .sidecar
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let process = sidecar
+            .as_ref()
+            .ok_or_else(|| "sidecar-unavailable".to_owned())?;
+        sidecar_json_request(process, "POST", "/blueprints/query", &body).map_err(str::to_owned)?
+    };
+    let page: BlueprintQueryResponse =
+        serde_json::from_str(&response).map_err(|_| "sidecar-response-invalid".to_owned())?;
+    if !blueprint_query_response_is_valid(&page) || page.offset != offset || page.limit != limit {
+        return Err("sidecar-response-invalid".to_owned());
+    }
+    serde_json::to_string(&page).map_err(|_| "status-serialization-failed".to_owned())
+}
+
+#[tauri::command]
 fn query_assets(
     search: String,
     owner_character_id: Option<u64>,
@@ -1791,11 +1990,11 @@ fn start_eve_sso(
     scope_packages: Vec<String>,
     state: State<'_, RuntimeState>,
 ) -> Result<String, String> {
-    if scope_packages.is_empty()
+    if scope_packages.len() != EVE_SSO_SCOPE_PACKAGES.len()
         || scope_packages
             .iter()
-            .any(|package| !EVE_SSO_SCOPE_PACKAGES.contains(&package.as_str()))
-        || scope_packages.iter().collect::<HashSet<_>>().len() != scope_packages.len()
+            .map(String::as_str)
+            .ne(EVE_SSO_SCOPE_PACKAGES.iter().copied())
     {
         return Err("invalid-scope-packages".to_owned());
     }
@@ -1917,6 +2116,8 @@ pub fn run() {
             list_account_groups,
             sync_assets,
             query_assets,
+            sync_blueprints,
+            query_blueprints,
             export_assets_csv,
             query_asset_deltas,
             update_eve_character,

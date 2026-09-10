@@ -482,6 +482,35 @@ class SidecarIntegrationTests(unittest.TestCase):
             self.assertEqual(delta_page["limit"], 50)
             self.assertFalse(delta_page["hasBaseline"])
 
+            blueprint_query_request = urllib.request.Request(
+                f"{base_url}/blueprints/query",
+                data=json.dumps({
+                    "search": "", "ownerCharacterId": None, "kind": None,
+                    "offset": 0, "limit": 100, "sortBy": "type", "sortDirection": "asc",
+                }).encode(),
+                method="POST",
+                headers={
+                    "Authorization": f"Bearer {SYNTHETIC_SESSION_TOKEN}",
+                    "Content-Type": "application/json",
+                },
+            )
+            with opener.open(blueprint_query_request, timeout=3) as response:
+                blueprint_page = json.loads(response.read())
+            self.assertEqual(blueprint_page["items"], [])
+            self.assertEqual(blueprint_page["total"], 0)
+            self.assertEqual(blueprint_page["limit"], 100)
+
+            blueprint_sync_request = urllib.request.Request(
+                f"{base_url}/blueprints/sync", data=b"{}", method="POST",
+                headers={
+                    "Authorization": f"Bearer {SYNTHETIC_SESSION_TOKEN}",
+                    "Content-Type": "application/json",
+                },
+            )
+            with opener.open(blueprint_sync_request, timeout=3) as response:
+                blueprint_sync = json.loads(response.read())
+            self.assertEqual(blueprint_sync, {"characters": [], "completed": 0, "failed": 0, "blueprints": 0})
+
             asset_export_request = urllib.request.Request(
                 f"{base_url}/assets/export",
                 data=json.dumps(
@@ -513,7 +542,9 @@ class SidecarIntegrationTests(unittest.TestCase):
 
             sso_start_request = urllib.request.Request(
                 sso_login_url,
-                data=json.dumps({"scopePackages": ["industry-core"]}).encode(),
+                data=json.dumps({"scopePackages": [
+                    "industry-core", "market", "planetary-industry", "projects", "private-structures"
+                ]}).encode(),
                 method="POST",
                 headers={
                     "Authorization": f"Bearer {SYNTHETIC_SESSION_TOKEN}",

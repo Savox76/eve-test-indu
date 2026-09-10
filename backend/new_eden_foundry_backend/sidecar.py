@@ -30,6 +30,8 @@ from .asset_view import (
     validate_asset_query,
 )
 from .asset_sync import AssetSyncError, sync_character_assets
+from .blueprint_sync import BlueprintSyncError, sync_character_blueprints
+from .blueprint_view import BlueprintViewError, query_blueprints, validate_blueprint_query
 from .database import DatabaseStatus, connect_database, initialize_database
 from .esi_client import EsiClient, EsiClientError
 from .identity import (
@@ -496,6 +498,70 @@ def create_application(
             }
         )
 
+    @app.post("/blueprints/query")
+    async def post_blueprint_query(request: Request) -> JSONResponse:
+        try:
+            payload = await request.json()
+        except Exception:
+            return JSONResponse(status_code=422, content={"detail": "blueprint_query_invalid"})
+        try:
+            validate_blueprint_query(payload)
+            with closing(connect_database(storage.database_path)) as connection:
+                result = query_blueprints(connection, payload)
+        except BlueprintViewError as error:
+            code = str(error)
+            return JSONResponse(
+                status_code=422 if code == "blueprint_query_invalid" else 500,
+                content={"detail": code},
+            )
+        except Exception:
+            return JSONResponse(status_code=500, content={"detail": "blueprint_query_failed"})
+        return JSONResponse(content=result)
+
+    @app.post("/blueprints/sync")
+    async def post_blueprint_sync() -> JSONResponse:
+        if esi_client is None:
+            return JSONResponse(status_code=503, content={"detail": "esi_client_unavailable"})
+        with closing(connect_database(storage.database_path)) as connection:
+            character_ids = [
+                int(row[0])
+                for row in connection.execute(
+                    "SELECT character_id FROM characters WHERE enabled=1 ORDER BY character_id"
+                ).fetchall()
+            ]
+            results: list[dict[str, object]] = []
+            for character_id in character_ids:
+                try:
+                    synced = sync_character_blueprints(connection, esi_client, character_id)
+                    resolve_type_names(connection, esi_client, synced.type_ids)
+                    results.append(
+                        {
+                            "characterId": character_id,
+                            "status": "completed",
+                            "pages": synced.pages,
+                            "blueprints": synced.blueprints,
+                            "errorCode": None,
+                        }
+                    )
+                except (BlueprintSyncError, TypeNameResolutionError, EsiClientError) as error:
+                    results.append(
+                        {
+                            "characterId": character_id,
+                            "status": "failed",
+                            "pages": 0,
+                            "blueprints": 0,
+                            "errorCode": getattr(error, "code", str(error))[:120],
+                        }
+                    )
+        return JSONResponse(
+            content={
+                "characters": results,
+                "completed": sum(result["status"] == "completed" for result in results),
+                "failed": sum(result["status"] == "failed" for result in results),
+                "blueprints": sum(int(result["blueprints"]) for result in results),
+            }
+        )
+
     @app.post("/assets/export")
     async def post_asset_export(request: Request) -> JSONResponse:
         try:
@@ -780,6 +846,12 @@ def create_application(
             return JSONResponse(
                 status_code=422,
                 content={"detail": "The SSO login request is invalid."},
+            )
+        required_packages = list(sso_registration.scope_packages)
+        if payload["scopePackages"] != required_packages:
+            return JSONResponse(
+                status_code=422,
+                content={"detail": "required-scope-packages-missing"},
             )
         try:
             authorization_url, status = sso_login.start(payload["scopePackages"])
