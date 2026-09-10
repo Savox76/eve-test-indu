@@ -253,7 +253,7 @@ def check_documentation(errors: list[str]) -> None:
     else:
         character_content = character_documentation.read_text(encoding="utf-8")
         for marker in (
-            "Lokaler Alias",
+            "**Alias:**",
             "Credential-Status",
             "Scopepaket-Status",
             "zweistufig",
