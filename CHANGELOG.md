@@ -24,6 +24,44 @@ Alle bemerkenswerten Änderungen an New Eden Foundry werden hier festgehalten. D
 
 - Keine.
 
+## 0.0.5-preview.1 – 10. September 2026
+
+### Neu hinzugefügt
+
+- Zentraler `EsiClient` als einzige HTTP-Vertrauensgrenze für alle künftigen EVE-ESI-Aufrufe.
+- Charaktergetrennte In-Memory-Caches mit `Cache-Control`, `Expires`, `ETag`, `Last-Modified` und bedingter 304-Revalidierung.
+- Begrenzte Wiederholungen für Netzwerkfehler und ausgewählte transiente HTTP-Status einschließlich `Retry-After`.
+- Gemeinsames ESI-Fehlerbudget und Circuit Breaker mit sichtbarem, geheimnisfreiem Sidecar-Status.
+- Deterministische Tests für Header, Auth-Isolation, Cache, Retry, Budget, Circuit, Zielbegrenzung, JSON-Grenzen und Token-Redigierung.
+
+### Geändert
+
+- Charaktergebundene ESI-Aufrufe beziehen Access Tokens ausschließlich über den bestehenden `CharacterTokenService`.
+- Jede ESI-Anfrage setzt `X-Compatibility-Date: 2026-09-09` und einen beschreibenden User-Agent mit Produkt, Repository und Kontakt.
+- ESI-Ziele sind auf relative Pfade unter `https://esi.evetech.net` begrenzt; Redirects werden abgewiesen.
+- Masterplan 2.4 markiert Arbeitspaket 16 als abgeschlossen und den minimalen SDE-Import als nächsten Schritt.
+- Die sichtbare Versionsnummer wurde auf `v0.0.5-preview.1` aktualisiert.
+
+### Behobene Fehler
+
+- Fachmodule können Cache-, Retry- oder Rate-Limit-Regeln nicht mehr unbemerkt voneinander abweichend implementieren.
+- Abgelaufene Cacheeinträge werden mit Servervalidatoren geprüft, statt bekannte Antworten unnötig neu zu laden oder still zu leeren.
+- Ein erschöpftes ESI-Fehlerbudget und wiederholte transiente Fehler stoppen weitere Aufrufe kontrolliert.
+- Transportfehler geben keine Access Tokens, Antwortinhalte oder frei steuerbaren Ziel-URLs aus.
+
+### Bekannte Einschränkungen
+
+- Paket 16 liefert die zentrale Transport- und Resilienzschicht; SDE-Import, Endpoint-Pagination und fachliche Synchronisierung folgen ab Paket 17.
+- Fachkennzahlen der Oberfläche bleiben bis zur jeweiligen Synchronisierungsanbindung synthetisch.
+- Der sichere Refresh-Token-Speicher ist in dieser Windows-first Preview nur unter Windows verfügbar.
+- Öffentliche Updateverteilung, Codesignierung, das manuelle Windows-Laufzeitgate und der Schutz von `main` bleiben offen.
+
+### Update und Datenbankmigration
+
+- Keine Datenbankmigration; Schema-Version 6 und alle vorhandenen Charakter-, Gruppen- und Einstellungsdaten bleiben erhalten.
+- Bestehende Refresh Tokens verbleiben im Windows-Anmeldespeicher. ESI-Antwortcaches aus Paket 16 sind absichtlich prozesslokal und beginnen nach jedem Start leer.
+- Für ein portables Update die Anwendung schließen und den bisherigen Ordner `data` vollständig in den neuen Programmordner übernehmen.
+
 ## 0.0.4-preview.6 – 10. September 2026
 
 ### Neu hinzugefügt

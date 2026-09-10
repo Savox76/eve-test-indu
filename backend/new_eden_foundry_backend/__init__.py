@@ -6,6 +6,14 @@ from .database import (
     DatabaseStatus,
     initialize_database,
 )
+from .esi_client import (
+    ESI_COMPATIBILITY_DATE,
+    ESI_USER_AGENT,
+    EsiClient,
+    EsiClientError,
+    EsiResponse,
+    RawEsiResponse,
+)
 from .identity import (
     AccountGroup,
     CharacterRecord,
@@ -63,9 +71,15 @@ __all__ = [
     "DatabaseRestoreError",
     "DatabaseSchemaError",
     "DatabaseStatus",
+    "ESI_COMPATIBILITY_DATE",
+    "ESI_USER_AGENT",
+    "EsiClient",
+    "EsiClientError",
+    "EsiResponse",
     "MigrationBackup",
     "ProgramStorage",
     "ProgramStorageError",
+    "RawEsiResponse",
     "StartupDataState",
     "StagedRefreshToken",
     "RefreshTokenVault",

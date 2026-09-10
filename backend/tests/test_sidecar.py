@@ -334,6 +334,11 @@ class SidecarIntegrationTests(unittest.TestCase):
             self.assertEqual(ready["updater"]["manifestState"], "verified")
             self.assertFalse(ready["updater"]["publicDistribution"])
             self.assertEqual(ready["appearance"], {"fontScale": "normal"})
+            self.assertEqual(ready["esiClient"]["state"], "ready")
+            self.assertEqual(
+                ready["esiClient"]["compatibilityDate"],
+                "2026-09-09",
+            )
             expected_backend = (
                 "windows-credential-manager" if sys.platform == "win32" else "unavailable"
             )
@@ -388,6 +393,9 @@ class SidecarIntegrationTests(unittest.TestCase):
             self.assertFalse(health["updater"]["publicDistribution"])
             self.assertEqual(health["appearance"], {"fontScale": "normal"})
             self.assertEqual(health["characters"], {"connected": 0})
+            self.assertEqual(health["esiClient"]["state"], "ready")
+            self.assertEqual(health["esiClient"]["compatibilityDate"], "2026-09-09")
+            self.assertEqual(health["esiClient"]["cachedResources"], 0)
             self.assertEqual(health["credentials"], ready["credentials"])
             self.assertEqual(health["ssoRegistration"]["state"], "registered")
 

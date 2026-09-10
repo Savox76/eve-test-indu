@@ -16,7 +16,7 @@ const idleSso: SsoLoginStatus = {
 const nativeRuntime = (overrides: Partial<Extract<DesktopRuntimeStatus, { state: "ready" }>> = {}) =>
   Promise.resolve<DesktopRuntimeStatus>({
     state: "ready",
-    version: "0.0.4-preview.6",
+    version: "0.0.5-preview.1",
     desktopShell: true,
     singleInstance: true,
     sidecar: "ready",
@@ -89,7 +89,7 @@ describe("New Eden Foundry design preview", () => {
   it("credits Savoxmedia as the app creator next to the version", () => {
     render(<App />);
 
-    expect(screen.getByText("v0.0.4-preview.6")).toBeInTheDocument();
+    expect(screen.getByText("v0.0.5-preview.1")).toBeInTheDocument();
     expect(screen.getByText("Savoxmedia")).toBeInTheDocument();
     expect(screen.getByText("Erstellt von", { exact: false })).toBeInTheDocument();
     expect(screen.queryByText("Lokaler Betreiber")).not.toBeInTheDocument();

@@ -55,6 +55,7 @@ REQUIRED_BACKEND_FILES = tuple(
         "backend/new_eden_foundry_backend/__main__.py",
         "backend/new_eden_foundry_backend/appearance.py",
         "backend/new_eden_foundry_backend/database.py",
+        "backend/new_eden_foundry_backend/esi_client.py",
         "backend/new_eden_foundry_backend/identity.py",
         "backend/new_eden_foundry_backend/recovery.py",
         "backend/new_eden_foundry_backend/sidecar.py",
@@ -74,6 +75,7 @@ REQUIRED_BACKEND_FILES = tuple(
         "backend/requirements-runtime.txt",
         "backend/sidecar_entry.py",
         "backend/tests/test_database.py",
+        "backend/tests/test_esi_client.py",
         "backend/tests/test_appearance.py",
         "backend/tests/test_foundation_status.py",
         "backend/tests/test_identity.py",
@@ -264,6 +266,22 @@ def check_documentation(errors: list[str]) -> None:
                     f"Character-management documentation is missing marker: {marker}"
                 )
 
+    esi_documentation = ROOT / "docs" / "esi-client.md"
+    if not esi_documentation.is_file():
+        errors.append("Missing central ESI-client operating documentation.")
+    else:
+        esi_content = esi_documentation.read_text(encoding="utf-8")
+        for marker in (
+            "X-Compatibility-Date: 2026-09-09",
+            "User-Agent",
+            "If-None-Match",
+            "Retry-After",
+            "X-ESI-Error-Limit-Remain",
+            "Circuit Breaker",
+        ):
+            if marker not in esi_content:
+                errors.append(f"ESI-client documentation is missing marker: {marker}")
+
     releasing = ROOT / "docs" / "RELEASING.md"
     if not releasing.is_file():
         errors.append("Missing release rules.")
@@ -386,6 +404,8 @@ def check_backend_foundation(errors: list[str]) -> None:
             'app.delete("/characters/{character_id}")',
             'app.get("/account-groups")',
             "delete_character_completely",
+            '"esiClient"',
+            "EsiClient",
             '"publicDistribution": False',
             "verify_bundled_test_manifest",
         ):
@@ -405,6 +425,22 @@ def check_backend_foundation(errors: list[str]) -> None:
                 errors.append(f"Updater skeleton is missing required marker: {marker}")
         if "PRIVATE_KEY" in updater_content:
             errors.append("Updater skeleton must not contain a private signing key.")
+
+    esi_source = ROOT / "backend" / "new_eden_foundry_backend" / "esi_client.py"
+    if esi_source.is_file():
+        esi_content = esi_source.read_text(encoding="utf-8")
+        for marker in (
+            'ESI_BASE_URL: Final = "https://esi.evetech.net"',
+            'ESI_COMPATIBILITY_DATE: Final = "2026-09-09"',
+            '"X-Compatibility-Date"',
+            '"If-None-Match"',
+            '"x-esi-error-limit-remain"',
+            "TRANSIENT_STATUSES",
+            "esi-circuit-open",
+            "_RejectRedirects",
+        ):
+            if marker not in esi_content:
+                errors.append(f"Central ESI client is missing required marker: {marker}")
 
     sso_source = ROOT / "backend" / "new_eden_foundry_backend" / "sso_registration.py"
     if sso_source.is_file():
@@ -477,6 +513,7 @@ def check_backend_foundation(errors: list[str]) -> None:
             "registered",
             "a8409de72d5b4cab9b0424819d0abdec",
             "PKCE start/cancel",
+            "ESI policy",
         ):
             if marker not in smoke_content:
                 errors.append(

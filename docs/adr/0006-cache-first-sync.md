@@ -27,9 +27,11 @@ Jede Fachansicht benötigt Zustände für Alterung und Teilverfügbarkeit. Das D
 
 Seit Schema-Version 4 trägt ein Cache-Snapshot optional seinen bestätigten Ablaufzeitpunkt. Der lokale Startpfad unterscheidet `loading`, `refreshing`, `empty`, `fresh`, `stale`, `offline` und `error`. Nur Snapshots vollständig abgeschlossener Läufe dürfen als verfügbar gelten. Fehlgeschlagene oder laufende Folgeläufe ändern den gespeicherten Snapshot nicht; unbekannte oder fehlende Ablaufmetadaten werden vorsichtshalber als veraltet behandelt.
 
+Seit Paket 16 kapselt `EsiClient` die feste Compatibility-Date, die Produktkennung, charaktergetrennte Autorisierung und Caches, bedingte Requests, Antwortgrenzen, begrenzte Wiederholungen, das servergemeldete Fehlerbudget und den Circuit Breaker. Relative Pfade werden ausschließlich unter dem festen ESI-Host aufgelöst; Redirects sind nicht erlaubt. Fachmodule erhalten dadurch keine eigene HTTP-Vertrauensgrenze.
+
 ## Verifikation
 
-Golden- und Integrationstests simulieren 304, Pagination, 403 für Strukturen, 420/429, 5xx, Timeout, abgebrochenen Lauf und Offline-Start. In keinem Fall wird ein bekannter vollständiger Snapshot stillschweigend geleert.
+Deterministische Clienttests simulieren frischen Cache, 304, 429, 5xx, Netzwerkfehler, Fehlerbudget und offenen Circuit. Sie prüfen außerdem feste Header, Hostbegrenzung, Antwortgröße, striktes JSON und Token-Redigierung. Spätere Synchronisationspakete ergänzen Pagination, Struktur-403, abgebrochene Läufe und die atomare Snapshot-Übernahme. In keinem Fall darf ein bekannter vollständiger Snapshot stillschweigend geleert werden.
 
 ## Referenzen
 
