@@ -560,7 +560,6 @@ fn asset_query_response_is_valid(response: &AssetQueryResponse) -> bool {
         })
         && statuses.as_slice() == ASSET_LOCATION_STATUSES.as_slice()
         && response.observed_at.is_some() == response.age_seconds.is_some()
-        && response.has_baseline == response.observed_at.is_some()
         && response
             .observed_at
             .as_ref()
@@ -643,6 +642,7 @@ fn asset_delta_response_is_valid(response: &AssetDeltaQueryResponse) -> bool {
         && event_ids.len() == response.items.len()
         && owner_ids.len() == response.owners.len()
         && response.observed_at.is_some() == response.age_seconds.is_some()
+        && response.has_baseline == response.observed_at.is_some()
         && response
             .observed_at
             .as_ref()
