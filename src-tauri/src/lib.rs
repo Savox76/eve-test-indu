@@ -692,7 +692,8 @@ fn blueprint_query_response_is_valid(response: &BlueprintQueryResponse) -> bool 
         .iter()
         .map(|item| item.item_id)
         .collect::<HashSet<_>>();
-    response.limit > 0 && response.limit <= MAX_ASSET_PAGE_SIZE
+    response.limit > 0
+        && response.limit <= MAX_ASSET_PAGE_SIZE
         && response.total <= JAVASCRIPT_MAX_SAFE_INTEGER
         && response.offset <= JAVASCRIPT_MAX_SAFE_INTEGER
         && response.items.len() as u64 <= response.limit
