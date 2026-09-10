@@ -1,10 +1,10 @@
 # Masterplan – New Eden Foundry
 
-**Fassung:** 2.3 (lebendes Repository-Dokument)
+**Fassung:** 2.4 (lebendes Repository-Dokument)
 
 **Stand:** 10. September 2026
 
-**Status:** In Umsetzung – Phase 2 mit vollständiger Charakterverwaltung
+**Status:** In Umsetzung – Phase 2 mit zentraler ESI-Transportgrenze
 
 **Geltungsbereich:** `Savox76/eve-test-indu`
 
@@ -204,8 +204,9 @@ Die Reihenfolge ist verbindlicher als eine Kalenderangabe.
 - **Abgeschlossen:** 13 – der Sidecar tauscht den einmaligen Code ohne Client Secret per PKCE aus, bezieht Token- und JWKS-Endpunkte aus streng begrenzten EVE-Metadaten und prüft `RS256`-Signatur, Schlüssel-ID, Issuer, beide Audience-Werte, Ablauf, Charakter-Subject, Name und Scopes. Nur danach werden Identität und Scope-Status idempotent in SQLite gespeichert und in der echten Charakterliste angezeigt.
 - **Abgeschlossen:** 14 – der ausschließlich nach erfolgreicher JWT-Prüfung erhaltene Refresh Token wird pro Charakter in einem verifizierten Zwei-Slot-Verfahren im Windows-Anmeldespeicher aktiviert. Der bisherige aktive Wert bleibt bei Schreibfehlern erhalten; unterbrochene und konkurrierende Rotationen werden ohne Tokenverlust behandelt. Access Tokens verbleiben nur im Sidecar-Speicher, Geheimnisse erreichen weder SQLite noch API-Antworten oder Logs, und nicht unterstützte Schlüsselbundumgebungen schlagen geschlossen fehl.
 - **Abgeschlossen:** 15 – verbundene Charaktere lassen sich mit lokalem Alias, Aktivstatus und frei benannten Kontogruppen verwalten. Credential- und Scopepaket-Status werden charakterbezogen angezeigt. Der zweistufig bestätigte Löschablauf entfernt Identität, Scopes, Sync-Historie, Cache-Snapshots, Prozess-Token und Refresh Token; Credential-Fehler rollen die SQLite-Löschung zurück.
+- **Abgeschlossen:** 16 – `EsiClient` bildet die einzige HTTP-Vertrauensgrenze für ESI. Er erzwingt festen Host, Compatibility-Date, User-Agent und charaktergetrennte Autorisierung, verarbeitet Cacheheader und bedingte 304-Antworten, begrenzt JSON und Wiederholungen und kapselt Retry-After, ESI-Fehlerbudget sowie Circuit Breaker. Der authentifizierte Sidecar-Status macht diese Policy ohne Zugangsdaten sichtbar.
 - **Zusätzlich umgesetzt:** Die vollständige sichtbare Oberfläche unterstützt fünf globale Schriftgrößenstufen; die Auswahl bleibt in der bestehenden `app_settings`-Tabelle im Programmordner erhalten.
-- **Als Nächstes:** Arbeitspaket 16 kapselt alle ESI-Zugriffe in einem zentralen Client mit Compatibility-Date, eindeutiger User-Agent-Kennung, HTTP-Cache-Headern, begrenzten Wiederholungen, Fehlerbudget und Circuit Breaker. Parallel bleibt das A0-Windows-Gate für Installation, zweiten Start, Migration/Update und Entfernung auf einem freigegebenen Windows-Testgerät offen.
+- **Als Nächstes:** Arbeitspaket 17 importiert den minimal benötigten SDE-Bestand für Typen, Gruppen und Orte atomar und kennzeichnet ihn eindeutig mit seiner Buildnummer. Parallel bleibt das A0-Windows-Gate für Installation, zweiten Start, Migration/Update und Entfernung auf einem freigegebenen Windows-Testgerät offen.
 - Architektur-Gate A0 ist technisch weitgehend umgesetzt, aber bis zur vollständigen Windows-Abnahme noch nicht erfüllt; breite Fachentwicklung beginnt erst danach.
 
 ## 13. Entscheidungs- und Quellenrang

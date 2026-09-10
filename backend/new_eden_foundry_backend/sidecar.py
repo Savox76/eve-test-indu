@@ -19,6 +19,7 @@ from fastapi.responses import JSONResponse
 
 from .appearance import appearance_payload, read_font_scale, set_font_scale
 from .database import DatabaseStatus, connect_database, initialize_database
+from .esi_client import EsiClient
 from .identity import (
     CharacterRecord,
     create_account_group,
@@ -251,6 +252,7 @@ def create_application(
     sso_login: SsoPkceManager,
     token_vault: RefreshTokenVault,
     token_service: CharacterTokenService | None = None,
+    esi_client: EsiClient | None = None,
 ) -> FastAPI:
     app = FastAPI(
         title="New Eden Foundry local core",
@@ -295,6 +297,11 @@ def create_application(
             },
             "appearance": appearance_payload(font_scale),
             "characters": {"connected": character_count},
+            "esiClient": (
+                esi_client.status()
+                if esi_client is not None
+                else {"state": "unavailable", "compatibilityDate": None}
+            ),
             "credentials": {
                 "backend": token_vault.backend_name,
                 "state": (
@@ -668,6 +675,12 @@ def run_sidecar(input_stream: TextIO = sys.stdin, output_stream: TextIO = sys.st
     assert sso_registration.client_id is not None
     sso_client = EveSsoClient(sso_registration.client_id)
     token_service = CharacterTokenService(token_vault, sso_client)
+    esi_client = EsiClient(
+        lambda character_id, scopes: token_service.access_token(
+            character_id,
+            scopes,
+        ).token
+    )
     try:
         sso_login = SsoPkceManager(
             sso_registration,
@@ -694,6 +707,7 @@ def run_sidecar(input_stream: TextIO = sys.stdin, output_stream: TextIO = sys.st
         sso_login,
         token_vault,
         token_service,
+        esi_client,
     )
     server = uvicorn.Server(
         uvicorn.Config(
@@ -736,6 +750,7 @@ def run_sidecar(input_stream: TextIO = sys.stdin, output_stream: TextIO = sys.st
                 "publicDistribution": False,
             },
             "appearance": appearance_payload(font_scale),
+            "esiClient": esi_client.status(),
             "credentials": {
                 "backend": token_vault.backend_name,
                 "state": (

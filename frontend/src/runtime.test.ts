@@ -53,7 +53,7 @@ function managedCharacter(overrides: Record<string, unknown> = {}) {
 function nativeStatus(overrides: Record<string, unknown> = {}) {
   return JSON.stringify({
     state: "ready",
-    version: "0.0.4-preview.6",
+    version: "0.0.5-preview.1",
     desktopShell: true,
     singleInstance: true,
     sidecar: "ready",
@@ -89,7 +89,7 @@ describe("desktop runtime status", () => {
       loadDesktopRuntimeStatus({ isAvailable: () => true, invoke }),
     ).resolves.toEqual({
       state: "ready",
-      version: "0.0.4-preview.6",
+      version: "0.0.5-preview.1",
       desktopShell: true,
       singleInstance: true,
       sidecar: "ready",

@@ -214,6 +214,10 @@ def main() -> int:
                 raise RuntimeError(f"Unexpected readiness payload: {ready!r}")
             if ready.get("appearance") != {"fontScale": "normal"}:
                 raise RuntimeError("The packaged default font scale is invalid.")
+            if ready.get("esiClient", {}).get("compatibilityDate") != "2026-09-09":
+                raise RuntimeError("The packaged ESI compatibility date is invalid.")
+            if ready.get("esiClient", {}).get("state") != "ready":
+                raise RuntimeError("The packaged ESI circuit must start ready.")
             if token in ready_line:
                 raise RuntimeError("The readiness payload exposed the session token.")
 
@@ -228,6 +232,8 @@ def main() -> int:
                 raise RuntimeError("The sidecar reported an unexpected database location.")
             if database.get("schemaVersion") != 6 or database.get("integrity") != "ok":
                 raise RuntimeError("The sidecar database health is invalid.")
+            if health.get("esiClient", {}).get("compatibilityDate") != "2026-09-09":
+                raise RuntimeError("The health response omitted the ESI compatibility date.")
             data_state = health.get("data")
             if not isinstance(data_state, dict) or data_state.get("state") != "empty":
                 raise RuntimeError("The sidecar did not report the empty cache-first state.")
@@ -410,7 +416,7 @@ def main() -> int:
 
     print(
         "Frozen sidecar handshake, signed updater skeleton, PKCE start/cancel, character "
-        "roster, font scale, migration backup, database location and shutdown verified."
+        "roster, ESI policy, font scale, migration backup, database location and shutdown verified."
     )
     return 0
 
