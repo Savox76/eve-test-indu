@@ -147,12 +147,16 @@ def seed_previous_release_database(program_directory: Path) -> Path:
                 created_at TEXT NOT NULL
             );
             CREATE TABLE app_settings (
-                key TEXT PRIMARY KEY NOT NULL,
-                value TEXT NOT NULL,
-                updated_at TEXT NOT NULL
+                key TEXT PRIMARY KEY NOT NULL CHECK (
+                    length(trim(key)) BETWEEN 1 AND 80
+                ),
+                value TEXT NOT NULL CHECK (length(value) <= 2000),
+                updated_at TEXT NOT NULL DEFAULT (
+                    strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                )
             );
-            INSERT INTO app_settings (key, value, updated_at)
-                VALUES ('update_channel', 'stable', '2026-09-09T12:00:00Z');
+            INSERT INTO app_settings (key, value)
+                VALUES ('update_channel', 'stable');
             INSERT INTO schema_migrations (version, name)
                 VALUES (1, 'initial_local_core');
             INSERT INTO schema_migrations (version, name)
