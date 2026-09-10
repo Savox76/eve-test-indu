@@ -68,6 +68,7 @@ import {
   loadDesktopRuntimeStatus,
   loadAssets,
   loadAssetDeltas,
+  syncAssets,
   renameAccountGroup,
   setDesktopUpdateChannel,
   setDesktopFontScale,
@@ -81,6 +82,7 @@ import {
   type AssetDeltaQuery,
   type AssetLocationStatus,
   type AssetPage,
+  type AssetSyncResult,
   type AssetQuery,
   type CharacterUpdate,
   type DesktopRuntimeStatus,
@@ -425,6 +427,12 @@ const copy = {
       age: "Datenalter",
       flag: "Hangar / Bereich",
       export: "Treffer als CSV",
+      sync: "Assets aktualisieren",
+      syncing: "Assets werden aktualisiert …",
+      syncComplete: "{assets} Positionen von {characters} Charakter(en) aktualisiert.",
+      syncPartial: "{completed} aktualisiert, {failed} fehlgeschlagen. Berechtigungen und Verbindung prüfen.",
+      syncEmpty: "Kein aktivierter Charakter für den Asset-Sync vorhanden.",
+      syncError: "Asset-Sync konnte nicht gestartet werden.",
       exporting: "CSV wird erstellt …",
       exported: "{rows} Zeilen gespeichert · {path}",
       exportError: "CSV konnte nicht sicher erstellt werden.",
@@ -485,7 +493,7 @@ const copy = {
     },
     planned: "Geplant",
     previewOnly: "Noch ohne Live-Funktion",
-    footerVersion: "v0.0.5-preview.3",
+    footerVersion: "v0.0.5-preview.4",
   },
   en: {
     nav: {
@@ -794,6 +802,12 @@ const copy = {
       age: "Data age",
       flag: "Hangar / division",
       export: "Export results as CSV",
+      sync: "Refresh assets",
+      syncing: "Refreshing assets …",
+      syncComplete: "Updated {assets} positions from {characters} character(s).",
+      syncPartial: "{completed} updated, {failed} failed. Check permissions and connection.",
+      syncEmpty: "No enabled character is available for asset sync.",
+      syncError: "Asset sync could not be started.",
       exporting: "Creating CSV …",
       exported: "{rows} rows saved · {path}",
       exportError: "The CSV could not be created safely.",
@@ -854,7 +868,7 @@ const copy = {
     },
     planned: "Planned",
     previewOnly: "No live function yet",
-    footerVersion: "v0.0.5-preview.3",
+    footerVersion: "v0.0.5-preview.4",
   },
 } as const;
 
@@ -968,6 +982,7 @@ export function App({
   assetsLoader = loadAssets,
   assetsCsvExporter = exportAssetsCsv,
   assetDeltasLoader = loadAssetDeltas,
+  assetSyncer = syncAssets,
   fontScaleSetter = setDesktopFontScale,
 }: {
   runtimeLoader?: () => Promise<DesktopRuntimeStatus>;
@@ -987,6 +1002,7 @@ export function App({
     query: Omit<AssetQuery, "offset" | "limit">,
   ) => Promise<AssetCsvExport>;
   assetDeltasLoader?: (query: AssetDeltaQuery) => Promise<AssetDeltaPage>;
+  assetSyncer?: () => Promise<AssetSyncResult>;
   fontScaleSetter?: (fontScale: FontScale) => Promise<AppearanceStatus>;
 }) {
   const [locale, setLocale] = useState<Locale>("de");
@@ -1542,6 +1558,7 @@ export function App({
             loadAssets={assetsLoader}
             exportCsv={assetsCsvExporter}
             loadDeltas={assetDeltasLoader}
+            syncAssets={assetSyncer}
           />
         ) : (
           <ModulePreview activeModule={activeModule} t={t} />
@@ -1560,6 +1577,7 @@ function AssetWorkspace({
   loadAssets: loadAssetPage,
   exportCsv,
   loadDeltas: loadDeltaPage,
+  syncAssets: runAssetSync,
 }: {
   available: boolean;
   locale: Locale;
@@ -1567,6 +1585,7 @@ function AssetWorkspace({
   loadAssets: (query: AssetQuery) => Promise<AssetPage>;
   exportCsv: (query: Omit<AssetQuery, "offset" | "limit">) => Promise<AssetCsvExport>;
   loadDeltas: (query: AssetDeltaQuery) => Promise<AssetDeltaPage>;
+  syncAssets: () => Promise<AssetSyncResult>;
 }) {
   const [search, setSearch] = useState("");
   const [appliedSearch, setAppliedSearch] = useState("");
@@ -1584,6 +1603,10 @@ function AssetWorkspace({
   const [deltaPage, setDeltaPage] = useState<AssetDeltaPage | null>(null);
   const [deltasLoading, setDeltasLoading] = useState(false);
   const [deltasFailed, setDeltasFailed] = useState(false);
+  const [refreshRevision, setRefreshRevision] = useState(0);
+  const [syncResult, setSyncResult] = useState<AssetSyncResult | null>(null);
+  const [syncFailed, setSyncFailed] = useState(false);
+  const [assetsSyncing, setAssetsSyncing] = useState(false);
   const numberFormat = useMemo(
     () => new Intl.NumberFormat(locale === "de" ? "de-DE" : "en-US"),
     [locale],
@@ -1628,7 +1651,7 @@ function AssetWorkspace({
     return () => {
       active = false;
     };
-  }, [appliedSearch, available, loadAssetPage, locationStatus, offset, ownerCharacterId]);
+  }, [appliedSearch, available, loadAssetPage, locationStatus, offset, ownerCharacterId, refreshRevision]);
 
   useEffect(() => {
     if (!available) return;
@@ -1660,7 +1683,25 @@ function AssetWorkspace({
     return () => {
       active = false;
     };
-  }, [appliedSearch, available, deltaChangeType, deltaOffset, loadDeltaPage, ownerCharacterId]);
+  }, [appliedSearch, available, deltaChangeType, deltaOffset, loadDeltaPage, ownerCharacterId, refreshRevision]);
+
+  const refreshAssets = async () => {
+    if (!available || assetsSyncing) return;
+    setAssetsSyncing(true);
+    setSyncFailed(false);
+    setSyncResult(null);
+    try {
+      const result = await runAssetSync();
+      setSyncResult(result);
+      setOffset(0);
+      setDeltaOffset(0);
+      setRefreshRevision((revision) => revision + 1);
+    } catch {
+      setSyncFailed(true);
+    } finally {
+      setAssetsSyncing(false);
+    }
+  };
 
   const createExport = async () => {
     if (!available || exporting) return;
@@ -1771,6 +1812,15 @@ function AssetWorkspace({
           <button
             className="secondary-button asset-export"
             type="button"
+            onClick={() => void refreshAssets()}
+            disabled={!available || assetsSyncing}
+          >
+            <RefreshCw className={assetsSyncing ? "spin" : ""} size={15} />
+            {assetsSyncing ? t.assets.syncing : t.assets.sync}
+          </button>
+          <button
+            className="secondary-button asset-export"
+            type="button"
             onClick={() => void createExport()}
             disabled={!available || exporting || loading}
           >
@@ -1778,6 +1828,22 @@ function AssetWorkspace({
             {exporting ? t.assets.exporting : t.assets.export}
           </button>
         </div>
+
+        {(syncResult || syncFailed) && (
+          <div className={`asset-export-status ${syncFailed || (syncResult?.failed ?? 0) > 0 ? "asset-export-status--error" : ""}`} role="status">
+            {syncFailed
+              ? t.assets.syncError
+              : syncResult?.characters.length === 0
+                ? t.assets.syncEmpty
+                : (syncResult?.failed ?? 0) > 0
+                  ? t.assets.syncPartial
+                      .replace("{completed}", numberFormat.format(syncResult?.completed ?? 0))
+                      .replace("{failed}", numberFormat.format(syncResult?.failed ?? 0))
+                  : t.assets.syncComplete
+                      .replace("{assets}", numberFormat.format(syncResult?.assets ?? 0))
+                      .replace("{characters}", numberFormat.format(syncResult?.completed ?? 0))}
+          </div>
+        )}
 
         {(exported || exportFailed) && (
           <div className={`asset-export-status ${exportFailed ? "asset-export-status--error" : ""}`} role="status">

@@ -133,7 +133,7 @@ jobs:
           $resolvedPortablePath = (Resolve-Path -LiteralPath $portablePath).Path
           $archive = [IO.Compression.ZipFile]::OpenRead($resolvedPortablePath)
           try {
-            $folder = "New Eden Foundry $version/"
+            $folder = "New Eden Foundry Portable/"
             $entries = @($archive.Entries | ForEach-Object { $_.FullName.Replace('\', '/') })
             foreach ($expected in @(
               "${folder}New Eden Foundry.exe",

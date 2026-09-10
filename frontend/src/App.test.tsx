@@ -22,7 +22,7 @@ const idleSso: SsoLoginStatus = {
 const nativeRuntime = (overrides: Partial<Extract<DesktopRuntimeStatus, { state: "ready" }>> = {}) =>
   Promise.resolve<DesktopRuntimeStatus>({
     state: "ready",
-    version: "0.0.5-preview.3",
+    version: "0.0.5-preview.4",
     desktopShell: true,
     singleInstance: true,
     sidecar: "ready",
@@ -233,6 +233,44 @@ describe("New Eden Foundry design preview", () => {
       .toBeInTheDocument();
   });
 
+  it("runs the real asset sync and reloads the visible snapshots", async () => {
+    const assetsLoader = vi.fn().mockResolvedValue(assetPage());
+    const assetSyncer = vi.fn().mockResolvedValue({
+      characters: [{
+        characterId: 90_888_001,
+        status: "completed",
+        pages: 1,
+        assets: 1,
+        resolved: 1,
+        restricted: 0,
+        unresolved: 0,
+        cycles: 0,
+        errorCode: null,
+      }],
+      completed: 1,
+      failed: 0,
+      assets: 1,
+    });
+    render(
+      <App
+        runtimeLoader={() => nativeRuntime()}
+        ssoStatusLoader={() => Promise.resolve(idleSso)}
+        charactersLoader={() => Promise.resolve([])}
+        accountGroupsLoader={() => Promise.resolve([])}
+        assetsLoader={assetsLoader}
+        assetSyncer={assetSyncer}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Assets/i }));
+    await screen.findByText("Synthetic Component");
+
+    fireEvent.click(screen.getByRole("button", { name: "Assets aktualisieren" }));
+
+    await waitFor(() => expect(assetSyncer).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText(/1 Positionen von 1 Charakter/)).toBeInTheDocument();
+    await waitFor(() => expect(assetsLoader.mock.calls.length).toBeGreaterThan(1));
+  });
+
   it("shows traceable delta evidence and filters the bounded history", async () => {
     const assetDeltasLoader = vi.fn().mockResolvedValue(assetDeltaPage());
     render(
@@ -319,7 +357,7 @@ describe("New Eden Foundry design preview", () => {
   it("credits Savoxmedia as the app creator next to the version", () => {
     render(<App />);
 
-    expect(screen.getByText("v0.0.5-preview.3")).toBeInTheDocument();
+    expect(screen.getByText("v0.0.5-preview.4")).toBeInTheDocument();
     expect(screen.getByText("Savoxmedia")).toBeInTheDocument();
     expect(screen.getByText("Erstellt von", { exact: false })).toBeInTheDocument();
     expect(screen.queryByText("Lokaler Betreiber")).not.toBeInTheDocument();

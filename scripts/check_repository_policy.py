@@ -46,6 +46,7 @@ REQUIRED_ADRS = tuple(
         "0010-program-folder-storage.md",
         "0011-signed-update-channel-skeleton.md",
         "0012-fixed-eve-sso-registration-profile.md",
+        "0013-update-stable-application-data.md",
     )
 )
 
@@ -462,6 +463,7 @@ def check_backend_foundation(errors: list[str]) -> None:
             'app.delete("/characters/{character_id}")',
             'app.get("/account-groups")',
             'app.post("/assets/query")',
+            'app.post("/assets/sync")',
             'app.post("/assets/export")',
             'app.post("/assets/deltas/query")',
             "delete_character_completely",

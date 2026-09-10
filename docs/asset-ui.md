@@ -2,6 +2,8 @@
 
 Paket 20 bindet die Asset-Ansicht an die letzten vollständig abgeschlossenen, charaktergetrennten Asset-Snapshots und die dazu passenden Standort-Snapshots. Die Ansicht verwendet keine synthetischen Fachwerte, sobald der lokale Desktop-Kern bereit ist.
 
+Mit **Assets aktualisieren** startet die Ansicht den echten ESI-Lauf für alle aktivierten Charaktere. Nach Abschluss werden Bestand und Änderungsverlauf neu geladen. Teilfehler werden sichtbar gemeldet, während erfolgreiche Charakterläufe erhalten bleiben.
+
 ## Sichtbares Lesemodell
 
 Jede Position zeigt:

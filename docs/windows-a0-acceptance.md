@@ -1,6 +1,6 @@
 # Windows-Abnahme A0 für Paket 22
 
-Diese Abnahme ist der letzte externe Nachweis vor der ersten `0.2.0`-Alpha. Sie wird auf einem freigegebenen Windows-10- oder Windows-11-x64-Testgerät mit dem Installer von `v0.0.5-preview.2` und dem Kandidaten `v0.0.5-preview.3` durchgeführt. Automatisierte CI-Pakettests ersetzen diesen Lauf nicht.
+Diese Abnahme ist der letzte externe Nachweis vor der ersten `0.2.0`-Alpha. Sie wird auf einem freigegebenen Windows-10- oder Windows-11-x64-Testgerät mit dem Installer von `v0.0.5-preview.2` und dem Kandidaten `v0.0.5-preview.4` durchgeführt. Automatisierte CI-Pakettests ersetzen diesen Lauf nicht.
 
 ## Vorbereitung
 
@@ -13,14 +13,14 @@ Diese Abnahme ist der letzte externe Nachweis vor der ersten `0.2.0`-Alpha. Sie 
 | Nr. | Prüfung | Bestanden, wenn |
 | ---: | --- | --- |
 | 1 | Installation `v0.0.5-preview.2` | Der Current-User-Installer beendet sich erfolgreich und die Anwendung startet ohne Entwicklerwerkzeuge. |
-| 2 | Lokaler Kern | Die Oberfläche meldet Desktop-Kern, Sidecar und Datenbank als bereit; `data\foundry.sqlite3` liegt im Programmordner. |
+| 2 | Lokaler Kern | Die Oberfläche meldet Desktop-Kern, Sidecar und Datenbank als bereit; die installierte Ausgabe verwendet den stabilen benutzerspezifischen App-Datenordner. |
 | 3 | Zweiter Start | Ein zweiter Programmstart erzeugt keine zweite unabhängige Instanz und fokussiert das vorhandene Fenster. |
-| 4 | Ausgangsdaten | Mindestens eine ungefährliche lokale Einstellung wird gespeichert; vorhandene Charakter- und Assetdaten dürfen für die reine Sichtprüfung verwendet werden. |
-| 5 | Installer-Update | Nach vollständigem Schließen wird `v0.0.5-preview.3` über dieselbe Installation installiert und zeigt anschließend die neue Versionsnummer. |
+| 4 | Ausgangsdaten | Mindestens ein Charakter wird verbunden, **Assets aktualisieren** liefert einen Bestand und eine ungefährliche lokale Einstellung wird gespeichert. |
+| 5 | Installer-Update | Nach vollständigem Schließen wird `v0.0.5-preview.4` über dieselbe Installation installiert und zeigt anschließend die neue Versionsnummer. |
 | 6 | Datenerhalt | Datenbank, Einstellung, Charakterliste und letzte vollständige Assetdaten sind nach dem Update weiterhin vorhanden; Schema 6 bleibt gültig. |
 | 7 | Portable Ausgabe | Die ZIP wird vollständig in einen beschreibbaren Ordner entpackt; Hauptprogramm und Sidecar starten ohne Installation. |
-| 8 | Entfernung | Nach dem Schließen beendet die Deinstallation die Anwendung und entfernt ausgelieferte Programmdateien. Der nicht gebündelte `data`-Ordner bleibt wie dokumentiert erhalten. |
-| 9 | Sauberer Abschluss | Nach Deinstallation laufen weder Hauptprogramm noch Sidecar weiter; eine erneute Installation kann den beibehaltenen Datenstand wieder öffnen. |
+| 8 | Entfernung | Nach dem Schließen beendet die Deinstallation die Anwendung und entfernt ausgelieferte Programmdateien. Benutzerspezifische Daten bleiben wie dokumentiert erhalten. |
+| 9 | Sauberer Abschluss | Nach Deinstallation laufen weder Hauptprogramm noch Sidecar weiter; eine erneute Installation öffnet den beibehaltenen Datenstand wieder. |
 
 ## Ergebnis melden
 

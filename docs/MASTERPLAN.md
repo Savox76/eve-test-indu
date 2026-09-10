@@ -1,6 +1,6 @@
 # Masterplan – New Eden Foundry
 
-**Fassung:** 2.9 (lebendes Repository-Dokument)
+**Fassung:** 3.0 (lebendes Repository-Dokument)
 
 **Stand:** 10. September 2026
 
@@ -210,9 +210,9 @@ Die Reihenfolge ist verbindlicher als eine Kalenderangabe.
 - **Abgeschlossen:** 19 – der letzte vollständige Asset-Snapshot jedes Charakters wird in root-first Standort- und Containerpfade aufgelöst. SDE-Standorte und Typnamen werden lokal genutzt, Stationen und erlaubte Spielerstrukturen über den zentralen ESI-Client ergänzt. Struktur-403 und fehlende Scopes bleiben als eingeschränkte Fachzustände sichtbar; fehlende Container und Zyklen erhalten stabile Fehlercodes. Nur vollständig verarbeitete Läufe veröffentlichen einen neuen Standort-Snapshot.
 - **Abgeschlossen:** 20 – die zweisprachige Asset-Oberfläche liest ausschließlich die letzten vollständigen charaktergetrennten Snapshots, verbindet nur exakt passende Standort-Snapshots und zeigt Typ, Besitzer, Standortpfad und -status, Bereich, Menge und Datenalter. Suche sowie Besitzer- und Standortstatusfilter laufen serverseitig; höchstens 100 Zeilen werden gleichzeitig übertragen und gerendert. Ein synthetischer 100.000-Zeilen-Test sichert den begrenzten Transport. Der gefilterte CSV-Export schreibt atomar und formelneutralisiert unter `data\exports`.
 - **Abgeschlossen:** 21 – jeder vollständige Charakter-Asset-Sync veröffentlicht atomar eine Baseline oder ein Delta zum vorherigen vollständigen Snapshot. Hinzufügungen, Entfernungen, Mengen- und Standortänderungen tragen deterministische Fingerabdrücke, Snapshot-/Run-IDs und ein Beobachtungsfenster. Die zweisprachige Historie ist serverseitig such- und filterbar und überträgt höchstens 50 Ereignisse pro Seite. Charakter-/Typ-Schlüssel, Richtung und Mengendifferenz bereiten die spätere Jobkorrelation vor, ohne bereits unbelegte Zuordnungen zu behaupten.
-- **Zusätzlich umgesetzt:** Die vollständige sichtbare Oberfläche unterstützt fünf globale Schriftgrößenstufen; die Auswahl bleibt in der bestehenden `app_settings`-Tabelle im Programmordner erhalten.
-- **In Arbeit:** 22 – `v0.0.5-preview.3` bündelt die abgeschlossenen Pakete 19 bis 21 und stellt den reproduzierbaren Kandidaten für Installation, zweiten Start, Update, Datenerhalt, Portable-Ausgabe und Entfernung bereit. Das verbindliche Protokoll steht unter `docs/windows-a0-acceptance.md`; die erste `0.2.0`-Alpha folgt erst nach vollständig bestandenem Gerätetest.
-- **Als Nächstes:** Windows-A0-Abnahme von `v0.0.5-preview.2` auf `v0.0.5-preview.3` auf einem freigegebenen Windows-Testgerät; danach Abschluss von Paket 22 und erste `0.2.0`-Alpha-Freigabe.
+- **Zusätzlich umgesetzt:** Die vollständige sichtbare Oberfläche unterstützt fünf globale Schriftgrößenstufen; die Auswahl bleibt in der bestehenden `app_settings`-Tabelle am updatefesten Datenort erhalten.
+- **In Arbeit:** 22 – Der Gerätetest bestätigte Einzelinstanz und zweiten Start, deckte aber den versionsabhängigen Speicherort sowie den fehlenden Aufruf des bereits vorhandenen Asset-Sync-Kerns auf. `v0.0.5-preview.4` korrigiert beides mit updatefestem Installationsspeicher, konstantem Portable-Ordner und echtem Asset-Sync aus der Oberfläche. Das vollständige A0-Protokoll bleibt vor der ersten `0.2.0`-Alpha erforderlich.
+- **Als Nächstes:** Windows-A0-Abnahme von `v0.0.5-preview.2` auf `v0.0.5-preview.4` auf einem freigegebenen Windows-Testgerät; danach Abschluss von Paket 22 und erste `0.2.0`-Alpha-Freigabe.
 - Architektur-Gate A0 ist technisch weitgehend umgesetzt, aber bis zur vollständigen Windows-Abnahme noch nicht erfüllt; breite Fachentwicklung beginnt erst danach.
 
 ## 13. Entscheidungs- und Quellenrang

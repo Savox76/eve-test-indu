@@ -1,7 +1,9 @@
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
+use std::fs;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{Ipv4Addr, SocketAddrV4, TcpStream};
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Mutex};
@@ -14,6 +16,8 @@ const DATABASE_LOCATION: &str = "data/foundry.sqlite3";
 const SIDECAR_READY_TIMEOUT: Duration = Duration::from_secs(25);
 const SIDECAR_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(4);
 const SIDECAR_REQUEST_TIMEOUT: Duration = Duration::from_secs(3);
+const ASSET_SYNC_TIMEOUT: Duration = Duration::from_secs(120);
+const PORTABLE_MARKER: &str = "PORTABLE-README-DE-EN.txt";
 const SIDECAR_MAX_RESPONSE_BYTES: u64 = 4_194_304;
 const WINDOWS_CREATE_NO_WINDOW: u32 = 0x0800_0000;
 const EVE_SSO_AUTHORIZATION_ENDPOINT: &str = "https://login.eveonline.com/v2/oauth/authorize";
@@ -245,6 +249,28 @@ struct AssetExportResponse {
     filename: String,
     relative_path: String,
     rows: u64,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AssetSyncCharacterResponse {
+    character_id: u64,
+    status: String,
+    pages: u64,
+    assets: u64,
+    resolved: u64,
+    restricted: u64,
+    unresolved: u64,
+    cycles: u64,
+    error_code: Option<String>,
+}
+
+#[derive(Deserialize, Serialize)]
+struct AssetSyncResponse {
+    characters: Vec<AssetSyncCharacterResponse>,
+    completed: u64,
+    failed: u64,
+    assets: u64,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -984,6 +1010,54 @@ fn open_system_browser(url: &str) -> Result<(), &'static str> {
     Ok(())
 }
 
+fn copy_directory_without_links(source: &Path, destination: &Path) -> Result<(), &'static str> {
+    fs::create_dir(destination).map_err(|_| "program-storage-migration-failed")?;
+    for entry in fs::read_dir(source).map_err(|_| "program-storage-migration-failed")? {
+        let entry = entry.map_err(|_| "program-storage-migration-failed")?;
+        let file_type = entry
+            .file_type()
+            .map_err(|_| "program-storage-migration-failed")?;
+        if file_type.is_symlink() {
+            return Err("program-storage-migration-failed");
+        }
+        let target = destination.join(entry.file_name());
+        if file_type.is_dir() {
+            copy_directory_without_links(&entry.path(), &target)?;
+        } else if file_type.is_file() {
+            fs::copy(entry.path(), target).map_err(|_| "program-storage-migration-failed")?;
+        } else {
+            return Err("program-storage-migration-failed");
+        }
+    }
+    Ok(())
+}
+
+fn select_storage_root(app: &AppHandle, executable_dir: &Path) -> Result<PathBuf, &'static str> {
+    if executable_dir.join(PORTABLE_MARKER).is_file() {
+        return Ok(executable_dir.to_path_buf());
+    }
+    let stable_root = app
+        .path()
+        .app_local_data_dir()
+        .map_err(|_| "program-storage-unavailable")?;
+    fs::create_dir_all(&stable_root).map_err(|_| "program-storage-unavailable")?;
+    let legacy_data = executable_dir.join("data");
+    let stable_data = stable_root.join("data");
+    if legacy_data.is_dir() && !stable_data.exists() {
+        let staging = stable_root.join(format!("data-migration-{}", std::process::id()));
+        if staging.exists() {
+            fs::remove_dir_all(&staging).map_err(|_| "program-storage-migration-failed")?;
+        }
+        if let Err(error) = copy_directory_without_links(&legacy_data, &staging).and_then(|_| {
+            fs::rename(&staging, &stable_data).map_err(|_| "program-storage-migration-failed")
+        }) {
+            let _ = fs::remove_dir_all(&staging);
+            return Err(error);
+        }
+    }
+    Ok(stable_root)
+}
+
 fn launch_sidecar(
     app: &AppHandle,
 ) -> Result<
@@ -996,11 +1070,12 @@ fn launch_sidecar(
     ),
     &'static str,
 > {
-    let program_directory = std::env::current_exe()
+    let executable_directory = std::env::current_exe()
         .map_err(|_| "program-directory-unavailable")?
         .parent()
         .ok_or("program-directory-unavailable")?
         .to_path_buf();
+    let program_directory = select_storage_root(app, &executable_directory)?;
     let sidecar_path = app
         .path()
         .resource_dir()
@@ -1169,12 +1244,22 @@ fn sidecar_json_request(
     path: &str,
     body: &str,
 ) -> Result<String, &'static str> {
+    sidecar_json_request_with_timeout(process, method, path, body, SIDECAR_REQUEST_TIMEOUT)
+}
+
+fn sidecar_json_request_with_timeout(
+    process: &SidecarProcess,
+    method: &str,
+    path: &str,
+    body: &str,
+    timeout: Duration,
+) -> Result<String, &'static str> {
     let address = SocketAddrV4::new(Ipv4Addr::LOCALHOST, process.port);
-    let mut stream = TcpStream::connect_timeout(&address.into(), SIDECAR_REQUEST_TIMEOUT)
+    let mut stream = TcpStream::connect_timeout(&address.into(), timeout)
         .map_err(|_| "sidecar-request-failed")?;
     stream
-        .set_read_timeout(Some(SIDECAR_REQUEST_TIMEOUT))
-        .and_then(|_| stream.set_write_timeout(Some(SIDECAR_REQUEST_TIMEOUT)))
+        .set_read_timeout(Some(timeout))
+        .and_then(|_| stream.set_write_timeout(Some(timeout)))
         .map_err(|_| "sidecar-request-failed")?;
 
     let request = format!(
@@ -1203,6 +1288,27 @@ fn sidecar_json_request(
         return Err("sidecar-request-rejected");
     }
     Ok(response_body.to_owned())
+}
+
+fn asset_sync_response_is_valid(response: &AssetSyncResponse) -> bool {
+    response.completed.checked_add(response.failed) == Some(response.characters.len() as u64)
+        && response
+            .characters
+            .iter()
+            .try_fold(0_u64, |total, character| {
+                total.checked_add(character.assets)
+            })
+            == Some(response.assets)
+        && response.characters.iter().all(|character| {
+            character.character_id > 0
+                && character.character_id <= JAVASCRIPT_MAX_SAFE_INTEGER
+                && matches!(character.status.as_str(), "completed" | "failed")
+                && (character.status == "failed") == character.error_code.is_some()
+                && character
+                    .error_code
+                    .as_ref()
+                    .is_none_or(|code| asset_text_is_valid(code, 120))
+        })
 }
 
 #[tauri::command]
@@ -1329,6 +1435,28 @@ fn list_account_groups(state: State<'_, RuntimeState>) -> Result<String, String>
         return Err("sidecar-response-invalid".to_owned());
     }
     serde_json::to_string(&groups).map_err(|_| "status-serialization-failed".to_owned())
+}
+
+#[tauri::command]
+fn sync_assets(state: State<'_, RuntimeState>) -> Result<String, String> {
+    refresh_sidecar_status(&state);
+    let response = {
+        let sidecar = state
+            .sidecar
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let process = sidecar
+            .as_ref()
+            .ok_or_else(|| "sidecar-unavailable".to_owned())?;
+        sidecar_json_request_with_timeout(process, "POST", "/assets/sync", "{}", ASSET_SYNC_TIMEOUT)
+            .map_err(str::to_owned)?
+    };
+    let result: AssetSyncResponse =
+        serde_json::from_str(&response).map_err(|_| "sidecar-response-invalid".to_owned())?;
+    if !asset_sync_response_is_valid(&result) {
+        return Err("sidecar-response-invalid".to_owned());
+    }
+    serde_json::to_string(&result).map_err(|_| "status-serialization-failed".to_owned())
 }
 
 #[tauri::command]
@@ -1773,6 +1901,7 @@ pub fn run() {
             set_font_scale,
             list_eve_characters,
             list_account_groups,
+            sync_assets,
             query_assets,
             export_assets_csv,
             query_asset_deltas,

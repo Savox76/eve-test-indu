@@ -13,8 +13,9 @@ ADRs halten Entscheidungen fest, die Architektur, Sicherheit, Datenmodell, Betri
 | [007](0007-decimal-and-golden-tests.md) | Decimal- und Golden-Test-Pflicht für wirtschaftliche Berechnungen | Angenommen |
 | [008](0008-jita-first-market-adapters.md) | Jita-first mit austauschbaren Marktadaptern | Angenommen |
 | [009](0009-multi-character-scopes-and-local-account-groups.md) | Charaktergebundene EVE-Zugänge mit lokalen Kontogruppen und Gesamtansicht | Angenommen |
-| [010](0010-program-folder-storage.md) | Sichtbare Datenhaltung im Programmordner | Angenommen |
+| [010](0010-program-folder-storage.md) | Sichtbare Datenhaltung im Programmordner | Teilweise ersetzt durch ADR-013 |
 | [011](0011-signed-update-channel-skeleton.md) | Lokale Updatekanäle und signiertes Testmanifest ohne Verteilung | Angenommen |
 | [012](0012-fixed-eve-sso-registration-profile.md) | Festes öffentliches EVE-SSO-Registrierungsprofil | Angenommen |
+| [013](0013-update-stable-application-data.md) | Updatefeste Anwendungsdaten für Installer und Portable | Angenommen |
 
 Neue ADRs verwenden vierstellige laufende Nummern und die Abschnitte **Kontext**, **Entscheidung**, **Folgen**, **Verifikation** und **Referenzen**.
