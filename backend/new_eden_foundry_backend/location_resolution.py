@@ -235,12 +235,18 @@ def _load_sde_type_names(connection: sqlite3.Connection) -> dict[int, str]:
     exists = connection.execute(
         "SELECT 1 FROM sqlite_master WHERE type='table' AND name='sde_types'"
     ).fetchone()
-    if exists is None:
-        return {}
-    return {
+    names = {
         int(row[0]): str(row[1])
-        for row in connection.execute("SELECT type_id,name FROM sde_types")
+        for row in connection.execute("SELECT type_id,name FROM resolved_type_names")
     }
+    if exists is not None:
+        names.update(
+            {
+                int(row[0]): str(row[1])
+                for row in connection.execute("SELECT type_id,name FROM sde_types")
+            }
+        )
+    return names
 
 
 def resolve_asset_locations(

@@ -127,7 +127,13 @@ export interface AssetQuery {
   locationStatus: AssetLocationStatus | null;
   offset: number;
   limit: number;
+  sortBy: AssetSortField;
+  sortDirection: SortDirection;
 }
+
+export type AssetSortField = "type" | "owner" | "location" | "flag" | "quantity" | "age";
+export type SortDirection = "asc" | "desc";
+export const assetSortFields: AssetSortField[] = ["type", "owner", "location", "flag", "quantity", "age"];
 
 export interface AssetPage {
   items: AssetRecord[];
@@ -636,6 +642,8 @@ function validateAssetQuery(query: AssetQuery): AssetQuery {
     !Number.isSafeInteger(query.limit) ||
     query.limit < 1 ||
     query.limit > 200
+    || !assetSortFields.includes(query.sortBy)
+    || !["asc", "desc"].includes(query.sortDirection)
   ) {
     throw new Error("The asset query is invalid.");
   }
@@ -1066,6 +1074,8 @@ export async function loadAssets(
       search: validated.search,
       ownerCharacterId: validated.ownerCharacterId,
       locationStatus: validated.locationStatus,
+      sortBy: validated.sortBy,
+      sortDirection: validated.sortDirection,
       offset: validated.offset,
       limit: validated.limit,
     })),
@@ -1129,6 +1139,8 @@ export async function exportAssetsCsv(
       search: validated.search,
       ownerCharacterId: validated.ownerCharacterId,
       locationStatus: validated.locationStatus,
+      sortBy: validated.sortBy,
+      sortDirection: validated.sortDirection,
     }),
   );
   if (

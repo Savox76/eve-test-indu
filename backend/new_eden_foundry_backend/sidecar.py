@@ -60,6 +60,7 @@ from .token_vault import (
     TokenVaultError,
     create_system_refresh_token_vault,
 )
+from .type_names import TypeNameResolutionError, resolve_type_names
 from .updater import (
     UpdateChannel,
     UpdateManifestError,
@@ -410,6 +411,8 @@ def create_application(
             "locationStatus",
             "offset",
             "limit",
+            "sortBy",
+            "sortDirection",
         }:
             return JSONResponse(status_code=422, content={"detail": "asset_query_invalid"})
         try:
@@ -419,6 +422,8 @@ def create_application(
                 location_status=payload["locationStatus"],
                 offset=payload["offset"],
                 limit=payload["limit"],
+                sort_by=payload["sortBy"],
+                sort_direction=payload["sortDirection"],
             )
             with closing(connect_database(storage.database_path)) as connection:
                 result = query_assets(connection, asset_query)
@@ -445,6 +450,7 @@ def create_application(
             for character_id in character_ids:
                 try:
                     synced = sync_character_assets(connection, esi_client, character_id)
+                    resolve_type_names(connection, esi_client, synced.type_ids)
                     resolved = resolve_latest_character_asset_locations(
                         connection, esi_client, character_id
                     )
@@ -461,7 +467,12 @@ def create_application(
                             "errorCode": None,
                         }
                     )
-                except (AssetSyncError, LocationResolutionError, EsiClientError) as error:
+                except (
+                    AssetSyncError,
+                    LocationResolutionError,
+                    TypeNameResolutionError,
+                    EsiClientError,
+                ) as error:
                     results.append(
                         {
                             "characterId": character_id,
@@ -495,6 +506,8 @@ def create_application(
             "search",
             "ownerCharacterId",
             "locationStatus",
+            "sortBy",
+            "sortDirection",
         }:
             return JSONResponse(status_code=422, content={"detail": "asset_query_invalid"})
         try:
@@ -502,6 +515,8 @@ def create_application(
                 search=payload["search"],
                 owner_character_id=payload["ownerCharacterId"],
                 location_status=payload["locationStatus"],
+                sort_by=payload["sortBy"],
+                sort_direction=payload["sortDirection"],
             )
             with closing(connect_database(storage.database_path)) as connection:
                 exported = export_assets_csv(

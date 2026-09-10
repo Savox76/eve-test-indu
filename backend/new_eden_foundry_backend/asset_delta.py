@@ -380,14 +380,21 @@ def _delta_snapshots(connection: sqlite3.Connection) -> Iterable[sqlite3.Row]:
 
 
 def _type_names(connection: sqlite3.Connection) -> dict[int, str]:
-    if connection.execute(
+    has_sde = connection.execute(
         "SELECT 1 FROM sqlite_master WHERE type='table' AND name='sde_types'"
-    ).fetchone() is None:
-        return {}
-    return {
+    ).fetchone() is not None
+    names = {
         int(row[0]): str(row[1])
-        for row in connection.execute("SELECT type_id,name FROM sde_types")
+        for row in connection.execute("SELECT type_id,name FROM resolved_type_names")
     }
+    if has_sde:
+        names.update(
+            {
+                int(row[0]): str(row[1])
+                for row in connection.execute("SELECT type_id,name FROM sde_types")
+            }
+        )
+    return names
 
 
 def query_asset_deltas(

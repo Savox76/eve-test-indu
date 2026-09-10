@@ -2502,6 +2502,30 @@ select:focus-visible {
   text-transform: uppercase;
 }
 
+.asset-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  font-weight: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+}
+
+.asset-sort:hover,
+.asset-sort:focus-visible {
+  color: var(--teal);
+}
+
+.asset-sort__asc {
+  transform: rotate(180deg);
+}
+
 .asset-table th:nth-child(1) { width: 23%; }
 .asset-table th:nth-child(2) { width: 15%; }
 .asset-table th:nth-child(3) { width: 30%; }

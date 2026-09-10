@@ -36,7 +36,7 @@ import {
   X,
   Zap,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   accountGroups,
@@ -82,6 +82,7 @@ import {
   type AssetDeltaQuery,
   type AssetLocationStatus,
   type AssetPage,
+  type AssetSortField,
   type AssetSyncResult,
   type AssetQuery,
   type CharacterUpdate,
@@ -91,6 +92,7 @@ import {
   type LocalDataState,
   type SsoLoginStatus,
   type SsoScopePackage,
+  type SortDirection,
   type UpdateChannel,
   type UpdaterStatus,
   type AppearanceStatus,
@@ -493,7 +495,7 @@ const copy = {
     },
     planned: "Geplant",
     previewOnly: "Noch ohne Live-Funktion",
-    footerVersion: "v0.0.5-preview.4",
+    footerVersion: "v0.0.5-preview.5",
   },
   en: {
     nav: {
@@ -868,7 +870,7 @@ const copy = {
     },
     planned: "Planned",
     previewOnly: "No live function yet",
-    footerVersion: "v0.0.5-preview.4",
+    footerVersion: "v0.0.5-preview.5",
   },
 } as const;
 
@@ -1010,6 +1012,8 @@ export function App({
   const [query, setQuery] = useState("");
   const [searchFocused, setSearchFocused] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [assetRevision, setAssetRevision] = useState(0);
+  const initialAssetSyncStarted = useRef(false);
   const [runtimeStatus, setRuntimeStatus] = useState(initialRuntimeStatus);
   const [overviewScope, setOverviewScope] = useState<OverviewScopeId>("all");
   const [savingUpdateChannel, setSavingUpdateChannel] = useState(false);
@@ -1056,6 +1060,17 @@ export function App({
 
   const nativeCoreReady = runtimeStatus.state === "ready" && runtimeStatus.sidecar === "ready";
 
+  const runAssetSync = useCallback(async () => {
+    setSyncing(true);
+    try {
+      const result = await assetSyncer();
+      setAssetRevision((revision) => revision + 1);
+      return result;
+    } finally {
+      setSyncing(false);
+    }
+  }, [assetSyncer]);
+
   useEffect(() => {
     if (!nativeCoreReady) return;
     let active = true;
@@ -1066,6 +1081,14 @@ export function App({
           setCharacters(loadedCharacters);
           setManagedGroups(loadedGroups);
           setCharactersError(false);
+          if (
+            loadedCharacters.some((character) => character.enabled) &&
+            status.state !== "connected" &&
+            !initialAssetSyncStarted.current
+          ) {
+            initialAssetSyncStarted.current = true;
+            void runAssetSync().catch(() => undefined);
+          }
         }
       })
       .catch(() => {
@@ -1077,7 +1100,7 @@ export function App({
     return () => {
       active = false;
     };
-  }, [accountGroupsLoader, charactersLoader, nativeCoreReady, ssoStatusLoader]);
+  }, [accountGroupsLoader, charactersLoader, nativeCoreReady, runAssetSync, ssoStatusLoader]);
 
   useEffect(() => {
     if (!nativeCoreReady || !["waiting", "exchanging"].includes(ssoStatus.state)) return;
@@ -1115,6 +1138,10 @@ export function App({
           setCharacters(loadedCharacters);
           setManagedGroups(loadedGroups);
           setCharactersError(false);
+          if (loadedCharacters.some((character) => character.enabled)) {
+            initialAssetSyncStarted.current = true;
+            void runAssetSync().catch(() => undefined);
+          }
         }
       })
       .catch(() => {
@@ -1123,7 +1150,7 @@ export function App({
     return () => {
       active = false;
     };
-  }, [accountGroupsLoader, charactersLoader, nativeCoreReady, ssoStatus.state]);
+  }, [accountGroupsLoader, charactersLoader, nativeCoreReady, runAssetSync, ssoStatus.state]);
 
   const refreshCharacterManagement = async () => {
     try {
@@ -1176,12 +1203,6 @@ export function App({
     setActiveModule(id);
     setQuery("");
     setSearchFocused(false);
-  };
-
-  const simulateRefresh = () => {
-    if (runtimeStatus.state !== "preview") return;
-    setSyncing(true);
-    window.setTimeout(() => setSyncing(false), 900);
   };
 
   const chooseUpdateChannel = async (channel: UpdateChannel) => {
@@ -1386,9 +1407,9 @@ export function App({
           <button
             className={`sync-status ${localData ? `sync-status--${localData.state}` : ""}`}
             type="button"
-            onClick={simulateRefresh}
+            onClick={() => void runAssetSync().catch(() => undefined)}
             aria-label={t.refresh}
-            disabled={runtimeStatus.state !== "preview"}
+            disabled={!nativeCoreReady || syncing}
           >
             <RefreshCw
               className={syncing || localData?.state === "loading" || localData?.state === "refreshing" ? "spin" : ""}
@@ -1558,7 +1579,8 @@ export function App({
             loadAssets={assetsLoader}
             exportCsv={assetsCsvExporter}
             loadDeltas={assetDeltasLoader}
-            syncAssets={assetSyncer}
+            syncAssets={runAssetSync}
+            refreshRevision={assetRevision}
           />
         ) : (
           <ModulePreview activeModule={activeModule} t={t} />
@@ -1578,6 +1600,7 @@ function AssetWorkspace({
   exportCsv,
   loadDeltas: loadDeltaPage,
   syncAssets: runAssetSync,
+  refreshRevision,
 }: {
   available: boolean;
   locale: Locale;
@@ -1586,11 +1609,14 @@ function AssetWorkspace({
   exportCsv: (query: Omit<AssetQuery, "offset" | "limit">) => Promise<AssetCsvExport>;
   loadDeltas: (query: AssetDeltaQuery) => Promise<AssetDeltaPage>;
   syncAssets: () => Promise<AssetSyncResult>;
+  refreshRevision: number;
 }) {
   const [search, setSearch] = useState("");
   const [appliedSearch, setAppliedSearch] = useState("");
   const [ownerCharacterId, setOwnerCharacterId] = useState<number | null>(null);
   const [locationStatus, setLocationStatus] = useState<AssetLocationStatus | null>(null);
+  const [sortBy, setSortBy] = useState<AssetSortField>("type");
+  const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
   const [offset, setOffset] = useState(0);
   const [page, setPage] = useState<AssetPage | null>(null);
   const [loading, setLoading] = useState(false);
@@ -1603,7 +1629,6 @@ function AssetWorkspace({
   const [deltaPage, setDeltaPage] = useState<AssetDeltaPage | null>(null);
   const [deltasLoading, setDeltasLoading] = useState(false);
   const [deltasFailed, setDeltasFailed] = useState(false);
-  const [refreshRevision, setRefreshRevision] = useState(0);
   const [syncResult, setSyncResult] = useState<AssetSyncResult | null>(null);
   const [syncFailed, setSyncFailed] = useState(false);
   const [assetsSyncing, setAssetsSyncing] = useState(false);
@@ -1632,6 +1657,8 @@ function AssetWorkspace({
       locationStatus,
       offset,
       limit: assetPageSize,
+      sortBy,
+      sortDirection,
     })
       .then((loadedPage) => {
         if (!active) return;
@@ -1651,7 +1678,7 @@ function AssetWorkspace({
     return () => {
       active = false;
     };
-  }, [appliedSearch, available, loadAssetPage, locationStatus, offset, ownerCharacterId, refreshRevision]);
+  }, [appliedSearch, available, loadAssetPage, locationStatus, offset, ownerCharacterId, refreshRevision, sortBy, sortDirection]);
 
   useEffect(() => {
     if (!available) return;
@@ -1695,7 +1722,6 @@ function AssetWorkspace({
       setSyncResult(result);
       setOffset(0);
       setDeltaOffset(0);
-      setRefreshRevision((revision) => revision + 1);
     } catch {
       setSyncFailed(true);
     } finally {
@@ -1709,7 +1735,13 @@ function AssetWorkspace({
     setExported(null);
     setExportFailed(false);
     try {
-      setExported(await exportCsv({ search: appliedSearch, ownerCharacterId, locationStatus }));
+      setExported(await exportCsv({
+        search: appliedSearch,
+        ownerCharacterId,
+        locationStatus,
+        sortBy,
+        sortDirection,
+      }));
     } catch {
       setExportFailed(true);
     } finally {
@@ -1730,6 +1762,27 @@ function AssetWorkspace({
       : status === "restricted" || status === "pending"
         ? "warn"
         : "critical";
+  const changeSort = (field: AssetSortField) => {
+    if (sortBy === field) {
+      setSortDirection((direction) => direction === "asc" ? "desc" : "asc");
+    } else {
+      setSortBy(field);
+      setSortDirection("asc");
+    }
+    setOffset(0);
+  };
+  const sortHeader = (field: AssetSortField, label: string) => (
+    <button type="button" className="asset-sort" onClick={() => changeSort(field)}>
+      {label}
+      {sortBy === field && (
+        <ChevronDown
+          className={sortDirection === "asc" ? "asset-sort__asc" : ""}
+          size={14}
+          aria-hidden="true"
+        />
+      )}
+    </button>
+  );
 
   return (
     <div className="workspace asset-workspace">
@@ -1873,12 +1926,12 @@ function AssetWorkspace({
             <table className="asset-table">
               <thead>
                 <tr>
-                  <th>{t.assets.type}</th>
-                  <th>{t.assets.owner}</th>
-                  <th>{t.assets.location}</th>
-                  <th>{t.assets.flag}</th>
-                  <th className="asset-table__number">{t.assets.quantity}</th>
-                  <th>{t.assets.age}</th>
+                  <th aria-sort={sortBy === "type" ? (sortDirection === "asc" ? "ascending" : "descending") : "none"}>{sortHeader("type", t.assets.type)}</th>
+                  <th aria-sort={sortBy === "owner" ? (sortDirection === "asc" ? "ascending" : "descending") : "none"}>{sortHeader("owner", t.assets.owner)}</th>
+                  <th aria-sort={sortBy === "location" ? (sortDirection === "asc" ? "ascending" : "descending") : "none"}>{sortHeader("location", t.assets.location)}</th>
+                  <th aria-sort={sortBy === "flag" ? (sortDirection === "asc" ? "ascending" : "descending") : "none"}>{sortHeader("flag", t.assets.flag)}</th>
+                  <th className="asset-table__number" aria-sort={sortBy === "quantity" ? (sortDirection === "asc" ? "ascending" : "descending") : "none"}>{sortHeader("quantity", t.assets.quantity)}</th>
+                  <th aria-sort={sortBy === "age" ? (sortDirection === "asc" ? "ascending" : "descending") : "none"}>{sortHeader("age", t.assets.age)}</th>
                 </tr>
               </thead>
               <tbody>

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 import math
 import random
@@ -95,6 +96,16 @@ class EsiTransport(Protocol):
     ) -> RawEsiResponse: ...
 
 
+class EsiPostTransport(Protocol):
+    def __call__(
+        self,
+        url: str,
+        headers: Mapping[str, str],
+        body: bytes,
+        timeout_seconds: float,
+    ) -> RawEsiResponse: ...
+
+
 TokenProvider = Callable[[int, Sequence[str]], str]
 
 
@@ -123,6 +134,31 @@ def _default_transport(
     timeout_seconds: float,
 ) -> RawEsiResponse:
     request = urllib.request.Request(url, headers=dict(headers), method="GET")
+    opener = urllib.request.build_opener(_RejectRedirects())
+    try:
+        with opener.open(request, timeout=timeout_seconds) as response:
+            return RawEsiResponse(
+                status=int(response.status),
+                headers=dict(response.headers.items()),
+                body=response.read(DEFAULT_MAX_RESPONSE_BYTES + 1),
+            )
+    except urllib.error.HTTPError as error:
+        return RawEsiResponse(
+            status=int(error.code),
+            headers=dict(error.headers.items()) if error.headers is not None else {},
+            body=error.read(DEFAULT_MAX_RESPONSE_BYTES + 1),
+        )
+
+
+def _default_post_transport(
+    url: str,
+    headers: Mapping[str, str],
+    body: bytes,
+    timeout_seconds: float,
+) -> RawEsiResponse:
+    request = urllib.request.Request(
+        url, headers=dict(headers), data=body, method="POST"
+    )
     opener = urllib.request.build_opener(_RejectRedirects())
     try:
         with opener.open(request, timeout=timeout_seconds) as response:
@@ -171,6 +207,7 @@ class EsiClient:
         token_provider: TokenProvider | None = None,
         *,
         transport: EsiTransport = _default_transport,
+        post_transport: EsiPostTransport = _default_post_transport,
         compatibility_date: str = ESI_COMPATIBILITY_DATE,
         user_agent: str = ESI_USER_AGENT,
         timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
@@ -240,6 +277,7 @@ class EsiClient:
 
         self._token_provider = token_provider
         self._transport = transport
+        self._post_transport = post_transport
         self._compatibility_date = compatibility_date
         self._user_agent = user_agent
         self._timeout_seconds = float(timeout_seconds)
@@ -434,6 +472,89 @@ class EsiClient:
             "esi-retry-exhausted",
             status=last_status,
             retryable=True,
+        )
+
+    def post_json(self, path: str, payload: Any) -> EsiResponse:
+        """Send a bounded unauthenticated JSON POST through the same ESI policy."""
+        url = self._build_url(path, None)
+        try:
+            body = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+        except (TypeError, ValueError) as error:
+            raise EsiClientError("esi-request-payload-invalid") from error
+        if not body or len(body) > 256_000:
+            raise EsiClientError("esi-request-payload-invalid")
+        headers = {
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "User-Agent": self._user_agent,
+            "X-Compatibility-Date": self._compatibility_date,
+        }
+        cache_key = (
+            f"POST {url} {hashlib.sha256(body).hexdigest()}",
+            None,
+        )
+        now = self._monotonic()
+        with self._lock:
+            cached = self._cache.get(cache_key)
+            if cached is not None and cached.expires_at > now:
+                return EsiResponse(
+                    200,
+                    copy.deepcopy(cached.payload),
+                    dict(cached.headers),
+                    True,
+                )
+
+        last_status: int | None = None
+        for attempt in range(self._max_attempts):
+            self._before_request()
+            try:
+                raw = self._post_transport(url, headers, body, self._timeout_seconds)
+            except Exception:
+                self._record_transient_failure()
+                if attempt + 1 == self._max_attempts:
+                    raise EsiClientError("esi-network-unavailable", retryable=True)
+                self._sleep(self._retry_delay(attempt, {}))
+                continue
+            if (
+                not isinstance(raw, RawEsiResponse)
+                or isinstance(raw.status, bool)
+                or not isinstance(raw.status, int)
+                or not 100 <= raw.status <= 599
+                or not isinstance(raw.headers, Mapping)
+                or not isinstance(raw.body, bytes)
+                or len(raw.body) > self._max_response_bytes
+            ):
+                self._record_terminal_failure()
+                raise EsiClientError("esi-response-invalid")
+            response_headers = _normalized_headers(raw.headers)
+            self._update_error_budget(response_headers)
+            last_status = raw.status
+            if 200 <= raw.status < 300:
+                parsed = _strict_json(raw.body)
+                if "no-store" not in response_headers.get("cache-control", "").lower():
+                    with self._lock:
+                        self._cache[cache_key] = _CacheEntry(
+                            copy.deepcopy(parsed),
+                            dict(response_headers),
+                            None,
+                            None,
+                            self._cache_expiry(response_headers, self._monotonic()),
+                        )
+                self._record_success()
+                return EsiResponse(
+                    raw.status, parsed, dict(response_headers), False
+                )
+            if raw.status not in TRANSIENT_STATUSES:
+                self._record_terminal_failure()
+                raise EsiClientError(
+                    "esi-request-rejected", status=raw.status, retryable=False
+                )
+            self._record_transient_failure()
+            if attempt + 1 == self._max_attempts:
+                break
+            self._sleep(self._retry_delay(attempt, response_headers))
+        raise EsiClientError(
+            "esi-retry-exhausted", status=last_status, retryable=True
         )
 
     def _build_url(

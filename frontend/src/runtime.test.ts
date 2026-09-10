@@ -57,13 +57,13 @@ function managedCharacter(overrides: Record<string, unknown> = {}) {
 function nativeStatus(overrides: Record<string, unknown> = {}) {
   return JSON.stringify({
     state: "ready",
-    version: "0.0.5-preview.4",
+    version: "0.0.5-preview.5",
     desktopShell: true,
     singleInstance: true,
     sidecar: "ready",
     database: "ready",
     databaseLocation: "data/foundry.sqlite3",
-    schemaVersion: 6,
+    schemaVersion: 7,
     errorCode: null,
     data: emptyData,
     updater: {
@@ -93,13 +93,13 @@ describe("desktop runtime status", () => {
       loadDesktopRuntimeStatus({ isAvailable: () => true, invoke }),
     ).resolves.toEqual({
       state: "ready",
-      version: "0.0.5-preview.4",
+      version: "0.0.5-preview.5",
       desktopShell: true,
       singleInstance: true,
       sidecar: "ready",
       database: "ready",
       databaseLocation: "data/foundry.sqlite3",
-      schemaVersion: 6,
+      schemaVersion: 7,
       errorCode: null,
       data: emptyData,
       updater: {
@@ -324,6 +324,8 @@ describe("desktop runtime status", () => {
       locationStatus: "resolved" as const,
       offset: 100,
       limit: 100,
+      sortBy: "type" as const,
+      sortDirection: "asc" as const,
     };
     const page = {
       items: [{
@@ -375,7 +377,15 @@ describe("desktop runtime status", () => {
     }));
 
     await expect(loadAssets(
-      { search: "", ownerCharacterId: null, locationStatus: null, offset: 0, limit: 200 },
+      {
+        search: "",
+        ownerCharacterId: null,
+        locationStatus: null,
+        offset: 0,
+        limit: 200,
+        sortBy: "type",
+        sortDirection: "asc",
+      },
       { isAvailable: () => true, invoke },
     )).rejects.toThrow("invalid asset page");
   });
@@ -454,6 +464,8 @@ describe("desktop runtime status", () => {
       search: "component",
       ownerCharacterId: 90_888_001,
       locationStatus: "restricted" as const,
+      sortBy: "type" as const,
+      sortDirection: "asc" as const,
     };
 
     await expect(exportAssetsCsv(filters, { isAvailable: () => true, invoke }))

@@ -381,7 +381,7 @@ class SidecarIntegrationTests(unittest.TestCase):
             with opener.open(valid_request, timeout=3) as response:
                 health = json.loads(response.read())
             self.assertEqual(health["state"], "ready")
-            self.assertEqual(health["database"]["schemaVersion"], 6)
+            self.assertEqual(health["database"]["schemaVersion"], 7)
             self.assertEqual(health["database"]["location"], "data/foundry.sqlite3")
             self.assertIsNone(health["database"]["lastMigrationBackup"])
             self.assertEqual(health["data"]["state"], "empty")
@@ -426,6 +426,8 @@ class SidecarIntegrationTests(unittest.TestCase):
                         "locationStatus": None,
                         "offset": 0,
                         "limit": 100,
+                        "sortBy": "type",
+                        "sortDirection": "asc",
                     }
                 ).encode(),
                 method="POST",
@@ -487,6 +489,8 @@ class SidecarIntegrationTests(unittest.TestCase):
                         "search": "",
                         "ownerCharacterId": None,
                         "locationStatus": None,
+                        "sortBy": "type",
+                        "sortDirection": "asc",
                     }
                 ).encode(),
                 method="POST",

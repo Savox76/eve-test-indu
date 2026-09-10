@@ -17,7 +17,7 @@ from .recovery import (
 
 
 BUSY_TIMEOUT_MILLISECONDS: Final = 5_000
-SCHEMA_VERSION: Final = 6
+SCHEMA_VERSION: Final = 7
 
 MIGRATIONS: Final = (
     (
@@ -201,6 +201,27 @@ MIGRATIONS: Final = (
                     alias IS NULL
                     OR length(trim(alias)) BETWEEN 1 AND 80
                 )
+            """,
+        ),
+    ),
+    (
+        7,
+        "resolved_type_names",
+        (
+            """
+            CREATE TABLE resolved_type_names (
+                type_id INTEGER PRIMARY KEY CHECK (type_id > 0),
+                name TEXT NOT NULL CHECK (
+                    length(trim(name)) BETWEEN 1 AND 200
+                ),
+                updated_at TEXT NOT NULL DEFAULT (
+                    strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                )
+            )
+            """,
+            """
+            CREATE INDEX idx_resolved_type_names_name
+                ON resolved_type_names(name COLLATE NOCASE)
             """,
         ),
     ),

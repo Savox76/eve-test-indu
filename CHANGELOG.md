@@ -24,6 +24,35 @@ Keine.
 
 Keine.
 
+## 0.0.5-preview.5 – 10. September 2026
+
+### Neu hinzugefügt
+
+- Automatischer Asset-Abgleich für alle aktivierten Charaktere beim Programmstart und nach einer neuen Charakterverbindung.
+- Öffentliche ESI-Typnamensauflösung in begrenzten Paketen mit dauerhaftem lokalen Cache.
+- Auf- und absteigende Sortierung aller Spalten der Asset-Tabelle vor der serverseitigen Seitenteilung.
+
+### Geändert
+
+- Der manuelle Befehl **Assets aktualisieren** bleibt als zusätzlicher Folgelauf erhalten.
+- CSV-Exporte übernehmen die gewählte Sortierung.
+- Die sichtbare Versionsnummer lautet `v0.0.5-preview.5`; diese Preview ersetzt den vorherigen Windows-Abnahmekandidaten.
+
+### Behobene Fehler
+
+- Assets zeigen nach dem nächsten erfolgreichen Abgleich echte Itemnamen statt `Type #<ID>`, sofern ESI die Inventartyp-ID auflösen kann.
+- Bereits verbundene aktivierte Charaktere müssen nach einem normalen Update nicht erneut hinzugefügt und ihre Assets nicht zuerst manuell geladen werden.
+
+### Bekannte Einschränkungen
+
+- Ein vor `v0.0.5-preview.4` bereits verlorener Datenordner lässt sich nicht rekonstruieren; der betroffene Charakter muss einmal neu verbunden werden.
+- Paket 22 wartet weiterhin auf das vollständige Windows-A0-Protokoll.
+
+### Update und Datenbankmigration
+
+- Beim ersten Start migriert die App Schema 6 auf Schema 7 und ergänzt ausschließlich den ableitbaren Typnamenscache `resolved_type_names`.
+- Vor der Migration wird wie bisher automatisch eine geprüfte Sicherung angelegt; Charaktere, Tokens und vollständige Snapshots bleiben unverändert.
+
 ## 0.0.5-preview.4 – 10. September 2026
 
 ### Neu hinzugefügt
