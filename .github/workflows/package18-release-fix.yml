@@ -1,0 +1,44 @@
+name: Package 18 release test fix
+
+on:
+  push:
+    branches:
+      - release/v0.0.5-preview.2
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout release branch
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: release/v0.0.5-preview.2
+          fetch-depth: 0
+
+      - name: Align ESI User-Agent release expectation
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('backend/tests/test_esi_client.py')
+          text = path.read_text(encoding='utf-8')
+          old = 'New-Eden-Foundry/0.0.5-preview.1 '
+          new = 'New-Eden-Foundry/0.0.5-preview.2 '
+          if old not in text:
+              raise SystemExit('Expected old ESI User-Agent test marker not found')
+          path.write_text(text.replace(old, new), encoding='utf-8')
+          Path('.github/workflows/package18-release-fix.yml').unlink()
+          PY
+
+      - name: Commit test alignment
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix: align ESI release-version expectation"
+          git push origin HEAD:release/v0.0.5-preview.2
