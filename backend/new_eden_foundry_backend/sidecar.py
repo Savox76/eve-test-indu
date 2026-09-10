@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import secrets
 import socket
+import sqlite3
 import sys
 import threading
 from contextlib import closing
@@ -18,7 +19,16 @@ from fastapi.responses import JSONResponse
 
 from .appearance import appearance_payload, read_font_scale, set_font_scale
 from .database import DatabaseStatus, connect_database, initialize_database
-from .identity import list_characters, upsert_character
+from .identity import (
+    CharacterRecord,
+    create_account_group,
+    delete_account_group,
+    list_account_groups,
+    list_characters,
+    update_account_group,
+    update_character,
+    upsert_character,
+)
 from .storage import ProgramStorage, ProgramStorageError, prepare_program_storage
 from .startup_state import StartupDataState, inspect_startup_data_state
 from .sso_registration import (
@@ -30,6 +40,7 @@ from .sso_tokens import EveSsoClient, VerifiedAuthorization, VerifiedCharacter
 from .token_service import CharacterTokenService
 from .token_vault import (
     RefreshTokenVault,
+    TokenVaultError,
     create_system_refresh_token_vault,
 )
 from .updater import (
@@ -160,6 +171,76 @@ def store_verified_authorization(
         token_service.remember(authorization)
 
 
+
+def managed_character_payload(
+    character: CharacterRecord,
+    sso_registration: SsoRegistrationProfile,
+    token_vault: RefreshTokenVault,
+) -> dict[str, object]:
+    """Add derived scope-package and credential state without exposing secrets."""
+
+    granted_scopes = set(character.scopes)
+    package_statuses: list[dict[str, object]] = []
+    for package_name, required_scopes in sso_registration.scope_packages.items():
+        granted_count = len(granted_scopes.intersection(required_scopes))
+        if granted_count == len(required_scopes):
+            status = "granted"
+        elif granted_count:
+            status = "partial"
+        else:
+            status = "missing"
+        package_statuses.append(
+            {
+                "id": package_name,
+                "status": status,
+                "grantedCount": granted_count,
+                "requiredCount": len(required_scopes),
+            }
+        )
+
+    try:
+        credential_state = "stored" if token_vault.contains(character.character_id) else "missing"
+    except TokenVaultError:
+        credential_state = "unavailable"
+
+    return {
+        **character.as_api_payload(),
+        "credentialState": credential_state,
+        "scopePackages": package_statuses,
+    }
+
+
+def delete_character_completely(
+    database_path: Path,
+    token_vault: RefreshTokenVault,
+    character_id: int,
+    token_service: CharacterTokenService | None = None,
+) -> bool:
+    """Remove credential, cached lease, identity, scopes, sync history and snapshots."""
+
+    with closing(connect_database(database_path)) as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        try:
+            exists = connection.execute(
+                "SELECT 1 FROM characters WHERE character_id = ?",
+                (character_id,),
+            ).fetchone()
+            if exists is None:
+                connection.execute("ROLLBACK")
+                return False
+            connection.execute(
+                "DELETE FROM characters WHERE character_id = ?",
+                (character_id,),
+            )
+            token_vault.delete(character_id)
+            connection.execute("COMMIT")
+        except BaseException:
+            connection.execute("ROLLBACK")
+            raise
+    if token_service is not None:
+        token_service.forget(character_id)
+    return True
+
 def create_application(
     startup: StartupConfiguration,
     storage: ProgramStorage,
@@ -169,6 +250,7 @@ def create_application(
     sso_registration: SsoRegistrationProfile,
     sso_login: SsoPkceManager,
     token_vault: RefreshTokenVault,
+    token_service: CharacterTokenService | None = None,
 ) -> FastAPI:
     app = FastAPI(
         title="New Eden Foundry local core",
@@ -297,7 +379,194 @@ def create_application(
     async def get_characters() -> dict[str, object]:
         with closing(connect_database(storage.database_path)) as connection:
             characters = list_characters(connection)
-        return {"characters": [character.as_api_payload() for character in characters]}
+        return {
+            "characters": [
+                managed_character_payload(character, sso_registration, token_vault)
+                for character in characters
+            ]
+        }
+
+    @app.patch("/characters/{character_id}")
+    async def patch_character(character_id: int, request: Request) -> JSONResponse:
+        if character_id <= 0:
+            return JSONResponse(
+                status_code=422,
+                content={"detail": "character-update-invalid"},
+            )
+        try:
+            payload = await request.json()
+        except Exception:
+            return JSONResponse(
+                status_code=422,
+                content={"detail": "character-update-invalid"},
+            )
+        if not isinstance(payload, dict) or set(payload) != {
+            "alias",
+            "accountGroupId",
+            "enabled",
+        }:
+            return JSONResponse(
+                status_code=422,
+                content={"detail": "character-update-invalid"},
+            )
+        try:
+            with closing(connect_database(storage.database_path)) as connection:
+                character = update_character(
+                    connection,
+                    character_id,
+                    alias=payload["alias"],
+                    account_group_id=payload["accountGroupId"],
+                    enabled=payload["enabled"],
+                )
+        except LookupError:
+            return JSONResponse(
+                status_code=404,
+                content={"detail": "character-not-found"},
+            )
+        except (TypeError, ValueError, sqlite3.IntegrityError):
+            return JSONResponse(
+                status_code=422,
+                content={"detail": "character-update-invalid"},
+            )
+        return JSONResponse(
+            content={
+                "character": managed_character_payload(
+                    character,
+                    sso_registration,
+                    token_vault,
+                )
+            }
+        )
+
+    @app.delete("/characters/{character_id}")
+    async def remove_character(character_id: int) -> JSONResponse:
+        if character_id <= 0:
+            return JSONResponse(
+                status_code=422,
+                content={"detail": "character-delete-invalid"},
+            )
+        try:
+            deleted = delete_character_completely(
+                storage.database_path,
+                token_vault,
+                character_id,
+                token_service,
+            )
+        except TokenVaultError as error:
+            return JSONResponse(status_code=503, content={"detail": error.code})
+        if not deleted:
+            return JSONResponse(
+                status_code=404,
+                content={"detail": "character-not-found"},
+            )
+        return JSONResponse(
+            content={"deleted": True, "characterId": character_id}
+        )
+
+    @app.get("/account-groups")
+    async def get_account_groups() -> dict[str, object]:
+        with closing(connect_database(storage.database_path)) as connection:
+            groups = list_account_groups(connection)
+        return {"groups": [group.as_api_payload() for group in groups]}
+
+    @app.post("/account-groups")
+    async def post_account_group(request: Request) -> JSONResponse:
+        try:
+            payload = await request.json()
+        except Exception:
+            return JSONResponse(
+                status_code=422,
+                content={"detail": "account-group-invalid"},
+            )
+        if not isinstance(payload, dict) or set(payload) != {"label"}:
+            return JSONResponse(
+                status_code=422,
+                content={"detail": "account-group-invalid"},
+            )
+        try:
+            with closing(connect_database(storage.database_path)) as connection:
+                group_id = create_account_group(connection, payload["label"])
+                group = next(
+                    group
+                    for group in list_account_groups(connection)
+                    if group.id == group_id
+                )
+        except sqlite3.IntegrityError:
+            return JSONResponse(
+                status_code=409,
+                content={"detail": "account-group-conflict"},
+            )
+        except (TypeError, ValueError):
+            return JSONResponse(
+                status_code=422,
+                content={"detail": "account-group-invalid"},
+            )
+        return JSONResponse(content={"group": group.as_api_payload()})
+
+    @app.patch("/account-groups/{group_id}")
+    async def patch_account_group(group_id: int, request: Request) -> JSONResponse:
+        if group_id <= 0:
+            return JSONResponse(
+                status_code=422,
+                content={"detail": "account-group-invalid"},
+            )
+        try:
+            payload = await request.json()
+        except Exception:
+            return JSONResponse(
+                status_code=422,
+                content={"detail": "account-group-invalid"},
+            )
+        if not isinstance(payload, dict) or set(payload) != {"label"}:
+            return JSONResponse(
+                status_code=422,
+                content={"detail": "account-group-invalid"},
+            )
+        try:
+            with closing(connect_database(storage.database_path)) as connection:
+                group = update_account_group(
+                    connection,
+                    group_id,
+                    label=payload["label"],
+                )
+        except LookupError:
+            return JSONResponse(
+                status_code=404,
+                content={"detail": "account-group-not-found"},
+            )
+        except sqlite3.IntegrityError:
+            return JSONResponse(
+                status_code=409,
+                content={"detail": "account-group-conflict"},
+            )
+        except (TypeError, ValueError):
+            return JSONResponse(
+                status_code=422,
+                content={"detail": "account-group-invalid"},
+            )
+        return JSONResponse(content={"group": group.as_api_payload()})
+
+    @app.delete("/account-groups/{group_id}")
+    async def remove_account_group(group_id: int) -> JSONResponse:
+        if group_id <= 0:
+            return JSONResponse(
+                status_code=422,
+                content={"detail": "account-group-invalid"},
+            )
+        try:
+            with closing(connect_database(storage.database_path)) as connection:
+                deleted = delete_account_group(connection, group_id)
+        except (TypeError, ValueError):
+            return JSONResponse(
+                status_code=422,
+                content={"detail": "account-group-invalid"},
+            )
+        if not deleted:
+            return JSONResponse(
+                status_code=404,
+                content={"detail": "account-group-not-found"},
+            )
+        return JSONResponse(content={"deleted": True, "groupId": group_id})
 
     @app.get("/sso/login")
     async def get_sso_login() -> dict[str, object]:
@@ -424,6 +693,7 @@ def run_sidecar(input_stream: TextIO = sys.stdin, output_stream: TextIO = sys.st
         sso_registration,
         sso_login,
         token_vault,
+        token_service,
     )
     server = uvicorn.Server(
         uvicorn.Config(

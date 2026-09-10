@@ -2,12 +2,18 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   cancelEveSso,
+  createAccountGroup,
+  deleteAccountGroup,
+  deleteEveCharacter,
+  loadAccountGroups,
   loadDesktopRuntimeStatus,
   loadEveCharacters,
   loadEveSsoStatus,
+  renameAccountGroup,
   setDesktopFontScale,
   setDesktopUpdateChannel,
   startEveSso,
+  updateEveCharacter,
   type RuntimeAdapter,
 } from "./runtime";
 
@@ -21,16 +27,39 @@ const emptyData = {
   errorCode: null,
 } as const;
 
+const scopePackages = [
+  { id: "industry-core", status: "partial", grantedCount: 1, requiredCount: 4 },
+  { id: "market", status: "missing", grantedCount: 0, requiredCount: 2 },
+  { id: "planetary-industry", status: "missing", grantedCount: 0, requiredCount: 1 },
+  { id: "projects", status: "missing", grantedCount: 0, requiredCount: 1 },
+  { id: "private-structures", status: "missing", grantedCount: 0, requiredCount: 1 },
+] as const;
+
+function managedCharacter(overrides: Record<string, unknown> = {}) {
+  return {
+    characterId: 2_112_345_678,
+    name: "Synthetic Pilot",
+    alias: null,
+    accountGroupId: null,
+    accountGroupLabel: null,
+    enabled: true,
+    credentialState: "stored",
+    scopes: ["esi-assets.read_assets.v1"],
+    scopePackages,
+    ...overrides,
+  };
+}
+
 function nativeStatus(overrides: Record<string, unknown> = {}) {
   return JSON.stringify({
     state: "ready",
-    version: "0.0.4-preview.5",
+    version: "0.0.4-preview.6",
     desktopShell: true,
     singleInstance: true,
     sidecar: "ready",
     database: "ready",
     databaseLocation: "data/foundry.sqlite3",
-    schemaVersion: 5,
+    schemaVersion: 6,
     errorCode: null,
     data: emptyData,
     updater: {
@@ -60,13 +89,13 @@ describe("desktop runtime status", () => {
       loadDesktopRuntimeStatus({ isAvailable: () => true, invoke }),
     ).resolves.toEqual({
       state: "ready",
-      version: "0.0.4-preview.5",
+      version: "0.0.4-preview.6",
       desktopShell: true,
       singleInstance: true,
       sidecar: "ready",
       database: "ready",
       databaseLocation: "data/foundry.sqlite3",
-      schemaVersion: 5,
+      schemaVersion: 6,
       errorCode: null,
       data: emptyData,
       updater: {
@@ -232,16 +261,7 @@ describe("desktop runtime status", () => {
   });
 
   it("loads strictly validated persisted EVE characters", async () => {
-    const payload = {
-      characters: [{
-        characterId: 2_112_345_678,
-        name: "Synthetic Pilot",
-        accountGroupId: null,
-        accountGroupLabel: null,
-        enabled: true,
-        scopes: ["esi-assets.read_assets.v1"],
-      }],
-    };
+    const payload = { characters: [managedCharacter()] };
     const invoke = vi.fn<RuntimeAdapter["invoke"]>().mockResolvedValue(JSON.stringify(payload));
 
     await expect(
@@ -251,14 +271,7 @@ describe("desktop runtime status", () => {
   });
 
   it("rejects duplicate or malformed persisted character identities", async () => {
-    const character = {
-      characterId: 2_112_345_678,
-      name: "Synthetic Pilot",
-      accountGroupId: null,
-      accountGroupLabel: null,
-      enabled: true,
-      scopes: ["esi-assets.read_assets.v1"],
-    };
+    const character = managedCharacter();
     const invoke = vi.fn<RuntimeAdapter["invoke"]>().mockResolvedValue(
       JSON.stringify({ characters: [character, character] }),
     );
@@ -266,6 +279,85 @@ describe("desktop runtime status", () => {
     await expect(
       loadEveCharacters({ isAvailable: () => true, invoke }),
     ).rejects.toThrow("duplicate EVE characters");
+  });
+
+  it("rejects incomplete or inconsistent scope package metadata", async () => {
+    const incomplete = managedCharacter({ scopePackages: scopePackages.slice(0, 4) });
+    const invoke = vi.fn<RuntimeAdapter["invoke"]>().mockResolvedValue(
+      JSON.stringify({ characters: [incomplete] }),
+    );
+    await expect(
+      loadEveCharacters({ isAvailable: () => true, invoke }),
+    ).rejects.toThrow("invalid EVE character metadata");
+
+    invoke.mockResolvedValueOnce(JSON.stringify({
+      characters: [managedCharacter({
+        scopePackages: scopePackages.map((entry) => entry.id === "market"
+          ? { ...entry, status: "granted" }
+          : entry),
+      })],
+    }));
+    await expect(
+      loadEveCharacters({ isAvailable: () => true, invoke }),
+    ).rejects.toThrow("inconsistent scope-package metadata");
+  });
+
+  it("loads and validates account groups", async () => {
+    const groups = [{ id: 3, label: "Industry", sortOrder: 0, characterCount: 2 }];
+    const invoke = vi.fn<RuntimeAdapter["invoke"]>().mockResolvedValue(
+      JSON.stringify({ groups }),
+    );
+    await expect(
+      loadAccountGroups({ isAvailable: () => true, invoke }),
+    ).resolves.toEqual(groups);
+    expect(invoke).toHaveBeenCalledWith("list_account_groups");
+  });
+
+  it("updates and fully deletes one character through native IPC", async () => {
+    const updated = managedCharacter({
+      alias: "Builder",
+      accountGroupId: 3,
+      accountGroupLabel: "Industry",
+      enabled: false,
+    });
+    const invoke = vi.fn<RuntimeAdapter["invoke"]>()
+      .mockResolvedValueOnce(JSON.stringify({ character: updated }))
+      .mockResolvedValueOnce(JSON.stringify({ deleted: true, characterId: 2_112_345_678 }));
+    const adapter = { isAvailable: () => true, invoke };
+
+    await expect(
+      updateEveCharacter(
+        2_112_345_678,
+        { alias: "Builder", accountGroupId: 3, enabled: false },
+        adapter,
+      ),
+    ).resolves.toEqual(updated);
+    await expect(deleteEveCharacter(2_112_345_678, adapter)).resolves.toBeUndefined();
+    expect(invoke).toHaveBeenNthCalledWith(1, "update_eve_character", {
+      characterId: 2_112_345_678,
+      alias: "Builder",
+      accountGroupId: 3,
+      enabled: false,
+    });
+    expect(invoke).toHaveBeenNthCalledWith(
+      2,
+      "delete_eve_character",
+      { characterId: 2_112_345_678 },
+    );
+  });
+
+  it("creates, renames and deletes account groups through native IPC", async () => {
+    const created = { id: 3, label: "Industry", sortOrder: 0, characterCount: 0 };
+    const renamed = { ...created, label: "Production" };
+    const invoke = vi.fn<RuntimeAdapter["invoke"]>()
+      .mockResolvedValueOnce(JSON.stringify({ group: created }))
+      .mockResolvedValueOnce(JSON.stringify({ group: renamed }))
+      .mockResolvedValueOnce(JSON.stringify({ deleted: true, groupId: 3 }));
+    const adapter = { isAvailable: () => true, invoke };
+
+    await expect(createAccountGroup("Industry", adapter)).resolves.toEqual(created);
+    await expect(renameAccountGroup(3, "Production", adapter)).resolves.toEqual(renamed);
+    await expect(deleteAccountGroup(3, adapter)).resolves.toBeUndefined();
   });
 
   it("rejects updater responses that enable public distribution", async () => {

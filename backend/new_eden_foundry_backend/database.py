@@ -17,7 +17,7 @@ from .recovery import (
 
 
 BUSY_TIMEOUT_MILLISECONDS: Final = 5_000
-SCHEMA_VERSION: Final = 5
+SCHEMA_VERSION: Final = 6
 
 MIGRATIONS: Final = (
     (
@@ -188,6 +188,19 @@ MIGRATIONS: Final = (
             """
             INSERT INTO app_settings (key, value)
                 VALUES ('update_channel', 'stable')
+            """,
+        ),
+    ),
+    (
+        6,
+        "character_aliases",
+        (
+            """
+            ALTER TABLE characters
+                ADD COLUMN alias TEXT CHECK (
+                    alias IS NULL
+                    OR length(trim(alias)) BETWEEN 1 AND 80
+                )
             """,
         ),
     ),

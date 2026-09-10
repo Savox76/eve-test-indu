@@ -1,10 +1,10 @@
 # Masterplan – New Eden Foundry
 
-**Fassung:** 2.2 (lebendes Repository-Dokument)
+**Fassung:** 2.3 (lebendes Repository-Dokument)
 
-**Stand:** 9. September 2026
+**Stand:** 10. September 2026
 
-**Status:** In Umsetzung – Phase 2 mit geschützter Tokenlebensdauer
+**Status:** In Umsetzung – Phase 2 mit vollständiger Charakterverwaltung
 
 **Geltungsbereich:** `Savox76/eve-test-indu`
 
@@ -203,9 +203,9 @@ Die Reihenfolge ist verbindlicher als eine Kalenderangabe.
 - **Abgeschlossen:** 12 – die Desktop-App startet EVE SSO im Systembrowser, erzeugt je Versuch unabhängigen kryptografischen `state` und PKCE-Verifier mit `S256`, prüft den Rückruf am festen Callback und beendet Listener und Geheimnisse bei Fehler, Drei-Minuten-Timeout, Abbruch oder App-Ende. Scopepakete werden pro einzeln zu autorisierendem Charakter gewählt.
 - **Abgeschlossen:** 13 – der Sidecar tauscht den einmaligen Code ohne Client Secret per PKCE aus, bezieht Token- und JWKS-Endpunkte aus streng begrenzten EVE-Metadaten und prüft `RS256`-Signatur, Schlüssel-ID, Issuer, beide Audience-Werte, Ablauf, Charakter-Subject, Name und Scopes. Nur danach werden Identität und Scope-Status idempotent in SQLite gespeichert und in der echten Charakterliste angezeigt.
 - **Abgeschlossen:** 14 – der ausschließlich nach erfolgreicher JWT-Prüfung erhaltene Refresh Token wird pro Charakter in einem verifizierten Zwei-Slot-Verfahren im Windows-Anmeldespeicher aktiviert. Der bisherige aktive Wert bleibt bei Schreibfehlern erhalten; unterbrochene und konkurrierende Rotationen werden ohne Tokenverlust behandelt. Access Tokens verbleiben nur im Sidecar-Speicher, Geheimnisse erreichen weder SQLite noch API-Antworten oder Logs, und nicht unterstützte Schlüsselbundumgebungen schlagen geschlossen fehl.
-- **Teilweise umgesetzt:** 15 – Schema, Zugriffslogik und Oberfläche unterstützen mehrere separat autorisierte und aus SQLite geladene Charaktere, lokale Kontogruppen und getrennte Scopes. Alias, Deaktivierung, Gruppeneditor und vollständiger Löschablauf folgen nach der Schlüsselbundanbindung; Fachansichten verwenden bis zum ESI-Sync weiterhin synthetische Werte.
+- **Abgeschlossen:** 15 – verbundene Charaktere lassen sich mit lokalem Alias, Aktivstatus und frei benannten Kontogruppen verwalten. Credential- und Scopepaket-Status werden charakterbezogen angezeigt. Der zweistufig bestätigte Löschablauf entfernt Identität, Scopes, Sync-Historie, Cache-Snapshots, Prozess-Token und Refresh Token; Credential-Fehler rollen die SQLite-Löschung zurück.
 - **Zusätzlich umgesetzt:** Die vollständige sichtbare Oberfläche unterstützt fünf globale Schriftgrößenstufen; die Auswahl bleibt in der bestehenden `app_settings`-Tabelle im Programmordner erhalten.
-- **Als Nächstes:** Arbeitspaket 15 vervollständigt die Charakterverwaltung mit Alias, Aktivstatus, lokalen Kontogruppen, verständlichem Scope-/Credential-Status und vollständigem Löschablauf. Parallel bleibt das A0-Windows-Gate für Installation, zweiten Start, Migration/Update und Entfernung auf einem freigegebenen Windows-Testgerät offen.
+- **Als Nächstes:** Arbeitspaket 16 kapselt alle ESI-Zugriffe in einem zentralen Client mit Compatibility-Date, eindeutiger User-Agent-Kennung, HTTP-Cache-Headern, begrenzten Wiederholungen, Fehlerbudget und Circuit Breaker. Parallel bleibt das A0-Windows-Gate für Installation, zweiten Start, Migration/Update und Entfernung auf einem freigegebenen Windows-Testgerät offen.
 - Architektur-Gate A0 ist technisch weitgehend umgesetzt, aber bis zur vollständigen Windows-Abnahme noch nicht erfüllt; breite Fachentwicklung beginnt erst danach.
 
 ## 13. Entscheidungs- und Quellenrang

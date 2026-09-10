@@ -24,6 +24,43 @@ Alle bemerkenswerten Änderungen an New Eden Foundry werden hier festgehalten. D
 
 - Keine.
 
+## 0.0.4-preview.6 – 10. September 2026
+
+### Neu hinzugefügt
+
+- Vollständiger Charaktereditor für lokalen Alias, Aktivstatus und optionale Kontogruppe.
+- Editor für lokale Kontogruppen mit Anlegen, Umbenennen und Löschen ohne Verlust zugeordneter Charaktere.
+- Verständliche Credential- und Scopepaket-Status pro Charakter einschließlich bestätigter und erforderlicher Scope-Anzahl.
+- Zweistufig bestätigter vollständiger Löschablauf für Charakter, Scopes, Sync-Historie, Cache-Snapshots, Prozess-Token und Refresh Token.
+- Automatisierte Backend-, IPC-, Migrations- und Oberflächentests für alle Verwaltungs- und Fehlerpfade.
+
+### Geändert
+
+- Das SQLite-Schema wurde auf Version 6 angehoben und speichert optionale lokale Charakteraliase.
+- Die echte Charakterliste verwendet den Alias als primären Anzeigenamen, hält den verifizierten EVE-Namen aber sichtbar.
+- Mehrfachvalidierung in React, Tauri und Sidecar begrenzt IDs, Alias, Gruppen und abgeleitete Statuswerte.
+- Masterplan 2.3 markiert Arbeitspaket 15 als abgeschlossen und den zentralen ESI-Client als nächsten Schritt.
+- Die sichtbare Versionsnummer wurde auf `v0.0.4-preview.6` aktualisiert; `Savoxmedia` bleibt ausschließlich als Ersteller der App neben der Version genannt.
+
+### Behobene Fehler
+
+- Verbundene Charaktere können jetzt deaktiviert oder lokal organisiert werden, ohne erneut autorisiert werden zu müssen.
+- Beim Löschen eines Charakters bleiben keine abhängigen SQLite-Datensätze oder prozesslokalen Token-Leases zurück.
+- Ein Fehler beim Löschen des Windows-Credentials entfernt den zugehörigen SQLite-Charakter nicht mehr teilweise.
+- Das Löschen einer Kontogruppe lässt zugeordnete Charaktere korrekt als nicht gruppiert bestehen.
+
+### Bekannte Einschränkungen
+
+- Der zentrale ESI-Client und damit die echte Synchronisierung folgen in Arbeitspaket 16; Fachkennzahlen bleiben bis dahin synthetisch.
+- Auf Linux und macOS ist absichtlich keine Ersatzablage aktiv; die Windows-first Preview meldet den Credential-Backend dort als nicht verfügbar.
+- Öffentliche Updateverteilung und Codesignierung bleiben deaktiviert; das manuelle Windows-Laufzeitgate und der Schutz von `main` sind offen.
+
+### Update und Datenbankmigration
+
+- Beim ersten Start migriert die App Schema 5 auf Schema 6 und ergänzt `characters.alias`; vorher wird automatisch eine geprüfte Sicherung unter `data\backups` angelegt.
+- Vorhandene Charaktere, Gruppen, Scopes, Einstellungen und Refresh Tokens bleiben erhalten; Aliasse beginnen leer.
+- Für ein portables Update die Anwendung schließen und den bisherigen Ordner `data` vollständig in den neuen Programmordner übernehmen. Refresh Tokens verbleiben getrennt im Windows-Anmeldespeicher des aktuellen Nutzers.
+
 ## 0.0.4-preview.5 – 9. September 2026
 
 ### Neu hinzugefügt

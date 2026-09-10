@@ -123,6 +123,14 @@ class DatabaseFoundationTests(unittest.TestCase):
                 "INSERT INTO app_metadata (key, value) VALUES (?, ?)",
                 ("synthetic-upgrade", "preserved"),
             )
+            connection.execute(
+                """
+                INSERT INTO characters (
+                    character_id, account_group_id, name, enabled
+                ) VALUES (?, NULL, ?, 1)
+                """,
+                (-9_900_000_012, "Migration Pilot"),
+            )
 
         status = initialize_database(self.database_path)
 
@@ -143,11 +151,20 @@ class DatabaseFoundationTests(unittest.TestCase):
             selected_channel = migrated.execute(
                 "SELECT value FROM app_settings WHERE key = 'update_channel'"
             ).fetchone()[0]
+            migrated_character = migrated.execute(
+                "SELECT name, alias FROM characters WHERE character_id = ?",
+                (-9_900_000_012,),
+            ).fetchone()
+            character_columns = {
+                row["name"] for row in migrated.execute("PRAGMA table_info(characters)")
+            }
         self.assertEqual(record["filename"], backup_path.name)
         self.assertEqual(record["source_schema_version"], previous_version)
         self.assertEqual(record["target_schema_version"], SCHEMA_VERSION)
         self.assertEqual(record["size_bytes"], backup_path.stat().st_size)
         self.assertEqual(selected_channel, "stable")
+        self.assertEqual(tuple(migrated_character), ("Migration Pilot", None))
+        self.assertIn("alias", character_columns)
         verify_database_backup(
             backup_path,
             expected_schema_version=previous_version,

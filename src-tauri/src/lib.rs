@@ -121,18 +121,68 @@ struct SsoLoginStart {
 
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
+struct ScopePackageStatus {
+    id: String,
+    status: String,
+    granted_count: u8,
+    required_count: u8,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct EveCharacterRecord {
     character_id: u64,
     name: String,
+    alias: Option<String>,
     account_group_id: Option<u64>,
     account_group_label: Option<String>,
     enabled: bool,
     scopes: Vec<String>,
+    credential_state: String,
+    scope_packages: Vec<ScopePackageStatus>,
 }
 
 #[derive(Deserialize, Serialize)]
 struct EveCharactersResponse {
     characters: Vec<EveCharacterRecord>,
+}
+
+#[derive(Deserialize, Serialize)]
+struct EveCharacterResponse {
+    character: EveCharacterRecord,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AccountGroupRecord {
+    id: u64,
+    label: String,
+    sort_order: u64,
+    character_count: u64,
+}
+
+#[derive(Deserialize, Serialize)]
+struct AccountGroupsResponse {
+    groups: Vec<AccountGroupRecord>,
+}
+
+#[derive(Deserialize, Serialize)]
+struct AccountGroupResponse {
+    group: AccountGroupRecord,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CharacterDeletionResponse {
+    deleted: bool,
+    character_id: u64,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AccountGroupDeletionResponse {
+    deleted: bool,
+    group_id: u64,
 }
 
 impl RuntimeUpdaterSnapshot {
@@ -319,16 +369,69 @@ fn sso_character_identity_is_valid(character: &SsoCharacterIdentity) -> bool {
         })
 }
 
+fn management_label_is_valid(label: &str) -> bool {
+    !label.is_empty() && label.trim() == label && label.len() <= 80
+}
+
+fn scope_package_required_count(id: &str) -> Option<u8> {
+    match id {
+        "industry-core" => Some(4),
+        "market" => Some(2),
+        "planetary-industry" | "projects" | "private-structures" => Some(1),
+        _ => None,
+    }
+}
+
+fn scope_package_status_is_valid(package: &ScopePackageStatus) -> bool {
+    let Some(required_count) = scope_package_required_count(&package.id) else {
+        return false;
+    };
+    let expected_status = if package.granted_count == 0 {
+        "missing"
+    } else if package.granted_count == package.required_count {
+        "granted"
+    } else {
+        "partial"
+    };
+    package.required_count == required_count
+        && package.granted_count <= package.required_count
+        && package.status == expected_status
+}
+
+fn account_group_record_is_valid(group: &AccountGroupRecord) -> bool {
+    group.id > 0 && management_label_is_valid(&group.label)
+}
+
 fn eve_character_record_is_valid(character: &EveCharacterRecord) -> bool {
+    let package_ids = character
+        .scope_packages
+        .iter()
+        .map(|package| package.id.as_str())
+        .collect::<HashSet<_>>();
     sso_character_identity_is_valid(&SsoCharacterIdentity {
         character_id: character.character_id,
         name: character.name.clone(),
         scopes: character.scopes.clone(),
-    }) && character.account_group_id != Some(0)
+    }) && character
+        .alias
+        .as_deref()
+        .is_none_or(management_label_is_valid)
+        && character.account_group_id != Some(0)
         && character
             .account_group_label
-            .as_ref()
-            .is_none_or(|label| !label.trim().is_empty() && label.len() <= 80)
+            .as_deref()
+            .is_none_or(management_label_is_valid)
+        && character.account_group_id.is_some() == character.account_group_label.is_some()
+        && matches!(
+            character.credential_state.as_str(),
+            "stored" | "missing" | "unavailable"
+        )
+        && character.scope_packages.len() == EVE_SSO_SCOPE_PACKAGES.len()
+        && package_ids.len() == EVE_SSO_SCOPE_PACKAGES.len()
+        && character
+            .scope_packages
+            .iter()
+            .all(scope_package_status_is_valid)
 }
 
 fn sso_login_status_is_valid(status: &SsoLoginStatus) -> bool {
@@ -849,6 +952,210 @@ fn list_eve_characters(state: State<'_, RuntimeState>) -> Result<String, String>
 }
 
 #[tauri::command]
+fn list_account_groups(state: State<'_, RuntimeState>) -> Result<String, String> {
+    refresh_sidecar_status(&state);
+    let response = {
+        let sidecar = state
+            .sidecar
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let process = sidecar
+            .as_ref()
+            .ok_or_else(|| "sidecar-unavailable".to_owned())?;
+        sidecar_json_request(process, "GET", "/account-groups", "").map_err(str::to_owned)?
+    };
+    let groups: AccountGroupsResponse =
+        serde_json::from_str(&response).map_err(|_| "sidecar-response-invalid".to_owned())?;
+    if groups
+        .groups
+        .iter()
+        .any(|group| !account_group_record_is_valid(group))
+        || groups
+            .groups
+            .iter()
+            .map(|group| group.id)
+            .collect::<HashSet<_>>()
+            .len()
+            != groups.groups.len()
+    {
+        return Err("sidecar-response-invalid".to_owned());
+    }
+    serde_json::to_string(&groups).map_err(|_| "status-serialization-failed".to_owned())
+}
+
+#[tauri::command]
+fn update_eve_character(
+    character_id: u64,
+    alias: Option<String>,
+    account_group_id: Option<u64>,
+    enabled: bool,
+    state: State<'_, RuntimeState>,
+) -> Result<String, String> {
+    if character_id == 0
+        || account_group_id == Some(0)
+        || alias
+            .as_deref()
+            .is_some_and(|value| !management_label_is_valid(value))
+    {
+        return Err("character-update-invalid".to_owned());
+    }
+    refresh_sidecar_status(&state);
+    let body = serde_json::json!({
+        "alias": alias,
+        "accountGroupId": account_group_id,
+        "enabled": enabled,
+    })
+    .to_string();
+    let response = {
+        let sidecar = state
+            .sidecar
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let process = sidecar
+            .as_ref()
+            .ok_or_else(|| "sidecar-unavailable".to_owned())?;
+        sidecar_json_request(
+            process,
+            "PATCH",
+            &format!("/characters/{character_id}"),
+            &body,
+        )
+        .map_err(str::to_owned)?
+    };
+    let updated: EveCharacterResponse =
+        serde_json::from_str(&response).map_err(|_| "sidecar-response-invalid".to_owned())?;
+    if updated.character.character_id != character_id
+        || !eve_character_record_is_valid(&updated.character)
+    {
+        return Err("sidecar-response-invalid".to_owned());
+    }
+    serde_json::to_string(&updated).map_err(|_| "status-serialization-failed".to_owned())
+}
+
+#[tauri::command]
+fn delete_eve_character(
+    character_id: u64,
+    state: State<'_, RuntimeState>,
+) -> Result<String, String> {
+    if character_id == 0 {
+        return Err("character-delete-invalid".to_owned());
+    }
+    refresh_sidecar_status(&state);
+    let response = {
+        let sidecar = state
+            .sidecar
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let process = sidecar
+            .as_ref()
+            .ok_or_else(|| "sidecar-unavailable".to_owned())?;
+        sidecar_json_request(
+            process,
+            "DELETE",
+            &format!("/characters/{character_id}"),
+            "",
+        )
+        .map_err(str::to_owned)?
+    };
+    let deleted: CharacterDeletionResponse =
+        serde_json::from_str(&response).map_err(|_| "sidecar-response-invalid".to_owned())?;
+    if !deleted.deleted || deleted.character_id != character_id {
+        return Err("sidecar-response-invalid".to_owned());
+    }
+    serde_json::to_string(&deleted).map_err(|_| "status-serialization-failed".to_owned())
+}
+
+#[tauri::command]
+fn create_account_group(label: String, state: State<'_, RuntimeState>) -> Result<String, String> {
+    if !management_label_is_valid(&label) {
+        return Err("account-group-invalid".to_owned());
+    }
+    refresh_sidecar_status(&state);
+    let body = serde_json::json!({ "label": label }).to_string();
+    let response = {
+        let sidecar = state
+            .sidecar
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let process = sidecar
+            .as_ref()
+            .ok_or_else(|| "sidecar-unavailable".to_owned())?;
+        sidecar_json_request(process, "POST", "/account-groups", &body).map_err(str::to_owned)?
+    };
+    let created: AccountGroupResponse =
+        serde_json::from_str(&response).map_err(|_| "sidecar-response-invalid".to_owned())?;
+    if !account_group_record_is_valid(&created.group) {
+        return Err("sidecar-response-invalid".to_owned());
+    }
+    serde_json::to_string(&created).map_err(|_| "status-serialization-failed".to_owned())
+}
+
+#[tauri::command]
+fn rename_account_group(
+    group_id: u64,
+    label: String,
+    state: State<'_, RuntimeState>,
+) -> Result<String, String> {
+    if group_id == 0 || !management_label_is_valid(&label) {
+        return Err("account-group-invalid".to_owned());
+    }
+    refresh_sidecar_status(&state);
+    let body = serde_json::json!({ "label": label }).to_string();
+    let response = {
+        let sidecar = state
+            .sidecar
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let process = sidecar
+            .as_ref()
+            .ok_or_else(|| "sidecar-unavailable".to_owned())?;
+        sidecar_json_request(
+            process,
+            "PATCH",
+            &format!("/account-groups/{group_id}"),
+            &body,
+        )
+        .map_err(str::to_owned)?
+    };
+    let updated: AccountGroupResponse =
+        serde_json::from_str(&response).map_err(|_| "sidecar-response-invalid".to_owned())?;
+    if updated.group.id != group_id || !account_group_record_is_valid(&updated.group) {
+        return Err("sidecar-response-invalid".to_owned());
+    }
+    serde_json::to_string(&updated).map_err(|_| "status-serialization-failed".to_owned())
+}
+
+#[tauri::command]
+fn delete_account_group(group_id: u64, state: State<'_, RuntimeState>) -> Result<String, String> {
+    if group_id == 0 {
+        return Err("account-group-invalid".to_owned());
+    }
+    refresh_sidecar_status(&state);
+    let response = {
+        let sidecar = state
+            .sidecar
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let process = sidecar
+            .as_ref()
+            .ok_or_else(|| "sidecar-unavailable".to_owned())?;
+        sidecar_json_request(
+            process,
+            "DELETE",
+            &format!("/account-groups/{group_id}"),
+            "",
+        )
+        .map_err(str::to_owned)?
+    };
+    let deleted: AccountGroupDeletionResponse =
+        serde_json::from_str(&response).map_err(|_| "sidecar-response-invalid".to_owned())?;
+    if !deleted.deleted || deleted.group_id != group_id {
+        return Err("sidecar-response-invalid".to_owned());
+    }
+    serde_json::to_string(&deleted).map_err(|_| "status-serialization-failed".to_owned())
+}
+
+#[tauri::command]
 fn start_eve_sso(
     scope_packages: Vec<String>,
     state: State<'_, RuntimeState>,
@@ -976,6 +1283,12 @@ pub fn run() {
             set_update_channel,
             set_font_scale,
             list_eve_characters,
+            list_account_groups,
+            update_eve_character,
+            delete_eve_character,
+            create_account_group,
+            rename_account_group,
+            delete_account_group,
             start_eve_sso,
             eve_sso_status,
             cancel_eve_sso
@@ -993,7 +1306,9 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::{
-        authorization_url_is_valid, sso_login_status_is_valid, SsoCharacterIdentity, SsoLoginStatus,
+        account_group_record_is_valid, authorization_url_is_valid, eve_character_record_is_valid,
+        sso_login_status_is_valid, AccountGroupRecord, EveCharacterRecord, ScopePackageStatus,
+        SsoCharacterIdentity, SsoLoginStatus,
     };
 
     fn valid_authorization_url() -> String {
@@ -1053,5 +1368,80 @@ mod tests {
             ..waiting
         };
         assert!(sso_login_status_is_valid(&connected));
+    }
+
+    fn managed_character() -> EveCharacterRecord {
+        EveCharacterRecord {
+            character_id: 2_112_345_678,
+            name: "Synthetic Pilot".to_owned(),
+            alias: Some("Builder".to_owned()),
+            account_group_id: Some(3),
+            account_group_label: Some("Industry".to_owned()),
+            enabled: true,
+            scopes: vec!["esi-assets.read_assets.v1".to_owned()],
+            credential_state: "stored".to_owned(),
+            scope_packages: vec![
+                ScopePackageStatus {
+                    id: "industry-core".to_owned(),
+                    status: "partial".to_owned(),
+                    granted_count: 1,
+                    required_count: 4,
+                },
+                ScopePackageStatus {
+                    id: "market".to_owned(),
+                    status: "missing".to_owned(),
+                    granted_count: 0,
+                    required_count: 2,
+                },
+                ScopePackageStatus {
+                    id: "planetary-industry".to_owned(),
+                    status: "missing".to_owned(),
+                    granted_count: 0,
+                    required_count: 1,
+                },
+                ScopePackageStatus {
+                    id: "projects".to_owned(),
+                    status: "missing".to_owned(),
+                    granted_count: 0,
+                    required_count: 1,
+                },
+                ScopePackageStatus {
+                    id: "private-structures".to_owned(),
+                    status: "missing".to_owned(),
+                    granted_count: 0,
+                    required_count: 1,
+                },
+            ],
+        }
+    }
+
+    #[test]
+    fn validates_complete_managed_character_metadata() {
+        let character = managed_character();
+        assert!(eve_character_record_is_valid(&character));
+
+        let mut invalid = managed_character();
+        invalid.scope_packages[1].status = "granted".to_owned();
+        assert!(!eve_character_record_is_valid(&invalid));
+
+        let mut incomplete = managed_character();
+        incomplete.scope_packages.pop();
+        assert!(!eve_character_record_is_valid(&incomplete));
+    }
+
+    #[test]
+    fn validates_account_group_metadata() {
+        assert!(account_group_record_is_valid(&AccountGroupRecord {
+            id: 3,
+            label: "Industry".to_owned(),
+            sort_order: 0,
+            character_count: 2,
+        }));
+        assert!(!account_group_record_is_valid(&AccountGroupRecord {
+            id: 0,
+            label: "Invalid".to_owned(),
+            sort_order: 0,
+            character_count: 0,
+        }));
     }
 }

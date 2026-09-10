@@ -8,8 +8,12 @@ from pathlib import Path
 from new_eden_foundry_backend.database import connect_database, initialize_database
 from new_eden_foundry_backend.identity import (
     create_account_group,
+    delete_account_group,
+    delete_character,
     list_account_groups,
     list_characters,
+    update_account_group,
+    update_character,
     upsert_character,
 )
 
@@ -68,6 +72,114 @@ class MultiCharacterIdentityTests(unittest.TestCase):
             characters[1].scopes,
             ("esi-assets.read_assets.v1", "esi-industry.read_character_jobs.v1"),
         )
+
+    def test_updates_alias_enabled_state_and_local_group(self) -> None:
+        first_group = create_account_group(self.connection, "Industry Core")
+        second_group = create_account_group(self.connection, "PI Network", sort_order=1)
+        character_id = -9_900_000_008
+        upsert_character(
+            self.connection,
+            character_id=character_id,
+            name="Sera Nox",
+            account_group_id=first_group,
+            scopes=("esi-assets.read_assets.v1",),
+        )
+
+        updated = update_character(
+            self.connection,
+            character_id,
+            alias="  Hauling Lead  ",
+            account_group_id=second_group,
+            enabled=False,
+        )
+
+        self.assertEqual(updated.name, "Sera Nox")
+        self.assertEqual(updated.alias, "Hauling Lead")
+        self.assertEqual(updated.account_group_label, "PI Network")
+        self.assertFalse(updated.enabled)
+        self.assertEqual(updated.scopes, ("esi-assets.read_assets.v1",))
+
+        cleared = update_character(
+            self.connection,
+            character_id,
+            alias=None,
+            account_group_id=None,
+            enabled=True,
+        )
+        self.assertIsNone(cleared.alias)
+        self.assertIsNone(cleared.account_group_id)
+        self.assertTrue(cleared.enabled)
+
+    def test_invalid_alias_or_group_leaves_character_unchanged(self) -> None:
+        character_id = -9_900_000_009
+        upsert_character(
+            self.connection,
+            character_id=character_id,
+            name="Stable Pilot",
+            account_group_id=None,
+            scopes=("esi-assets.read_assets.v1",),
+        )
+
+        with self.assertRaises(ValueError):
+            update_character(
+                self.connection,
+                character_id,
+                alias=" " * 3,
+                account_group_id=None,
+                enabled=True,
+            )
+        with self.assertRaises(sqlite3.IntegrityError):
+            update_character(
+                self.connection,
+                character_id,
+                alias="Valid Alias",
+                account_group_id=999_999,
+                enabled=False,
+            )
+
+        unchanged = next(
+            character
+            for character in list_characters(self.connection)
+            if character.character_id == character_id
+        )
+        self.assertIsNone(unchanged.alias)
+        self.assertTrue(unchanged.enabled)
+
+    def test_renames_and_deletes_local_group_without_deleting_character(self) -> None:
+        group_id = create_account_group(self.connection, "Old Label")
+        character_id = -9_900_000_010
+        upsert_character(
+            self.connection,
+            character_id=character_id,
+            name="Grouped Pilot",
+            account_group_id=group_id,
+        )
+
+        renamed = update_account_group(self.connection, group_id, label="New Label")
+        self.assertEqual(renamed.label, "New Label")
+        self.assertTrue(delete_account_group(self.connection, group_id))
+
+        character = next(
+            character
+            for character in list_characters(self.connection)
+            if character.character_id == character_id
+        )
+        self.assertIsNone(character.account_group_id)
+        self.assertFalse(delete_account_group(self.connection, group_id))
+
+    def test_delete_character_helper_cascades_owned_rows(self) -> None:
+        character_id = -9_900_000_011
+        upsert_character(
+            self.connection,
+            character_id=character_id,
+            name="Disposable Helper Pilot",
+            account_group_id=None,
+            scopes=("esi-assets.read_assets.v1",),
+        )
+
+        self.assertTrue(delete_character(self.connection, character_id))
+        self.assertFalse(delete_character(self.connection, character_id))
+        self.assertFalse(list_characters(self.connection))
 
     def test_reauthorization_updates_one_character_without_duplication(self) -> None:
         first_group = create_account_group(self.connection, "Industry Core")
