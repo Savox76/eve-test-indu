@@ -1,10 +1,10 @@
 # Masterplan – New Eden Foundry
 
-**Fassung:** 2.2 (lebendes Repository-Dokument)
+**Fassung:** 2.3 (lebendes Repository-Dokument)
 
-**Stand:** 9. September 2026
+**Stand:** 10. September 2026
 
-**Status:** In Umsetzung – Phase 2 mit geschützter Tokenlebensdauer
+**Status:** In Umsetzung – Phase 2 mit vollständiger Charakterverwaltung
 
 **Geltungsbereich:** `Savox76/eve-test-indu`
 
