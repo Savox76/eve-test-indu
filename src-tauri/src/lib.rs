@@ -27,13 +27,8 @@ const EVE_SSO_SCOPE_PACKAGES: [&str; 5] = [
     "private-structures",
 ];
 const FONT_SCALES: [&str; 5] = ["very-small", "small", "normal", "large", "very-large"];
-const ASSET_LOCATION_STATUSES: [&str; 5] = [
-    "resolved",
-    "restricted",
-    "unresolved",
-    "cycle",
-    "pending",
-];
+const ASSET_LOCATION_STATUSES: [&str; 5] =
+    ["resolved", "restricted", "unresolved", "cycle", "pending"];
 const MAX_ASSET_PAGE_SIZE: u64 = 200;
 const MAX_ASSET_SEARCH_CHARACTERS: usize = 120;
 const JAVASCRIPT_MAX_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
@@ -1184,10 +1179,7 @@ fn query_assets(
     };
     let page: AssetQueryResponse =
         serde_json::from_str(&response).map_err(|_| "sidecar-response-invalid".to_owned())?;
-    if !asset_query_response_is_valid(&page)
-        || page.offset != offset
-        || page.limit != limit
-    {
+    if !asset_query_response_is_valid(&page) || page.offset != offset || page.limit != limit {
         return Err("sidecar-response-invalid".to_owned());
     }
     serde_json::to_string(&page).map_err(|_| "status-serialization-failed".to_owned())
