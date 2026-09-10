@@ -2,13 +2,13 @@
 
 Paket 20 bindet die Asset-Ansicht an die letzten vollständig abgeschlossenen, charaktergetrennten Asset-Snapshots und die dazu passenden Standort-Snapshots. Die Ansicht verwendet keine synthetischen Fachwerte, sobald der lokale Desktop-Kern bereit ist.
 
-Mit **Assets aktualisieren** startet die Ansicht den echten ESI-Lauf für alle aktivierten Charaktere. Nach Abschluss werden Bestand und Änderungsverlauf neu geladen. Teilfehler werden sichtbar gemeldet, während erfolgreiche Charakterläufe erhalten bleiben.
+Beim Programmstart und nach einer neuen Charakterverbindung startet die App den echten ESI-Lauf für alle aktivierten Charaktere automatisch im Hintergrund. Mit **Assets aktualisieren** lässt er sich zusätzlich manuell anstoßen. Nach Abschluss werden Bestand und Änderungsverlauf neu geladen. Teilfehler werden sichtbar gemeldet, während erfolgreiche Charakterläufe erhalten bleiben.
 
 ## Sichtbares Lesemodell
 
 Jede Position zeigt:
 
-- SDE-Typname sowie Type- und Item-ID,
+- den lokal gespeicherten SDE- oder ESI-Typnamen sowie Type- und Item-ID,
 - lokalen Alias beziehungsweise Charakternamen als Besitzer,
 - root-first Standort- und Containerpfad,
 - Standortstatus `resolved`, `restricted`, `unresolved`, `cycle` oder `pending`,
@@ -18,7 +18,7 @@ Ein Standort-Snapshot wird nur verwendet, wenn seine `assetSnapshotId` exakt dem
 
 ## Suche und Filter
 
-Die serverseitige Suche berücksichtigt Typname, Besitzer, Standortpfad, Hangar/Bereich, Type-ID und Item-ID. Besitzer- und Standortstatusfilter lassen sich kombinieren. Suche, Filterung, Summenbildung und stabile Sortierung erfolgen im lokalen Python-Sidecar; die React-Oberfläche erhält nie den vollständigen Snapshot.
+Die serverseitige Suche berücksichtigt Typname, Besitzer, Standortpfad, Hangar/Bereich, Type-ID und Item-ID. Besitzer- und Standortstatusfilter lassen sich kombinieren. Jede sichtbare Spalte kann auf- oder absteigend sortiert werden; die Sortierung erfolgt vor der Seitenteilung. Suche, Filterung, Summenbildung und stabile Sortierung erfolgen im lokalen Python-Sidecar; die React-Oberfläche erhält nie den vollständigen Snapshot.
 
 ## 100.000-Zeilen-Vertrag
 
@@ -32,7 +32,7 @@ Damit wachsen DOM und lokale HTTP-Antwort mit der Seitengröße und nicht mit de
 
 ## CSV-Export
 
-`Treffer als CSV` exportiert die aktuell angewendete Suche sowie Besitzer- und Standortfilter. Der Sidecar schreibt die vollständige Ergebnismenge atomar als UTF-8-CSV mit BOM unter:
+`Treffer als CSV` exportiert die aktuell angewendete Suche, Besitzer- und Standortfilter sowie Sortierung. Der Sidecar schreibt die vollständige Ergebnismenge atomar als UTF-8-CSV mit BOM unter:
 
 ```text
 <Programmordner>\data\exports\assets-YYYYMMDD-HHMMSS.csv

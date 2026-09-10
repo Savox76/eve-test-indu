@@ -17,5 +17,6 @@ ADRs halten Entscheidungen fest, die Architektur, Sicherheit, Datenmodell, Betri
 | [011](0011-signed-update-channel-skeleton.md) | Lokale Updatekanäle und signiertes Testmanifest ohne Verteilung | Angenommen |
 | [012](0012-fixed-eve-sso-registration-profile.md) | Festes öffentliches EVE-SSO-Registrierungsprofil | Angenommen |
 | [013](0013-update-stable-application-data.md) | Updatefeste Anwendungsdaten für Installer und Portable | Angenommen |
+| [014](0014-automatic-asset-refresh-and-type-name-cache.md) | Cache-first Startabgleich und persistente öffentliche Typnamen | Angenommen |
 
 Neue ADRs verwenden vierstellige laufende Nummern und die Abschnitte **Kontext**, **Entscheidung**, **Folgen**, **Verifikation** und **Referenzen**.

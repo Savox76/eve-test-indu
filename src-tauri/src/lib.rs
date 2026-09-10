@@ -34,6 +34,8 @@ const FONT_SCALES: [&str; 5] = ["very-small", "small", "normal", "large", "very-
 const ASSET_LOCATION_STATUSES: [&str; 5] =
     ["resolved", "restricted", "unresolved", "cycle", "pending"];
 const ASSET_DELTA_CHANGE_TYPES: [&str; 4] = ["added", "removed", "quantity", "location"];
+const ASSET_SORT_FIELDS: [&str; 6] = ["type", "owner", "location", "flag", "quantity", "age"];
+const SORT_DIRECTIONS: [&str; 2] = ["asc", "desc"];
 const MAX_ASSET_PAGE_SIZE: u64 = 200;
 const MAX_ASSET_SEARCH_CHARACTERS: usize = 120;
 const JAVASCRIPT_MAX_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
@@ -1466,6 +1468,8 @@ fn query_assets(
     location_status: Option<String>,
     offset: u64,
     limit: u64,
+    sort_by: String,
+    sort_direction: String,
     state: State<'_, RuntimeState>,
 ) -> Result<String, String> {
     if search.chars().count() > MAX_ASSET_SEARCH_CHARACTERS
@@ -1478,6 +1482,8 @@ fn query_assets(
         || limit == 0
         || limit > MAX_ASSET_PAGE_SIZE
         || offset > JAVASCRIPT_MAX_SAFE_INTEGER
+        || !ASSET_SORT_FIELDS.contains(&sort_by.as_str())
+        || !SORT_DIRECTIONS.contains(&sort_direction.as_str())
     {
         return Err("asset-query-invalid".to_owned());
     }
@@ -1488,6 +1494,8 @@ fn query_assets(
         "locationStatus": location_status,
         "offset": offset,
         "limit": limit,
+        "sortBy": sort_by,
+        "sortDirection": sort_direction,
     })
     .to_string();
     let response = {
@@ -1513,6 +1521,8 @@ fn export_assets_csv(
     search: String,
     owner_character_id: Option<u64>,
     location_status: Option<String>,
+    sort_by: String,
+    sort_direction: String,
     state: State<'_, RuntimeState>,
 ) -> Result<String, String> {
     if search.chars().count() > MAX_ASSET_SEARCH_CHARACTERS
@@ -1522,6 +1532,8 @@ fn export_assets_csv(
         || location_status
             .as_deref()
             .is_some_and(|status| !ASSET_LOCATION_STATUSES.contains(&status))
+        || !ASSET_SORT_FIELDS.contains(&sort_by.as_str())
+        || !SORT_DIRECTIONS.contains(&sort_direction.as_str())
     {
         return Err("asset-query-invalid".to_owned());
     }
@@ -1530,6 +1542,8 @@ fn export_assets_csv(
         "search": search,
         "ownerCharacterId": owner_character_id,
         "locationStatus": location_status,
+        "sortBy": sort_by,
+        "sortDirection": sort_direction,
     })
     .to_string();
     let response = {

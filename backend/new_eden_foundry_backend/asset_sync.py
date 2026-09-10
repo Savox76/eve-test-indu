@@ -23,6 +23,7 @@ class AssetSyncResult:
     sync_run_id: int
     pages: int
     assets: int
+    type_ids: tuple[int, ...]
 
 
 def _utc_now() -> str:
@@ -144,7 +145,13 @@ def sync_character_assets(connection: sqlite3.Connection, client: EsiClient, cha
             (completed, completed, run_id),
         )
         connection.commit()
-        return AssetSyncResult(character_id, run_id, total_pages, len(assets))
+        return AssetSyncResult(
+            character_id,
+            run_id,
+            total_pages,
+            len(assets),
+            tuple(sorted({int(asset["type_id"]) for asset in assets})),
+        )
     except Exception as exc:
         if connection.in_transaction:
             connection.rollback()

@@ -28,7 +28,7 @@ class FoundationStatusTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         self.assertEqual(result["state"], "foundation-ready")
         self.assertEqual(result["database"]["integrity"], "ok")
-        self.assertEqual(result["database"]["schema_version"], 6)
+        self.assertEqual(result["database"]["schema_version"], 7)
         self.assertIsNone(result["database"]["last_migration_backup"])
         self.assertEqual(result["data"]["state"], "empty")
         self.assertFalse(result["data"]["hasCachedData"])

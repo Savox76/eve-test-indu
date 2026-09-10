@@ -42,6 +42,27 @@ class QueueTransport:
         return response
 
 
+class QueuePostTransport:
+    def __init__(self, *responses: RawEsiResponse | Exception) -> None:
+        self.responses = list(responses)
+        self.calls: list[tuple[str, dict[str, str], bytes, float]] = []
+
+    def __call__(
+        self,
+        url: str,
+        headers: Mapping[str, str],
+        body: bytes,
+        timeout_seconds: float,
+    ) -> RawEsiResponse:
+        self.calls.append((url, dict(headers), body, timeout_seconds))
+        if not self.responses:
+            raise AssertionError("Unexpected ESI POST transport call.")
+        response = self.responses.pop(0)
+        if isinstance(response, Exception):
+            raise response
+        return response
+
+
 def response(
     status: int = 200,
     body: bytes = b'{"ok":true}',
@@ -55,6 +76,29 @@ def response(
 
 
 class EsiClientTests(unittest.TestCase):
+    def test_posts_bounded_public_json_and_caches_by_payload(self) -> None:
+        transport = QueuePostTransport(
+            response(
+                body=b'[{"id":34,"name":"Tritanium","category":"inventory_type"}]',
+                cache_control="max-age=60",
+            )
+        )
+        client = EsiClient(post_transport=transport, sleep=lambda _: None)
+
+        first = client.post_json("/universe/names/", [34])
+        cached = client.post_json("/universe/names/", [34])
+
+        self.assertFalse(first.from_cache)
+        self.assertTrue(cached.from_cache)
+        self.assertEqual(first.payload, cached.payload)
+        self.assertEqual(1, len(transport.calls))
+        url, headers, body, timeout = transport.calls[0]
+        self.assertEqual("https://esi.evetech.net/universe/names/", url)
+        self.assertEqual("application/json", headers["Content-Type"])
+        self.assertNotIn("Authorization", headers)
+        self.assertEqual(b"[34]", body)
+        self.assertEqual(20.0, timeout)
+
     def test_applies_fixed_identity_compatibility_and_character_authorization(self) -> None:
         transport = QueueTransport(response(cache_control="max-age=0"))
         provider_calls: list[tuple[int, tuple[str, ...]]] = []
@@ -90,7 +134,7 @@ class EsiClientTests(unittest.TestCase):
         )
         self.assertEqual(ESI_COMPATIBILITY_DATE, headers["X-Compatibility-Date"])
         self.assertEqual(ESI_USER_AGENT, headers["User-Agent"])
-        self.assertTrue(ESI_USER_AGENT.startswith("New-Eden-Foundry/0.0.5-preview.4 "))
+        self.assertTrue(ESI_USER_AGENT.startswith("New-Eden-Foundry/0.0.5-preview.5 "))
         self.assertIn("Savox76/eve-test-indu", ESI_USER_AGENT)
         self.assertEqual("Bearer synthetic-access-token", headers["Authorization"])
         self.assertEqual(20.0, timeout)

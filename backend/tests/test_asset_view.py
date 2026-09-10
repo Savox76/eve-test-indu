@@ -232,6 +232,31 @@ class AssetViewTests(unittest.TestCase):
         self.assertEqual(result["items"][0]["itemId"], 9_800_012)
         self.assertEqual(result["items"][0]["locationStatus"], "restricted")
 
+    def test_sorting_is_applied_before_the_bounded_page(self) -> None:
+        self.publish_assets(
+            CHARACTER_ID,
+            [
+                asset(9_800_101, quantity=9),
+                asset(9_800_102, SECOND_TYPE_ID, 2),
+                asset(9_800_103, quantity=5),
+            ],
+            "2026-09-10T10:00:00Z",
+        )
+
+        ascending = query_assets(
+            self.database,
+            AssetQuery(offset=0, limit=2, sort_by="quantity", sort_direction="asc"),
+        )
+        descending = query_assets(
+            self.database,
+            AssetQuery(offset=0, limit=2, sort_by="quantity", sort_direction="desc"),
+        )
+
+        self.assertEqual([2, 5], [row["quantity"] for row in ascending["items"]])
+        self.assertEqual([9, 5], [row["quantity"] for row in descending["items"]])
+        with self.assertRaisesRegex(AssetViewError, "asset_query_invalid"):
+            validate_asset_query(sort_by="unknown")
+
     def test_new_asset_snapshot_never_uses_paths_from_an_older_snapshot(self) -> None:
         old = self.publish_assets(
             CHARACTER_ID,

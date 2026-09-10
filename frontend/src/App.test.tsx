@@ -22,13 +22,13 @@ const idleSso: SsoLoginStatus = {
 const nativeRuntime = (overrides: Partial<Extract<DesktopRuntimeStatus, { state: "ready" }>> = {}) =>
   Promise.resolve<DesktopRuntimeStatus>({
     state: "ready",
-    version: "0.0.5-preview.4",
+    version: "0.0.5-preview.5",
     desktopShell: true,
     singleInstance: true,
     sidecar: "ready",
     database: "ready",
     databaseLocation: "data/foundry.sqlite3",
-    schemaVersion: 6,
+    schemaVersion: 7,
     errorCode: null,
     data: {
       state: "empty",
@@ -173,6 +173,8 @@ describe("New Eden Foundry design preview", () => {
       locationStatus: null,
       offset: 0,
       limit: 100,
+      sortBy: "type",
+      sortDirection: "asc",
     });
 
     fireEvent.click(screen.getByRole("button", { name: "Nächste Seite" }));
@@ -182,8 +184,34 @@ describe("New Eden Foundry design preview", () => {
       locationStatus: null,
       offset: 100,
       limit: 100,
+      sortBy: "type",
+      sortDirection: "asc",
     }));
     expect((await screen.findByText(/101–101 von 100\.000/))).toBeInTheDocument();
+  });
+
+  it("sorts asset columns before requesting the first page", async () => {
+    const assetsLoader = vi.fn().mockResolvedValue(assetPage());
+    render(
+      <App
+        runtimeLoader={() => nativeRuntime()}
+        ssoStatusLoader={() => Promise.resolve(idleSso)}
+        charactersLoader={() => Promise.resolve([])}
+        accountGroupsLoader={() => Promise.resolve([])}
+        assetsLoader={assetsLoader}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Assets/i }));
+    await screen.findByText("Synthetic Component");
+
+    fireEvent.click(screen.getByRole("button", { name: "Menge" }));
+    await waitFor(() => expect(assetsLoader).toHaveBeenLastCalledWith(
+      expect.objectContaining({ offset: 0, sortBy: "quantity", sortDirection: "asc" }),
+    ));
+    fireEvent.click(screen.getByRole("button", { name: "Menge" }));
+    await waitFor(() => expect(assetsLoader).toHaveBeenLastCalledWith(
+      expect.objectContaining({ offset: 0, sortBy: "quantity", sortDirection: "desc" }),
+    ));
   });
 
   it("composes asset search and filters and reports the local CSV target", async () => {
@@ -222,12 +250,16 @@ describe("New Eden Foundry design preview", () => {
       locationStatus: "resolved",
       offset: 0,
       limit: 100,
+      sortBy: "type",
+      sortDirection: "asc",
     }));
     fireEvent.click(screen.getByRole("button", { name: "Treffer als CSV" }));
     await waitFor(() => expect(assetsCsvExporter).toHaveBeenCalledWith({
       search: "component station",
       ownerCharacterId: 90_888_001,
       locationStatus: "resolved",
+      sortBy: "type",
+      sortDirection: "asc",
     }));
     expect(await screen.findByText(/data\/exports\/assets-20260910-110203\.csv/))
       .toBeInTheDocument();
@@ -357,7 +389,7 @@ describe("New Eden Foundry design preview", () => {
   it("credits Savoxmedia as the app creator next to the version", () => {
     render(<App />);
 
-    expect(screen.getByText("v0.0.5-preview.4")).toBeInTheDocument();
+    expect(screen.getByText("v0.0.5-preview.5")).toBeInTheDocument();
     expect(screen.getByText("Savoxmedia")).toBeInTheDocument();
     expect(screen.getByText("Erstellt von", { exact: false })).toBeInTheDocument();
     expect(screen.queryByText("Lokaler Betreiber")).not.toBeInTheDocument();
@@ -518,11 +550,15 @@ describe("New Eden Foundry design preview", () => {
         { id: "private-structures", status: "missing", grantedCount: 0, requiredCount: 1 },
       ],
     };
+    const assetSyncer = vi.fn().mockResolvedValue({
+      characters: [], completed: 0, failed: 0, assets: 0,
+    });
     render(
       <App
         runtimeLoader={() => nativeRuntime()}
         ssoStatusLoader={() => Promise.resolve(connected)}
         charactersLoader={() => Promise.resolve([character])}
+        assetSyncer={assetSyncer}
       />,
     );
 
@@ -530,6 +566,7 @@ describe("New Eden Foundry design preview", () => {
     expect(screen.getByText("Verbunden: Synthetic Pilot")).toBeInTheDocument();
     expect(screen.getByText("1 lokal verbunden")).toBeInTheDocument();
     expect(screen.getByText("Bestätigte Scopes: 1")).toBeInTheDocument();
+    await waitFor(() => expect(assetSyncer).toHaveBeenCalledTimes(1));
   });
 
   it("edits aliases, groups, activity, and exposes guarded full deletion", async () => {

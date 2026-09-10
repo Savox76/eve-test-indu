@@ -23,6 +23,8 @@ LOCATION_STATUSES: Final = (
     "cycle",
     "pending",
 )
+SORT_FIELDS: Final = ("type", "owner", "location", "flag", "quantity", "age")
+SORT_DIRECTIONS: Final = ("asc", "desc")
 
 
 class AssetViewError(RuntimeError):
@@ -36,6 +38,8 @@ class AssetQuery:
     location_status: str | None = None
     offset: int = 0
     limit: int = DEFAULT_PAGE_SIZE
+    sort_by: str = "type"
+    sort_direction: str = "asc"
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,6 +63,8 @@ def validate_asset_query(
     location_status: Any = None,
     offset: Any = 0,
     limit: Any = DEFAULT_PAGE_SIZE,
+    sort_by: Any = "type",
+    sort_direction: Any = "asc",
 ) -> AssetQuery:
     if not isinstance(search, str) or len(search) > MAX_SEARCH_LENGTH:
         raise AssetViewError("asset_query_invalid")
@@ -82,12 +88,16 @@ def validate_asset_query(
         or not 1 <= limit <= MAX_PAGE_SIZE
     ):
         raise AssetViewError("asset_query_invalid")
+    if sort_by not in SORT_FIELDS or sort_direction not in SORT_DIRECTIONS:
+        raise AssetViewError("asset_query_invalid")
     return AssetQuery(
         normalized_search,
         owner_character_id,
         location_status,
         offset,
         limit,
+        sort_by,
+        sort_direction,
     )
 
 
@@ -220,12 +230,18 @@ def _type_names(connection: sqlite3.Connection) -> dict[int, str]:
     table_exists = connection.execute(
         "SELECT 1 FROM sqlite_master WHERE type='table' AND name='sde_types'"
     ).fetchone()
-    if table_exists is None:
-        return {}
-    return {
+    names = {
         int(row[0]): str(row[1])
-        for row in connection.execute("SELECT type_id,name FROM sde_types")
+        for row in connection.execute("SELECT type_id,name FROM resolved_type_names")
     }
+    if table_exists is not None:
+        names.update(
+            {
+                int(row[0]): str(row[1])
+                for row in connection.execute("SELECT type_id,name FROM sde_types")
+            }
+        )
+    return names
 
 
 def _validated_asset(row: Any) -> Mapping[str, Any]:
@@ -359,12 +375,18 @@ def _build_rows(
         if has_location_snapshot and set(locations) != seen_items:
             raise AssetViewError("asset_location_snapshot_invalid")
 
+    sort_values = {
+        "type": lambda row: str(row["typeName"]).casefold(),
+        "owner": lambda row: str(row["ownerName"]).casefold(),
+        "location": lambda row: str(row["locationPath"]).casefold(),
+        "flag": lambda row: str(row["locationFlag"]).casefold(),
+        "quantity": lambda row: int(row["quantity"]),
+        "age": lambda row: int(row["ageSeconds"]),
+    }
+    selected_sort = sort_values[query.sort_by]
     result.sort(
-        key=lambda row: (
-            str(row["typeName"]).casefold(),
-            str(row["ownerName"]).casefold(),
-            int(row["itemId"]),
-        )
+        key=lambda row: (selected_sort(row), int(row["itemId"])),
+        reverse=query.sort_direction == "desc",
     )
     owners.sort(key=lambda owner: (str(owner["name"]).casefold(), int(owner["characterId"])))
     observed_at = min(relevant_observed, key=_parse_timestamp) if relevant_observed else None
@@ -384,6 +406,8 @@ def query_assets(
         location_status=query.location_status,
         offset=query.offset,
         limit=query.limit,
+        sort_by=query.sort_by,
+        sort_direction=query.sort_direction,
     )
     current_time = now or datetime.now(timezone.utc)
     rows, owners, observed_at, age_seconds = _build_rows(connection, query, current_time)
@@ -423,13 +447,23 @@ def export_assets_csv(
         location_status=query.location_status,
         offset=query.offset,
         limit=query.limit,
+        sort_by=query.sort_by,
+        sort_direction=query.sort_direction,
     )
     if query.offset != 0:
         raise AssetViewError("asset_query_invalid")
     current_time = now or datetime.now(timezone.utc)
     rows, _owners, _observed_at, _age_seconds = _build_rows(
         connection,
-        AssetQuery(query.search, query.owner_character_id, query.location_status, 0, MAX_PAGE_SIZE),
+        AssetQuery(
+            query.search,
+            query.owner_character_id,
+            query.location_status,
+            0,
+            MAX_PAGE_SIZE,
+            query.sort_by,
+            query.sort_direction,
+        ),
         current_time,
     )
     export_directory.mkdir(parents=True, exist_ok=True)
