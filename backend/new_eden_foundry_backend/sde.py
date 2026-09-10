@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import sqlite3
 from dataclasses import dataclass
-from typing import Iterable, Mapping, Any
+from typing import Any, Iterable, Mapping
 
 
 class SdeImportError(RuntimeError):
@@ -36,6 +36,36 @@ def _text(value: Any, field: str, limit: int = 200) -> str:
     return value.strip()
 
 
+def _ensure_sde_schema(connection: sqlite3.Connection) -> None:
+    """Create rebuildable derived-data tables without changing the app schema version."""
+    connection.execute(
+        "CREATE TABLE IF NOT EXISTS sde_groups ("
+        "group_id INTEGER PRIMARY KEY CHECK(group_id > 0), "
+        "name TEXT NOT NULL CHECK(length(trim(name)) BETWEEN 1 AND 200))"
+    )
+    connection.execute(
+        "CREATE TABLE IF NOT EXISTS sde_types ("
+        "type_id INTEGER PRIMARY KEY CHECK(type_id > 0), "
+        "group_id INTEGER NOT NULL REFERENCES sde_groups(group_id) ON DELETE RESTRICT, "
+        "name TEXT NOT NULL CHECK(length(trim(name)) BETWEEN 1 AND 200))"
+    )
+    connection.execute(
+        "CREATE INDEX IF NOT EXISTS idx_sde_types_group_name "
+        "ON sde_types(group_id, name COLLATE NOCASE)"
+    )
+    connection.execute(
+        "CREATE TABLE IF NOT EXISTS sde_locations ("
+        "location_id INTEGER PRIMARY KEY CHECK(location_id > 0), "
+        "parent_location_id TEXT, "
+        "name TEXT NOT NULL CHECK(length(trim(name)) BETWEEN 1 AND 200), "
+        "kind TEXT NOT NULL CHECK(length(trim(kind)) BETWEEN 1 AND 40))"
+    )
+    connection.execute(
+        "CREATE INDEX IF NOT EXISTS idx_sde_locations_name "
+        "ON sde_locations(name COLLATE NOCASE)"
+    )
+
+
 def import_minimal_sde(
     connection: sqlite3.Connection,
     *,
@@ -44,11 +74,7 @@ def import_minimal_sde(
     types: Iterable[Mapping[str, Any]],
     locations: Iterable[Mapping[str, Any]],
 ) -> SdeImportResult:
-    """Replace the minimal SDE dataset in one transaction.
-
-    Input is normalized before the transaction. Any validation, FK or write failure
-    leaves the previously active SDE build untouched.
-    """
+    """Replace the minimal SDE dataset in one transaction."""
     build = _text(build_number, "build_number", 80)
     normalized_groups = [
         (_positive_int(row.get("group_id"), "group_id"), _text(row.get("name"), "group_name"))
@@ -73,22 +99,25 @@ def import_minimal_sde(
     ]
     if not normalized_groups or not normalized_types or not normalized_locations:
         raise SdeImportError("minimal_sde_must_not_be_empty")
-    if len({r[0] for r in normalized_groups}) != len(normalized_groups):
+    if len({row[0] for row in normalized_groups}) != len(normalized_groups):
         raise SdeImportError("duplicate_group_id")
-    if len({r[0] for r in normalized_types}) != len(normalized_types):
+    if len({row[0] for row in normalized_types}) != len(normalized_types):
         raise SdeImportError("duplicate_type_id")
-    if len({r[0] for r in normalized_locations}) != len(normalized_locations):
+    if len({row[0] for row in normalized_locations}) != len(normalized_locations):
         raise SdeImportError("duplicate_location_id")
-    group_ids = {r[0] for r in normalized_groups}
-    if any(r[1] not in group_ids for r in normalized_types):
+    group_ids = {row[0] for row in normalized_groups}
+    if any(row[1] not in group_ids for row in normalized_types):
         raise SdeImportError("unknown_type_group")
 
     try:
         connection.execute("BEGIN IMMEDIATE")
+        _ensure_sde_schema(connection)
         connection.execute("DELETE FROM sde_types")
         connection.execute("DELETE FROM sde_groups")
         connection.execute("DELETE FROM sde_locations")
-        connection.executemany("INSERT INTO sde_groups(group_id,name) VALUES (?,?)", normalized_groups)
+        connection.executemany(
+            "INSERT INTO sde_groups(group_id,name) VALUES (?,?)", normalized_groups
+        )
         connection.executemany(
             "INSERT INTO sde_types(type_id,group_id,name) VALUES (?,?,?)", normalized_types
         )
@@ -107,7 +136,9 @@ def import_minimal_sde(
         connection.rollback()
         raise SdeImportError("atomic_sde_import_failed") from exc
 
-    return SdeImportResult(build, len(normalized_groups), len(normalized_types), len(normalized_locations))
+    return SdeImportResult(
+        build, len(normalized_groups), len(normalized_types), len(normalized_locations)
+    )
 
 
 def current_sde_build(connection: sqlite3.Connection) -> str | None:
