@@ -966,7 +966,10 @@ fn list_account_groups(state: State<'_, RuntimeState>) -> Result<String, String>
     };
     let groups: AccountGroupsResponse =
         serde_json::from_str(&response).map_err(|_| "sidecar-response-invalid".to_owned())?;
-    if groups.groups.iter().any(|group| !account_group_record_is_valid(group))
+    if groups
+        .groups
+        .iter()
+        .any(|group| !account_group_record_is_valid(group))
         || groups
             .groups
             .iter()
@@ -990,7 +993,9 @@ fn update_eve_character(
 ) -> Result<String, String> {
     if character_id == 0
         || account_group_id == Some(0)
-        || alias.as_deref().is_some_and(|value| !management_label_is_valid(value))
+        || alias
+            .as_deref()
+            .is_some_and(|value| !management_label_is_valid(value))
     {
         return Err("character-update-invalid".to_owned());
     }
@@ -1075,8 +1080,7 @@ fn create_account_group(label: String, state: State<'_, RuntimeState>) -> Result
         let process = sidecar
             .as_ref()
             .ok_or_else(|| "sidecar-unavailable".to_owned())?;
-        sidecar_json_request(process, "POST", "/account-groups", &body)
-            .map_err(str::to_owned)?
+        sidecar_json_request(process, "POST", "/account-groups", &body).map_err(str::to_owned)?
     };
     let created: AccountGroupResponse =
         serde_json::from_str(&response).map_err(|_| "sidecar-response-invalid".to_owned())?;
@@ -1122,10 +1126,7 @@ fn rename_account_group(
 }
 
 #[tauri::command]
-fn delete_account_group(
-    group_id: u64,
-    state: State<'_, RuntimeState>,
-) -> Result<String, String> {
+fn delete_account_group(group_id: u64, state: State<'_, RuntimeState>) -> Result<String, String> {
     if group_id == 0 {
         return Err("account-group-invalid".to_owned());
     }
