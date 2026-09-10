@@ -29,6 +29,7 @@ const EVE_SSO_SCOPE_PACKAGES: [&str; 5] = [
 const FONT_SCALES: [&str; 5] = ["very-small", "small", "normal", "large", "very-large"];
 const ASSET_LOCATION_STATUSES: [&str; 5] =
     ["resolved", "restricted", "unresolved", "cycle", "pending"];
+const ASSET_DELTA_CHANGE_TYPES: [&str; 4] = ["added", "removed", "quantity", "location"];
 const MAX_ASSET_PAGE_SIZE: u64 = 200;
 const MAX_ASSET_SEARCH_CHARACTERS: usize = 120;
 const JAVASCRIPT_MAX_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
@@ -244,6 +245,66 @@ struct AssetExportResponse {
     filename: String,
     relative_path: String,
     rows: u64,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AssetDeltaCorrelation {
+    state: String,
+    key: String,
+    direction: String,
+    window_start: String,
+    window_end: String,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AssetDeltaRecord {
+    event_id: String,
+    item_id: u64,
+    type_id: u64,
+    type_name: String,
+    owner_character_id: u64,
+    owner_name: String,
+    change_types: Vec<String>,
+    quantity_before: Option<u64>,
+    quantity_after: Option<u64>,
+    quantity_delta: i64,
+    location_id_before: Option<u64>,
+    location_id_after: Option<u64>,
+    location_type_before: Option<String>,
+    location_type_after: Option<String>,
+    location_flag_before: Option<String>,
+    location_flag_after: Option<String>,
+    previous_asset_snapshot_id: u64,
+    current_asset_snapshot_id: u64,
+    current_asset_sync_run_id: u64,
+    observed_at: String,
+    age_seconds: u64,
+    job_correlation: AssetDeltaCorrelation,
+}
+
+#[derive(Deserialize, Serialize)]
+struct AssetDeltaSummary {
+    added: u64,
+    removed: u64,
+    quantity: u64,
+    location: u64,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AssetDeltaQueryResponse {
+    items: Vec<AssetDeltaRecord>,
+    total: u64,
+    offset: u64,
+    limit: u64,
+    owners: Vec<AssetOwner>,
+    change_types: Vec<String>,
+    summary: AssetDeltaSummary,
+    has_baseline: bool,
+    observed_at: Option<String>,
+    age_seconds: Option<u64>,
 }
 
 impl RuntimeUpdaterSnapshot {
@@ -499,6 +560,7 @@ fn asset_query_response_is_valid(response: &AssetQueryResponse) -> bool {
         })
         && statuses.as_slice() == ASSET_LOCATION_STATUSES.as_slice()
         && response.observed_at.is_some() == response.age_seconds.is_some()
+        && response.has_baseline == response.observed_at.is_some()
         && response
             .observed_at
             .as_ref()
@@ -553,6 +615,135 @@ fn asset_export_response_is_valid(response: &AssetExportResponse) -> bool {
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.'))
         && response.relative_path == format!("data/exports/{}", response.filename)
+}
+
+fn asset_delta_response_is_valid(response: &AssetDeltaQueryResponse) -> bool {
+    let owner_ids = response
+        .owners
+        .iter()
+        .map(|owner| owner.character_id)
+        .collect::<HashSet<_>>();
+    let event_ids = response
+        .items
+        .iter()
+        .map(|event| event.event_id.as_str())
+        .collect::<HashSet<_>>();
+    response.limit > 0
+        && response.limit <= MAX_ASSET_PAGE_SIZE
+        && response.total <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && response.offset <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && response.items.len() as u64 <= response.limit
+        && response.items.len() as u64 <= response.total
+        && response.change_types.iter().map(String::as_str).collect::<Vec<_>>()
+            == ASSET_DELTA_CHANGE_TYPES
+        && event_ids.len() == response.items.len()
+        && owner_ids.len() == response.owners.len()
+        && response.observed_at.is_some() == response.age_seconds.is_some()
+        && response
+            .observed_at
+            .as_ref()
+            .is_none_or(|value| asset_text_is_valid(value, 64))
+        && [
+            response.summary.added,
+            response.summary.removed,
+            response.summary.quantity,
+            response.summary.location,
+        ]
+        .into_iter()
+        .all(|value| value <= response.total && value <= JAVASCRIPT_MAX_SAFE_INTEGER)
+        && response.owners.iter().all(|owner| {
+            owner.character_id > 0
+                && owner.character_id <= JAVASCRIPT_MAX_SAFE_INTEGER
+                && asset_text_is_valid(&owner.name, 100)
+        })
+        && response.items.iter().all(|event| {
+            let expected_delta = event.quantity_after.unwrap_or(0) as i128
+                - event.quantity_before.unwrap_or(0) as i128;
+            let location_changed = event.location_id_before != event.location_id_after
+                || event.location_type_before != event.location_type_after
+                || event.location_flag_before != event.location_flag_after;
+            let expected_direction = if event.quantity_delta > 0 {
+                "inbound"
+            } else if event.quantity_delta < 0 {
+                "outbound"
+            } else {
+                "neutral"
+            };
+            event.event_id.len() == 64
+                && event
+                    .event_id
+                    .bytes()
+                    .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+                && event.item_id > 0
+                && event.item_id <= JAVASCRIPT_MAX_SAFE_INTEGER
+                && event.type_id > 0
+                && event.type_id <= JAVASCRIPT_MAX_SAFE_INTEGER
+                && owner_ids.contains(&event.owner_character_id)
+                && asset_text_is_valid(&event.type_name, 220)
+                && asset_text_is_valid(&event.owner_name, 100)
+                && !event.change_types.is_empty()
+                && event.change_types.len() <= 2
+                && event
+                    .change_types
+                    .iter()
+                    .all(|value| ASSET_DELTA_CHANGE_TYPES.contains(&value.as_str()))
+                && event.change_types.iter().collect::<HashSet<_>>().len()
+                    == event.change_types.len()
+                && event.change_types.iter().any(|value| value == "added")
+                    == (event.quantity_before.is_none() && event.quantity_after.is_some())
+                && event.change_types.iter().any(|value| value == "removed")
+                    == (event.quantity_before.is_some() && event.quantity_after.is_none())
+                && event.change_types.iter().any(|value| value == "quantity")
+                    == (event.quantity_before.is_some()
+                        && event.quantity_after.is_some()
+                        && event.quantity_delta != 0)
+                && event.change_types.iter().any(|value| value == "location")
+                    == (event.quantity_before.is_some()
+                        && event.quantity_after.is_some()
+                        && location_changed)
+                && expected_delta == i128::from(event.quantity_delta)
+                && event.quantity_delta.unsigned_abs() <= JAVASCRIPT_MAX_SAFE_INTEGER
+                && event
+                    .quantity_before
+                    .is_none_or(|value| value <= JAVASCRIPT_MAX_SAFE_INTEGER)
+                && event
+                    .quantity_after
+                    .is_none_or(|value| value <= JAVASCRIPT_MAX_SAFE_INTEGER)
+                && event
+                    .location_id_before
+                    .is_none_or(|value| value > 0 && value <= JAVASCRIPT_MAX_SAFE_INTEGER)
+                && event
+                    .location_id_after
+                    .is_none_or(|value| value > 0 && value <= JAVASCRIPT_MAX_SAFE_INTEGER)
+                && event
+                    .location_type_before
+                    .as_ref()
+                    .is_none_or(|value| asset_text_is_valid(value, 40))
+                && event
+                    .location_type_after
+                    .as_ref()
+                    .is_none_or(|value| asset_text_is_valid(value, 40))
+                && event
+                    .location_flag_before
+                    .as_ref()
+                    .is_none_or(|value| asset_text_is_valid(value, 100))
+                && event
+                    .location_flag_after
+                    .as_ref()
+                    .is_none_or(|value| asset_text_is_valid(value, 100))
+                && event.previous_asset_snapshot_id > 0
+                && event.current_asset_snapshot_id > 0
+                && event.current_asset_sync_run_id > 0
+                && asset_text_is_valid(&event.observed_at, 64)
+                && event.job_correlation.state == "unmatched"
+                && event.job_correlation.key
+                    == format!("{}:{}", event.owner_character_id, event.type_id)
+                && ["inbound", "outbound", "neutral"]
+                    .contains(&event.job_correlation.direction.as_str())
+                && event.job_correlation.direction == expected_direction
+                && asset_text_is_valid(&event.job_correlation.window_start, 64)
+                && asset_text_is_valid(&event.job_correlation.window_end, 64)
+        })
 }
 
 fn eve_character_record_is_valid(character: &EveCharacterRecord) -> bool {
@@ -1228,6 +1419,56 @@ fn export_assets_csv(
 }
 
 #[tauri::command]
+fn query_asset_deltas(
+    search: String,
+    owner_character_id: Option<u64>,
+    change_type: Option<String>,
+    offset: u64,
+    limit: u64,
+    state: State<'_, RuntimeState>,
+) -> Result<String, String> {
+    if search.chars().count() > MAX_ASSET_SEARCH_CHARACTERS
+        || search.trim() != search
+        || owner_character_id == Some(0)
+        || owner_character_id.is_some_and(|value| value > JAVASCRIPT_MAX_SAFE_INTEGER)
+        || change_type
+            .as_deref()
+            .is_some_and(|value| !ASSET_DELTA_CHANGE_TYPES.contains(&value))
+        || limit == 0
+        || limit > MAX_ASSET_PAGE_SIZE
+        || offset > JAVASCRIPT_MAX_SAFE_INTEGER
+    {
+        return Err("asset-delta-query-invalid".to_owned());
+    }
+    refresh_sidecar_status(&state);
+    let body = serde_json::json!({
+        "search": search,
+        "ownerCharacterId": owner_character_id,
+        "changeType": change_type,
+        "offset": offset,
+        "limit": limit,
+    })
+    .to_string();
+    let response = {
+        let sidecar = state
+            .sidecar
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let process = sidecar
+            .as_ref()
+            .ok_or_else(|| "sidecar-unavailable".to_owned())?;
+        sidecar_json_request(process, "POST", "/assets/deltas/query", &body)
+            .map_err(str::to_owned)?
+    };
+    let page: AssetDeltaQueryResponse =
+        serde_json::from_str(&response).map_err(|_| "sidecar-response-invalid".to_owned())?;
+    if !asset_delta_response_is_valid(&page) || page.offset != offset || page.limit != limit {
+        return Err("sidecar-response-invalid".to_owned());
+    }
+    serde_json::to_string(&page).map_err(|_| "status-serialization-failed".to_owned())
+}
+
+#[tauri::command]
 fn update_eve_character(
     character_id: u64,
     alias: Option<String>,
@@ -1530,6 +1771,7 @@ pub fn run() {
             list_account_groups,
             query_assets,
             export_assets_csv,
+            query_asset_deltas,
             update_eve_character,
             delete_eve_character,
             create_account_group,
@@ -1552,11 +1794,12 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::{
-        account_group_record_is_valid, asset_export_response_is_valid,
-        asset_query_response_is_valid, authorization_url_is_valid, eve_character_record_is_valid,
-        sso_login_status_is_valid, AccountGroupRecord, AssetExportResponse, AssetLocationNode,
-        AssetOwner, AssetQueryResponse, AssetRecord, EveCharacterRecord, ScopePackageStatus,
-        SsoCharacterIdentity, SsoLoginStatus,
+        account_group_record_is_valid, asset_delta_response_is_valid,
+        asset_export_response_is_valid, asset_query_response_is_valid, authorization_url_is_valid,
+        eve_character_record_is_valid, sso_login_status_is_valid, AccountGroupRecord,
+        AssetDeltaCorrelation, AssetDeltaQueryResponse, AssetDeltaRecord, AssetDeltaSummary,
+        AssetExportResponse, AssetLocationNode, AssetOwner, AssetQueryResponse, AssetRecord,
+        EveCharacterRecord, ScopePackageStatus, SsoCharacterIdentity, SsoLoginStatus,
     };
 
     fn valid_authorization_url() -> String {
@@ -1748,5 +1991,70 @@ mod tests {
             relative_path: "../../outside.csv".to_owned(),
             rows: 1,
         }));
+    }
+
+    #[test]
+    fn validates_bounded_asset_delta_history_and_correlation_evidence() {
+        let page = AssetDeltaQueryResponse {
+            items: vec![AssetDeltaRecord {
+                event_id: "a".repeat(64),
+                item_id: 9_800_001,
+                type_id: 98_001,
+                type_name: "Synthetic Input".to_owned(),
+                owner_character_id: 90_888_001,
+                owner_name: "Builder".to_owned(),
+                change_types: vec!["quantity".to_owned()],
+                quantity_before: Some(17),
+                quantity_after: Some(9),
+                quantity_delta: -8,
+                location_id_before: Some(60_888_001),
+                location_id_after: Some(60_888_001),
+                location_type_before: Some("station".to_owned()),
+                location_type_after: Some("station".to_owned()),
+                location_flag_before: Some("SyntheticHangar".to_owned()),
+                location_flag_after: Some("SyntheticHangar".to_owned()),
+                previous_asset_snapshot_id: 4,
+                current_asset_snapshot_id: 6,
+                current_asset_sync_run_id: 9,
+                observed_at: "2026-09-10T11:00:00Z".to_owned(),
+                age_seconds: 60,
+                job_correlation: AssetDeltaCorrelation {
+                    state: "unmatched".to_owned(),
+                    key: "90888001:98001".to_owned(),
+                    direction: "outbound".to_owned(),
+                    window_start: "2026-09-10T10:00:00Z".to_owned(),
+                    window_end: "2026-09-10T11:00:00Z".to_owned(),
+                },
+            }],
+            total: 1,
+            offset: 0,
+            limit: 50,
+            owners: vec![AssetOwner {
+                character_id: 90_888_001,
+                name: "Builder".to_owned(),
+            }],
+            change_types: vec![
+                "added".to_owned(),
+                "removed".to_owned(),
+                "quantity".to_owned(),
+                "location".to_owned(),
+            ],
+            summary: AssetDeltaSummary {
+                added: 0,
+                removed: 0,
+                quantity: 1,
+                location: 0,
+            },
+            has_baseline: true,
+            observed_at: Some("2026-09-10T11:00:00Z".to_owned()),
+            age_seconds: Some(60),
+        };
+        assert!(asset_delta_response_is_valid(&page));
+
+        let invalid = AssetDeltaQueryResponse {
+            limit: 201,
+            ..page
+        };
+        assert!(!asset_delta_response_is_valid(&invalid));
     }
 }

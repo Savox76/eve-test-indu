@@ -9,6 +9,8 @@ Der Asset-Sync lädt für jeden aktivierten Charakter `/characters/{character_id
 - Ein abgebrochener oder fehlerhafter Lauf wird als `failed` in `sync_runs` protokolliert und veröffentlicht niemals einen Teilstand.
 - Der letzte vollständig abgeschlossene Snapshot bleibt dadurch für Cache-First/Offline-Nutzung erhalten.
 - Doppelte `item_id` über mehrere Seiten werden als inkonsistenter Lauf verworfen.
+- Derselbe atomare Abschluss veröffentlicht zusätzlich eine leere Baseline oder ein Delta zum vorherigen vollständigen Snapshot. Ein Fehler der Delta-Bildung rollt auch den neuen Asset-Snapshot zurück.
+- Derselbe atomare Abschluss veröffentlicht zusätzlich eine leere Baseline oder ein Delta zum vorherigen vollständigen Snapshot. Ein Fehler der Delta-Bildung rollt auch den neuen Asset-Snapshot zurück.
 
 ## Multi-Character
 
@@ -17,3 +19,7 @@ Der Asset-Sync lädt für jeden aktivierten Charakter `/characters/{character_id
 ## Fehler
 
 ESI-Fehler werden nur über ihre bereinigten Fehlercodes in `sync_runs.error_code` gespeichert. Access-/Refresh-Tokens und Rohantworten werden nicht persistiert.
+
+Die genaue Änderungssemantik und die vorbereiteten Korrelationsbelege beschreibt [Asset-Deltas und vorbereitete Jobkorrelation](asset-deltas.md).
+
+Die genaue Änderungssemantik und die vorbereiteten Korrelationsbelege beschreibt [Asset-Deltas und vorbereitete Jobkorrelation](asset-deltas.md).

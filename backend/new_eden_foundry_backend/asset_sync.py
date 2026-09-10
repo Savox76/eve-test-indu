@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Iterable, Mapping
 
+from .asset_delta import AssetDeltaError, build_asset_delta_payload
 from .esi_client import EsiClient, EsiClientError
 
 ASSET_SCOPE = "esi-assets.read_assets.v1"
@@ -84,12 +85,59 @@ def sync_character_assets(connection: sqlite3.Connection, client: EsiClient, cha
         item_ids = [asset["item_id"] for asset in assets]
         if len(item_ids) != len(set(item_ids)):
             raise AssetSyncError("duplicate_asset_item")
-        completed = _utc_now()
-        payload = json.dumps({"characterId": character_id, "pages": total_pages, "assets": assets}, separators=(",", ":"), sort_keys=True)
+        current_payload = {
+            "characterId": character_id,
+            "pages": total_pages,
+            "assets": assets,
+        }
+        payload = json.dumps(
+            current_payload,
+            separators=(",", ":"),
+            sort_keys=True,
+        )
         connection.execute("BEGIN IMMEDIATE")
-        connection.execute(
+        previous = connection.execute(
+            """
+            SELECT cached_snapshots.id, cached_snapshots.sync_run_id,
+                   cached_snapshots.payload_json, cached_snapshots.observed_at
+            FROM cached_snapshots
+            JOIN sync_runs ON sync_runs.id = cached_snapshots.sync_run_id
+            WHERE cached_snapshots.resource=? AND sync_runs.status='completed'
+            ORDER BY cached_snapshots.observed_at DESC, cached_snapshots.id DESC
+            LIMIT 1
+            """,
+            (f"character_assets:{character_id}",),
+        ).fetchone()
+        completed = _utc_now()
+        snapshot = connection.execute(
             "INSERT INTO cached_snapshots(sync_run_id,resource,payload_json,observed_at) VALUES(?,?,?,?)",
             (run_id, f"character_assets:{character_id}", payload, completed),
+        )
+        previous_payload = None
+        if previous is not None:
+            try:
+                previous_payload = json.loads(str(previous[2]))
+            except (TypeError, ValueError, json.JSONDecodeError) as error:
+                raise AssetDeltaError("asset_snapshot_invalid") from error
+        delta_payload = build_asset_delta_payload(
+            character_id=character_id,
+            current_snapshot_id=int(snapshot.lastrowid),
+            current_sync_run_id=run_id,
+            current_observed_at=completed,
+            current_payload=current_payload,
+            previous_snapshot_id=None if previous is None else int(previous[0]),
+            previous_sync_run_id=None if previous is None else int(previous[1]),
+            previous_observed_at=None if previous is None else str(previous[3]),
+            previous_payload=previous_payload,
+        )
+        connection.execute(
+            "INSERT INTO cached_snapshots(sync_run_id,resource,payload_json,observed_at) VALUES(?,?,?,?)",
+            (
+                run_id,
+                f"asset_deltas:{character_id}",
+                json.dumps(delta_payload, separators=(",", ":"), sort_keys=True),
+                completed,
+            ),
         )
         connection.execute(
             "UPDATE sync_runs SET status='completed',completed_at=?,data_timestamp=? WHERE id=? AND status='running'",
@@ -101,13 +149,19 @@ def sync_character_assets(connection: sqlite3.Connection, client: EsiClient, cha
         if connection.in_transaction:
             connection.rollback()
         completed = _utc_now()
-        code = exc.code if isinstance(exc, EsiClientError) else str(exc) if isinstance(exc, AssetSyncError) else "asset_sync_failed"
+        code = (
+            exc.code
+            if isinstance(exc, EsiClientError)
+            else str(exc)
+            if isinstance(exc, (AssetSyncError, AssetDeltaError))
+            else "asset_sync_failed"
+        )
         connection.execute(
             "UPDATE sync_runs SET status='failed',completed_at=?,error_code=? WHERE id=? AND status='running'",
             (completed, code[:120], run_id),
         )
         connection.commit()
-        if isinstance(exc, (AssetSyncError, EsiClientError)):
+        if isinstance(exc, (AssetSyncError, AssetDeltaError, EsiClientError)):
             raise
         raise AssetSyncError("asset_sync_failed") from exc
 

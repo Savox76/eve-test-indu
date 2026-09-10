@@ -147,6 +147,63 @@ export interface AssetCsvExport {
   rows: number;
 }
 
+export type AssetDeltaChangeType = "added" | "removed" | "quantity" | "location";
+export type AssetDeltaDirection = "inbound" | "outbound" | "neutral";
+
+export interface AssetDeltaCorrelation {
+  state: "unmatched";
+  key: string;
+  direction: AssetDeltaDirection;
+  windowStart: string;
+  windowEnd: string;
+}
+
+export interface AssetDeltaRecord {
+  eventId: string;
+  itemId: number;
+  typeId: number;
+  typeName: string;
+  ownerCharacterId: number;
+  ownerName: string;
+  changeTypes: AssetDeltaChangeType[];
+  quantityBefore: number | null;
+  quantityAfter: number | null;
+  quantityDelta: number;
+  locationIdBefore: number | null;
+  locationIdAfter: number | null;
+  locationTypeBefore: string | null;
+  locationTypeAfter: string | null;
+  locationFlagBefore: string | null;
+  locationFlagAfter: string | null;
+  previousAssetSnapshotId: number;
+  currentAssetSnapshotId: number;
+  currentAssetSyncRunId: number;
+  observedAt: string;
+  ageSeconds: number;
+  jobCorrelation: AssetDeltaCorrelation;
+}
+
+export interface AssetDeltaQuery {
+  search: string;
+  ownerCharacterId: number | null;
+  changeType: AssetDeltaChangeType | null;
+  offset: number;
+  limit: number;
+}
+
+export interface AssetDeltaPage {
+  items: AssetDeltaRecord[];
+  total: number;
+  offset: number;
+  limit: number;
+  owners: AssetOwner[];
+  changeTypes: AssetDeltaChangeType[];
+  summary: Record<AssetDeltaChangeType, number>;
+  hasBaseline: boolean;
+  observedAt: string | null;
+  ageSeconds: number | null;
+}
+
 export interface SsoLoginStatus {
   state: SsoLoginState;
   attemptId: string | null;
@@ -249,6 +306,13 @@ export const assetLocationStatuses: readonly AssetLocationStatus[] = [
   "pending",
 ];
 export const assetPageSize = 100;
+export const assetDeltaChangeTypes: readonly AssetDeltaChangeType[] = [
+  "added",
+  "removed",
+  "quantity",
+  "location",
+];
+export const assetDeltaPageSize = 50;
 
 export const initialRuntimeStatus: DesktopRuntimeStatus = { state: "checking" };
 
@@ -446,6 +510,10 @@ function isNonNegativeSafeInteger(value: unknown): value is number {
   return Number.isSafeInteger(value) && Number(value) >= 0;
 }
 
+function isSignedSafeInteger(value: unknown): value is number {
+  return Number.isSafeInteger(value);
+}
+
 function isBoundedText(value: unknown, maximum: number): value is string {
   return typeof value === "string" && value.trim() === value && value.length >= 1 && value.length <= maximum;
 }
@@ -553,6 +621,168 @@ function validateAssetQuery(query: AssetQuery): AssetQuery {
     query.limit > 200
   ) {
     throw new Error("The asset query is invalid.");
+  }
+  return { ...query, search };
+}
+
+function parseNullablePositiveInteger(value: unknown): number | null {
+  if (value === null) return null;
+  if (!isPositiveSafeInteger(value)) {
+    throw new Error("The native runtime returned invalid asset-delta identifiers.");
+  }
+  return value;
+}
+
+function parseNullableQuantity(value: unknown): number | null {
+  if (value === null) return null;
+  if (!isNonNegativeSafeInteger(value)) {
+    throw new Error("The native runtime returned invalid asset-delta quantities.");
+  }
+  return value;
+}
+
+function parseNullableBoundedText(value: unknown, maximum: number): string | null {
+  if (value === null) return null;
+  if (!isBoundedText(value, maximum)) {
+    throw new Error("The native runtime returned invalid asset-delta text.");
+  }
+  return value;
+}
+
+function parseAssetDeltaRecord(candidate: unknown): AssetDeltaRecord {
+  if (
+    !isRecord(candidate) ||
+    typeof candidate.eventId !== "string" ||
+    !/^[0-9a-f]{64}$/.test(candidate.eventId) ||
+    !isPositiveSafeInteger(candidate.itemId) ||
+    !isPositiveSafeInteger(candidate.typeId) ||
+    !isBoundedText(candidate.typeName, 220) ||
+    !isPositiveSafeInteger(candidate.ownerCharacterId) ||
+    !isBoundedText(candidate.ownerName, 100) ||
+    !Array.isArray(candidate.changeTypes) ||
+    candidate.changeTypes.length < 1 ||
+    candidate.changeTypes.length > 2 ||
+    !candidate.changeTypes.every(
+      (value) => typeof value === "string" &&
+        assetDeltaChangeTypes.includes(value as AssetDeltaChangeType),
+    ) ||
+    new Set(candidate.changeTypes).size !== candidate.changeTypes.length ||
+    !isSignedSafeInteger(candidate.quantityDelta) ||
+    !isPositiveSafeInteger(candidate.previousAssetSnapshotId) ||
+    !isPositiveSafeInteger(candidate.currentAssetSnapshotId) ||
+    !isPositiveSafeInteger(candidate.currentAssetSyncRunId) ||
+    !isBoundedText(candidate.observedAt, 64) ||
+    !isNonNegativeSafeInteger(candidate.ageSeconds) ||
+    !isRecord(candidate.jobCorrelation) ||
+    candidate.jobCorrelation.state !== "unmatched" ||
+    !isBoundedText(candidate.jobCorrelation.key, 64) ||
+    !["inbound", "outbound", "neutral"].includes(String(candidate.jobCorrelation.direction)) ||
+    !isBoundedText(candidate.jobCorrelation.windowStart, 64) ||
+    !isBoundedText(candidate.jobCorrelation.windowEnd, 64)
+  ) {
+    throw new Error("The native runtime returned invalid asset-delta metadata.");
+  }
+  const quantityBefore = parseNullableQuantity(candidate.quantityBefore);
+  const quantityAfter = parseNullableQuantity(candidate.quantityAfter);
+  const locationIdBefore = parseNullablePositiveInteger(candidate.locationIdBefore);
+  const locationIdAfter = parseNullablePositiveInteger(candidate.locationIdAfter);
+  const locationTypeBefore = parseNullableBoundedText(candidate.locationTypeBefore, 40);
+  const locationTypeAfter = parseNullableBoundedText(candidate.locationTypeAfter, 40);
+  const locationFlagBefore = parseNullableBoundedText(candidate.locationFlagBefore, 100);
+  const locationFlagAfter = parseNullableBoundedText(candidate.locationFlagAfter, 100);
+  const changeTypes = candidate.changeTypes as AssetDeltaChangeType[];
+  const locationChanged =
+    locationIdBefore !== locationIdAfter ||
+    locationTypeBefore !== locationTypeAfter ||
+    locationFlagBefore !== locationFlagAfter;
+  const expectedDirection = candidate.quantityDelta > 0
+    ? "inbound"
+    : candidate.quantityDelta < 0
+      ? "outbound"
+      : "neutral";
+  if (
+    candidate.quantityDelta !== (quantityAfter ?? 0) - (quantityBefore ?? 0) ||
+    candidate.jobCorrelation.key !== `${candidate.ownerCharacterId}:${candidate.typeId}` ||
+    candidate.jobCorrelation.direction !== expectedDirection ||
+    changeTypes.includes("added") !== (quantityBefore === null && quantityAfter !== null) ||
+    changeTypes.includes("removed") !== (quantityBefore !== null && quantityAfter === null) ||
+    changeTypes.includes("quantity") !==
+      (quantityBefore !== null && quantityAfter !== null && candidate.quantityDelta !== 0) ||
+    changeTypes.includes("location") !==
+      (quantityBefore !== null && quantityAfter !== null && locationChanged)
+  ) {
+    throw new Error("The native runtime returned inconsistent asset-delta metadata.");
+  }
+  return {
+    ...candidate,
+    quantityBefore,
+    quantityAfter,
+    locationIdBefore,
+    locationIdAfter,
+    locationTypeBefore,
+    locationTypeAfter,
+    locationFlagBefore,
+    locationFlagAfter,
+  } as unknown as AssetDeltaRecord;
+}
+
+function parseAssetDeltaPage(candidate: unknown): AssetDeltaPage {
+  if (
+    !isRecord(candidate) ||
+    !Array.isArray(candidate.items) ||
+    !isNonNegativeSafeInteger(candidate.total) ||
+    !isNonNegativeSafeInteger(candidate.offset) ||
+    !Number.isSafeInteger(candidate.limit) ||
+    Number(candidate.limit) < 1 ||
+    Number(candidate.limit) > 200 ||
+    !Array.isArray(candidate.owners) ||
+    !Array.isArray(candidate.changeTypes) ||
+    candidate.changeTypes.length !== assetDeltaChangeTypes.length ||
+    !assetDeltaChangeTypes.every((type) =>
+      (candidate.changeTypes as unknown[]).includes(type)) ||
+    !isRecord(candidate.summary) ||
+    !assetDeltaChangeTypes.every((type) =>
+      isNonNegativeSafeInteger((candidate.summary as Record<string, unknown>)[type]) &&
+      Number((candidate.summary as Record<string, unknown>)[type]) <= Number(candidate.total)) ||
+    typeof candidate.hasBaseline !== "boolean" ||
+    !(candidate.observedAt === null || isBoundedText(candidate.observedAt, 64)) ||
+    !(candidate.ageSeconds === null || isNonNegativeSafeInteger(candidate.ageSeconds)) ||
+    (candidate.observedAt === null) !== (candidate.ageSeconds === null) ||
+    candidate.hasBaseline !== (candidate.observedAt !== null)
+  ) {
+    throw new Error("The native runtime returned an invalid asset-delta page.");
+  }
+  const items = candidate.items.map(parseAssetDeltaRecord);
+  const owners = candidate.owners.map((owner): AssetOwner => {
+    if (!isRecord(owner) || !isPositiveSafeInteger(owner.characterId) || !isBoundedText(owner.name, 100)) {
+      throw new Error("The native runtime returned invalid asset-delta owners.");
+    }
+    return owner as unknown as AssetOwner;
+  });
+  if (
+    items.length > Number(candidate.limit) ||
+    items.length > Number(candidate.total) ||
+    new Set(items.map(({ eventId }) => eventId)).size !== items.length ||
+    new Set(owners.map(({ characterId }) => characterId)).size !== owners.length ||
+    items.some((item) => !owners.some((owner) => owner.characterId === item.ownerCharacterId))
+  ) {
+    throw new Error("The native runtime returned inconsistent asset-delta page metadata.");
+  }
+  return { ...candidate, items, owners } as unknown as AssetDeltaPage;
+}
+
+function validateAssetDeltaQuery(query: AssetDeltaQuery): AssetDeltaQuery {
+  const search = query.search.trim().replace(/\s+/g, " ");
+  if (
+    search.length > 120 ||
+    !(query.ownerCharacterId === null || isPositiveSafeInteger(query.ownerCharacterId)) ||
+    !(query.changeType === null || assetDeltaChangeTypes.includes(query.changeType)) ||
+    !isNonNegativeSafeInteger(query.offset) ||
+    !Number.isSafeInteger(query.limit) ||
+    query.limit < 1 ||
+    query.limit > 200
+  ) {
+    throw new Error("The asset-delta query is invalid.");
   }
   return { ...query, search };
 }
@@ -855,6 +1085,40 @@ export async function exportAssetsCsv(
     throw new Error("The native runtime returned invalid asset-export metadata.");
   }
   return candidate as unknown as AssetCsvExport;
+}
+
+export async function loadAssetDeltas(
+  query: AssetDeltaQuery,
+  adapter: RuntimeAdapter = tauriAdapter,
+): Promise<AssetDeltaPage> {
+  const validated = validateAssetDeltaQuery(query);
+  if (!adapter.isAvailable()) {
+    return {
+      items: [],
+      total: 0,
+      offset: validated.offset,
+      limit: validated.limit,
+      owners: [],
+      changeTypes: [...assetDeltaChangeTypes],
+      summary: { added: 0, removed: 0, quantity: 0, location: 0 },
+      hasBaseline: false,
+      observedAt: null,
+      ageSeconds: null,
+    };
+  }
+  const page = parseAssetDeltaPage(
+    JSON.parse(await adapter.invoke("query_asset_deltas", {
+      search: validated.search,
+      ownerCharacterId: validated.ownerCharacterId,
+      changeType: validated.changeType,
+      offset: validated.offset,
+      limit: validated.limit,
+    })),
+  );
+  if (page.offset !== validated.offset || page.limit !== validated.limit) {
+    throw new Error("The native runtime returned a different asset-delta window.");
+  }
+  return page;
 }
 
 function requireDesktopAdapter(adapter: RuntimeAdapter): void {

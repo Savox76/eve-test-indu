@@ -13,6 +13,10 @@ Alle bemerkenswerten Änderungen an New Eden Foundry werden hier festgehalten. D
 - Echte zweisprachige Asset-Oberfläche mit Suche, Besitzer- und Standortstatusfilter, Mengen, Datenalter und root-first Standortpfaden.
 - Serverseitig begrenzte 100-Zeilen-Seiten sowie ein synthetischer 100.000-Positionen-Regressionstest.
 - Gefilterter, atomarer UTF-8-CSV-Export nach `data\exports` mit Formelneutralisierung.
+- Atomare, charaktergetrennte Asset-Deltas mit Baseline, deterministischem Ereignis-Fingerabdruck und vollständigem Snapshot-/Run-Nachweis.
+- Zweisprachiger Änderungsverlauf für hinzugekommene, entfernte, mengenveränderte und verschobene Assets mit Suche, Besitzer- und Änderungsartfilter.
+- Korrelationsbelege aus Charakter, Typ, Richtung, Mengendifferenz und Beobachtungsfenster für die spätere Zuordnung von Industrie-Jobs.
+- Synthetischer Regressionstest mit 10.000 Delta-Ereignissen und begrenztem 50-Ereignis-Antwortfenster.
 
 ### Geändert
 
@@ -20,6 +24,7 @@ Alle bemerkenswerten Änderungen an New Eden Foundry werden hier festgehalten. D
 - Wiederholte Stationen oder Strukturen werden innerhalb eines Auflösungslaufs nur einmal abgefragt.
 - Die Asset-Oberfläche verwendet nur den letzten vollständigen Snapshot je Charakter und lädt höchstens 100 Zeilen pro sichtbarer Seite.
 - Der lokale Antwortschutz erlaubt bounded Asset-Seiten, während große CSV-Inhalte als Datei geschrieben und nicht durch die Desktop-Brücke übertragen werden.
+- Die Asset-Synchronisierung veröffentlicht Bestand und Delta gemeinsam oder rollt beide zurück; die Historie überträgt höchstens 50 Ereignisse pro sichtbarer Seite.
 
 ### Behobene Fehler
 
@@ -27,16 +32,17 @@ Alle bemerkenswerten Änderungen an New Eden Foundry werden hier festgehalten. D
 - Ein technischer Fehler während der Standortauflösung veröffentlicht keinen Teilstand und überschreibt keinen letzten vollständigen Snapshot.
 - Standortpfade eines älteren Snapshots können nach einem neueren Asset-Sync nicht versehentlich mit den neuen Positionen verbunden werden; bis zur passenden Auflösung erscheint `pending`.
 - Beschädigte vollständige Asset- oder Standort-Snapshots sowie unsichere CSV-Zielpfade werden geschlossen abgewiesen.
+- Fehlgeschlagene oder widersprüchliche Asset-Folgeläufe können keine falschen Änderungen erzeugen; manipulierte Delta-Fingerabdrücke werden beim Lesen abgewiesen.
 
 ### Bekannte Einschränkungen
 
 - Schutzregeln für `main` sind noch nicht aktiviert.
 - Spielerstrukturen ohne erteilten Scope oder ohne Zugriffsrecht bleiben absichtlich ohne Namen und werden als eingeschränkt markiert.
-- Die Asset-Ansicht bietet noch keine Veränderungshistorie; nachvollziehbare Deltas folgen mit Paket 21.
+- Asset-Deltas sind für die spätere Industrie-Jobkorrelation vorbereitet, werden aber bis zum Jobs-Sync bewusst als `unmatched` angezeigt.
 
 ### Update und Datenbankmigration
 
-- Keine Anwendungsmigration; SQLite-Schema 6 bleibt unverändert. Aufgelöste Standortdaten bleiben ableitbare Snapshots und CSV-Dateien werden im neuen Unterordner `data\exports` abgelegt.
+- Keine Anwendungsmigration; SQLite-Schema 6 bleibt unverändert. Standort- und Delta-Daten bleiben ableitbare Snapshots, CSV-Dateien liegen unter `data\exports`.
 
 ## 0.0.5-preview.2 – 10. September 2026
 
