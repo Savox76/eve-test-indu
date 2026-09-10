@@ -6,6 +6,28 @@ Alle bemerkenswerten Änderungen an New Eden Foundry werden hier festgehalten. D
 
 ### Neu hinzugefügt
 
+Keine.
+
+### Geändert
+
+Keine.
+
+### Behobene Fehler
+
+Keine.
+
+### Bekannte Einschränkungen
+
+- Paket 22 wartet nach Veröffentlichung des Abnahmekandidaten auf das vollständige Windows-A0-Protokoll.
+
+### Update und Datenbankmigration
+
+Keine.
+
+## 0.0.5-preview.3 – 10. September 2026
+
+### Neu hinzugefügt
+
 - Charakterbezogene Asset-Standortauflösung für SDE-Standorte, NPC-Stationen und Spielerstrukturen.
 - Root-first-Containerpfade mit SDE-Typnamen und kontrollierter Erkennung zyklischer Beziehungen.
 - Vollständige Standort-Snapshots mit Referenz auf den zugrunde liegenden Asset-Snapshot und zusammengefassten Statuswerten.
@@ -25,6 +47,8 @@ Alle bemerkenswerten Änderungen an New Eden Foundry werden hier festgehalten. D
 - Die Asset-Oberfläche verwendet nur den letzten vollständigen Snapshot je Charakter und lädt höchstens 100 Zeilen pro sichtbarer Seite.
 - Der lokale Antwortschutz erlaubt bounded Asset-Seiten, während große CSV-Inhalte als Datei geschrieben und nicht durch die Desktop-Brücke übertragen werden.
 - Die Asset-Synchronisierung veröffentlicht Bestand und Delta gemeinsam oder rollt beide zurück; die Historie überträgt höchstens 50 Ereignisse pro sichtbarer Seite.
+- Die sichtbare Versionsnummer lautet `v0.0.5-preview.3`; diese Preview ist der reproduzierbare Windows-Abnahmekandidat für Paket 22.
+- Das verbindliche A0-Protokoll prüft Installation, zweiten Start, Update, Datenerhalt, Portable-Ausgabe und Entfernung vor der ersten `0.2.0`-Alpha.
 
 ### Behobene Fehler
 
@@ -39,10 +63,13 @@ Alle bemerkenswerten Änderungen an New Eden Foundry werden hier festgehalten. D
 - Schutzregeln für `main` sind noch nicht aktiviert.
 - Spielerstrukturen ohne erteilten Scope oder ohne Zugriffsrecht bleiben absichtlich ohne Namen und werden als eingeschränkt markiert.
 - Asset-Deltas sind für die spätere Industrie-Jobkorrelation vorbereitet, werden aber bis zum Jobs-Sync bewusst als `unmatched` angezeigt.
+- Die erste `0.2.0`-Alpha bleibt bis zur vollständig bestandenen manuellen Windows-A0-Abnahme gesperrt.
+- Öffentliche Updateverteilung und Codesignierung sind weiterhin deaktiviert; Windows kann vor dem unbekannten Herausgeber warnen.
 
 ### Update und Datenbankmigration
 
 - Keine Anwendungsmigration; SQLite-Schema 6 bleibt unverändert. Standort- und Delta-Daten bleiben ableitbare Snapshots, CSV-Dateien liegen unter `data\exports`.
+- Installer-Updates lassen den nicht gebündelten `data`-Ordner bestehen; für portable Updates wird er erst nach vollständigem Schließen der App übernommen.
 
 ## 0.0.5-preview.2 – 10. September 2026
 

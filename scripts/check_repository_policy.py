@@ -306,6 +306,24 @@ def check_documentation(errors: list[str]) -> None:
                     f"Asset-delta documentation is missing marker: {marker}"
                 )
 
+    windows_acceptance = ROOT / "docs" / "windows-a0-acceptance.md"
+    if not windows_acceptance.is_file():
+        errors.append("Missing binding Windows A0 acceptance procedure.")
+    else:
+        acceptance_content = windows_acceptance.read_text(encoding="utf-8")
+        for marker in (
+            "Zweiter Start",
+            "Installer-Update",
+            "Datenerhalt",
+            "Portable Ausgabe",
+            "Entfernung",
+            "Keine Tokens",
+        ):
+            if marker not in acceptance_content:
+                errors.append(
+                    f"Windows A0 acceptance procedure is missing marker: {marker}"
+                )
+
     esi_documentation = ROOT / "docs" / "esi-client.md"
     if not esi_documentation.is_file():
         errors.append("Missing central ESI-client operating documentation.")
