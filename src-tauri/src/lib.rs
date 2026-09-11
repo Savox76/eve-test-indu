@@ -37,11 +37,24 @@ const ASSET_DELTA_CHANGE_TYPES: [&str; 4] = ["added", "removed", "quantity", "lo
 const ASSET_SORT_FIELDS: [&str; 6] = ["type", "owner", "location", "flag", "quantity", "age"];
 const BLUEPRINT_SORT_FIELDS: [&str; 7] = ["type", "owner", "kind", "me", "te", "runs", "age"];
 const INDUSTRY_JOB_SORT_FIELDS: [&str; 10] = [
-    "start", "end", "type", "owner", "activity", "status", "runs", "cost", "correlation",
+    "start",
+    "end",
+    "type",
+    "owner",
+    "activity",
+    "status",
+    "runs",
+    "cost",
+    "correlation",
     "age",
 ];
 const INDUSTRY_JOB_STATUSES: [&str; 6] = [
-    "active", "cancelled", "delivered", "paused", "ready", "reverted",
+    "active",
+    "cancelled",
+    "delivered",
+    "paused",
+    "ready",
+    "reverted",
 ];
 const INDUSTRY_JOB_CORRELATIONS: [&str; 5] =
     ["linked", "partial", "ambiguous", "unmatched", "pending"];
@@ -910,9 +923,7 @@ fn industry_asset_correlation_is_valid(value: &IndustryAssetCorrelation) -> bool
             "linked" => value.candidate_count == 1 && value.event_ids.len() == 1,
             "ambiguous" => value.candidate_count > 1 && !value.event_ids.is_empty(),
             "unmatched" | "unavailable" | "pending" | "not-applicable" => {
-                value.candidate_count == 0
-                    && value.event_ids.is_empty()
-                    && !value.location_matched
+                value.candidate_count == 0 && value.event_ids.is_empty() && !value.location_matched
             }
             _ => false,
         }
@@ -948,7 +959,11 @@ fn industry_job_query_response_is_valid(response: &IndustryJobQueryResponse) -> 
             .observed_at
             .as_ref()
             .is_none_or(|value| asset_text_is_valid(value, 64))
-        && response.statuses.iter().map(String::as_str).collect::<Vec<_>>()
+        && response
+            .statuses
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>()
             == INDUSTRY_JOB_STATUSES
         && response
             .correlations
@@ -1019,8 +1034,7 @@ fn industry_job_query_response_is_valid(response: &IndustryJobQueryResponse) -> 
                     .probability
                     .is_none_or(|value| value.is_finite() && (0.0..=1.0).contains(&value))
                 && job.cost.is_none_or(|value| {
-                    value.is_finite()
-                        && (0.0..=JAVASCRIPT_MAX_SAFE_INTEGER as f64).contains(&value)
+                    value.is_finite() && (0.0..=JAVASCRIPT_MAX_SAFE_INTEGER as f64).contains(&value)
                 })
                 && job.duration_seconds <= JAVASCRIPT_MAX_SAFE_INTEGER
                 && [
@@ -2114,9 +2128,7 @@ fn query_industry_jobs(
     };
     let page: IndustryJobQueryResponse =
         serde_json::from_str(&response).map_err(|_| "sidecar-response-invalid".to_owned())?;
-    if !industry_job_query_response_is_valid(&page)
-        || page.offset != offset
-        || page.limit != limit
+    if !industry_job_query_response_is_valid(&page) || page.offset != offset || page.limit != limit
     {
         return Err("sidecar-response-invalid".to_owned());
     }
@@ -2930,7 +2942,12 @@ mod tests {
                 name: "Builder".to_owned(),
             }],
             statuses: [
-                "active", "cancelled", "delivered", "paused", "ready", "reverted",
+                "active",
+                "cancelled",
+                "delivered",
+                "paused",
+                "ready",
+                "reverted",
             ]
             .map(str::to_owned)
             .to_vec(),
