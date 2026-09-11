@@ -511,6 +511,40 @@ class SidecarIntegrationTests(unittest.TestCase):
                 blueprint_sync = json.loads(response.read())
             self.assertEqual(blueprint_sync, {"characters": [], "completed": 0, "failed": 0, "blueprints": 0})
 
+            industry_job_query_request = urllib.request.Request(
+                f"{base_url}/industry-jobs/query",
+                data=json.dumps({
+                    "search": "", "ownerCharacterId": None, "status": None,
+                    "activityId": None, "correlation": None, "offset": 0,
+                    "limit": 100, "sortBy": "end", "sortDirection": "desc",
+                }).encode(),
+                method="POST",
+                headers={
+                    "Authorization": f"Bearer {SYNTHETIC_SESSION_TOKEN}",
+                    "Content-Type": "application/json",
+                },
+            )
+            with opener.open(industry_job_query_request, timeout=3) as response:
+                industry_job_page = json.loads(response.read())
+            self.assertEqual(industry_job_page["items"], [])
+            self.assertEqual(industry_job_page["total"], 0)
+            self.assertEqual(industry_job_page["activeTotal"], 0)
+            self.assertEqual(industry_job_page["limit"], 100)
+
+            industry_job_sync_request = urllib.request.Request(
+                f"{base_url}/industry-jobs/sync", data=b"{}", method="POST",
+                headers={
+                    "Authorization": f"Bearer {SYNTHETIC_SESSION_TOKEN}",
+                    "Content-Type": "application/json",
+                },
+            )
+            with opener.open(industry_job_sync_request, timeout=3) as response:
+                industry_job_sync = json.loads(response.read())
+            self.assertEqual(industry_job_sync, {
+                "characters": [], "completed": 0, "failed": 0, "jobs": 0,
+                "active": 0, "completedJobs": 0,
+            })
+
             asset_export_request = urllib.request.Request(
                 f"{base_url}/assets/export",
                 data=json.dumps(

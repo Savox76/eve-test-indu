@@ -44,6 +44,12 @@ from .identity import (
     update_character,
     upsert_character,
 )
+from .industry_job_sync import IndustryJobSyncError, sync_character_industry_jobs
+from .industry_job_view import (
+    IndustryJobViewError,
+    query_industry_jobs,
+    validate_industry_job_query,
+)
 from .location_resolution import (
     LocationResolutionError,
     resolve_latest_character_asset_locations,
@@ -559,6 +565,75 @@ def create_application(
                 "completed": sum(result["status"] == "completed" for result in results),
                 "failed": sum(result["status"] == "failed" for result in results),
                 "blueprints": sum(int(result["blueprints"]) for result in results),
+            }
+        )
+
+    @app.post("/industry-jobs/query")
+    async def post_industry_job_query(request: Request) -> JSONResponse:
+        try:
+            payload = await request.json()
+        except Exception:
+            return JSONResponse(status_code=422, content={"detail": "industry_job_query_invalid"})
+        try:
+            validate_industry_job_query(payload)
+            with closing(connect_database(storage.database_path)) as connection:
+                result = query_industry_jobs(connection, payload)
+        except IndustryJobViewError as error:
+            code = str(error)
+            return JSONResponse(
+                status_code=422 if code == "industry_job_query_invalid" else 500,
+                content={"detail": code},
+            )
+        except Exception:
+            return JSONResponse(status_code=500, content={"detail": "industry_job_query_failed"})
+        return JSONResponse(content=result)
+
+    @app.post("/industry-jobs/sync")
+    async def post_industry_job_sync() -> JSONResponse:
+        if esi_client is None:
+            return JSONResponse(status_code=503, content={"detail": "esi_client_unavailable"})
+        with closing(connect_database(storage.database_path)) as connection:
+            character_ids = [
+                int(row[0])
+                for row in connection.execute(
+                    "SELECT character_id FROM characters WHERE enabled=1 ORDER BY character_id"
+                ).fetchall()
+            ]
+            results: list[dict[str, object]] = []
+            for character_id in character_ids:
+                try:
+                    synced = sync_character_industry_jobs(connection, esi_client, character_id)
+                    resolve_type_names(connection, esi_client, synced.type_ids)
+                    results.append(
+                        {
+                            "characterId": character_id,
+                            "status": "completed",
+                            "jobs": synced.jobs,
+                            "active": synced.active,
+                            "completedJobs": synced.completed,
+                            "errorCode": None,
+                        }
+                    )
+                except (IndustryJobSyncError, TypeNameResolutionError, EsiClientError) as error:
+                    results.append(
+                        {
+                            "characterId": character_id,
+                            "status": "failed",
+                            "jobs": 0,
+                            "active": 0,
+                            "completedJobs": 0,
+                            "errorCode": getattr(error, "code", str(error))[:120],
+                        }
+                    )
+        completed = sum(result["status"] == "completed" for result in results)
+        return JSONResponse(
+            content={
+                "characters": results,
+                "completed": completed,
+                "failed": len(results) - completed,
+                "jobs": sum(int(result["jobs"]) for result in results),
+                "active": sum(int(result["active"]) for result in results),
+                "completedJobs": sum(int(result["completedJobs"]) for result in results),
             }
         )
 

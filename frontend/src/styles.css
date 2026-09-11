@@ -2619,6 +2619,35 @@ select:focus-visible {
 .blueprint-table th:nth-child(7) { width: 20%; }
 .blueprint-table th:nth-child(8) { width: 12%; }
 
+.industry-jobs {
+  margin-top: 18px;
+}
+
+.industry-jobs__header {
+  align-items: center;
+}
+
+.industry-jobs__header .asset-hero__metrics {
+  flex: 0 0 auto;
+}
+
+.industry-jobs__toolbar {
+  grid-template-columns: minmax(260px, 1.5fr) repeat(4, minmax(130px, 0.75fr)) auto;
+}
+
+.industry-job-table {
+  min-width: 1540px;
+}
+
+.industry-job-table th:nth-child(1) { width: 18%; }
+.industry-job-table th:nth-child(2) { width: 13%; }
+.industry-job-table th:nth-child(3) { width: 12%; }
+.industry-job-table th:nth-child(4) { width: 9%; }
+.industry-job-table th:nth-child(5) { width: 8%; }
+.industry-job-table th:nth-child(6) { width: 16%; }
+.industry-job-table th:nth-child(7) { width: 10%; }
+.industry-job-table th:nth-child(8) { width: 14%; }
+
 .asset-status {
   display: inline-flex;
   align-items: center;
@@ -2859,6 +2888,10 @@ select:focus-visible {
 
   .asset-toolbar {
     grid-template-columns: minmax(240px, 1fr) minmax(170px, 0.6fr);
+  }
+
+  .industry-jobs__toolbar {
+    grid-template-columns: repeat(2, minmax(220px, 1fr));
   }
 }
 
@@ -3131,6 +3164,10 @@ select:focus-visible {
   }
 
   .asset-toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .industry-jobs__toolbar {
     grid-template-columns: 1fr;
   }
 

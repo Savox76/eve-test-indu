@@ -228,11 +228,14 @@ export type AssetDeltaChangeType = "added" | "removed" | "quantity" | "location"
 export type AssetDeltaDirection = "inbound" | "outbound" | "neutral";
 
 export interface AssetDeltaCorrelation {
-  state: "unmatched";
+  state: "linked" | "ambiguous" | "unmatched" | "unavailable" | "not-applicable";
   key: string;
   direction: AssetDeltaDirection;
   windowStart: string;
   windowEnd: string;
+  jobIds: number[];
+  candidateCount: number;
+  locationMatched: boolean;
 }
 
 export interface AssetDeltaRecord {
@@ -279,6 +282,104 @@ export interface AssetDeltaPage {
   hasBaseline: boolean;
   observedAt: string | null;
   ageSeconds: number | null;
+}
+
+export type IndustryJobStatus = "active" | "cancelled" | "delivered" | "paused" | "ready" | "reverted";
+export type IndustryActivityId = 1 | 3 | 4 | 5 | 7 | 8 | 9 | 11;
+export type IndustryActivityKey = "manufacturing" | "research-time" | "research-material" | "copying" | "reverse-engineering" | "invention" | "reactions";
+export type IndustryCorrelationState = "linked" | "partial" | "ambiguous" | "unmatched" | "pending";
+export type IndustryJobSortField = "start" | "end" | "type" | "owner" | "activity" | "status" | "runs" | "cost" | "correlation" | "age";
+export const industryJobStatuses: readonly IndustryJobStatus[] = ["active", "cancelled", "delivered", "paused", "ready", "reverted"];
+export const industryActivityIds: readonly IndustryActivityId[] = [1, 3, 4, 5, 7, 8, 9, 11];
+export const industryCorrelationStates: readonly IndustryCorrelationState[] = ["linked", "partial", "ambiguous", "unmatched", "pending"];
+export const industryJobSortFields: readonly IndustryJobSortField[] = ["start", "end", "type", "owner", "activity", "status", "runs", "cost", "correlation", "age"];
+export const industryJobPageSize = 100;
+
+export interface IndustryJobRecord {
+  jobId: number;
+  ownerCharacterId: number;
+  ownerName: string;
+  activityId: IndustryActivityId;
+  activityKey: IndustryActivityKey;
+  status: IndustryJobStatus;
+  blueprintItemId: number;
+  blueprintTypeId: number;
+  blueprintName: string;
+  productTypeId: number | null;
+  productName: string | null;
+  runs: number;
+  successfulRuns: number | null;
+  licensedRuns: number | null;
+  probability: number | null;
+  cost: number | null;
+  durationSeconds: number;
+  facilityId: number;
+  stationId: number;
+  blueprintLocationId: number;
+  outputLocationId: number;
+  startDate: string;
+  endDate: string;
+  completedDate: string | null;
+  pauseDate: string | null;
+  blueprintCorrelation: {
+    state: "current" | "historical" | "unmatched" | "unavailable";
+    snapshotId: number | null;
+    syncRunId: number | null;
+    observedAt: string | null;
+  };
+  assetCorrelation: {
+    state: "linked" | "ambiguous" | "unmatched" | "unavailable" | "pending" | "not-applicable";
+    eventIds: string[];
+    candidateCount: number;
+    locationMatched: boolean;
+  };
+  correlationState: IndustryCorrelationState;
+  jobSnapshotId: number;
+  jobSyncRunId: number;
+  observedAt: string;
+  ageSeconds: number;
+}
+
+export interface IndustryJobQuery {
+  search: string;
+  ownerCharacterId: number | null;
+  status: IndustryJobStatus | null;
+  activityId: IndustryActivityId | null;
+  correlation: IndustryCorrelationState | null;
+  offset: number;
+  limit: number;
+  sortBy: IndustryJobSortField;
+  sortDirection: SortDirection;
+}
+
+export interface IndustryJobPage {
+  items: IndustryJobRecord[];
+  total: number;
+  activeTotal: number;
+  offset: number;
+  limit: number;
+  owners: AssetOwner[];
+  statuses: IndustryJobStatus[];
+  activities: IndustryActivityId[];
+  correlations: IndustryCorrelationState[];
+  observedAt: string | null;
+  ageSeconds: number | null;
+}
+
+export interface IndustryJobSyncResult {
+  characters: Array<{
+    characterId: number;
+    status: "completed" | "failed";
+    jobs: number;
+    active: number;
+    completedJobs: number;
+    errorCode: string | null;
+  }>;
+  completed: number;
+  failed: number;
+  jobs: number;
+  active: number;
+  completedJobs: number;
 }
 
 export interface SsoLoginStatus {
@@ -753,11 +854,17 @@ function parseAssetDeltaRecord(candidate: unknown): AssetDeltaRecord {
     !isBoundedText(candidate.observedAt, 64) ||
     !isNonNegativeSafeInteger(candidate.ageSeconds) ||
     !isRecord(candidate.jobCorrelation) ||
-    candidate.jobCorrelation.state !== "unmatched" ||
+    !["linked", "ambiguous", "unmatched", "unavailable", "not-applicable"].includes(String(candidate.jobCorrelation.state)) ||
     !isBoundedText(candidate.jobCorrelation.key, 64) ||
     !["inbound", "outbound", "neutral"].includes(String(candidate.jobCorrelation.direction)) ||
     !isBoundedText(candidate.jobCorrelation.windowStart, 64) ||
-    !isBoundedText(candidate.jobCorrelation.windowEnd, 64)
+    !isBoundedText(candidate.jobCorrelation.windowEnd, 64) ||
+    !Array.isArray(candidate.jobCorrelation.jobIds) ||
+    candidate.jobCorrelation.jobIds.length > 20 ||
+    !candidate.jobCorrelation.jobIds.every(isPositiveSafeInteger) ||
+    new Set(candidate.jobCorrelation.jobIds).size !== candidate.jobCorrelation.jobIds.length ||
+    !isNonNegativeSafeInteger(candidate.jobCorrelation.candidateCount) ||
+    typeof candidate.jobCorrelation.locationMatched !== "boolean"
   ) {
     throw new Error("The native runtime returned invalid asset-delta metadata.");
   }
@@ -783,6 +890,12 @@ function parseAssetDeltaRecord(candidate: unknown): AssetDeltaRecord {
     candidate.quantityDelta !== (quantityAfter ?? 0) - (quantityBefore ?? 0) ||
     candidate.jobCorrelation.key !== `${candidate.ownerCharacterId}:${candidate.typeId}` ||
     candidate.jobCorrelation.direction !== expectedDirection ||
+    (candidate.jobCorrelation.state === "linked" &&
+      (candidate.jobCorrelation.candidateCount !== 1 || candidate.jobCorrelation.jobIds.length !== 1)) ||
+    (candidate.jobCorrelation.state === "ambiguous" &&
+      (candidate.jobCorrelation.candidateCount < 2 || candidate.jobCorrelation.jobIds.length < 1)) ||
+    (["unmatched", "unavailable", "not-applicable"].includes(String(candidate.jobCorrelation.state)) &&
+      (candidate.jobCorrelation.candidateCount !== 0 || candidate.jobCorrelation.jobIds.length !== 0 || candidate.jobCorrelation.locationMatched)) ||
     changeTypes.includes("added") !== (quantityBefore === null && quantityAfter !== null) ||
     changeTypes.includes("removed") !== (quantityBefore !== null && quantityAfter === null) ||
     changeTypes.includes("quantity") !==
@@ -1282,6 +1395,218 @@ export async function syncBlueprints(
     throw new Error("The native runtime returned an inconsistent blueprint-sync result.");
   }
   return { ...candidate, characters } as unknown as BlueprintSyncResult;
+}
+
+const industryActivityKeys: Readonly<Record<IndustryActivityId, IndustryActivityKey>> = {
+  1: "manufacturing",
+  3: "research-time",
+  4: "research-material",
+  5: "copying",
+  7: "reverse-engineering",
+  8: "invention",
+  9: "reactions",
+  11: "reactions",
+};
+
+function validateIndustryJobQuery(query: IndustryJobQuery): IndustryJobQuery {
+  const search = query.search.trim().replace(/\s+/g, " ");
+  if (
+    search.length > 120 ||
+    !(query.ownerCharacterId === null || isPositiveSafeInteger(query.ownerCharacterId)) ||
+    !(query.status === null || industryJobStatuses.includes(query.status)) ||
+    !(query.activityId === null || industryActivityIds.includes(query.activityId)) ||
+    !(query.correlation === null || industryCorrelationStates.includes(query.correlation)) ||
+    !isNonNegativeSafeInteger(query.offset) ||
+    !Number.isSafeInteger(query.limit) || query.limit < 1 || query.limit > 200 ||
+    !industryJobSortFields.includes(query.sortBy) ||
+    !["asc", "desc"].includes(query.sortDirection)
+  ) {
+    throw new Error("The industry-job query is invalid.");
+  }
+  return { ...query, search };
+}
+
+function parseIndustryJobRecord(candidate: unknown): IndustryJobRecord {
+  if (
+    !isRecord(candidate) ||
+    !isPositiveSafeInteger(candidate.jobId) ||
+    !isPositiveSafeInteger(candidate.ownerCharacterId) ||
+    !isBoundedText(candidate.ownerName, 100) ||
+    !industryActivityIds.includes(candidate.activityId as IndustryActivityId) ||
+    candidate.activityKey !== industryActivityKeys[candidate.activityId as IndustryActivityId] ||
+    !industryJobStatuses.includes(candidate.status as IndustryJobStatus) ||
+    !isPositiveSafeInteger(candidate.blueprintItemId) ||
+    !isPositiveSafeInteger(candidate.blueprintTypeId) ||
+    !isBoundedText(candidate.blueprintName, 220) ||
+    !((candidate.productTypeId === null && candidate.productName === null) ||
+      (isPositiveSafeInteger(candidate.productTypeId) && isBoundedText(candidate.productName, 220))) ||
+    !isPositiveSafeInteger(candidate.runs) ||
+    !(candidate.successfulRuns === null ||
+      (isNonNegativeSafeInteger(candidate.successfulRuns) && candidate.successfulRuns <= candidate.runs)) ||
+    !(candidate.licensedRuns === null || isNonNegativeSafeInteger(candidate.licensedRuns)) ||
+    !(candidate.probability === null ||
+      (typeof candidate.probability === "number" && Number.isFinite(candidate.probability) && candidate.probability >= 0 && candidate.probability <= 1)) ||
+    !(candidate.cost === null ||
+      (typeof candidate.cost === "number" && Number.isFinite(candidate.cost) && candidate.cost >= 0 && Number.isSafeInteger(Math.trunc(candidate.cost)))) ||
+    !isNonNegativeSafeInteger(candidate.durationSeconds) ||
+    ![candidate.facilityId, candidate.stationId, candidate.blueprintLocationId, candidate.outputLocationId,
+      candidate.jobSnapshotId, candidate.jobSyncRunId].every(isPositiveSafeInteger) ||
+    !isBoundedText(candidate.startDate, 64) ||
+    !isBoundedText(candidate.endDate, 64) ||
+    !(candidate.completedDate === null || isBoundedText(candidate.completedDate, 64)) ||
+    !(candidate.pauseDate === null || isBoundedText(candidate.pauseDate, 64)) ||
+    !isRecord(candidate.blueprintCorrelation) ||
+    !["current", "historical", "unmatched", "unavailable"].includes(String(candidate.blueprintCorrelation.state)) ||
+    !isRecord(candidate.assetCorrelation) ||
+    !["linked", "ambiguous", "unmatched", "unavailable", "pending", "not-applicable"].includes(String(candidate.assetCorrelation.state)) ||
+    !Array.isArray(candidate.assetCorrelation.eventIds) ||
+    candidate.assetCorrelation.eventIds.length > 20 ||
+    !candidate.assetCorrelation.eventIds.every((value) => typeof value === "string" && /^[0-9a-f]{64}$/.test(value)) ||
+    new Set(candidate.assetCorrelation.eventIds).size !== candidate.assetCorrelation.eventIds.length ||
+    !isNonNegativeSafeInteger(candidate.assetCorrelation.candidateCount) ||
+    typeof candidate.assetCorrelation.locationMatched !== "boolean" ||
+    !industryCorrelationStates.includes(candidate.correlationState as IndustryCorrelationState) ||
+    !isBoundedText(candidate.observedAt, 64) ||
+    !isNonNegativeSafeInteger(candidate.ageSeconds)
+  ) {
+    throw new Error("The native runtime returned invalid industry-job records.");
+  }
+  const blueprintLinked = ["current", "historical"].includes(String(candidate.blueprintCorrelation.state));
+  const blueprintHasEvidence = candidate.blueprintCorrelation.snapshotId !== null ||
+    candidate.blueprintCorrelation.syncRunId !== null || candidate.blueprintCorrelation.observedAt !== null;
+  const assetState = String(candidate.assetCorrelation.state);
+  const assetLinked = assetState === "linked";
+  const expectedCorrelation = ["active", "paused", "ready"].includes(String(candidate.status))
+    ? "pending"
+    : assetState === "ambiguous"
+      ? "ambiguous"
+      : blueprintLinked && (assetLinked || assetState === "not-applicable")
+        ? "linked"
+        : blueprintLinked || assetLinked
+          ? "partial"
+          : "unmatched";
+  if (
+    (blueprintLinked !== blueprintHasEvidence) ||
+    (blueprintLinked && (!isPositiveSafeInteger(candidate.blueprintCorrelation.snapshotId) ||
+      !isPositiveSafeInteger(candidate.blueprintCorrelation.syncRunId) ||
+      !isBoundedText(candidate.blueprintCorrelation.observedAt, 64))) ||
+    (assetState === "linked" &&
+      (candidate.assetCorrelation.candidateCount !== 1 || candidate.assetCorrelation.eventIds.length !== 1)) ||
+    (assetState === "ambiguous" &&
+      (candidate.assetCorrelation.candidateCount < 2 || candidate.assetCorrelation.eventIds.length < 1)) ||
+    (["unmatched", "unavailable", "pending", "not-applicable"].includes(assetState) &&
+      (candidate.assetCorrelation.candidateCount !== 0 || candidate.assetCorrelation.eventIds.length !== 0 || candidate.assetCorrelation.locationMatched)) ||
+    candidate.correlationState !== expectedCorrelation
+  ) {
+    throw new Error("The native runtime returned inconsistent industry-job records.");
+  }
+  return candidate as unknown as IndustryJobRecord;
+}
+
+function parseIndustryJobPage(candidate: unknown): IndustryJobPage {
+  if (
+    !isRecord(candidate) || !Array.isArray(candidate.items) || !Array.isArray(candidate.owners) ||
+    !Array.isArray(candidate.statuses) || !Array.isArray(candidate.activities) ||
+    !Array.isArray(candidate.correlations) || !isNonNegativeSafeInteger(candidate.total) ||
+    !isNonNegativeSafeInteger(candidate.activeTotal) || candidate.activeTotal > candidate.total ||
+    !isNonNegativeSafeInteger(candidate.offset) || !Number.isSafeInteger(candidate.limit) ||
+    Number(candidate.limit) < 1 || Number(candidate.limit) > 200 ||
+    candidate.statuses.length !== industryJobStatuses.length ||
+    !industryJobStatuses.every((value, index) => (candidate.statuses as unknown[])[index] === value) ||
+    candidate.correlations.length !== industryCorrelationStates.length ||
+    !industryCorrelationStates.every((value, index) => (candidate.correlations as unknown[])[index] === value) ||
+    !candidate.activities.every((value) => industryActivityIds.includes(value as IndustryActivityId)) ||
+    new Set(candidate.activities).size !== candidate.activities.length ||
+    !(candidate.observedAt === null || isBoundedText(candidate.observedAt, 64)) ||
+    !(candidate.ageSeconds === null || isNonNegativeSafeInteger(candidate.ageSeconds)) ||
+    (candidate.observedAt === null) !== (candidate.ageSeconds === null)
+  ) {
+    throw new Error("The native runtime returned invalid industry-job data.");
+  }
+  const items = candidate.items.map(parseIndustryJobRecord);
+  const owners = candidate.owners.map((owner) => {
+    if (!isRecord(owner) || !isPositiveSafeInteger(owner.characterId) || !isBoundedText(owner.name, 100)) {
+      throw new Error("The native runtime returned invalid industry-job owners.");
+    }
+    return owner as unknown as AssetOwner;
+  });
+  if (
+    items.length > Number(candidate.limit) || items.length > Number(candidate.total) ||
+    items.filter(({ status }) => ["active", "paused", "ready"].includes(status)).length >
+      Number(candidate.activeTotal) ||
+    new Set(items.map(({ jobId }) => jobId)).size !== items.length ||
+    new Set(owners.map(({ characterId }) => characterId)).size !== owners.length ||
+    items.some((item) => !owners.some((owner) => owner.characterId === item.ownerCharacterId && owner.name === item.ownerName))
+  ) {
+    throw new Error("The native runtime returned inconsistent industry-job data.");
+  }
+  return { ...candidate, items, owners } as unknown as IndustryJobPage;
+}
+
+export async function loadIndustryJobs(
+  query: IndustryJobQuery,
+  adapter: RuntimeAdapter = tauriAdapter,
+): Promise<IndustryJobPage> {
+  const validated = validateIndustryJobQuery(query);
+  if (!adapter.isAvailable()) return {
+    items: [], total: 0, activeTotal: 0, offset: validated.offset, limit: validated.limit,
+    owners: [], statuses: [...industryJobStatuses], activities: [],
+    correlations: [...industryCorrelationStates], observedAt: null, ageSeconds: null,
+  };
+  const page = parseIndustryJobPage(JSON.parse(await adapter.invoke("query_industry_jobs", {
+    search: validated.search,
+    ownerCharacterId: validated.ownerCharacterId,
+    status: validated.status,
+    activityId: validated.activityId,
+    correlation: validated.correlation,
+    offset: validated.offset,
+    limit: validated.limit,
+    sortBy: validated.sortBy,
+    sortDirection: validated.sortDirection,
+  })));
+  if (page.offset !== validated.offset || page.limit !== validated.limit) {
+    throw new Error("The native runtime returned a different industry-job window.");
+  }
+  return page;
+}
+
+export async function syncIndustryJobs(
+  adapter: RuntimeAdapter = tauriAdapter,
+): Promise<IndustryJobSyncResult> {
+  if (!adapter.isAvailable()) {
+    throw new Error("Industry-job sync is available only in the desktop application.");
+  }
+  const candidate: unknown = JSON.parse(await adapter.invoke("sync_industry_jobs"));
+  if (
+    !isRecord(candidate) || !Array.isArray(candidate.characters) ||
+    ![candidate.completed, candidate.failed, candidate.jobs, candidate.active,
+      candidate.completedJobs].every(isNonNegativeSafeInteger)
+  ) {
+    throw new Error("The native runtime returned an invalid industry-job sync result.");
+  }
+  const characters = candidate.characters.map((value) => {
+    if (
+      !isRecord(value) || !isPositiveSafeInteger(value.characterId) ||
+      !["completed", "failed"].includes(String(value.status)) ||
+      ![value.jobs, value.active, value.completedJobs].every(isNonNegativeSafeInteger) ||
+      Number(value.active) + Number(value.completedJobs) !== Number(value.jobs) ||
+      !((value.status === "completed" && value.errorCode === null) ||
+        (value.status === "failed" && value.jobs === 0 && value.active === 0 &&
+          value.completedJobs === 0 && isBoundedText(value.errorCode, 120)))
+    ) {
+      throw new Error("The native runtime returned an invalid industry-job sync result.");
+    }
+    return value as unknown as IndustryJobSyncResult["characters"][number];
+  });
+  if (
+    Number(candidate.completed) + Number(candidate.failed) !== characters.length ||
+    candidate.jobs !== characters.reduce((sum, value) => sum + value.jobs, 0) ||
+    candidate.active !== characters.reduce((sum, value) => sum + value.active, 0) ||
+    candidate.completedJobs !== characters.reduce((sum, value) => sum + value.completedJobs, 0)
+  ) {
+    throw new Error("The native runtime returned an inconsistent industry-job sync result.");
+  }
+  return { ...candidate, characters } as unknown as IndustryJobSyncResult;
 }
 
 export async function exportAssetsCsv(

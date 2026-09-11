@@ -24,6 +24,36 @@ Keine.
 
 Keine.
 
+## 0.0.5-preview.7 – 11. September 2026
+
+### Neu hinzugefügt
+
+- Paket 24: vollständiger charaktergetrennter Sync persönlicher Industrieaufträge einschließlich der von ESI verfügbaren abgeschlossenen Jobs.
+- Zweisprachige Jobansicht mit echten Typnamen, Besitzer, Aktivität, Status, Läufen, Kosten, Zeit, Datenalter, Suche, Filtern, Sortierung und begrenzten Seiten.
+- Belegbasierte Korrelation mit exakten aktuellen oder historischen Blueprint-Items und passenden eingehenden Asset-Änderungen einschließlich stabiler Quell-IDs.
+
+### Geändert
+
+- Der automatische Startabgleich aktualisiert Assets und Blueprints vor den Industrieaufträgen, damit die Korrelation die frischesten vollständigen Quellen nutzt.
+- Eindeutige Jobzuordnungen und Job-IDs erscheinen nun auch in der Asset-Historie, ohne gespeicherte Delta-Fingerabdrücke zu verändern.
+- Die sichtbare Versionsnummer lautet `v0.0.5-preview.7`.
+
+### Behobene Fehler
+
+- Mehrere plausible Asset-Kandidaten bleiben sichtbar mehrdeutig, statt willkürlich als eindeutiger Treffer angezeigt zu werden.
+- Fehlgeschlagene oder ungültige Jobabrufe können den letzten vollständigen Snapshot nicht überschreiben.
+- Die Aktiv-Zahl umfasst das gesamte gefilterte Ergebnis statt nur der sichtbaren Seite.
+
+### Bekannte Einschränkungen
+
+- ESI bestimmt die verfügbare Historie abgeschlossener Jobs; vor dem ersten erfolgreichen Lauf nicht mehr gelieferte Jobs können nicht rekonstruiert werden.
+- Paket 22 wartet weiterhin auf das vollständige Windows-A0-Protokoll.
+
+### Update und Datenbankmigration
+
+- Keine Schemaänderung. Bestehende Charaktere, Aliasse, Gruppen, Credentials und Snapshots bleiben erhalten.
+- Charaktere mit dem vollständigen Scope-Satz aus `v0.0.5-preview.6` benötigen keine erneute Anmeldung.
+
 ## 0.0.5-preview.6 – 10. September 2026
 
 ### Neu hinzugefügt

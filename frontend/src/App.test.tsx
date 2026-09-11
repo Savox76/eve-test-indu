@@ -8,6 +8,7 @@ import type {
   BlueprintPage,
   DesktopRuntimeStatus,
   EveCharacter,
+  IndustryJobPage,
   SsoLoginStatus,
 } from "./runtime";
 
@@ -23,7 +24,7 @@ const idleSso: SsoLoginStatus = {
 const nativeRuntime = (overrides: Partial<Extract<DesktopRuntimeStatus, { state: "ready" }>> = {}) =>
   Promise.resolve<DesktopRuntimeStatus>({
     state: "ready",
-    version: "0.0.5-preview.6",
+    version: "0.0.5-preview.7",
     desktopShell: true,
     singleInstance: true,
     sidecar: "ready",
@@ -125,6 +126,9 @@ const assetDeltaPage = (overrides: Partial<AssetDeltaPage> = {}): AssetDeltaPage
       direction: "outbound",
       windowStart: "2026-09-10T10:00:00Z",
       windowEnd: "2026-09-10T11:00:00Z",
+      jobIds: [],
+      candidateCount: 0,
+      locationMatched: false,
     },
   }],
   total: 1,
@@ -138,6 +142,31 @@ const assetDeltaPage = (overrides: Partial<AssetDeltaPage> = {}): AssetDeltaPage
   ageSeconds: 60,
   ...overrides,
 });
+
+const industryJobPage: IndustryJobPage = {
+  items: [{
+    jobId: 8_001, ownerCharacterId: 90_888_001, ownerName: "Builder",
+    activityId: 1, activityKey: "manufacturing", status: "delivered",
+    blueprintItemId: 7_001, blueprintTypeId: 681, blueprintName: "Bantam Blueprint",
+    productTypeId: 582, productName: "Bantam", runs: 2, successfulRuns: 2,
+    licensedRuns: 0, probability: 1, cost: 1234.5, durationSeconds: 3600,
+    facilityId: 60_003_760, stationId: 60_003_760,
+    blueprintLocationId: 60_003_760, outputLocationId: 60_003_760,
+    startDate: "2026-09-10T10:00:00Z", endDate: "2026-09-10T11:00:00Z",
+    completedDate: "2026-09-10T11:00:00Z", pauseDate: null,
+    blueprintCorrelation: { state: "current", snapshotId: 2, syncRunId: 3,
+      observedAt: "2026-09-10T11:01:00Z" },
+    assetCorrelation: { state: "linked", eventIds: ["a".repeat(64)],
+      candidateCount: 1, locationMatched: true },
+    correlationState: "linked", jobSnapshotId: 4, jobSyncRunId: 5,
+    observedAt: "2026-09-10T11:02:00Z", ageSeconds: 60,
+  }],
+  total: 1, activeTotal: 0, offset: 0, limit: 100,
+  owners: [{ characterId: 90_888_001, name: "Builder" }],
+  statuses: ["active", "cancelled", "delivered", "paused", "ready", "reverted"],
+  activities: [1], correlations: ["linked", "partial", "ambiguous", "unmatched", "pending"],
+  observedAt: "2026-09-10T11:02:00Z", ageSeconds: 60,
+};
 
 describe("New Eden Foundry design preview", () => {
   it("marks every displayed value as synthetic preview data", () => {
@@ -330,7 +359,7 @@ describe("New Eden Foundry design preview", () => {
     fireEvent.click(screen.getByRole("button", { name: /Assets/i }));
 
     expect(await screen.findByText("Nachvollziehbare Änderungen")).toBeInTheDocument();
-    expect(await screen.findByText("Jobzuordnung vorbereitet")).toBeInTheDocument();
+    expect(await screen.findByText("Kein passender Job")).toBeInTheDocument();
     expect(screen.getAllByText("Menge geändert").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Verschoben").length).toBeGreaterThan(0);
     expect(screen.getByText((_, element) => element?.tagName === "STRONG" && element.textContent === "17 → 9"))
@@ -401,7 +430,7 @@ describe("New Eden Foundry design preview", () => {
   it("credits Savoxmedia as the app creator next to the version", () => {
     render(<App />);
 
-    expect(screen.getByText("v0.0.5-preview.6")).toBeInTheDocument();
+    expect(screen.getByText("v0.0.5-preview.7")).toBeInTheDocument();
     expect(screen.getByText("Savoxmedia")).toBeInTheDocument();
     expect(screen.getByText("Erstellt von", { exact: false })).toBeInTheDocument();
     expect(screen.queryByText("Lokaler Betreiber")).not.toBeInTheDocument();
@@ -657,5 +686,31 @@ describe("New Eden Foundry design preview", () => {
     expect(screen.getByText("12")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "ME" }));
     await waitFor(() => expect(blueprintsLoader).toHaveBeenLastCalledWith(expect.objectContaining({ sortBy: "me", sortDirection: "asc" })));
+  });
+
+  it("shows, filters, sorts, and refreshes traceable personal industry jobs", async () => {
+    const industryJobsLoader = vi.fn().mockResolvedValue(industryJobPage);
+    const industryJobSyncer = vi.fn().mockResolvedValue({
+      characters: [{ characterId: 90_888_001, status: "completed", jobs: 1,
+        active: 0, completedJobs: 1, errorCode: null }],
+      completed: 1, failed: 0, jobs: 1, active: 0, completedJobs: 1,
+    });
+    render(<App runtimeLoader={() => nativeRuntime()} ssoStatusLoader={() => Promise.resolve(idleSso)}
+      industryJobsLoader={industryJobsLoader} industryJobSyncer={industryJobSyncer} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Blueprints & Jobs" }));
+    expect(await screen.findByText("Bantam")).toBeInTheDocument();
+    expect(screen.getAllByText("Belegt").length).toBeGreaterThan(0);
+    expect(screen.getByText(/aktueller Blueprint · Asset-Änderung belegt/)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Status"), { target: { value: "delivered" } });
+    await waitFor(() => expect(industryJobsLoader).toHaveBeenLastCalledWith(
+      expect.objectContaining({ status: "delivered" }),
+    ));
+    fireEvent.click(screen.getByRole("button", { name: "Läufe" }));
+    await waitFor(() => expect(industryJobsLoader).toHaveBeenLastCalledWith(
+      expect.objectContaining({ sortBy: "runs", sortDirection: "asc" }),
+    ));
+    fireEvent.click(screen.getByRole("button", { name: "Jobs aktualisieren" }));
+    await waitFor(() => expect(industryJobSyncer).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText(/1 Jobs von 1 Charakter/)).toBeInTheDocument();
   });
 });

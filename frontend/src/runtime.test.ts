@@ -13,6 +13,7 @@ import {
   loadDesktopRuntimeStatus,
   loadEveCharacters,
   loadEveSsoStatus,
+  loadIndustryJobs,
   renameAccountGroup,
   setDesktopFontScale,
   setDesktopUpdateChannel,
@@ -20,6 +21,7 @@ import {
   ssoScopePackages,
   syncAssets,
   syncBlueprints,
+  syncIndustryJobs,
   updateEveCharacter,
   type RuntimeAdapter,
 } from "./runtime";
@@ -60,7 +62,7 @@ function managedCharacter(overrides: Record<string, unknown> = {}) {
 function nativeStatus(overrides: Record<string, unknown> = {}) {
   return JSON.stringify({
     state: "ready",
-    version: "0.0.5-preview.6",
+    version: "0.0.5-preview.7",
     desktopShell: true,
     singleInstance: true,
     sidecar: "ready",
@@ -96,7 +98,7 @@ describe("desktop runtime status", () => {
       loadDesktopRuntimeStatus({ isAvailable: () => true, invoke }),
     ).resolves.toEqual({
       state: "ready",
-      version: "0.0.5-preview.6",
+      version: "0.0.5-preview.7",
       desktopShell: true,
       singleInstance: true,
       sidecar: "ready",
@@ -430,6 +432,9 @@ describe("desktop runtime status", () => {
           direction: "outbound",
           windowStart: "2026-09-10T10:00:00Z",
           windowEnd: "2026-09-10T11:00:00Z",
+          jobIds: [],
+          candidateCount: 0,
+          locationMatched: false,
         },
       }],
       total: 1,
@@ -674,5 +679,42 @@ describe("desktop runtime status", () => {
       blueprints: 1, errorCode: null }], completed: 1, failed: 0, blueprints: 1 };
     invoke.mockResolvedValueOnce(JSON.stringify(result));
     await expect(syncBlueprints({ isAvailable: () => true, invoke })).resolves.toEqual(result);
+  });
+
+  it("validates traceable industry-job pages and sync summaries", async () => {
+    const page = {
+      items: [{
+        jobId: 8_001, ownerCharacterId: 7, ownerName: "Pilot", activityId: 1,
+        activityKey: "manufacturing", status: "delivered", blueprintItemId: 9,
+        blueprintTypeId: 681, blueprintName: "Bantam Blueprint", productTypeId: 582,
+        productName: "Bantam", runs: 2, successfulRuns: 2, licensedRuns: 0,
+        probability: 1, cost: 1234.5, durationSeconds: 3600, facilityId: 60_003_760,
+        stationId: 60_003_760, blueprintLocationId: 60_003_760,
+        outputLocationId: 60_003_760, startDate: "2026-09-10T10:00:00Z",
+        endDate: "2026-09-10T11:00:00Z", completedDate: "2026-09-10T11:00:00Z",
+        pauseDate: null, blueprintCorrelation: { state: "current", snapshotId: 2,
+          syncRunId: 3, observedAt: "2026-09-10T11:01:00Z" },
+        assetCorrelation: { state: "linked", eventIds: ["a".repeat(64)],
+          candidateCount: 1, locationMatched: true }, correlationState: "linked",
+        jobSnapshotId: 4, jobSyncRunId: 5, observedAt: "2026-09-10T11:02:00Z",
+        ageSeconds: 60,
+      }],
+      total: 1, activeTotal: 0, offset: 0, limit: 100, owners: [{ characterId: 7, name: "Pilot" }],
+      statuses: ["active", "cancelled", "delivered", "paused", "ready", "reverted"],
+      activities: [1], correlations: ["linked", "partial", "ambiguous", "unmatched", "pending"],
+      observedAt: "2026-09-10T11:02:00Z", ageSeconds: 60,
+    };
+    const invoke = vi.fn<RuntimeAdapter["invoke"]>().mockResolvedValueOnce(JSON.stringify(page));
+    const query = { search: "", ownerCharacterId: null, status: null, activityId: null,
+      correlation: null, offset: 0, limit: 100, sortBy: "end", sortDirection: "desc" } as const;
+    await expect(loadIndustryJobs(query, { isAvailable: () => true, invoke })).resolves.toEqual(page);
+    expect(invoke).toHaveBeenCalledWith("query_industry_jobs", expect.objectContaining({ sortBy: "end" }));
+
+    const result = { characters: [{ characterId: 7, status: "completed", jobs: 1,
+      active: 0, completedJobs: 1, errorCode: null }], completed: 1, failed: 0,
+      jobs: 1, active: 0, completedJobs: 1 };
+    invoke.mockResolvedValueOnce(JSON.stringify(result));
+    await expect(syncIndustryJobs({ isAvailable: () => true, invoke })).resolves.toEqual(result);
+    expect(invoke).toHaveBeenLastCalledWith("sync_industry_jobs");
   });
 });

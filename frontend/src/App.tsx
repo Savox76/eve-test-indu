@@ -69,8 +69,10 @@ import {
   loadAssets,
   loadAssetDeltas,
   loadBlueprints,
+  loadIndustryJobs,
   syncAssets,
   syncBlueprints,
+  syncIndustryJobs,
   renameAccountGroup,
   setDesktopUpdateChannel,
   setDesktopFontScale,
@@ -92,6 +94,13 @@ import {
   type BlueprintQuery,
   type BlueprintSortField,
   type BlueprintSyncResult,
+  type IndustryActivityId,
+  type IndustryCorrelationState,
+  type IndustryJobPage,
+  type IndustryJobQuery,
+  type IndustryJobSortField,
+  type IndustryJobStatus,
+  type IndustryJobSyncResult,
   type CharacterUpdate,
   type DesktopRuntimeStatus,
   type EveCharacter,
@@ -104,6 +113,7 @@ import {
   type UpdaterStatus,
   type AppearanceStatus,
   blueprintPageSize,
+  industryJobPageSize,
 } from "./runtime";
 
 type Locale = "de" | "en";
@@ -464,7 +474,7 @@ const copy = {
       deltas: {
         kicker: "ASSET-ÄNDERUNGEN",
         title: "Nachvollziehbare Änderungen",
-        subtitle: "Vergleich vollständiger Snapshots mit Zeitfenster für die spätere Jobzuordnung.",
+        subtitle: "Vergleich vollständiger Snapshots mit belegbarer Zuordnung zu abgeschlossenen Industrieaufträgen.",
         filter: "Änderungsart",
         all: "Alle Änderungen",
         labels: {
@@ -482,7 +492,11 @@ const copy = {
         unavailable: "Der echte Änderungsverlauf ist in der laufenden Desktop-App verfügbar.",
         noChanges: "Für diese Auswahl wurden keine Änderungen erkannt.",
         error: "Der lokale Änderungsverlauf konnte nicht gelesen werden.",
-        unmatched: "Jobzuordnung vorbereitet",
+        correlationLabels: {
+          linked: "Job belegt", ambiguous: "Mehrere Jobkandidaten",
+          unmatched: "Kein passender Job", unavailable: "Kein Job-Snapshot",
+          "not-applicable": "Keine Ausgabeänderung",
+        },
       },
     },
     blueprints: {
@@ -518,6 +532,63 @@ const copy = {
       previous: "Vorherige Seite",
       next: "Nächste Seite",
       liveNotice: "Echte lokale Blueprint-Snapshots · automatisch beim Programmstart",
+      jobs: {
+        kicker: "PERSÖNLICHE INDUSTRIEAUFTRÄGE",
+        title: "Industrieaufträge",
+        subtitle: "Aktive und abgeschlossene ESI-Aufträge mit belegbarer Blueprint- und Asset-Zuordnung.",
+        search: "Job, Blueprint, Produkt, Besitzer oder ID suchen",
+        status: "Status",
+        allStatuses: "Alle Status",
+        statusLabels: {
+          active: "Aktiv", cancelled: "Abgebrochen", delivered: "Ausgeliefert",
+          paused: "Pausiert", ready: "Fertig", reverted: "Zurückgesetzt",
+        },
+        activity: "Aktivität",
+        allActivities: "Alle Aktivitäten",
+        activityLabels: {
+          manufacturing: "Produktion", "research-time": "Zeitforschung",
+          "research-material": "Materialforschung", copying: "Kopieren",
+          "reverse-engineering": "Reverse Engineering", invention: "Erfindung",
+          reactions: "Reaktion",
+        },
+        correlation: "Zuordnung",
+        allCorrelations: "Alle Zuordnungen",
+        correlationLabels: {
+          linked: "Belegt", partial: "Teilweise belegt", ambiguous: "Mehrere Kandidaten",
+          unmatched: "Ohne Treffer", pending: "Noch laufend",
+        },
+        blueprint: "Blueprint / Job",
+        product: "Produkt",
+        owner: "Besitzer / Aktivität",
+        runs: "Läufe",
+        timeline: "Zeitplan",
+        location: "Anlage / Ausgabe",
+        evidence: "Quellnachweis",
+        currentBlueprint: "aktueller Blueprint",
+        historicalBlueprint: "historischer Blueprint",
+        noBlueprint: "Blueprint nicht im Bestand",
+        noBlueprintData: "kein Blueprint-Snapshot",
+        assetLinked: "Asset-Änderung belegt",
+        assetAmbiguous: "mehrere Asset-Kandidaten",
+        assetPending: "Asset-Ausgabe noch ausstehend",
+        assetUnmatched: "keine passende Asset-Änderung",
+        assetUnavailable: "kein Asset-Verlauf",
+        assetNotApplicable: "keine Ausgabe erwartet",
+        successful: "erfolgreich",
+        activeCount: "aktive Jobs",
+        count: "Jobs",
+        age: "Datenalter",
+        sync: "Jobs aktualisieren",
+        syncing: "Jobs werden aktualisiert …",
+        syncComplete: "{jobs} Jobs von {characters} Charakter(en) aktualisiert.",
+        syncPartial: "{completed} aktualisiert, {failed} fehlgeschlagen. Anmeldung oder Verbindung prüfen.",
+        syncEmpty: "Kein aktivierter Charakter für den Job-Sync vorhanden.",
+        syncError: "Job-Sync konnte nicht gestartet werden.",
+        loading: "Industrieaufträge werden geladen …",
+        noData: "Noch kein vollständiger Job-Snapshot vorhanden.",
+        noMatches: "Keine Industrieaufträge entsprechen der Auswahl.",
+        queryError: "Die lokalen Industrieaufträge konnten nicht gelesen werden.",
+      },
     },
     moduleKicker: "MODULVORSCHAU",
     moduleText:
@@ -542,7 +613,7 @@ const copy = {
     },
     planned: "Geplant",
     previewOnly: "Noch ohne Live-Funktion",
-    footerVersion: "v0.0.5-preview.6",
+    footerVersion: "v0.0.5-preview.7",
   },
   en: {
     nav: {
@@ -878,7 +949,7 @@ const copy = {
       deltas: {
         kicker: "ASSET DELTAS",
         title: "Traceable changes",
-        subtitle: "Complete snapshot comparisons with a time window for later job correlation.",
+        subtitle: "Complete snapshot comparisons with traceable links to completed industry jobs.",
         filter: "Change type",
         all: "All changes",
         labels: {
@@ -896,7 +967,11 @@ const copy = {
         unavailable: "The live change history is available in the running desktop app.",
         noChanges: "No changes were detected for this selection.",
         error: "The local change history could not be read.",
-        unmatched: "Job correlation prepared",
+        correlationLabels: {
+          linked: "Job linked", ambiguous: "Multiple job candidates",
+          unmatched: "No matching job", unavailable: "No job snapshot",
+          "not-applicable": "Not an output delta",
+        },
       },
     },
     blueprints: {
@@ -932,6 +1007,63 @@ const copy = {
       previous: "Previous page",
       next: "Next page",
       liveNotice: "Live local blueprint snapshots · automatic at application startup",
+      jobs: {
+        kicker: "PERSONAL INDUSTRY JOBS",
+        title: "Industry jobs",
+        subtitle: "Active and completed ESI jobs with traceable blueprint and asset correlation.",
+        search: "Search job, blueprint, product, owner, or ID",
+        status: "Status",
+        allStatuses: "All statuses",
+        statusLabels: {
+          active: "Active", cancelled: "Cancelled", delivered: "Delivered",
+          paused: "Paused", ready: "Ready", reverted: "Reverted",
+        },
+        activity: "Activity",
+        allActivities: "All activities",
+        activityLabels: {
+          manufacturing: "Manufacturing", "research-time": "Time research",
+          "research-material": "Material research", copying: "Copying",
+          "reverse-engineering": "Reverse engineering", invention: "Invention",
+          reactions: "Reaction",
+        },
+        correlation: "Correlation",
+        allCorrelations: "All correlations",
+        correlationLabels: {
+          linked: "Linked", partial: "Partially linked", ambiguous: "Multiple candidates",
+          unmatched: "No match", pending: "Still running",
+        },
+        blueprint: "Blueprint / job",
+        product: "Product",
+        owner: "Owner / activity",
+        runs: "Runs",
+        timeline: "Timeline",
+        location: "Facility / output",
+        evidence: "Source evidence",
+        currentBlueprint: "current blueprint",
+        historicalBlueprint: "historical blueprint",
+        noBlueprint: "blueprint not in inventory",
+        noBlueprintData: "no blueprint snapshot",
+        assetLinked: "asset delta linked",
+        assetAmbiguous: "multiple asset candidates",
+        assetPending: "asset output pending",
+        assetUnmatched: "no matching asset delta",
+        assetUnavailable: "no asset history",
+        assetNotApplicable: "no output expected",
+        successful: "successful",
+        activeCount: "active jobs",
+        count: "jobs",
+        age: "Data age",
+        sync: "Refresh jobs",
+        syncing: "Refreshing jobs …",
+        syncComplete: "Updated {jobs} jobs from {characters} character(s).",
+        syncPartial: "{completed} updated, {failed} failed. Check sign-in or connection.",
+        syncEmpty: "No enabled character is available for job sync.",
+        syncError: "Industry-job sync could not be started.",
+        loading: "Loading industry jobs …",
+        noData: "No complete industry-job snapshot is available yet.",
+        noMatches: "No industry jobs match the selection.",
+        queryError: "The local industry jobs could not be read.",
+      },
     },
     moduleKicker: "MODULE PREVIEW",
     moduleText:
@@ -956,7 +1088,7 @@ const copy = {
     },
     planned: "Planned",
     previewOnly: "No live function yet",
-    footerVersion: "v0.0.5-preview.6",
+    footerVersion: "v0.0.5-preview.7",
   },
 } as const;
 
@@ -1073,6 +1205,8 @@ export function App({
   assetSyncer = syncAssets,
   blueprintsLoader = loadBlueprints,
   blueprintSyncer = syncBlueprints,
+  industryJobsLoader = loadIndustryJobs,
+  industryJobSyncer = syncIndustryJobs,
   fontScaleSetter = setDesktopFontScale,
 }: {
   runtimeLoader?: () => Promise<DesktopRuntimeStatus>;
@@ -1095,6 +1229,8 @@ export function App({
   assetSyncer?: () => Promise<AssetSyncResult>;
   blueprintsLoader?: (query: BlueprintQuery) => Promise<BlueprintPage>;
   blueprintSyncer?: () => Promise<BlueprintSyncResult>;
+  industryJobsLoader?: (query: IndustryJobQuery) => Promise<IndustryJobPage>;
+  industryJobSyncer?: () => Promise<IndustryJobSyncResult>;
   fontScaleSetter?: (fontScale: FontScale) => Promise<AppearanceStatus>;
 }) {
   const [locale, setLocale] = useState<Locale>("de");
@@ -1104,6 +1240,7 @@ export function App({
   const [syncing, setSyncing] = useState(false);
   const [assetRevision, setAssetRevision] = useState(0);
   const [blueprintRevision, setBlueprintRevision] = useState(0);
+  const [industryJobRevision, setIndustryJobRevision] = useState(0);
   const initialAssetSyncStarted = useRef(false);
   const [runtimeStatus, setRuntimeStatus] = useState(initialRuntimeStatus);
   const [overviewScope, setOverviewScope] = useState<OverviewScopeId>("all");
@@ -1149,14 +1286,9 @@ export function App({
   const nativeCoreReady = runtimeStatus.state === "ready" && runtimeStatus.sidecar === "ready";
 
   const runAssetSync = useCallback(async () => {
-    setSyncing(true);
-    try {
-      const result = await assetSyncer();
-      setAssetRevision((revision) => revision + 1);
-      return result;
-    } finally {
-      setSyncing(false);
-    }
+    const result = await assetSyncer();
+    setAssetRevision((revision) => revision + 1);
+    return result;
   }, [assetSyncer]);
 
   const runBlueprintSync = useCallback(async () => {
@@ -1165,11 +1297,26 @@ export function App({
     return result;
   }, [blueprintSyncer]);
 
+  const runIndustryJobSync = useCallback(async () => {
+    const result = await industryJobSyncer();
+    setIndustryJobRevision((revision) => revision + 1);
+    return result;
+  }, [industryJobSyncer]);
+
   const runAllSyncs = useCallback(async () => {
-    const [assets] = await Promise.allSettled([runAssetSync(), runBlueprintSync()]);
-    if (assets.status === "rejected") throw assets.reason;
-    return assets.value;
-  }, [runAssetSync, runBlueprintSync]);
+    setSyncing(true);
+    try {
+      const sources = await Promise.allSettled([runAssetSync(), runBlueprintSync()]);
+      const jobs = await Promise.allSettled([runIndustryJobSync()]);
+      const failed = [...sources, ...jobs].find((result) => result.status === "rejected");
+      if (failed?.status === "rejected") throw failed.reason;
+      const assetResult = sources[0];
+      if (assetResult.status === "rejected") throw assetResult.reason;
+      return assetResult.value;
+    } finally {
+      setSyncing(false);
+    }
+  }, [runAssetSync, runBlueprintSync, runIndustryJobSync]);
 
   useEffect(() => {
     if (!nativeCoreReady) return;
@@ -1660,6 +1807,9 @@ export function App({
             loadBlueprints={blueprintsLoader}
             syncBlueprints={runBlueprintSync}
             refreshRevision={blueprintRevision}
+            loadIndustryJobs={industryJobsLoader}
+            syncIndustryJobs={runIndustryJobSync}
+            industryJobRevision={industryJobRevision}
           />
         ) : (
           <ModulePreview activeModule={activeModule} t={t} />
@@ -2159,8 +2309,9 @@ function AssetWorkspace({
                       <small>{event.jobCorrelation.windowStart} → {event.jobCorrelation.windowEnd}</small>
                     </td>
                     <td>
-                      <strong>{t.assets.deltas.unmatched}</strong>
-                      <small>Run {event.currentAssetSyncRunId} · {event.eventId.slice(0, 10)}</small>
+                      <strong>{t.assets.deltas.correlationLabels[event.jobCorrelation.state]}</strong>
+                      <small>{event.jobCorrelation.jobIds.length > 0 ? `Job ${event.jobCorrelation.jobIds.join(", ")} · ` : ""}Run {event.currentAssetSyncRunId}</small>
+                      <small>{event.eventId.slice(0, 10)}</small>
                     </td>
                   </tr>
                 ))}
@@ -2835,6 +2986,7 @@ function PanelHeader({
 
 function BlueprintWorkspace({
   available, locale, t, loadBlueprints: loadPage, syncBlueprints: runSync, refreshRevision,
+  loadIndustryJobs: loadJobs, syncIndustryJobs: runJobSync, industryJobRevision,
 }: {
   available: boolean;
   locale: Locale;
@@ -2842,6 +2994,9 @@ function BlueprintWorkspace({
   loadBlueprints: (query: BlueprintQuery) => Promise<BlueprintPage>;
   syncBlueprints: () => Promise<BlueprintSyncResult>;
   refreshRevision: number;
+  loadIndustryJobs: (query: IndustryJobQuery) => Promise<IndustryJobPage>;
+  syncIndustryJobs: () => Promise<IndustryJobSyncResult>;
+  industryJobRevision: number;
 }) {
   const [search, setSearch] = useState("");
   const [appliedSearch, setAppliedSearch] = useState("");
@@ -2940,7 +3095,175 @@ function BlueprintWorkspace({
             </tr>)}</tbody></table></div> : null}
         {page && total > 0 && <div className="asset-pagination"><span>{range}</span><div><button type="button" onClick={() => setOffset(Math.max(0, offset - blueprintPageSize))} disabled={offset === 0}>{t.blueprints.previous}</button><button type="button" onClick={() => setOffset(offset + blueprintPageSize)} disabled={offset + blueprintPageSize >= total}>{t.blueprints.next}</button></div></div>}
       </section>
+      <IndustryJobsPanel
+        available={available}
+        locale={locale}
+        t={t}
+        loadJobs={loadJobs}
+        syncJobs={runJobSync}
+        refreshRevision={industryJobRevision}
+      />
     </div>
+  );
+}
+
+function IndustryJobsPanel({
+  available, locale, t, loadJobs, syncJobs, refreshRevision,
+}: {
+  available: boolean;
+  locale: Locale;
+  t: Translation;
+  loadJobs: (query: IndustryJobQuery) => Promise<IndustryJobPage>;
+  syncJobs: () => Promise<IndustryJobSyncResult>;
+  refreshRevision: number;
+}) {
+  const [search, setSearch] = useState("");
+  const [appliedSearch, setAppliedSearch] = useState("");
+  const [ownerCharacterId, setOwnerCharacterId] = useState<number | null>(null);
+  const [status, setStatus] = useState<IndustryJobStatus | null>(null);
+  const [activityId, setActivityId] = useState<IndustryActivityId | null>(null);
+  const [correlation, setCorrelation] = useState<IndustryCorrelationState | null>(null);
+  const [sortBy, setSortBy] = useState<IndustryJobSortField>("end");
+  const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
+  const [offset, setOffset] = useState(0);
+  const [page, setPage] = useState<IndustryJobPage | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const [syncingJobs, setSyncingJobs] = useState(false);
+  const [syncResult, setSyncResult] = useState<IndustryJobSyncResult | null>(null);
+  const [syncFailed, setSyncFailed] = useState(false);
+  const numberFormat = useMemo(
+    () => new Intl.NumberFormat(locale === "de" ? "de-DE" : "en-US"),
+    [locale],
+  );
+  const iskFormat = useMemo(
+    () => new Intl.NumberFormat(locale === "de" ? "de-DE" : "en-US", { maximumFractionDigits: 2 }),
+    [locale],
+  );
+  const dateFormat = useMemo(
+    () => new Intl.DateTimeFormat(locale === "de" ? "de-DE" : "en-US", {
+      dateStyle: "short", timeStyle: "short",
+    }),
+    [locale],
+  );
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setAppliedSearch(search.trim().replace(/\s+/g, " "));
+      setOffset(0);
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [search]);
+
+  useEffect(() => {
+    if (!available) return;
+    let active = true;
+    setLoading(true);
+    setFailed(false);
+    void loadJobs({
+      search: appliedSearch, ownerCharacterId, status, activityId, correlation,
+      offset, limit: industryJobPageSize, sortBy, sortDirection,
+    }).then((result) => {
+      if (!active) return;
+      if (result.total > 0 && result.offset >= result.total) {
+        setOffset(Math.floor((result.total - 1) / industryJobPageSize) * industryJobPageSize);
+        return;
+      }
+      setPage(result);
+    }).catch(() => {
+      if (active) setFailed(true);
+    }).finally(() => {
+      if (active) setLoading(false);
+    });
+    return () => { active = false; };
+  }, [activityId, appliedSearch, available, correlation, loadJobs, offset, ownerCharacterId, refreshRevision, sortBy, sortDirection, status]);
+
+  const refresh = async () => {
+    if (!available || syncingJobs) return;
+    setSyncingJobs(true);
+    setSyncFailed(false);
+    setSyncResult(null);
+    try {
+      setSyncResult(await syncJobs());
+      setOffset(0);
+    } catch {
+      setSyncFailed(true);
+    } finally {
+      setSyncingJobs(false);
+    }
+  };
+  const changeSort = (field: IndustryJobSortField) => {
+    if (sortBy === field) setSortDirection((value) => value === "asc" ? "desc" : "asc");
+    else { setSortBy(field); setSortDirection("asc"); }
+    setOffset(0);
+  };
+  const header = (field: IndustryJobSortField, label: string) => (
+    <button type="button" className="asset-sort" onClick={() => changeSort(field)}>
+      {label}{sortBy === field && <ChevronDown className={sortDirection === "asc" ? "asset-sort__asc" : ""} size={14} />}
+    </button>
+  );
+  const blueprintEvidence = (state: IndustryJobPage["items"][number]["blueprintCorrelation"]["state"]) => ({
+    current: t.blueprints.jobs.currentBlueprint,
+    historical: t.blueprints.jobs.historicalBlueprint,
+    unmatched: t.blueprints.jobs.noBlueprint,
+    unavailable: t.blueprints.jobs.noBlueprintData,
+  })[state];
+  const assetEvidence = (state: IndustryJobPage["items"][number]["assetCorrelation"]["state"]) => ({
+    linked: t.blueprints.jobs.assetLinked,
+    ambiguous: t.blueprints.jobs.assetAmbiguous,
+    pending: t.blueprints.jobs.assetPending,
+    unmatched: t.blueprints.jobs.assetUnmatched,
+    unavailable: t.blueprints.jobs.assetUnavailable,
+    "not-applicable": t.blueprints.jobs.assetNotApplicable,
+  })[state];
+  const total = page?.total ?? 0;
+  const active = page?.activeTotal ?? 0;
+  const range = t.blueprints.resultRange
+    .replace("{from}", numberFormat.format(total === 0 ? 0 : offset + 1))
+    .replace("{to}", numberFormat.format(Math.min(offset + (page?.items.length ?? 0), total)))
+    .replace("{total}", numberFormat.format(total));
+
+  return (
+    <section className="asset-browser industry-jobs" aria-busy={loading}>
+      <header className="asset-deltas__header industry-jobs__header">
+        <div>
+          <span className="eyebrow">{t.blueprints.jobs.kicker}</span>
+          <h2>{t.blueprints.jobs.title}</h2>
+          <p>{t.blueprints.jobs.subtitle}</p>
+        </div>
+        <div className="asset-hero__metrics">
+          <span><strong>{numberFormat.format(total)}</strong><small>{t.blueprints.jobs.count}</small></span>
+          <span><strong>{numberFormat.format(active)}</strong><small>{t.blueprints.jobs.activeCount}</small></span>
+          <span><strong>{page?.ageSeconds == null ? "—" : formatDataAge(page.ageSeconds, locale)}</strong><small>{t.blueprints.jobs.age}</small></span>
+        </div>
+      </header>
+      <div className="asset-toolbar industry-jobs__toolbar">
+        <label className="asset-search"><span>{t.blueprints.jobs.search}</span><div><Search size={16} /><input value={search} maxLength={120} onChange={(event) => setSearch(event.target.value)} placeholder={t.blueprints.jobs.search} disabled={!available} /></div></label>
+        <label><span>{t.blueprints.owner}</span><select value={ownerCharacterId ?? ""} onChange={(event) => { setOwnerCharacterId(event.target.value ? Number(event.target.value) : null); setOffset(0); }}><option value="">{t.blueprints.allOwners}</option>{(page?.owners ?? []).map((owner) => <option key={owner.characterId} value={owner.characterId}>{owner.name}</option>)}</select></label>
+        <label><span>{t.blueprints.jobs.status}</span><select value={status ?? ""} onChange={(event) => { setStatus((event.target.value || null) as IndustryJobStatus | null); setOffset(0); }}><option value="">{t.blueprints.jobs.allStatuses}</option>{(page?.statuses ?? []).map((value) => <option key={value} value={value}>{t.blueprints.jobs.statusLabels[value]}</option>)}</select></label>
+        <label><span>{t.blueprints.jobs.activity}</span><select value={activityId ?? ""} onChange={(event) => { setActivityId(event.target.value ? Number(event.target.value) as IndustryActivityId : null); setOffset(0); }}><option value="">{t.blueprints.jobs.allActivities}</option>{(page?.activities ?? []).map((value) => { const key = ({ 1: "manufacturing", 3: "research-time", 4: "research-material", 5: "copying", 7: "reverse-engineering", 8: "invention", 9: "reactions", 11: "reactions" } as const)[value]; return <option key={value} value={value}>{t.blueprints.jobs.activityLabels[key]}</option>; })}</select></label>
+        <label><span>{t.blueprints.jobs.correlation}</span><select value={correlation ?? ""} onChange={(event) => { setCorrelation((event.target.value || null) as IndustryCorrelationState | null); setOffset(0); }}><option value="">{t.blueprints.jobs.allCorrelations}</option>{(page?.correlations ?? []).map((value) => <option key={value} value={value}>{t.blueprints.jobs.correlationLabels[value]}</option>)}</select></label>
+        <button className="secondary-button asset-export" type="button" onClick={() => void refresh()} disabled={!available || syncingJobs}><RefreshCw className={syncingJobs ? "spin" : ""} size={15} />{syncingJobs ? t.blueprints.jobs.syncing : t.blueprints.jobs.sync}</button>
+      </div>
+      {(syncResult || syncFailed) && <div className={`asset-export-status ${syncFailed || (syncResult?.failed ?? 0) > 0 ? "asset-export-status--error" : ""}`} role="status">{syncFailed ? t.blueprints.jobs.syncError : syncResult?.characters.length === 0 ? t.blueprints.jobs.syncEmpty : (syncResult?.failed ?? 0) > 0 ? t.blueprints.jobs.syncPartial.replace("{completed}", String(syncResult?.completed ?? 0)).replace("{failed}", String(syncResult?.failed ?? 0)) : t.blueprints.jobs.syncComplete.replace("{jobs}", numberFormat.format(syncResult?.jobs ?? 0)).replace("{characters}", String(syncResult?.completed ?? 0))}</div>}
+      {!available ? <div className="asset-empty"><Database size={22} />{t.blueprints.unavailable}</div>
+        : failed ? <div className="asset-empty asset-empty--error"><AlertTriangle size={22} />{t.blueprints.jobs.queryError}</div>
+        : loading && page === null ? <div className="asset-empty"><RefreshCw className="spin" size={22} />{t.blueprints.jobs.loading}</div>
+        : page && page.items.length === 0 ? <div className="asset-empty"><Factory size={22} />{page.observedAt === null ? t.blueprints.jobs.noData : t.blueprints.jobs.noMatches}</div>
+        : page ? <div className="asset-table-wrap"><table className="asset-table industry-job-table"><thead><tr>
+            <th>{header("type", t.blueprints.jobs.blueprint)}</th><th>{t.blueprints.jobs.product}</th><th>{header("owner", t.blueprints.jobs.owner)}</th><th>{header("status", t.blueprints.jobs.status)}</th><th>{header("runs", t.blueprints.jobs.runs)}</th><th>{header("end", t.blueprints.jobs.timeline)}</th><th>{t.blueprints.jobs.location}</th><th>{header("correlation", t.blueprints.jobs.evidence)}</th>
+          </tr></thead><tbody>{page.items.map((item) => <tr key={item.jobId}>
+            <td><strong>{item.blueprintName}</strong><small>Job #{item.jobId} · Item #{item.blueprintItemId}</small></td>
+            <td><strong>{item.productName ?? "—"}</strong>{item.productTypeId && <small>Type #{item.productTypeId}</small>}</td>
+            <td><strong>{item.ownerName}</strong><small>{t.blueprints.jobs.activityLabels[item.activityKey]}</small></td>
+            <td><span className={`status-pill status-pill--${item.status === "delivered" ? "good" : item.status === "cancelled" || item.status === "reverted" ? "warn" : "info"}`}>{t.blueprints.jobs.statusLabels[item.status]}</span></td>
+            <td className="asset-table__number"><strong>{numberFormat.format(item.runs)}</strong><small>{item.successfulRuns == null ? "" : `${numberFormat.format(item.successfulRuns)} ${t.blueprints.jobs.successful}`}{item.cost == null ? "" : ` · ${iskFormat.format(item.cost)} ISK`}</small></td>
+            <td><strong>{dateFormat.format(new Date(item.endDate))}</strong><small>{dateFormat.format(new Date(item.startDate))} → {item.completedDate ? dateFormat.format(new Date(item.completedDate)) : "—"}</small></td>
+            <td><strong>#{item.facilityId}</strong><small>Output #{item.outputLocationId}</small></td>
+            <td><span className={`status-pill status-pill--${item.correlationState === "linked" ? "good" : item.correlationState === "ambiguous" || item.correlationState === "partial" ? "warn" : "info"}`}>{t.blueprints.jobs.correlationLabels[item.correlationState]}</span><small>{blueprintEvidence(item.blueprintCorrelation.state)} · {assetEvidence(item.assetCorrelation.state)}</small><small>Run {item.jobSyncRunId}{item.assetCorrelation.eventIds[0] ? ` · ${item.assetCorrelation.eventIds[0].slice(0, 10)}` : ""}</small></td>
+          </tr>)}</tbody></table></div> : null}
+      {page && total > 0 && <div className="asset-pagination"><span>{range}</span><div><button type="button" onClick={() => setOffset(Math.max(0, offset - industryJobPageSize))} disabled={offset === 0}>{t.blueprints.previous}</button><button type="button" onClick={() => setOffset(offset + industryJobPageSize)} disabled={offset + industryJobPageSize >= total}>{t.blueprints.next}</button></div></div>}
+    </section>
   );
 }
 

@@ -1,4 +1,4 @@
-# Asset-Deltas und vorbereitete Jobkorrelation
+# Asset-Deltas und Jobkorrelation
 
 Paket 21 erzeugt nach jedem vollständig abgeschlossenen Charakter-Asset-Sync einen nachvollziehbaren Vergleich zum vorherigen vollständigen Snapshot. Der erste vollständige Stand eines Charakters wird als leere Baseline festgehalten. Deltas sind abgeleitete lokale Snapshots; SQLite-Schema 6 bleibt unverändert.
 
@@ -24,9 +24,9 @@ Eine stabile `item_id` wird zwischen den beiden vollständigen Ständen verglich
 
 Ein Wechsel der `type_id` bei gleicher `item_id` wird als widersprüchliche Identität abgewiesen. Unveränderte Items erzeugen kein Ereignis. Jedes Ereignis erhält einen deterministischen SHA-256-Fingerabdruck über Charakter, Snapshotpaar und alle Vorher-/Nachher-Werte. Beim Lesen wird dieser Fingerabdruck erneut geprüft; manipulierte oder beschädigte Delta-Snapshots schlagen geschlossen fehl.
 
-## Vorbereitung der Jobkorrelation
+## Belegbasierte Jobkorrelation
 
-Eine fachliche Zuordnung zu Industrie-Jobs erfolgt noch nicht, weil Jobs erst in der nächsten Phase synchronisiert werden. Jedes Delta enthält aber bereits die dafür notwendigen stabilen Belege:
+Seit Paket 24 werden persönliche Industrieaufträge separat vollständig synchronisiert. Eingehende Asset-Änderungen können beim Lesen mit ausgelieferten Jobs desselben Charakters korreliert werden. Grundlage bleiben die stabilen Delta-Belege:
 
 - Korrelationsschlüssel aus `character_id:type_id`,
 - Richtung `inbound`, `outbound` oder `neutral` aus der Mengenänderung,
@@ -34,13 +34,13 @@ Eine fachliche Zuordnung zu Industrie-Jobs erfolgt noch nicht, weil Jobs erst in
 - vorherige und neue Position,
 - vollständiges Beobachtungsfenster,
 - Quell-Sync-Run und beide Snapshot-IDs,
-- expliziten Zustand `unmatched`.
+- unveränderten deterministischen Ereignisfingerabdruck.
 
-Spätere Jobkorrelation darf diese Belege ergänzen, aber nicht rückwirkend umdeuten oder überschreiben. Mehrere plausible Jobs müssen als Unsicherheit sichtbar bleiben.
+Produkt-Type-ID und Jobabschluss müssen zum Typ und Beobachtungsfenster des Deltas passen; eine exakte Ausgabelocation wird bevorzugt. Ein eindeutiger Kandidat wird mit Job-ID als `linked` angezeigt, mehrere plausible Jobs als `ambiguous`. Fehlende Jobdaten bleiben `unavailable`, nicht passende Änderungen `unmatched` oder `not-applicable`. Die Ableitung verändert weder gespeicherte Deltas noch deren Fingerabdrücke.
 
 ## Sichtbare Historie und Grenzen
 
-Die DE/EN-Asset-Oberfläche zeigt Summen sowie Typ, Besitzer, Änderungsarten, Menge vorher/nachher, Standort vorher/nachher, Zeitfenster und Quellnachweis. Suche, Besitzerfilter und Änderungsartfilter laufen im Sidecar. Die Desktop-Brücke akzeptiert höchstens 200 Ereignisse pro Anfrage; die Oberfläche verwendet 50 Ereignisse pro Seite und rendert nur dieses Fenster.
+Die DE/EN-Asset-Oberfläche zeigt Summen sowie Typ, Besitzer, Änderungsarten, Menge vorher/nachher, Standort vorher/nachher, Zeitfenster, Jobzuordnung und Quellnachweis. Suche, Besitzerfilter und Änderungsartfilter laufen im Sidecar. Die Desktop-Brücke akzeptiert höchstens 200 Ereignisse pro Anfrage; die Oberfläche verwendet 50 Ereignisse pro Seite und rendert nur dieses Fenster.
 
 Die Zustände Desktop-Kern nicht verfügbar, kein Baseline-Nachweis, keine Treffer, Laden und Lesefehler werden getrennt dargestellt. Typname und Alias dienen der aktuellen Anzeige; Type-ID, Character-ID, Item-ID und Fingerabdruck bleiben die stabilen historischen Identitäten.
 

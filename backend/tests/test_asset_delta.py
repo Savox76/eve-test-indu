@@ -219,7 +219,8 @@ class AssetDeltaTests(unittest.TestCase):
         event = page["items"][0]
         self.assertEqual(event["quantityDelta"], -4)
         self.assertEqual(event["ownerName"], "Delta Pilot")
-        self.assertEqual(event["jobCorrelation"]["state"], "unmatched")
+        self.assertEqual(event["jobCorrelation"]["state"], "not-applicable")
+        self.assertEqual(event["jobCorrelation"]["jobIds"], [])
         self.assertEqual(event["jobCorrelation"]["direction"], "outbound")
         self.assertEqual(page["limit"], 1)
         self.assertTrue(page["hasBaseline"])
