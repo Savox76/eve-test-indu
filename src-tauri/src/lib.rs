@@ -1555,9 +1555,11 @@ fn research_plan_owner_is_valid(owner: &ResearchPlanOwner) -> bool {
         && owner
             .slot_capacity
             .is_none_or(|value| (1..=11).contains(&value))
-        && owner
-            .slots_available
-            .is_none_or(|value| owner.slot_capacity.is_some_and(|capacity| value <= capacity))
+        && owner.slots_available.is_none_or(|value| {
+            owner
+                .slot_capacity
+                .is_some_and(|capacity| value <= capacity)
+        })
         && owner.slots_used <= JAVASCRIPT_MAX_SAFE_INTEGER
         && [
             owner.laboratory_operation_level,
@@ -1672,7 +1674,9 @@ fn research_plan_record_is_valid(item: &ResearchPlanRecord) -> bool {
         && asset_text_is_valid(&item.blueprint_name, 200)
         && item.blueprint_present == current
         && (current || no_current)
-        && item.current_material_efficiency.is_none_or(|value| value <= 10)
+        && item
+            .current_material_efficiency
+            .is_none_or(|value| value <= 10)
         && item.current_time_efficiency.is_none_or(|value| value <= 20)
         && item
             .location_id
@@ -1704,10 +1708,7 @@ fn research_plan_record_is_valid(item: &ResearchPlanRecord) -> bool {
         && facility
         && (item.facility_evidence != "active-job" || item.active_job_id.is_some())
         && RESEARCH_FACILITY_EVIDENCE.contains(&item.facility_evidence.as_str())
-        && optional_source_pair_is_valid(
-            item.blueprint_snapshot_id,
-            item.blueprint_sync_run_id,
-        )
+        && optional_source_pair_is_valid(item.blueprint_snapshot_id, item.blueprint_sync_run_id)
         && optional_source_pair_is_valid(item.skill_snapshot_id, item.skill_sync_run_id)
         && optional_source_pair_is_valid(item.job_snapshot_id, item.job_sync_run_id)
         && persisted
@@ -3100,9 +3101,7 @@ fn query_research_plans(
     };
     let page: ResearchPlanQueryResponse =
         serde_json::from_str(&response).map_err(|_| "sidecar-response-invalid".to_owned())?;
-    if !research_plan_query_response_is_valid(&page)
-        || page.offset != offset
-        || page.limit != limit
+    if !research_plan_query_response_is_valid(&page) || page.offset != offset || page.limit != limit
     {
         return Err("sidecar-response-invalid".to_owned());
     }
@@ -3769,15 +3768,16 @@ mod tests {
         asset_export_response_is_valid, asset_query_response_is_valid, authorization_url_is_valid,
         character_skill_query_response_is_valid, character_skill_sync_response_is_valid,
         eve_character_record_is_valid, industry_job_query_response_is_valid,
-        industry_job_sync_response_is_valid, sso_login_status_is_valid, AccountGroupRecord,
-        AssetDeltaCorrelation, AssetDeltaQueryResponse, AssetDeltaRecord, AssetDeltaSummary,
-        AssetExportResponse, AssetLocationNode, AssetOwner, AssetQueryResponse, AssetRecord,
+        industry_job_sync_response_is_valid, research_plan_query_response_is_valid,
+        sso_login_status_is_valid, AccountGroupRecord, AssetDeltaCorrelation,
+        AssetDeltaQueryResponse, AssetDeltaRecord, AssetDeltaSummary, AssetExportResponse,
+        AssetLocationNode, AssetOwner, AssetQueryResponse, AssetRecord,
         CharacterSkillQueryResponse, CharacterSkillRecord, CharacterSkillSyncCharacterResponse,
         CharacterSkillSyncResponse, EveCharacterRecord, IndustryAssetCorrelation,
         IndustryBlueprintCorrelation, IndustryJobQueryResponse, IndustryJobRecord,
-        IndustryJobSyncCharacterResponse, IndustryJobSyncResponse, ScopePackageStatus,
-        SsoCharacterIdentity, SsoLoginStatus, ResearchPlanOwner, ResearchPlanQueryResponse,
-        ResearchPlanRecord, ResearchPlanSummary, research_plan_query_response_is_valid,
+        IndustryJobSyncCharacterResponse, IndustryJobSyncResponse, ResearchPlanOwner,
+        ResearchPlanQueryResponse, ResearchPlanRecord, ResearchPlanSummary, ScopePackageStatus,
+        SsoCharacterIdentity, SsoLoginStatus,
     };
 
     fn valid_authorization_url() -> String {
