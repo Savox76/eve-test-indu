@@ -4990,9 +4990,8 @@ mod tests {
         migrate_to_program_directory_storage, release_page_url,
         research_plan_query_response_is_valid, sidecar_startup_error_code,
         sidecar_startup_error_is_retryable, sso_login_status_is_valid, AccountGroupRecord,
-        AssetDeltaCorrelation,
-        AssetDeltaQueryResponse, AssetDeltaRecord, AssetDeltaSummary, AssetExportResponse,
-        AssetLocationNode, AssetOwner, AssetQueryResponse, AssetRecord,
+        AssetDeltaCorrelation, AssetDeltaQueryResponse, AssetDeltaRecord, AssetDeltaSummary,
+        AssetExportResponse, AssetLocationNode, AssetOwner, AssetQueryResponse, AssetRecord,
         CharacterSkillQueryResponse, CharacterSkillRecord, CharacterSkillSyncCharacterResponse,
         CharacterSkillSyncResponse, EveCharacterRecord, IndustryAssetCorrelation,
         IndustryBlueprintCorrelation, IndustryJobQueryResponse, IndustryJobRecord,
@@ -5159,7 +5158,9 @@ mod tests {
 
     #[test]
     fn retries_only_transient_sidecar_startup_errors() {
-        assert!(sidecar_startup_error_is_retryable("database-startup-failed"));
+        assert!(sidecar_startup_error_is_retryable(
+            "database-startup-failed"
+        ));
         assert!(sidecar_startup_error_is_retryable("sidecar-ready-invalid"));
         assert!(!sidecar_startup_error_is_retryable(
             "program-storage-unavailable"
