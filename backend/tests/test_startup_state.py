@@ -88,6 +88,28 @@ class CacheFirstStartupStateTests(unittest.TestCase):
         self.assertEqual(state.age_seconds, 360)
         self.assertEqual(state.last_sync_status, "completed")
 
+    def test_snapshot_without_expiry_stays_fresh_for_two_hours(self) -> None:
+        self.add_run(
+            "completed",
+            observed_at="2026-09-09T10:00:01Z",
+        )
+
+        state = inspect_startup_data_state(self.connection, now=NOW)
+
+        self.assertEqual(state.state, "fresh")
+        self.assertEqual(state.age_seconds, 7_199)
+
+    def test_snapshot_without_expiry_becomes_stale_at_two_hours(self) -> None:
+        self.add_run(
+            "completed",
+            observed_at="2026-09-09T10:00:00Z",
+        )
+
+        state = inspect_startup_data_state(self.connection, now=NOW)
+
+        self.assertEqual(state.state, "stale")
+        self.assertEqual(state.age_seconds, 7_200)
+
     def test_expired_snapshot_remains_available_and_is_marked_stale(self) -> None:
         self.add_run(
             "completed",

@@ -107,6 +107,23 @@ def _type_names(connection: sqlite3.Connection) -> dict[int, str]:
     return names
 
 
+def _enabled_owners(connection: sqlite3.Connection) -> list[dict[str, object]]:
+    return [
+        {
+            "characterId": int(row["character_id"]),
+            "name": str(row["alias"] or row["name"]),
+        }
+        for row in connection.execute(
+            """
+            SELECT character_id, name, alias
+            FROM characters
+            WHERE enabled = 1
+            ORDER BY COALESCE(alias, name) COLLATE NOCASE, character_id
+            """
+        )
+    ]
+
+
 def _blueprint_evidence(connection: sqlite3.Connection) -> tuple[set[int], dict[tuple[int, int], list[dict[str, object]]]]:
     snapshots = connection.execute(
         """
@@ -303,13 +320,12 @@ def query_industry_jobs(
     asset_available, assets = _asset_evidence(connection)
     tokens = query["search"].casefold().split()
     rows: list[dict[str, object]] = []
-    owners: list[dict[str, object]] = []
+    owners = _enabled_owners(connection)
     observed_values: list[str] = []
     activities: set[int] = set()
 
     for character_id, snapshot in job_snapshots.items():
         owner_name = str(snapshot["ownerName"])
-        owners.append({"characterId": character_id, "name": owner_name})
         observed_at = str(snapshot["observedAt"])
         observed_values.append(observed_at)
         if query["ownerCharacterId"] is not None and query["ownerCharacterId"] != character_id:
@@ -426,7 +442,6 @@ def query_industry_jobs(
         key=lambda row: (getters[query["sortBy"]](row), int(row["jobId"])),
         reverse=query["sortDirection"] == "desc",
     )
-    owners.sort(key=lambda owner: (str(owner["name"]).casefold(), int(owner["characterId"])))
     total = len(rows)
     active_total = sum(
         row["status"] in ("active", "paused", "ready") for row in rows

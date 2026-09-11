@@ -20,6 +20,7 @@ SYNC_STATUSES: Final = frozenset({"running", "completed", "failed", "cancelled"}
 DATA_STATES: Final = frozenset(
     {"loading", "refreshing", "empty", "fresh", "stale", "offline", "error"}
 )
+STALE_AFTER_SECONDS: Final = 2 * 60 * 60
 
 
 @dataclass(frozen=True, slots=True)
@@ -110,7 +111,7 @@ def inspect_startup_data_state(
         try:
             observed_time = _parse_utc_timestamp(observed_at or "")
             age_seconds = max(0, int((reference_time - observed_time).total_seconds()))
-            cache_is_fresh = (
+            cache_is_fresh = age_seconds < STALE_AFTER_SECONDS or (
                 expires_at is not None
                 and _parse_utc_timestamp(expires_at) > reference_time
             )

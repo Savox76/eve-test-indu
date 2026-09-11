@@ -42,7 +42,8 @@ def load_latest_job_snapshots(connection: sqlite3.Connection) -> dict[int, dict[
         JOIN cached_snapshots
           ON cached_snapshots.resource='character_industry_jobs:' || characters.character_id
         JOIN sync_runs ON sync_runs.id=cached_snapshots.sync_run_id
-        WHERE sync_runs.source='character_industry_jobs'
+        WHERE characters.enabled=1
+          AND sync_runs.source='character_industry_jobs'
           AND sync_runs.status='completed'
           AND cached_snapshots.id=(
             SELECT candidate.id

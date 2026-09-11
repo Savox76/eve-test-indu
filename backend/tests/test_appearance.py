@@ -16,9 +16,9 @@ from new_eden_foundry_backend.database import connect_database, initialize_datab
 class AppearancePreferenceTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temporary_directory = tempfile.TemporaryDirectory()
-        database_path = Path(self.temporary_directory.name) / "foundry.sqlite3"
-        initialize_database(database_path)
-        self.connection = connect_database(database_path)
+        self.database_path = Path(self.temporary_directory.name) / "foundry.sqlite3"
+        initialize_database(self.database_path)
+        self.connection = connect_database(self.database_path)
 
     def tearDown(self) -> None:
         self.connection.close()
@@ -40,6 +40,13 @@ class AppearancePreferenceTests(unittest.TestCase):
             with self.subTest(value=value):
                 with self.assertRaises((TypeError, ValueError)):
                     set_font_scale(self.connection, value)
+
+    def test_saved_scale_survives_database_restart(self) -> None:
+        set_font_scale(self.connection, FontScale.LARGE.value)
+        self.connection.close()
+        self.connection = connect_database(self.database_path)
+
+        self.assertEqual(read_font_scale(self.connection), FontScale.LARGE)
 
 
 if __name__ == "__main__":

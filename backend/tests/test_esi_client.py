@@ -134,11 +134,28 @@ class EsiClientTests(unittest.TestCase):
         )
         self.assertEqual(ESI_COMPATIBILITY_DATE, headers["X-Compatibility-Date"])
         self.assertEqual(ESI_USER_AGENT, headers["User-Agent"])
-        self.assertTrue(ESI_USER_AGENT.startswith("New-Eden-Foundry/0.0.5-preview.13 "))
+        self.assertTrue(ESI_USER_AGENT.startswith("New-Eden-Foundry/0.0.5-preview.14 "))
         self.assertIn("Savox76/eve-test-indu", ESI_USER_AGENT)
         self.assertEqual("Bearer synthetic-access-token", headers["Authorization"])
         self.assertEqual(20.0, timeout)
 
+    def test_preserves_bounded_token_failure_code_for_user_action(self) -> None:
+        class MissingScopeError(RuntimeError):
+            code = "jwt-scopes-missing"
+
+        def token_provider(_character_id: int, _scopes: tuple[str, ...]) -> str:
+            raise MissingScopeError
+
+        client = EsiClient(token_provider, transport=QueueTransport(), sleep=lambda _: None)
+
+        with self.assertRaises(EsiClientError) as raised:
+            client.get_json(
+                "/characters/2112345678/assets/",
+                character_id=2_112_345_678,
+                required_scopes=("esi-assets.read_assets.v1",),
+            )
+
+        self.assertEqual(raised.exception.code, "jwt-scopes-missing")
     def test_fresh_cache_avoids_network_and_stale_cache_revalidates(self) -> None:
         clock = MutableClock()
         transport = QueueTransport(

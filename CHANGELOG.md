@@ -24,6 +24,40 @@ Keine.
 
 Keine.
 
+## 0.0.5-preview.14 – 11. September 2026
+
+### Neu hinzugefügt
+
+- Der auf EVE-SDE-Build `3503375` festgelegte und per SHA-256 geprüfte Produktionskatalog wird mitgeliefert und beim ersten Start automatisch atomar installiert.
+- Fehlgeschlagene Asset-, Blueprint- und Job-Abrufe nennen jetzt Charakter, Teilbereich und einen konkreten lokalen beziehungsweise ESI-Fehlercode.
+
+### Geändert
+
+- Cache ohne explizites Ablaufdatum gilt erst ab einem Datenalter von zwei Stunden als veraltet.
+- Forschungspläne kennzeichnen ausdrücklich, dass sie lokale Arbeitslisten sind und weder Daten an EVE senden noch Jobs starten.
+- Der Updatehinweis erklärt die portable Ausgabe als vollständig zu entpackenden Programmordner und grenzt sie von einem Start im ZIP oder einer Einzel-EXE ab.
+- Die sichtbare Versionsnummer lautet `v0.0.5-preview.14`.
+
+### Behobene Fehler
+
+- Produktionsprodukte und Blueprints können ohne vorherigen manuellen SDE-Import gesucht und als Ziel gespeichert werden.
+- Ein erfolgreicher Asset-Snapshot wird nicht mehr als vollständig fehlgeschlagen gemeldet, wenn nur Typnamen- oder Standortanreicherung scheitert.
+- Deaktivierte Charaktere bleiben lokal gespeichert, verschwinden aber aus Asset-, Delta-, Blueprint- und Jobansichten.
+- Alle aktivierten Charaktere stehen in Blueprint- und Jobfiltern, auch wenn für einen davon noch kein vollständiger Snapshot vorliegt.
+- Fehlende Schriftgrößenvariablen im Produktionsbereich wurden ergänzt; die gespeicherte globale Schriftstufe bleibt nach einem Datenbankneustart erhalten.
+
+### Bekannte Einschränkungen
+
+- Bruttomaterial und Basiszeit berücksichtigen noch keinen Bestand, keine Reservierungen, kein Blueprint-ME, keine Skills, Anlagen-/Rigboni, Systemkosten, Steuern oder Preise.
+- Der Release-Hinweis lädt und installiert nichts automatisch. Die automatische Ersetzung bleibt bis zu produktiv signierten Paketen, Rollback und bestandenem Windows-Update-Gate gesperrt.
+- Paket 22 wartet weiterhin auf das vollständige Windows-A0-Protokoll.
+
+### Update und Datenbankmigration
+
+- Das Anwendungsschema bleibt bei Version 9; der SDE-Bestand ist vollständig abgeleitet und verändert keine Nutzerdaten.
+- Installer- und Portable-Update behalten `data`, Charaktere, Einstellungen, Forschungs- und Produktionspläne sowie vollständige Snapshots bei.
+- Es werden keine zusätzlichen ESI-Scopes benötigt.
+
 ## 0.0.5-preview.13 – 11. September 2026
 
 ### Neu hinzugefügt

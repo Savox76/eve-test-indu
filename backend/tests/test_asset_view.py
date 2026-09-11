@@ -232,6 +232,37 @@ class AssetViewTests(unittest.TestCase):
         self.assertEqual(result["items"][0]["itemId"], 9_800_012)
         self.assertEqual(result["items"][0]["locationStatus"], "restricted")
 
+    def test_owner_filter_lists_all_enabled_characters_and_hides_disabled_cache(self) -> None:
+        third_character_id = 90_888_003
+        self.database.execute(
+            "INSERT INTO characters(character_id,name) VALUES(?,?)",
+            (third_character_id, "Synthetic Scout"),
+        )
+        self.publish_assets(
+            CHARACTER_ID,
+            [asset(9_800_021)],
+            "2026-09-10T10:00:00Z",
+        )
+        self.publish_assets(
+            SECOND_CHARACTER_ID,
+            [asset(9_800_022)],
+            "2026-09-10T10:00:00Z",
+        )
+        self.database.execute(
+            "UPDATE characters SET enabled=0 WHERE character_id=?",
+            (SECOND_CHARACTER_ID,),
+        )
+
+        result = query_assets(self.database, AssetQuery())
+
+        self.assertEqual(result["total"], 1)
+        self.assertEqual(
+            result["owners"],
+            [
+                {"characterId": CHARACTER_ID, "name": "Builder"},
+                {"characterId": third_character_id, "name": "Synthetic Scout"},
+            ],
+        )
     def test_sorting_is_applied_before_the_bounded_page(self) -> None:
         self.publish_assets(
             CHARACTER_ID,

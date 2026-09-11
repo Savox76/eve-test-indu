@@ -201,6 +201,43 @@ class IndustryJobTests(unittest.TestCase):
         self.assertEqual(delta_page["items"][0]["jobCorrelation"]["state"], "linked")
         self.assertEqual(delta_page["items"][0]["jobCorrelation"]["jobIds"], [8_001])
 
+    def test_lists_enabled_character_without_snapshot_and_hides_disabled_jobs(self):
+        second_character_id = 90_000_002
+        self.db.execute(
+            "INSERT INTO characters(character_id,name) VALUES(?,?)",
+            (second_character_id, "Second Pilot"),
+        )
+        sync_character_industry_jobs(
+            self.db,
+            FakeClient([job(status="active")]),
+            CHARACTER_ID,
+        )
+        query = {
+            "search": "", "ownerCharacterId": None, "status": None,
+            "activityId": None, "correlation": None, "offset": 0, "limit": 100,
+            "sortBy": "start", "sortDirection": "asc",
+        }
+
+        page = query_industry_jobs(self.db, query)
+        self.assertEqual(
+            page["owners"],
+            [
+                {"characterId": CHARACTER_ID, "name": "Industry Pilot"},
+                {"characterId": second_character_id, "name": "Second Pilot"},
+            ],
+        )
+
+        self.db.execute(
+            "UPDATE characters SET enabled=0 WHERE character_id=?",
+            (CHARACTER_ID,),
+        )
+        page = query_industry_jobs(self.db, query)
+        self.assertEqual(page["total"], 0)
+        self.assertEqual(
+            page["owners"],
+            [{"characterId": second_character_id, "name": "Second Pilot"}],
+        )
+
     def test_active_jobs_are_pending_and_query_is_strict_and_bounded(self):
         active = job(8_002, status="active")
         active["successful_runs"] = None

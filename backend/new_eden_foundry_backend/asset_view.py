@@ -137,7 +137,8 @@ def _latest_asset_snapshots(connection: sqlite3.Connection) -> list[sqlite3.Row]
         JOIN cached_snapshots
           ON cached_snapshots.resource = 'character_assets:' || characters.character_id
         JOIN sync_runs ON sync_runs.id = cached_snapshots.sync_run_id
-        WHERE sync_runs.status = 'completed'
+        WHERE characters.enabled = 1
+          AND sync_runs.status = 'completed'
           AND cached_snapshots.id = (
               SELECT candidate.id
               FROM cached_snapshots AS candidate
@@ -151,6 +152,23 @@ def _latest_asset_snapshots(connection: sqlite3.Connection) -> list[sqlite3.Row]
         ORDER BY characters.name COLLATE NOCASE, characters.character_id
         """
     ).fetchall()
+
+
+def _enabled_owners(connection: sqlite3.Connection) -> list[dict[str, object]]:
+    return [
+        {
+            "characterId": int(row["character_id"]),
+            "name": str(row["alias"] or row["name"]),
+        }
+        for row in connection.execute(
+            """
+            SELECT character_id, name, alias
+            FROM characters
+            WHERE enabled = 1
+            ORDER BY COALESCE(alias, name) COLLATE NOCASE, character_id
+            """
+        )
+    ]
 
 
 def _matching_locations(
@@ -306,14 +324,13 @@ def _build_rows(
     now = now.astimezone(timezone.utc)
     names = _type_names(connection)
     result: list[dict[str, object]] = []
-    owners: list[dict[str, object]] = []
+    owners = _enabled_owners(connection)
     relevant_observed: list[str] = []
     search_tokens = query.search.casefold().split()
 
     for snapshot in _latest_asset_snapshots(connection):
         character_id = int(snapshot["character_id"])
         owner_name = str(snapshot["alias"] or snapshot["name"])
-        owners.append({"characterId": character_id, "name": owner_name})
         if query.owner_character_id is not None and character_id != query.owner_character_id:
             continue
         observed_at = str(snapshot["observed_at"])

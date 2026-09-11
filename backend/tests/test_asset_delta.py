@@ -300,6 +300,27 @@ class AssetDeltaTests(unittest.TestCase):
         self.assertEqual((page["offset"], page["limit"]), (100, 50))
         self.assertEqual(page["summary"]["quantity"], 10_000)
 
+    def test_disabled_character_delta_cache_is_preserved_but_hidden(self) -> None:
+        sync_character_assets(self.database, FakeClient([asset(1)]), CHARACTER_ID)
+        sync_character_assets(self.database, FakeClient([asset(1, quantity=2)]), CHARACTER_ID)
+        self.database.execute(
+            "UPDATE characters SET enabled=0 WHERE character_id=?",
+            (CHARACTER_ID,),
+        )
+
+        page = query_asset_deltas(self.database, AssetDeltaQuery())
+
+        self.assertEqual(page["items"], [])
+        self.assertEqual(page["owners"], [])
+        self.assertEqual(page["total"], 0)
+        self.assertEqual(
+            self.database.execute(
+                "SELECT count(*) FROM cached_snapshots WHERE resource=?",
+                (f"asset_deltas:{CHARACTER_ID}",),
+            ).fetchone()[0],
+            2,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

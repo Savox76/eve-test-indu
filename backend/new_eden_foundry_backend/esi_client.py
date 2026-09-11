@@ -39,6 +39,7 @@ MAX_RETRY_DELAY_SECONDS: Final = 30.0
 _MAX_ERROR_BUDGET: Final = 100
 _COMPATIBILITY_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _CACHE_MAX_AGE = re.compile(r"(?:^|,)\s*max-age=(\d+)\s*(?:,|$)", re.IGNORECASE)
+_PUBLIC_ERROR_CODE = re.compile(r"^[a-z][a-z0-9-]{0,79}$")
 
 
 class EsiClientError(RuntimeError):
@@ -369,6 +370,11 @@ class EsiClient:
             try:
                 token = self._token_provider(character_id, scopes)  # type: ignore[misc]
             except Exception as error:
+                token_error_code = getattr(error, "code", None)
+                if isinstance(token_error_code, str) and _PUBLIC_ERROR_CODE.fullmatch(
+                    token_error_code
+                ):
+                    raise EsiClientError(token_error_code) from error
                 raise EsiClientError("esi-access-token-unavailable") from error
             if (
                 not isinstance(token, str)
