@@ -79,13 +79,8 @@ const INDUSTRY_COST_ACTIVITIES: [&str; 6] = [
     "researching_time_efficiency",
 ];
 const INDUSTRY_SLOT_ACTIVITIES: [&str; 3] = ["manufacturing", "reactions", "science"];
-const INDUSTRY_SLOT_UTILIZATION_STATES: [&str; 4] =
-    ["unknown", "available", "full", "overbooked"];
-const INDUSTRY_SLOT_SKILL_IDS: [(u64, u64); 3] = [
-    (3387, 24625),
-    (45748, 45749),
-    (3406, 24624),
-];
+const INDUSTRY_SLOT_UTILIZATION_STATES: [&str; 4] = ["unknown", "available", "full", "overbooked"];
+const INDUSTRY_SLOT_SKILL_IDS: [(u64, u64); 3] = [(3387, 24625), (45748, 45749), (3406, 24624)];
 const CHARACTER_SKILL_SORT_FIELDS: [&str; 6] =
     ["skill", "owner", "trained", "active", "skillpoints", "age"];
 const CHARACTER_SKILL_ACTIVE_STATES: [&str; 3] = ["normal", "limited", "boosted"];
@@ -1617,7 +1612,9 @@ fn industry_slot_activity_is_valid(item: &IndustrySlotActivity, index: usize) ->
     if !(skill_values_are_known || skill_values_are_unknown)
         || item.primary_skill_level.is_some_and(|value| value > 5)
         || item.advanced_skill_level.is_some_and(|value| value > 5)
-        || item.capacity.is_some_and(|value| !(1..=11).contains(&value))
+        || item
+            .capacity
+            .is_some_and(|value| !(1..=11).contains(&value))
         || (skill_values_are_known
             && item.capacity
                 != Some(
@@ -1636,10 +1633,15 @@ fn industry_slot_activity_is_valid(item: &IndustrySlotActivity, index: usize) ->
         && item.paused_jobs.is_none()
         && item.ready_jobs.is_none();
     if !(job_values_are_known || job_values_are_unknown)
-        || [item.occupied, item.active_jobs, item.paused_jobs, item.ready_jobs]
-            .into_iter()
-            .flatten()
-            .any(|value| value > JAVASCRIPT_MAX_SAFE_INTEGER)
+        || [
+            item.occupied,
+            item.active_jobs,
+            item.paused_jobs,
+            item.ready_jobs,
+        ]
+        .into_iter()
+        .flatten()
+        .any(|value| value > JAVASCRIPT_MAX_SAFE_INTEGER)
         || (job_values_are_known
             && item
                 .active_jobs
@@ -1767,9 +1769,10 @@ fn industry_slot_query_response_is_valid(response: &IndustrySlotQueryResponse) -
         && owner_ids.len() == response.owners.len()
         && response.items.iter().all(|item| {
             industry_slot_record_is_valid(item)
-                && response.owners.iter().any(|owner| {
-                    owner.character_id == item.character_id && owner.name == item.name
-                })
+                && response
+                    .owners
+                    .iter()
+                    .any(|owner| owner.character_id == item.character_id && owner.name == item.name)
         })
         && response.owners.iter().all(|owner| {
             owner.character_id > 0
@@ -1777,10 +1780,7 @@ fn industry_slot_query_response_is_valid(response: &IndustrySlotQueryResponse) -
                 && asset_text_is_valid(&owner.name, 100)
         })
         && (response.observed_at.is_some()
-            || response
-                .items
-                .iter()
-                .all(|item| item.observed_at.is_none()))
+            || response.items.iter().all(|item| item.observed_at.is_none()))
 }
 
 fn optional_source_pair_is_valid(first: Option<u64>, second: Option<u64>) -> bool {
@@ -3327,9 +3327,7 @@ fn query_industry_slots(
     };
     let page: IndustrySlotQueryResponse =
         serde_json::from_str(&response).map_err(|_| "sidecar-response-invalid".to_owned())?;
-    if !industry_slot_query_response_is_valid(&page)
-        || page.offset != offset
-        || page.limit != limit
+    if !industry_slot_query_response_is_valid(&page) || page.offset != offset || page.limit != limit
     {
         return Err("sidecar-response-invalid".to_owned());
     }
@@ -4057,10 +4055,9 @@ mod tests {
         character_skill_query_response_is_valid, character_skill_sync_response_is_valid,
         eve_character_record_is_valid, industry_job_query_response_is_valid,
         industry_job_sync_response_is_valid, industry_slot_query_response_is_valid,
-        research_plan_query_response_is_valid,
-        sso_login_status_is_valid, AccountGroupRecord, AssetDeltaCorrelation,
-        AssetDeltaQueryResponse, AssetDeltaRecord, AssetDeltaSummary, AssetExportResponse,
-        AssetLocationNode, AssetOwner, AssetQueryResponse, AssetRecord,
+        research_plan_query_response_is_valid, sso_login_status_is_valid, AccountGroupRecord,
+        AssetDeltaCorrelation, AssetDeltaQueryResponse, AssetDeltaRecord, AssetDeltaSummary,
+        AssetExportResponse, AssetLocationNode, AssetOwner, AssetQueryResponse, AssetRecord,
         CharacterSkillQueryResponse, CharacterSkillRecord, CharacterSkillSyncCharacterResponse,
         CharacterSkillSyncResponse, EveCharacterRecord, IndustryAssetCorrelation,
         IndustryBlueprintCorrelation, IndustryJobQueryResponse, IndustryJobRecord,
