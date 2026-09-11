@@ -3087,10 +3087,7 @@ fn migrate_to_program_directory_storage(
         return Err("program-storage-migration-failed");
     }
     if previous_data.is_dir() {
-        let staging = executable_dir.join(format!(
-            "data-appdata-migration-{}",
-            std::process::id()
-        ));
+        let staging = executable_dir.join(format!("data-appdata-migration-{}", std::process::id()));
         if staging.exists() {
             fs::remove_dir_all(&staging).map_err(|_| "program-storage-migration-failed")?;
         }
@@ -4873,14 +4870,14 @@ mod tests {
         eve_character_record_is_valid, industry_job_query_response_is_valid,
         industry_job_sync_response_is_valid, industry_slot_query_response_is_valid,
         migrate_to_program_directory_storage, release_page_url,
-        research_plan_query_response_is_valid, sso_login_status_is_valid,
-        AccountGroupRecord, AssetDeltaCorrelation, AssetDeltaQueryResponse, AssetDeltaRecord,
-        AssetDeltaSummary, AssetExportResponse, AssetLocationNode, AssetOwner, AssetQueryResponse,
-        AssetRecord, CharacterSkillQueryResponse, CharacterSkillRecord,
-        CharacterSkillSyncCharacterResponse, CharacterSkillSyncResponse, EveCharacterRecord,
-        IndustryAssetCorrelation, IndustryBlueprintCorrelation, IndustryJobQueryResponse,
-        IndustryJobRecord, IndustryJobSyncCharacterResponse, IndustryJobSyncResponse,
-        IndustrySlotActivity, IndustrySlotQueryResponse, IndustrySlotRecord, ResearchPlanOwner,
+        research_plan_query_response_is_valid, sso_login_status_is_valid, AccountGroupRecord,
+        AssetDeltaCorrelation, AssetDeltaQueryResponse, AssetDeltaRecord, AssetDeltaSummary,
+        AssetExportResponse, AssetLocationNode, AssetOwner, AssetQueryResponse, AssetRecord,
+        CharacterSkillQueryResponse, CharacterSkillRecord, CharacterSkillSyncCharacterResponse,
+        CharacterSkillSyncResponse, EveCharacterRecord, IndustryAssetCorrelation,
+        IndustryBlueprintCorrelation, IndustryJobQueryResponse, IndustryJobRecord,
+        IndustryJobSyncCharacterResponse, IndustryJobSyncResponse, IndustrySlotActivity,
+        IndustrySlotQueryResponse, IndustrySlotRecord, ResearchPlanOwner,
         ResearchPlanQueryResponse, ResearchPlanRecord, ResearchPlanSummary, ScopePackageStatus,
         SsoCharacterIdentity, SsoLoginStatus,
     };
@@ -4926,8 +4923,11 @@ mod tests {
             .expect("previous app data directory must be created");
         fs::write(executable_dir.join("data/foundry.sqlite3"), b"old-program")
             .expect("old program database must be written");
-        fs::write(previous_root.join("data/foundry.sqlite3"), b"appdata-current")
-            .expect("current database must be written");
+        fs::write(
+            previous_root.join("data/foundry.sqlite3"),
+            b"appdata-current",
+        )
+        .expect("current database must be written");
         fs::write(previous_root.join("data/backups/backup.sqlite3"), b"backup")
             .expect("backup must be written");
 
@@ -4943,8 +4943,7 @@ mod tests {
             b"backup"
         );
         assert_eq!(
-            fs::read(executable_dir.join("data-before-appdata-migration/foundry.sqlite3"))
-                .unwrap(),
+            fs::read(executable_dir.join("data-before-appdata-migration/foundry.sqlite3")).unwrap(),
             b"old-program"
         );
         assert!(executable_dir.join("data/.program-storage-v1").is_file());
@@ -4953,8 +4952,11 @@ mod tests {
             b"appdata-current"
         );
 
-        fs::write(executable_dir.join("data/foundry.sqlite3"), b"program-newer")
-            .expect("program database must remain writable");
+        fs::write(
+            executable_dir.join("data/foundry.sqlite3"),
+            b"program-newer",
+        )
+        .expect("program database must remain writable");
         migrate_to_program_directory_storage(&executable_dir, &previous_root)
             .expect("marked program storage must be reused");
         assert_eq!(
