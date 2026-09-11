@@ -322,9 +322,9 @@ def main() -> int:
             with opener.open(production_catalog_request, timeout=3) as response:
                 production_catalog = json.loads(response.read())
             if (
-                production_catalog.get("items") != []
-                or production_catalog.get("total") != 0
-                or production_catalog.get("buildNumber") is not None
+                len(production_catalog.get("items", [])) != 50
+                or production_catalog.get("total", 0) < 4_000
+                or production_catalog.get("buildNumber") != "3503375"
             ):
                 raise RuntimeError("The packaged production catalog is invalid.")
 
