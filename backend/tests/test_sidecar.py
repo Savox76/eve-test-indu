@@ -604,6 +604,28 @@ class SidecarIntegrationTests(unittest.TestCase):
                 ["manufacturing", "reactions", "science"],
             )
 
+            sde_activity_query_request = urllib.request.Request(
+                f"{base_url}/sde/blueprint-activities/query",
+                data=json.dumps({
+                    "blueprintTypeIds": [], "productTypeIds": [], "activities": [],
+                    "offset": 0, "limit": 100,
+                }).encode(),
+                method="POST",
+                headers={
+                    "Authorization": f"Bearer {SYNTHETIC_SESSION_TOKEN}",
+                    "Content-Type": "application/json",
+                },
+            )
+            with opener.open(sde_activity_query_request, timeout=3) as response:
+                sde_activity_page = json.loads(response.read())
+            self.assertEqual(sde_activity_page["items"], [])
+            self.assertEqual(sde_activity_page["total"], 0)
+            self.assertEqual(sde_activity_page["limit"], 100)
+            self.assertIsNone(sde_activity_page["buildNumber"])
+            self.assertEqual(
+                sde_activity_page["activities"], ["manufacturing", "reaction"]
+            )
+
             research_query_request = urllib.request.Request(
                 f"{base_url}/research-plans/query",
                 data=json.dumps({
