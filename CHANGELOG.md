@@ -24,6 +24,40 @@ Keine.
 
 Keine.
 
+## 0.0.5-preview.15 – 11. September 2026
+
+### Neu hinzugefügt
+
+- Einmalige, atomare Übernahme des bisherigen `.13/.14`-Datenbestands aus Tauri AppData in den sichtbaren `data`-Ordner direkt neben der installierten EXE.
+- Ein vorhandener älterer Programmordner-Datenstand wird vor der Übernahme separat als `data-before-appdata-migration` gesichert.
+- Der Installer entfernt den programmordnergebundenen Datenstand nur bei ausdrücklich ausgewählter Datenlöschung.
+
+### Geändert
+
+- Installer und Portable verwenden denselben nachvollziehbaren Aufbau mit `data\foundry.sqlite3` neben der Haupt-EXE.
+- Portable Hinweise nennen Desktop, USB-Stick und beliebige eigene Ordner ausdrücklich als mögliche, vom Installationsordner unabhängige Speicherorte.
+- Der Installer-Hinweis erklärt, dass die Datenlöschung bei einem Update abgewählt bleiben muss.
+- Die sichtbare Versionsnummer lautet `v0.0.5-preview.15`.
+
+### Behobene Fehler
+
+- Die installierte Ausgabe versteckt Datenbank, Backups und Exporte nicht mehr in einem getrennten Bundle-ID-AppData-Ordner.
+- Ein vorhandener AppData-Stand wird nicht bei jedem Start erneut über neuere Daten im Programmordner kopiert.
+- Ein Übernahmefehler kann nicht unbemerkt mit einer leeren Datenbank fortfahren.
+
+### Bekannte Einschränkungen
+
+- EVE-Refresh-Tokens bleiben aus Sicherheitsgründen im Windows-Anmeldespeicher und werden beim Kopieren einer portablen Ausgabe auf einen anderen Rechner nicht übertragen.
+- Der Release-Hinweis lädt und installiert weiterhin nichts automatisch; Paketsignatur und Rollback fehlen noch.
+- Paket 22 wartet auf den vollständigen Windows-A0-Test dieses Korrekturkandidaten.
+
+### Update und Datenbankmigration
+
+- Das Anwendungsschema bleibt bei Version 9.
+- Beim ersten installierten Start wird der bisherige `.14`-Datenordner automatisch kopiert, atomar veröffentlicht und am alten Ort als zusätzliche Rückfallkopie belassen.
+- Beim Update darf die Installer-Option zum Löschen der Anwendungsdaten nicht ausgewählt werden.
+- Portable Installationen bleiben vollständig eigenständig; ihr vorhandener `data`-Ordner wird gesichert beziehungsweise in den neuen portablen Ordner übernommen.
+
 ## 0.0.5-preview.14 – 11. September 2026
 
 ### Neu hinzugefügt

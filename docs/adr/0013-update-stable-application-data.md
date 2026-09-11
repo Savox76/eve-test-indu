@@ -1,6 +1,6 @@
 # ADR-013: Updatefeste Anwendungsdaten
 
-- **Status:** Angenommen
+- **Status:** Ersetzt durch ADR-018
 - **Datum:** 10. September 2026
 - **Entscheider:** Projektverantwortlicher
 - **Ersetzt:** ADR-010 für installierte Ausgaben und portable Updateordner
