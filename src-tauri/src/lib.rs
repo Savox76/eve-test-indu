@@ -40,8 +40,14 @@ const ASSET_LOCATION_STATUSES: [&str; 5] =
     ["resolved", "restricted", "unresolved", "cycle", "pending"];
 const ASSET_DELTA_CHANGE_TYPES: [&str; 4] = ["added", "removed", "quantity", "location"];
 const ASSET_SORT_FIELDS: [&str; 6] = ["type", "owner", "location", "flag", "quantity", "age"];
-const ASSET_SUMMARY_SORT_FIELDS: [&str; 6] =
-    ["type", "quantity", "positions", "owners", "locations", "age"];
+const ASSET_SUMMARY_SORT_FIELDS: [&str; 6] = [
+    "type",
+    "quantity",
+    "positions",
+    "owners",
+    "locations",
+    "age",
+];
 const BLUEPRINT_SORT_FIELDS: [&str; 7] = ["type", "owner", "kind", "me", "te", "runs", "age"];
 const INDUSTRY_JOB_SORT_FIELDS: [&str; 10] = [
     "start",
@@ -1436,9 +1442,10 @@ fn asset_summary_query_response_is_valid(response: &AssetSummaryQueryResponse) -
                 && item.location_count <= item.position_count
                 && item_owner_ids.len() == item.owners.len()
                 && item_statuses.len() == item.location_statuses.len()
-                && item.location_statuses.iter().all(|status| {
-                    ASSET_LOCATION_STATUSES.contains(&status.as_str())
-                })
+                && item
+                    .location_statuses
+                    .iter()
+                    .all(|status| ASSET_LOCATION_STATUSES.contains(&status.as_str()))
                 && !item.location_statuses.is_empty()
                 && item.owners.iter().all(|owner| {
                     owner.character_id > 0
@@ -4776,9 +4783,7 @@ fn query_asset_summary(
     };
     let page: AssetSummaryQueryResponse =
         serde_json::from_str(&response).map_err(|_| "sidecar-response-invalid".to_owned())?;
-    if !asset_summary_query_response_is_valid(&page)
-        || page.offset != offset
-        || page.limit != limit
+    if !asset_summary_query_response_is_valid(&page) || page.offset != offset || page.limit != limit
     {
         return Err("sidecar-response-invalid".to_owned());
     }
