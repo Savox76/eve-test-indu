@@ -382,6 +382,69 @@ export interface IndustryJobSyncResult {
   completedJobs: number;
 }
 
+export type CharacterSkillActiveState = "normal" | "limited" | "boosted";
+export type CharacterSkillSortField = "skill" | "owner" | "trained" | "active" | "skillpoints" | "age";
+export const characterSkillLevels = [0, 1, 2, 3, 4, 5] as const;
+export const characterSkillActiveStates: readonly CharacterSkillActiveState[] = ["normal", "limited", "boosted"];
+export const characterSkillSortFields: readonly CharacterSkillSortField[] = ["skill", "owner", "trained", "active", "skillpoints", "age"];
+export const characterSkillPageSize = 100;
+
+export interface CharacterSkillRecord {
+  skillId: number;
+  skillName: string;
+  ownerCharacterId: number;
+  ownerName: string;
+  trainedLevel: number;
+  activeLevel: number;
+  skillpoints: number;
+  activeState: CharacterSkillActiveState;
+  snapshotId: number;
+  syncRunId: number;
+  observedAt: string;
+  ageSeconds: number;
+}
+
+export interface CharacterSkillQuery {
+  search: string;
+  ownerCharacterId: number | null;
+  trainedLevel: number | null;
+  activeState: CharacterSkillActiveState | null;
+  offset: number;
+  limit: number;
+  sortBy: CharacterSkillSortField;
+  sortDirection: SortDirection;
+}
+
+export interface CharacterSkillPage {
+  items: CharacterSkillRecord[];
+  total: number;
+  totalSp: number;
+  unallocatedSp: number;
+  offset: number;
+  limit: number;
+  owners: AssetOwner[];
+  levels: number[];
+  activeStates: CharacterSkillActiveState[];
+  observedAt: string | null;
+  ageSeconds: number | null;
+}
+
+export interface CharacterSkillSyncResult {
+  characters: Array<{
+    characterId: number;
+    status: "completed" | "failed";
+    skills: number;
+    totalSp: number;
+    unallocatedSp: number;
+    errorCode: string | null;
+  }>;
+  completed: number;
+  failed: number;
+  skills: number;
+  totalSp: number;
+  unallocatedSp: number;
+}
+
 export interface SsoLoginStatus {
   state: SsoLoginState;
   attemptId: string | null;
@@ -1607,6 +1670,142 @@ export async function syncIndustryJobs(
     throw new Error("The native runtime returned an inconsistent industry-job sync result.");
   }
   return { ...candidate, characters } as unknown as IndustryJobSyncResult;
+}
+
+function validateCharacterSkillQuery(query: CharacterSkillQuery): CharacterSkillQuery {
+  const search = query.search.trim().replace(/\s+/g, " ");
+  if (
+    search.length > 120 ||
+    !(query.ownerCharacterId === null || isPositiveSafeInteger(query.ownerCharacterId)) ||
+    !(query.trainedLevel === null || characterSkillLevels.includes(query.trainedLevel as 0 | 1 | 2 | 3 | 4 | 5)) ||
+    !(query.activeState === null || characterSkillActiveStates.includes(query.activeState)) ||
+    !isNonNegativeSafeInteger(query.offset) ||
+    !Number.isSafeInteger(query.limit) || query.limit < 1 || query.limit > 200 ||
+    !characterSkillSortFields.includes(query.sortBy) ||
+    !["asc", "desc"].includes(query.sortDirection)
+  ) {
+    throw new Error("The character-skill query is invalid.");
+  }
+  return { ...query, search };
+}
+
+function parseCharacterSkillPage(candidate: unknown): CharacterSkillPage {
+  if (
+    !isRecord(candidate) || !Array.isArray(candidate.items) || !Array.isArray(candidate.owners) ||
+    !Array.isArray(candidate.levels) || !Array.isArray(candidate.activeStates) ||
+    ![candidate.total, candidate.totalSp, candidate.unallocatedSp, candidate.offset].every(isNonNegativeSafeInteger) ||
+    !Number.isSafeInteger(candidate.limit) || Number(candidate.limit) < 1 || Number(candidate.limit) > 200 ||
+    candidate.levels.length !== characterSkillLevels.length ||
+    !characterSkillLevels.every((value, index) => (candidate.levels as unknown[])[index] === value) ||
+    candidate.activeStates.length !== characterSkillActiveStates.length ||
+    !characterSkillActiveStates.every((value, index) => (candidate.activeStates as unknown[])[index] === value) ||
+    !(candidate.observedAt === null || isBoundedText(candidate.observedAt, 64)) ||
+    !(candidate.ageSeconds === null || isNonNegativeSafeInteger(candidate.ageSeconds)) ||
+    (candidate.observedAt === null) !== (candidate.ageSeconds === null)
+  ) {
+    throw new Error("The native runtime returned invalid character-skill data.");
+  }
+  const owners = candidate.owners.map((owner) => {
+    if (!isRecord(owner) || !isPositiveSafeInteger(owner.characterId) || !isBoundedText(owner.name, 100)) {
+      throw new Error("The native runtime returned invalid character-skill owners.");
+    }
+    return owner as unknown as AssetOwner;
+  });
+  const items = candidate.items.map((item) => {
+    if (
+      !isRecord(item) || !isPositiveSafeInteger(item.skillId) || !isBoundedText(item.skillName, 220) ||
+      !isPositiveSafeInteger(item.ownerCharacterId) || !isBoundedText(item.ownerName, 100) ||
+      !Number.isInteger(item.trainedLevel) || Number(item.trainedLevel) < 0 || Number(item.trainedLevel) > 5 ||
+      !Number.isInteger(item.activeLevel) || Number(item.activeLevel) < 0 || Number(item.activeLevel) > 5 ||
+      !isNonNegativeSafeInteger(item.skillpoints) ||
+      !characterSkillActiveStates.includes(item.activeState as CharacterSkillActiveState) ||
+      !isPositiveSafeInteger(item.snapshotId) || !isPositiveSafeInteger(item.syncRunId) ||
+      !isBoundedText(item.observedAt, 64) || !isNonNegativeSafeInteger(item.ageSeconds)
+    ) {
+      throw new Error("The native runtime returned invalid character-skill records.");
+    }
+    const expectedState = Number(item.activeLevel) < Number(item.trainedLevel)
+      ? "limited"
+      : Number(item.activeLevel) > Number(item.trainedLevel) ? "boosted" : "normal";
+    if (item.activeState !== expectedState) {
+      throw new Error("The native runtime returned inconsistent character-skill records.");
+    }
+    return item as unknown as CharacterSkillRecord;
+  });
+  if (
+    items.length > Number(candidate.limit) || items.length > Number(candidate.total) ||
+    new Set(owners.map(({ characterId }) => characterId)).size !== owners.length ||
+    new Set(items.map(({ ownerCharacterId, skillId }) => `${ownerCharacterId}:${skillId}`)).size !== items.length ||
+    items.some((item) => !owners.some((owner) => owner.characterId === item.ownerCharacterId && owner.name === item.ownerName))
+  ) {
+    throw new Error("The native runtime returned inconsistent character-skill data.");
+  }
+  return { ...candidate, items, owners } as unknown as CharacterSkillPage;
+}
+
+export async function loadCharacterSkills(
+  query: CharacterSkillQuery,
+  adapter: RuntimeAdapter = tauriAdapter,
+): Promise<CharacterSkillPage> {
+  const validated = validateCharacterSkillQuery(query);
+  if (!adapter.isAvailable()) return {
+    items: [], total: 0, totalSp: 0, unallocatedSp: 0,
+    offset: validated.offset, limit: validated.limit, owners: [],
+    levels: [...characterSkillLevels], activeStates: [...characterSkillActiveStates],
+    observedAt: null, ageSeconds: null,
+  };
+  const page = parseCharacterSkillPage(JSON.parse(await adapter.invoke("query_character_skills", {
+    search: validated.search,
+    ownerCharacterId: validated.ownerCharacterId,
+    trainedLevel: validated.trainedLevel,
+    activeState: validated.activeState,
+    offset: validated.offset,
+    limit: validated.limit,
+    sortBy: validated.sortBy,
+    sortDirection: validated.sortDirection,
+  })));
+  if (page.offset !== validated.offset || page.limit !== validated.limit) {
+    throw new Error("The native runtime returned a different character-skill window.");
+  }
+  return page;
+}
+
+export async function syncCharacterSkills(
+  adapter: RuntimeAdapter = tauriAdapter,
+): Promise<CharacterSkillSyncResult> {
+  if (!adapter.isAvailable()) {
+    throw new Error("Character-skill sync is available only in the desktop application.");
+  }
+  const candidate: unknown = JSON.parse(await adapter.invoke("sync_character_skills"));
+  if (
+    !isRecord(candidate) || !Array.isArray(candidate.characters) ||
+    ![candidate.completed, candidate.failed, candidate.skills, candidate.totalSp,
+      candidate.unallocatedSp].every(isNonNegativeSafeInteger)
+  ) {
+    throw new Error("The native runtime returned an invalid character-skill sync result.");
+  }
+  const characters = candidate.characters.map((value) => {
+    if (
+      !isRecord(value) || !isPositiveSafeInteger(value.characterId) ||
+      !["completed", "failed"].includes(String(value.status)) ||
+      ![value.skills, value.totalSp, value.unallocatedSp].every(isNonNegativeSafeInteger) ||
+      !((value.status === "completed" && value.errorCode === null) ||
+        (value.status === "failed" && value.skills === 0 && value.totalSp === 0 &&
+          value.unallocatedSp === 0 && isBoundedText(value.errorCode, 120)))
+    ) {
+      throw new Error("The native runtime returned an invalid character-skill sync result.");
+    }
+    return value as unknown as CharacterSkillSyncResult["characters"][number];
+  });
+  if (
+    Number(candidate.completed) + Number(candidate.failed) !== characters.length ||
+    candidate.skills !== characters.reduce((sum, value) => sum + value.skills, 0) ||
+    candidate.totalSp !== characters.reduce((sum, value) => sum + value.totalSp, 0) ||
+    candidate.unallocatedSp !== characters.reduce((sum, value) => sum + value.unallocatedSp, 0)
+  ) {
+    throw new Error("The native runtime returned an inconsistent character-skill sync result.");
+  }
+  return { ...candidate, characters } as unknown as CharacterSkillSyncResult;
 }
 
 export async function exportAssetsCsv(

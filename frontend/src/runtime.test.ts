@@ -10,6 +10,7 @@ import {
   loadAssetDeltas,
   loadAssets,
   loadBlueprints,
+  loadCharacterSkills,
   loadDesktopRuntimeStatus,
   loadEveCharacters,
   loadEveSsoStatus,
@@ -21,6 +22,7 @@ import {
   ssoScopePackages,
   syncAssets,
   syncBlueprints,
+  syncCharacterSkills,
   syncIndustryJobs,
   updateEveCharacter,
   type RuntimeAdapter,
@@ -62,7 +64,7 @@ function managedCharacter(overrides: Record<string, unknown> = {}) {
 function nativeStatus(overrides: Record<string, unknown> = {}) {
   return JSON.stringify({
     state: "ready",
-    version: "0.0.5-preview.7",
+    version: "0.0.5-preview.8",
     desktopShell: true,
     singleInstance: true,
     sidecar: "ready",
@@ -98,7 +100,7 @@ describe("desktop runtime status", () => {
       loadDesktopRuntimeStatus({ isAvailable: () => true, invoke }),
     ).resolves.toEqual({
       state: "ready",
-      version: "0.0.5-preview.7",
+      version: "0.0.5-preview.8",
       desktopShell: true,
       singleInstance: true,
       sidecar: "ready",
@@ -716,5 +718,32 @@ describe("desktop runtime status", () => {
     invoke.mockResolvedValueOnce(JSON.stringify(result));
     await expect(syncIndustryJobs({ isAvailable: () => true, invoke })).resolves.toEqual(result);
     expect(invoke).toHaveBeenLastCalledWith("sync_industry_jobs");
+  });
+
+  it("validates bounded character-skill pages and sync summaries", async () => {
+    const page = {
+      items: [{
+        skillId: 33_550, skillName: "Industry", ownerCharacterId: 7,
+        ownerName: "Pilot", trainedLevel: 5, activeLevel: 4,
+        skillpoints: 512_000, activeState: "limited", snapshotId: 8,
+        syncRunId: 9, observedAt: "2026-09-11T00:00:00Z", ageSeconds: 60,
+      }],
+      total: 1, totalSp: 512_000, unallocatedSp: 12_500,
+      offset: 0, limit: 100, owners: [{ characterId: 7, name: "Pilot" }],
+      levels: [0, 1, 2, 3, 4, 5], activeStates: ["normal", "limited", "boosted"],
+      observedAt: "2026-09-11T00:00:00Z", ageSeconds: 60,
+    };
+    const invoke = vi.fn<RuntimeAdapter["invoke"]>().mockResolvedValueOnce(JSON.stringify(page));
+    const query = { search: "", ownerCharacterId: null, trainedLevel: null,
+      activeState: null, offset: 0, limit: 100, sortBy: "skill", sortDirection: "asc" } as const;
+    await expect(loadCharacterSkills(query, { isAvailable: () => true, invoke })).resolves.toEqual(page);
+    expect(invoke).toHaveBeenCalledWith("query_character_skills", expect.objectContaining({ sortBy: "skill" }));
+
+    const result = { characters: [{ characterId: 7, status: "completed", skills: 1,
+      totalSp: 512_000, unallocatedSp: 12_500, errorCode: null }], completed: 1,
+      failed: 0, skills: 1, totalSp: 512_000, unallocatedSp: 12_500 };
+    invoke.mockResolvedValueOnce(JSON.stringify(result));
+    await expect(syncCharacterSkills({ isAvailable: () => true, invoke })).resolves.toEqual(result);
+    expect(invoke).toHaveBeenLastCalledWith("sync_character_skills");
   });
 });

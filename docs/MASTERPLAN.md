@@ -2,9 +2,9 @@
 
 **Fassung:** 3.2 (lebendes Repository-Dokument)
 
-**Stand:** 10. September 2026
+**Stand:** 11. September 2026
 
-**Status:** Paket 23 – Blueprint-Bestand technisch abgeschlossen; Windows-A0 für Paket 22 bleibt offen
+**Status:** Paket 25 – Charakter-Skills technisch abgeschlossen; Windows-A0 für Paket 22 bleibt offen
 
 **Geltungsbereich:** `Savox76/eve-test-indu`
 
@@ -190,6 +190,7 @@ Die Reihenfolge ist verbindlicher als eine Kalenderangabe.
 | 22 | Erste Alpha-Freigabe | Phase-3-Gates grün; Installation und Update auf freigegebenem Windows-Testgerät bestanden |
 | 23 | Blueprint-Bestand | BPO/BPC werden charaktergetrennt vollständig synchronisiert und mit Namen, ME/TE, Läufen, Besitzer, Ort, Alter, Suche, Filter und Sortierung angezeigt |
 | 24 | Charakter-Jobs | persönliche Industrieaufträge werden vollständig synchronisiert, mit Blueprint- und Asset-Änderungen nachvollziehbar korreliert und nach Status dargestellt |
+| 25 | Charakter-Skills | vollständige trainierte und aktive Skillstände werden charaktergetrennt synchronisiert und als Grundlage für spätere Machbarkeits- und Lückenprüfungen dargestellt |
 
 ### Aktueller Stand
 
@@ -213,11 +214,12 @@ Die Reihenfolge ist verbindlicher als eine Kalenderangabe.
 - **Abgeschlossen:** 20 – die zweisprachige Asset-Oberfläche liest ausschließlich die letzten vollständigen charaktergetrennten Snapshots, verbindet nur exakt passende Standort-Snapshots und zeigt Typ, Besitzer, Standortpfad und -status, Bereich, Menge und Datenalter. Suche sowie Besitzer- und Standortstatusfilter laufen serverseitig; höchstens 100 Zeilen werden gleichzeitig übertragen und gerendert. Ein synthetischer 100.000-Zeilen-Test sichert den begrenzten Transport. Der gefilterte CSV-Export schreibt atomar und formelneutralisiert unter `data\exports`.
 - **Abgeschlossen:** 21 – jeder vollständige Charakter-Asset-Sync veröffentlicht atomar eine Baseline oder ein Delta zum vorherigen vollständigen Snapshot. Hinzufügungen, Entfernungen, Mengen- und Standortänderungen tragen deterministische Fingerabdrücke, Snapshot-/Run-IDs und ein Beobachtungsfenster. Die zweisprachige Historie ist serverseitig such- und filterbar und überträgt höchstens 50 Ereignisse pro Seite. Charakter-/Typ-Schlüssel, Richtung und Mengendifferenz bereiten die spätere Jobkorrelation vor, ohne bereits unbelegte Zuordnungen zu behaupten.
 - **Zusätzlich umgesetzt:** Die vollständige sichtbare Oberfläche unterstützt fünf globale Schriftgrößenstufen; die Auswahl bleibt in der bestehenden `app_settings`-Tabelle am updatefesten Datenort erhalten.
-- **In Arbeit:** 22 – Der Gerätetest bestätigte Einzelinstanz, zweiten Start und updatefesten Speicher. `v0.0.5-preview.7` ist der aktuelle technische Kandidat. Das vollständige A0-Protokoll bleibt vor der ersten `0.2.0`-Alpha erforderlich.
+- **In Arbeit:** 22 – Der Gerätetest bestätigte Einzelinstanz, zweiten Start und updatefesten Speicher. `v0.0.5-preview.8` ist der aktuelle technische Kandidat. Das vollständige A0-Protokoll bleibt vor der ersten `0.2.0`-Alpha erforderlich.
 - **Abgeschlossen:** 23 – vollständige charaktergetrennte Blueprint-Snapshots werden automatisch und manuell aktualisiert. Die echte BPO/BPC-Ansicht bietet Namen, ME/TE, Läufe, Besitzer, Bereich, Datenalter, Suche, Filter, serverseitige Sortierung und begrenzte Seiten. Unvollständige Läufe überschreiben keinen gültigen Bestand. Die SSO-Anmeldung fordert alle benötigten Pakete automatisch an und weist bei Scope-Drift sichtbar auf die erforderliche Neuanmeldung hin.
 - **Abgeschlossen:** 24 – persönliche Industrieaufträge werden vollständig und charaktergetrennt synchronisiert. Die zweisprachige Ansicht bietet Status, Aktivität, Läufe, Kosten, Zeit, Quelle, Suche, Filter, Sortierung und begrenzte Seiten. Exakte Blueprint-Item-IDs und passende eingehende Asset-Änderungen werden mit aktuellen oder historischen Belegen korreliert; Mehrdeutigkeit und fehlende Quellen bleiben sichtbar. Die Asset-Historie zeigt eindeutige Zuordnungen mit Job-ID in Gegenrichtung.
-- **Als Nächstes:** Das noch offene Paket 22 wird mit dem vollständigen Windows-A0-Protokoll für den aktuellen Kandidaten abgeschlossen. Erst danach beginnt gemäß Phasengate die breite Fachentwicklung der ersten `0.2.0`-Alpha.
-- Architektur-Gate A0 ist technisch weitgehend umgesetzt, aber bis zur vollständigen Windows-Abnahme noch nicht erfüllt; breite Fachentwicklung beginnt erst danach.
+- **Abgeschlossen:** 25 – vollständige charaktergetrennte Skill-Snapshots zeigen echte Namen, trainiertes und aktuell wirksames Level, Skillpunkte, Besitzer, Datenalter und stabile Quell-IDs. Suche, Besitzer-, Level- und Aktivzustandsfilter sowie Sortierung und begrenzte Seiten laufen im lokalen Sidecar. Fehlgeschlagene oder ungültige Abrufe lassen den letzten vollständigen Stand unverändert.
+- **Als Nächstes:** Das noch offene Paket 22 wird mit dem vollständigen Windows-A0-Protokoll für den aktuellen Kandidaten abgeschlossen. Die bereits technisch vorgezogenen Fachpakete 23–25 bleiben Previews; eine erste `0.2.0`-Alpha wird erst nach bestandenem A0 freigegeben.
+- Architektur-Gate A0 ist technisch weitgehend umgesetzt, aber bis zur vollständigen Windows-Abnahme noch nicht erfüllt; die Alpha-Freigabe bleibt davon blockiert.
 
 ## 13. Entscheidungs- und Quellenrang
 

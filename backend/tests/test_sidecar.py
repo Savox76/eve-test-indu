@@ -545,6 +545,40 @@ class SidecarIntegrationTests(unittest.TestCase):
                 "active": 0, "completedJobs": 0,
             })
 
+            character_skill_query_request = urllib.request.Request(
+                f"{base_url}/skills/query",
+                data=json.dumps({
+                    "search": "", "ownerCharacterId": None, "trainedLevel": None,
+                    "activeState": None, "offset": 0, "limit": 100,
+                    "sortBy": "skill", "sortDirection": "asc",
+                }).encode(),
+                method="POST",
+                headers={
+                    "Authorization": f"Bearer {SYNTHETIC_SESSION_TOKEN}",
+                    "Content-Type": "application/json",
+                },
+            )
+            with opener.open(character_skill_query_request, timeout=3) as response:
+                character_skill_page = json.loads(response.read())
+            self.assertEqual(character_skill_page["items"], [])
+            self.assertEqual(character_skill_page["total"], 0)
+            self.assertEqual(character_skill_page["totalSp"], 0)
+            self.assertEqual(character_skill_page["levels"], [0, 1, 2, 3, 4, 5])
+
+            character_skill_sync_request = urllib.request.Request(
+                f"{base_url}/skills/sync", data=b"{}", method="POST",
+                headers={
+                    "Authorization": f"Bearer {SYNTHETIC_SESSION_TOKEN}",
+                    "Content-Type": "application/json",
+                },
+            )
+            with opener.open(character_skill_sync_request, timeout=3) as response:
+                character_skill_sync = json.loads(response.read())
+            self.assertEqual(character_skill_sync, {
+                "characters": [], "completed": 0, "failed": 0, "skills": 0,
+                "totalSp": 0, "unallocatedSp": 0,
+            })
+
             asset_export_request = urllib.request.Request(
                 f"{base_url}/assets/export",
                 data=json.dumps(

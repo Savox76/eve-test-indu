@@ -6,6 +6,7 @@ import type {
   AssetDeltaPage,
   AssetPage,
   BlueprintPage,
+  CharacterSkillPage,
   DesktopRuntimeStatus,
   EveCharacter,
   IndustryJobPage,
@@ -24,7 +25,7 @@ const idleSso: SsoLoginStatus = {
 const nativeRuntime = (overrides: Partial<Extract<DesktopRuntimeStatus, { state: "ready" }>> = {}) =>
   Promise.resolve<DesktopRuntimeStatus>({
     state: "ready",
-    version: "0.0.5-preview.7",
+    version: "0.0.5-preview.8",
     desktopShell: true,
     singleInstance: true,
     sidecar: "ready",
@@ -166,6 +167,19 @@ const industryJobPage: IndustryJobPage = {
   statuses: ["active", "cancelled", "delivered", "paused", "ready", "reverted"],
   activities: [1], correlations: ["linked", "partial", "ambiguous", "unmatched", "pending"],
   observedAt: "2026-09-10T11:02:00Z", ageSeconds: 60,
+};
+
+const characterSkillPage: CharacterSkillPage = {
+  items: [{
+    skillId: 33_550, skillName: "Industry", ownerCharacterId: 90_888_001,
+    ownerName: "Builder", trainedLevel: 5, activeLevel: 4,
+    skillpoints: 512_000, activeState: "limited", snapshotId: 8, syncRunId: 9,
+    observedAt: "2026-09-11T00:00:00Z", ageSeconds: 60,
+  }],
+  total: 1, totalSp: 512_000, unallocatedSp: 12_500, offset: 0, limit: 100,
+  owners: [{ characterId: 90_888_001, name: "Builder" }],
+  levels: [0, 1, 2, 3, 4, 5], activeStates: ["normal", "limited", "boosted"],
+  observedAt: "2026-09-11T00:00:00Z", ageSeconds: 60,
 };
 
 describe("New Eden Foundry design preview", () => {
@@ -430,7 +444,7 @@ describe("New Eden Foundry design preview", () => {
   it("credits Savoxmedia as the app creator next to the version", () => {
     render(<App />);
 
-    expect(screen.getByText("v0.0.5-preview.7")).toBeInTheDocument();
+    expect(screen.getByText("v0.0.5-preview.8")).toBeInTheDocument();
     expect(screen.getByText("Savoxmedia")).toBeInTheDocument();
     expect(screen.getByText("Erstellt von", { exact: false })).toBeInTheDocument();
     expect(screen.queryByText("Lokaler Betreiber")).not.toBeInTheDocument();
@@ -597,6 +611,9 @@ describe("New Eden Foundry design preview", () => {
     const blueprintSyncer = vi.fn().mockResolvedValue({
       characters: [], completed: 0, failed: 0, blueprints: 0,
     });
+    const characterSkillSyncer = vi.fn().mockResolvedValue({
+      characters: [], completed: 0, failed: 0, skills: 0, totalSp: 0, unallocatedSp: 0,
+    });
     render(
       <App
         runtimeLoader={() => nativeRuntime()}
@@ -604,6 +621,7 @@ describe("New Eden Foundry design preview", () => {
         charactersLoader={() => Promise.resolve([character])}
         assetSyncer={assetSyncer}
         blueprintSyncer={blueprintSyncer}
+        characterSkillSyncer={characterSkillSyncer}
       />,
     );
 
@@ -613,6 +631,7 @@ describe("New Eden Foundry design preview", () => {
     expect(screen.getByText("Bestätigte Scopes: 1")).toBeInTheDocument();
     await waitFor(() => expect(assetSyncer).toHaveBeenCalledTimes(1));
     expect(blueprintSyncer).toHaveBeenCalledTimes(1);
+    expect(characterSkillSyncer).toHaveBeenCalledTimes(1);
   });
 
   it("edits aliases, groups, activity, and exposes guarded full deletion", async () => {
@@ -712,5 +731,30 @@ describe("New Eden Foundry design preview", () => {
     fireEvent.click(screen.getByRole("button", { name: "Jobs aktualisieren" }));
     await waitFor(() => expect(industryJobSyncer).toHaveBeenCalledTimes(1));
     expect(await screen.findByText(/1 Jobs von 1 Charakter/)).toBeInTheDocument();
+  });
+
+  it("shows, filters, sorts, and refreshes character skills", async () => {
+    const characterSkillsLoader = vi.fn().mockResolvedValue(characterSkillPage);
+    const characterSkillSyncer = vi.fn().mockResolvedValue({
+      characters: [{ characterId: 90_888_001, status: "completed", skills: 1,
+        totalSp: 512_000, unallocatedSp: 12_500, errorCode: null }],
+      completed: 1, failed: 0, skills: 1, totalSp: 512_000, unallocatedSp: 12_500,
+    });
+    render(<App runtimeLoader={() => nativeRuntime()} ssoStatusLoader={() => Promise.resolve(idleSso)}
+      characterSkillsLoader={characterSkillsLoader} characterSkillSyncer={characterSkillSyncer} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Blueprints & Jobs" }));
+    expect(await screen.findByText("Industry")).toBeInTheDocument();
+    expect(screen.getAllByText("Aktiv eingeschränkt").length).toBeGreaterThan(0);
+    fireEvent.change(screen.getByLabelText("Trainiertes Level"), { target: { value: "5" } });
+    await waitFor(() => expect(characterSkillsLoader).toHaveBeenLastCalledWith(
+      expect.objectContaining({ trainedLevel: 5 }),
+    ));
+    fireEvent.click(screen.getByRole("button", { name: "Skillpunkte" }));
+    await waitFor(() => expect(characterSkillsLoader).toHaveBeenLastCalledWith(
+      expect.objectContaining({ sortBy: "skillpoints", sortDirection: "asc" }),
+    ));
+    fireEvent.click(screen.getByRole("button", { name: "Skills aktualisieren" }));
+    await waitFor(() => expect(characterSkillSyncer).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText(/1 Skills von 1 Charakter/)).toBeInTheDocument();
   });
 });

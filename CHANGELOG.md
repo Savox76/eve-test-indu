@@ -24,6 +24,33 @@ Keine.
 
 Keine.
 
+## 0.0.5-preview.8 – 11. September 2026
+
+### Neu hinzugefügt
+
+- Paket 25: vollständiger charaktergetrennter Sync trainierter Charakter-Skills einschließlich trainiertem und aktuell wirksamem Level sowie verteilter und freier Skillpunkte.
+- Zweisprachige Skillansicht mit echten Typnamen, Besitzer, Datenalter, Suche, Besitzer-/Level-/Aktivzustandsfiltern, Sortierung, begrenzten Seiten und stabilen Snapshot-/Run-IDs.
+
+### Geändert
+
+- Der automatische Startabgleich aktualisiert nun Assets, Blueprints und Skills parallel vor den persönlichen Industrieaufträgen.
+- Die sichtbare Versionsnummer lautet `v0.0.5-preview.8`.
+
+### Behobene Fehler
+
+- Fehlgeschlagene, unvollständige, doppelte oder rechnerisch widersprüchliche Skillantworten können den letzten vollständigen Skillstand nicht überschreiben.
+- Temporär eingeschränkte oder verstärkte aktive Level werden getrennt vom trainierten Level dargestellt, statt die beiden Werte gleichzusetzen.
+
+### Bekannte Einschränkungen
+
+- ESI weist darauf hin, dass der Skill-Endpunkt nach abgeschlossenen Einträgen in der Skill-Warteschlange bis zur nächsten Charakteranmeldung im Spiel veraltet sein kann; eine Echtzeitüberlagerung mit der Warteschlange folgt in einem späteren Paket.
+- Paket 22 wartet weiterhin auf das vollständige Windows-A0-Protokoll.
+
+### Update und Datenbankmigration
+
+- Keine Schemaänderung. Bestehende Charaktere, Aliasse, Gruppen, Credentials und Snapshots bleiben erhalten.
+- Charaktere mit dem vollständigen Scope-Satz aus `v0.0.5-preview.6` benötigen keine erneute Anmeldung.
+
 ## 0.0.5-preview.7 – 11. September 2026
 
 ### Neu hinzugefügt

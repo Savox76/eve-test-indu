@@ -1,3 +1,6 @@
+Warning: truncated output (original token count: 37680)
+Total output lines: 3550
+
 import {
   AlertTriangle,
   ArrowRight,
@@ -69,9 +72,11 @@ import {
   loadAssets,
   loadAssetDeltas,
   loadBlueprints,
+  loadCharacterSkills,
   loadIndustryJobs,
   syncAssets,
   syncBlueprints,
+  syncCharacterSkills,
   syncIndustryJobs,
   renameAccountGroup,
   setDesktopUpdateChannel,
@@ -94,6 +99,11 @@ import {
   type BlueprintQuery,
   type BlueprintSortField,
   type BlueprintSyncResult,
+  type CharacterSkillActiveState,
+  type CharacterSkillPage,
+  type CharacterSkillQuery,
+  type CharacterSkillSortField,
+  type CharacterSkillSyncResult,
   type IndustryActivityId,
   type IndustryCorrelationState,
   type IndustryJobPage,
@@ -113,6 +123,7 @@ import {
   type UpdaterStatus,
   type AppearanceStatus,
   blueprintPageSize,
+  characterSkillPageSize,
   industryJobPageSize,
 } from "./runtime";
 
@@ -589,6 +600,41 @@ const copy = {
         noMatches: "Keine Industrieaufträge entsprechen der Auswahl.",
         queryError: "Die lokalen Industrieaufträge konnten nicht gelesen werden.",
       },
+      skills: {
+        kicker: "CHARAKTER-SKILLS",
+        title: "Skills für Industrie und Planung",
+        subtitle: "Vollständige ESI-Skillstände aller aktivierten Charaktere als Grundlage für spätere Machbarkeits- und Lückenprüfungen.",
+        search: "Skill, Besitzer oder Type-ID suchen",
+        level: "Trainiertes Level",
+        allLevels: "Alle Level",
+        activeState: "Aktiver Zustand",
+        allActiveStates: "Alle Zustände",
+        stateLabels: {
+          normal: "Normal aktiv",
+          limited: "Aktiv eingeschränkt",
+          boosted: "Temporär verstärkt",
+        },
+        skill: "Skill",
+        owner: "Besitzer",
+        trained: "Trainiert",
+        active: "Aktiv",
+        skillpoints: "Skillpunkte",
+        source: "Quelle",
+        count: "Skills",
+        totalSp: "verteilte SP",
+        unallocatedSp: "freie SP",
+        age: "Datenalter",
+        sync: "Skills aktualisieren",
+        syncing: "Skills werden aktualisiert …",
+        syncComplete: "{skills} Skills von {characters} Charakter(en) aktualisiert.",
+        syncPartial: "{completed} aktualisiert, {failed} fehlgeschlagen. Anmeldung oder Verbindung prüfen.",
+        syncEmpty: "Kein aktivierter Charakter für den Skill-Sync vorhanden.",
+        syncError: "Skill-Sync konnte nicht gestartet werden.",
+        loading: "Charakter-Skills werden geladen …",
+        noData: "Noch kein vollständiger Skill-Snapshot vorhanden.",
+        noMatches: "Keine Skills entsprechen der Auswahl.",
+        queryError: "Die lokalen Charakter-Skills konnten nicht gelesen werden.",
+      },
     },
     moduleKicker: "MODULVORSCHAU",
     moduleText:
@@ -613,7 +659,7 @@ const copy = {
     },
     planned: "Geplant",
     previewOnly: "Noch ohne Live-Funktion",
-    footerVersion: "v0.0.5-preview.7",
+    footerVersion: "v0.0.5-preview.8",
   },
   en: {
     nav: {
@@ -1064,6 +1110,41 @@ const copy = {
         noMatches: "No industry jobs match the selection.",
         queryError: "The local industry jobs could not be read.",
       },
+      skills: {
+        kicker: "CHARACTER SKILLS",
+        title: "Skills for industry and planning",
+        subtitle: "Complete ESI skill levels for every enabled character, ready for later feasibility and gap checks.",
+        search: "Search skill, owner, or type ID",
+        level: "Trained level",
+        allLevels: "All levels",
+        activeState: "Active state",
+        allActiveStates: "All states",
+        stateLabels: {
+          normal: "Normally active",
+          limited: "Active level limited",
+          boosted: "Temporarily boosted",
+        },
+        skill: "Skill",
+        owner: "Owner",
+        trained: "Trained",
+        active: "Active",
+        skillpoints: "Skill points",
+        source: "Source",
+        count: "skills",
+        totalSp: "allocated SP",
+        unallocatedSp: "unallocated SP",
+        age: "Data age",
+        sync: "Refresh skills",
+        syncing: "Refreshing skills …",
+        syncComplete: "Updated {skills} skills from {characters} character(s).",
+        syncPartial: "{completed} updated, {failed} failed. Check sign-in or connection.",
+        syncEmpty: "No enabled character is available for skill sync.",
+        syncError: "Character-skill sync could not be started.",
+        loading: "Loading character skills …",
+        noData: "No complete character-skill snapshot is available yet.",
+        noMatches: "No skills match the selection.",
+        queryError: "The local character skills could not be read.",
+      },
     },
     moduleKicker: "MODULE PREVIEW",
     moduleText:
@@ -1088,7 +1169,7 @@ const copy = {
     },
     planned: "Planned",
     previewOnly: "No live function yet",
-    footerVersion: "v0.0.5-preview.7",
+    footerVersion: "v0.0.5-preview.8",
   },
 } as const;
 
@@ -1207,6 +1288,8 @@ export function App({
   blueprintSyncer = syncBlueprints,
   industryJobsLoader = loadIndustryJobs,
   industryJobSyncer = syncIndustryJobs,
+  characterSkillsLoader = loadCharacterSkills,
+  characterSkillSyncer = syncCharacterSkills,
   fontScaleSetter = setDesktopFontScale,
 }: {
   runtimeLoader?: () => Promise<DesktopRuntimeStatus>;
@@ -1231,6 +1314,8 @@ export function App({
   blueprintSyncer?: () => Promise<BlueprintSyncResult>;
   industryJobsLoader?: (query: IndustryJobQuery) => Promise<IndustryJobPage>;
   industryJobSyncer?: () => Promise<IndustryJobSyncResult>;
+  characterSkillsLoader?: (query: CharacterSkillQuery) => Promise<CharacterSkillPage>;
+  characterSkillSyncer?: () => Promise<CharacterSkillSyncResult>;
   fontScaleSetter?: (fontScale: FontScale) => Promise<AppearanceStatus>;
 }) {
   const [locale, setLocale] = useState<Locale>("de");
@@ -1241,6 +1326,7 @@ export function App({
   const [assetRevision, setAssetRevision] = useState(0);
   const [blueprintRevision, setBlueprintRevision] = useState(0);
   const [industryJobRevision, setIndustryJobRevision] = useState(0);
+  const [characterSkillRevision, setCharacterSkillRevision] = useState(0);
   const initialAssetSyncStarted = useRef(false);
   const [runtimeStatus, setRuntimeStatus] = useState(initialRuntimeStatus);
   const [overviewScope, setOverviewScope] = useState<OverviewScopeId>("all");
@@ -1303,10 +1389,18 @@ export function App({
     return result;
   }, [industryJobSyncer]);
 
+  const runCharacterSkillSync = useCallback(async () => {
+    const result = await characterSkillSyncer();
+    setCharacterSkillRevision((revision) => revision + 1);
+    return result;
+  }, [characterSkillSyncer]);
+
   const runAllSyncs = useCallback(async () => {
     setSyncing(true);
     try {
-      const sources = await Promise.allSettled([runAssetSync(), runBlueprintSync()]);
+      const sources = await Promise.allSettled([
+        runAssetSync(), runBlueprintSync(), runCharacterSkillSync(),
+      ]);
       const jobs = await Promise.allSettled([runIndustryJobSync()]);
       const failed = [...sources, ...jobs].find((result) => result.status === "rejected");
       if (failed?.status === "rejected") throw failed.reason;
@@ -1316,7 +1410,7 @@ export function App({
     } finally {
       setSyncing(false);
     }
-  }, [runAssetSync, runBlueprintSync, runIndustryJobSync]);
+  }, [runAssetSync, runBlueprintSync, runCharacterSkillSync, runIndustryJobSync]);
 
   useEffect(() => {
     if (!nativeCoreReady) return;
@@ -1480,812 +1574,7 @@ export function App({
     try {
       const appearance = await fontScaleSetter(nextScale);
       setFontScale(appearance.fontScale);
-      setRuntimeStatus((current) => current.state === "ready"
-        ? { ...current, appearance }
-        : current);
-    } catch {
-      setFontScale(previousScale);
-    } finally {
-      setFontScaleBusy(false);
-    }
-  };
-
-  const beginSsoLogin = async () => {
-    if (!nativeCoreReady || ssoStatus.state === "waiting" || ssoStatus.state === "exchanging") return;
-    setSsoBusy(true);
-    setSsoCommandError(false);
-    try {
-      setSsoStatus(await ssoStarter([...ssoScopePackages]));
-    } catch {
-      setSsoCommandError(true);
-    } finally {
-      setSsoBusy(false);
-    }
-  };
-
-  const abortSsoLogin = async () => {
-    if (!nativeCoreReady || !["waiting", "exchanging"].includes(ssoStatus.state)) return;
-    setSsoBusy(true);
-    setSsoCommandError(false);
-    try {
-      setSsoStatus(await ssoCanceller());
-    } catch {
-      setSsoCommandError(true);
-    } finally {
-      setSsoBusy(false);
-    }
-  };
-
-  const scrollToAttention = () => {
-    document.getElementById("attention-panel")?.scrollIntoView({ behavior: "smooth", block: "center" });
-  };
-
-  return (
-    <div className="app-shell">
-      <aside className="sidebar">
-        <div className="brand">
-          <div className="brand-mark" aria-hidden="true">
-            <span />
-            <span />
-            <span />
-          </div>
-          <div>
-            <div className="brand-name">NEW EDEN</div>
-            <div className="brand-subtitle">FOUNDRY</div>
-          </div>
-        </div>
-
-        <div className="nav-label">{t.navSection}</div>
-        <nav className="navigation" aria-label={t.navSection}>
-          {navigation.map(({ id, icon: Icon }) => (
-            <button
-              className={`nav-item ${activeModule === id ? "nav-item--active" : ""}`}
-              key={id}
-              type="button"
-              onClick={() => selectModule(id)}
-              aria-current={activeModule === id ? "page" : undefined}
-            >
-              <Icon size={18} strokeWidth={1.8} />
-              <span>{t.nav[id]}</span>
-              {id === "overview" && <span className="nav-signal" aria-hidden="true" />}
-              {id === "pi" && <span className="nav-count">2</span>}
-            </button>
-          ))}
-        </nav>
-
-        <div className="sidebar-spacer" />
-
-        <section className="update-channel" aria-label={t.updates.label}>
-          <div className="update-channel__heading">
-            <RefreshCw size={14} aria-hidden="true" />
-            <span>{t.updates.label}</span>
-          </div>
-          <select
-            value={updater?.channel ?? "stable"}
-            onChange={(event) => void chooseUpdateChannel(event.target.value as UpdateChannel)}
-            disabled={
-              savingUpdateChannel ||
-              runtimeStatus.state !== "ready" ||
-              runtimeStatus.sidecar !== "ready" ||
-              updater?.manifestState !== "verified"
-            }
-            aria-label={t.updates.select}
-          >
-            {(["stable", "beta", "preview"] as const).map((channel) => (
-              <option value={channel} key={channel}>{t.updates.channels[channel]}</option>
-            ))}
-          </select>
-          <small className={updateChannelError || updater?.manifestState === "invalid" ? "is-error" : ""}>
-            {updateChannelError
-              ? t.updates.saveError
-              : savingUpdateChannel
-                ? t.updates.saving
-                : updater
-                  ? `${t.updates[updater.manifestState]} · ${t.updates.disabled}`
-                  : t.updates.desktopOnly}
-          </small>
-        </section>
-
-        <div className={`local-status local-status--${runtimePresentationState}`} role="status">
-          <div className="local-status__icon">
-            <ShieldCheck size={17} />
-          </div>
-          <div>
-            <strong>{t.runtimeStatus[runtimePresentationState].title}</strong>
-            <span>{runtimeDetail}</span>
-          </div>
-        </div>
-
-        <div className="sidebar-footer">
-          <span>{t.footerVersion}</span>
-          <span className="creator-credit">
-            {t.creatorLabel} <strong>Savoxmedia</strong>
-          </span>
-        </div>
-      </aside>
-
-      <main className="main-content">
-        <header className="topbar">
-          <div className="topbar-title">
-            <span>{t.nav[activeModule]}</span>
-            <small>New Eden Foundry</small>
-          </div>
-
-          <div className="search-wrap">
-            <Search size={17} aria-hidden="true" />
-            <input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              onFocus={() => setSearchFocused(true)}
-              onBlur={() => window.setTimeout(() => setSearchFocused(false), 120)}
-              placeholder={t.search}
-              aria-label={t.search}
-            />
-            <kbd><Command size={11} /> K</kbd>
-            {searchFocused && (
-              <div className="search-results">
-                <span className="search-results__hint">{t.searchHint}</span>
-                {searchResults.length > 0 ? (
-                  searchResults.slice(0, 5).map(({ id, icon: Icon }) => (
-                    <button key={id} type="button" onMouseDown={() => selectModule(id)}>
-                      <Icon size={16} />
-                      <span>{t.nav[id]}</span>
-                      <ArrowRight size={14} />
-                    </button>
-                  ))
-                ) : (
-                  <span className="search-results__empty">{t.noResults}</span>
-                )}
-              </div>
-            )}
-          </div>
-
-          <button
-            className={`sync-status ${localData ? `sync-status--${localData.state}` : ""}`}
-            type="button"
-            onClick={() => void runAllSyncs().catch(() => undefined)}
-            aria-label={t.refresh}
-            disabled={!nativeCoreReady || syncing}
-          >
-            <RefreshCw
-              className={syncing || localData?.state === "loading" || localData?.state === "refreshing" ? "spin" : ""}
-              size={15}
-            />
-            <span>{nativeSyncLabel ?? (syncing ? t.syncNow : t.syncFresh)}</span>
-          </button>
-
-          <div className="font-size-control" aria-label={t.fontSize.label}>
-            <Type size={15} aria-hidden="true" />
-            <button
-              type="button"
-              onClick={() => void changeFontScale(-1)}
-              disabled={fontScaleBusy || fontScale === fontScales[0]}
-              aria-label={t.fontSize.smaller}
-              title={t.fontSize.smaller}
-            >
-              <Minus size={13} />
-            </button>
-            <span title={t.fontSize.levels[fontScale]}>{fontScales.indexOf(fontScale) + 1}/5</span>
-            <button
-              type="button"
-              onClick={() => void changeFontScale(1)}
-              disabled={fontScaleBusy || fontScale === fontScales[fontScales.length - 1]}
-              aria-label={t.fontSize.larger}
-              title={t.fontSize.larger}
-            >
-              <Plus size={13} />
-            </button>
-          </div>
-
-          <div className="language-switch" aria-label="Language">
-            <Languages size={15} />
-            {(["de", "en"] as const).map((language) => (
-              <button
-                key={language}
-                type="button"
-                className={locale === language ? "is-active" : ""}
-                onClick={() => setLocale(language)}
-                aria-label={language.toUpperCase()}
-              >
-                {language.toUpperCase()}
-              </button>
-            ))}
-          </div>
-
-          <button className="icon-button" type="button" aria-label={t.notices} onClick={scrollToAttention}>
-            <Bell size={18} />
-            <span className="notification-dot" aria-hidden="true" />
-          </button>
-        </header>
-
-        {(activeModule === "assets" || activeModule === "blueprints") && nativeCoreReady ? (
-          <div className="preview-strip preview-strip--live" role="status">
-            <Database size={15} />
-            <strong>LOCAL</strong>
-            <span>{activeModule === "blueprints" ? t.blueprints.liveNotice : t.assets.liveNotice}</span>
-          </div>
-        ) : (
-          <div className="preview-strip" role="status">
-            <FlaskConical size={15} />
-            <strong>{t.preview}</strong>
-            <span>{t.synthetic}</span>
-            <span className="preview-strip__meta">synthetic: {String(demoMetadata.synthetic)}</span>
-          </div>
-        )}
-
-        <section className={`sso-panel sso-panel--${ssoStatus.state}`} aria-labelledby="sso-title">
-          <div className="sso-panel__icon" aria-hidden="true">
-            {ssoStatus.state === "waiting" || ssoStatus.state === "exchanging"
-              ? <RefreshCw className="spin" size={20} />
-              : <LogIn size={20} />}
-          </div>
-          <div className="sso-panel__copy" aria-live="polite">
-            <span>{t.sso.eyebrow}</span>
-            <strong id="sso-title">{t.sso.states[ssoStatus.state].title}</strong>
-            <p>
-              {ssoCommandError
-                ? t.sso.commandError
-                : ssoStatus.state === "connected" && ssoStatus.character
-                  ? t.sso.connectedName.replace("{name}", ssoStatus.character.name)
-                  : t.sso.states[ssoStatus.state].detail}
-            </p>
-            <small>{nativeCoreReady ? t.sso.security : t.sso.desktopOnly}</small>
-          </div>
-          <div className="sso-scopes sso-scopes--automatic">
-            <strong>{t.sso.scopeTitle}</strong>
-            <span>{t.sso.scopeAutomatic}</span>
-          </div>
-          <div className="sso-panel__actions">
-            {ssoStatus.state === "waiting" || ssoStatus.state === "exchanging" ? (
-              <button type="button" className="sso-cancel" onClick={() => void abortSsoLogin()} disabled={ssoBusy}>
-                <X size={15} />
-                {t.sso.cancel}
-              </button>
-            ) : (
-              <button type="button" className="sso-start" onClick={() => void beginSsoLogin()} disabled={!nativeCoreReady || ssoBusy}>
-                <LogIn size={15} />
-                {ssoStatus.state === "connected"
-                  ? t.sso.startAnother
-                  : ssoStatus.state === "idle"
-                    ? t.sso.start
-                    : t.sso.retry}
-              </button>
-            )}
-          </div>
-        </section>
-
-        <CharacterManager
-          characters={characters}
-          groups={managedGroups}
-          unavailable={charactersError}
-          disabled={!nativeCoreReady}
-          t={t}
-          updateCharacter={characterUpdater}
-          deleteCharacter={characterDeleter}
-          createGroup={accountGroupCreator}
-          renameGroup={accountGroupRenamer}
-          deleteGroup={accountGroupDeleter}
-          onRefresh={refreshCharacterManagement}
-          onReauthorize={beginSsoLogin}
-        />
-
-        {localData && (
-          <DataStateNotice
-            state={localData.state}
-            hasCachedData={localData.hasCachedData}
-            ageSeconds={localData.ageSeconds}
-            locale={locale}
-            t={t}
-          />
-        )}
-
-        {activeModule === "overview" ? (
-          <Overview
-            locale={locale}
-            t={t}
-            scope={overviewScope}
-            onScopeChange={setOverviewScope}
-            onOpenProduction={() => selectModule("production")}
-            onInspect={scrollToAttention}
-          />
-        ) : activeModule === "assets" ? (
-          <AssetWorkspace
-            available={nativeCoreReady}
-            locale={locale}
-            t={t}
-            loadAssets={assetsLoader}
-            exportCsv={assetsCsvExporter}
-            loadDeltas={assetDeltasLoader}
-            syncAssets={runAssetSync}
-            refreshRevision={assetRevision}
-          />
-        ) : activeModule === "blueprints" ? (
-          <BlueprintWorkspace
-            available={nativeCoreReady}
-            locale={locale}
-            t={t}
-            loadBlueprints={blueprintsLoader}
-            syncBlueprints={runBlueprintSync}
-            refreshRevision={blueprintRevision}
-            loadIndustryJobs={industryJobsLoader}
-            syncIndustryJobs={runIndustryJobSync}
-            industryJobRevision={industryJobRevision}
-          />
-        ) : (
-          <ModulePreview activeModule={activeModule} t={t} />
-        )}
-      </main>
-    </div>
-  );
-}
-
-type Translation = (typeof copy)[Locale];
-
-function AssetWorkspace({
-  available,
-  locale,
-  t,
-  loadAssets: loadAssetPage,
-  exportCsv,
-  loadDeltas: loadDeltaPage,
-  syncAssets: runAssetSync,
-  refreshRevision,
-}: {
-  available: boolean;
-  locale: Locale;
-  t: Translation;
-  loadAssets: (query: AssetQuery) => Promise<AssetPage>;
-  exportCsv: (query: Omit<AssetQuery, "offset" | "limit">) => Promise<AssetCsvExport>;
-  loadDeltas: (query: AssetDeltaQuery) => Promise<AssetDeltaPage>;
-  syncAssets: () => Promise<AssetSyncResult>;
-  refreshRevision: number;
-}) {
-  const [search, setSearch] = useState("");
-  const [appliedSearch, setAppliedSearch] = useState("");
-  const [ownerCharacterId, setOwnerCharacterId] = useState<number | null>(null);
-  const [locationStatus, setLocationStatus] = useState<AssetLocationStatus | null>(null);
-  const [sortBy, setSortBy] = useState<AssetSortField>("type");
-  const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
-  const [offset, setOffset] = useState(0);
-  const [page, setPage] = useState<AssetPage | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [failed, setFailed] = useState(false);
-  const [exporting, setExporting] = useState(false);
-  const [exported, setExported] = useState<AssetCsvExport | null>(null);
-  const [exportFailed, setExportFailed] = useState(false);
-  const [deltaChangeType, setDeltaChangeType] = useState<AssetDeltaChangeType | null>(null);
-  const [deltaOffset, setDeltaOffset] = useState(0);
-  const [deltaPage, setDeltaPage] = useState<AssetDeltaPage | null>(null);
-  const [deltasLoading, setDeltasLoading] = useState(false);
-  const [deltasFailed, setDeltasFailed] = useState(false);
-  const [syncResult, setSyncResult] = useState<AssetSyncResult | null>(null);
-  const [syncFailed, setSyncFailed] = useState(false);
-  const [assetsSyncing, setAssetsSyncing] = useState(false);
-  const numberFormat = useMemo(
-    () => new Intl.NumberFormat(locale === "de" ? "de-DE" : "en-US"),
-    [locale],
-  );
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      setAppliedSearch(search.trim().replace(/\s+/g, " "));
-      setOffset(0);
-      setDeltaOffset(0);
-    }, 250);
-    return () => window.clearTimeout(timer);
-  }, [search]);
-
-  useEffect(() => {
-    if (!available) return;
-    let active = true;
-    setLoading(true);
-    setFailed(false);
-    void loadAssetPage({
-      search: appliedSearch,
-      ownerCharacterId,
-      locationStatus,
-      offset,
-      limit: assetPageSize,
-      sortBy,
-      sortDirection,
-    })
-      .then((loadedPage) => {
-        if (!active) return;
-        if (loadedPage.total > 0 && loadedPage.offset >= loadedPage.total) {
-          setOffset(Math.floor((loadedPage.total - 1) / assetPageSize) * assetPageSize);
-          return;
-        }
-        setPage(loadedPage);
-        setFailed(false);
-      })
-      .catch(() => {
-        if (active) setFailed(true);
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [appliedSearch, available, loadAssetPage, locationStatus, offset, ownerCharacterId, refreshRevision, sortBy, sortDirection]);
-
-  useEffect(() => {
-    if (!available) return;
-    let active = true;
-    setDeltasLoading(true);
-    setDeltasFailed(false);
-    void loadDeltaPage({
-      search: appliedSearch,
-      ownerCharacterId,
-      changeType: deltaChangeType,
-      offset: deltaOffset,
-      limit: assetDeltaPageSize,
-    })
-      .then((loadedPage) => {
-        if (!active) return;
-        if (loadedPage.total > 0 && loadedPage.offset >= loadedPage.total) {
-          setDeltaOffset(Math.floor((loadedPage.total - 1) / assetDeltaPageSize) * assetDeltaPageSize);
-          return;
-        }
-        setDeltaPage(loadedPage);
-        setDeltasFailed(false);
-      })
-      .catch(() => {
-        if (active) setDeltasFailed(true);
-      })
-      .finally(() => {
-        if (active) setDeltasLoading(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [appliedSearch, available, deltaChangeType, deltaOffset, loadDeltaPage, ownerCharacterId, refreshRevision]);
-
-  const refreshAssets = async () => {
-    if (!available || assetsSyncing) return;
-    setAssetsSyncing(true);
-    setSyncFailed(false);
-    setSyncResult(null);
-    try {
-      const result = await runAssetSync();
-      setSyncResult(result);
-      setOffset(0);
-      setDeltaOffset(0);
-    } catch {
-      setSyncFailed(true);
-    } finally {
-      setAssetsSyncing(false);
-    }
-  };
-
-  const createExport = async () => {
-    if (!available || exporting) return;
-    setExporting(true);
-    setExported(null);
-    setExportFailed(false);
-    try {
-      setExported(await exportCsv({
-        search: appliedSearch,
-        ownerCharacterId,
-        locationStatus,
-        sortBy,
-        sortDirection,
-      }));
-    } catch {
-      setExportFailed(true);
-    } finally {
-      setExporting(false);
-    }
-  };
-
-  const total = page?.total ?? 0;
-  const from = total === 0 ? 0 : offset + 1;
-  const to = Math.min(offset + (page?.items.length ?? 0), total);
-  const resultRange = t.assets.resultRange
-    .replace("{from}", numberFormat.format(from))
-    .replace("{to}", numberFormat.format(to))
-    .replace("{total}", numberFormat.format(total));
-  const statusTone = (status: AssetLocationStatus) =>
-    status === "resolved"
-      ? "good"
-      : status === "restricted" || status === "pending"
-        ? "warn"
-        : "critical";
-  const changeSort = (field: AssetSortField) => {
-    if (sortBy === field) {
-      setSortDirection((direction) => direction === "asc" ? "desc" : "asc");
-    } else {
-      setSortBy(field);
-      setSortDirection("asc");
-    }
-    setOffset(0);
-  };
-  const sortHeader = (field: AssetSortField, label: string) => (
-    <button type="button" className="asset-sort" onClick={() => changeSort(field)}>
-      {label}
-      {sortBy === field && (
-        <ChevronDown
-          className={sortDirection === "asc" ? "asset-sort__asc" : ""}
-          size={14}
-          aria-hidden="true"
-        />
-      )}
-    </button>
-  );
-
-  return (
-    <div className="workspace asset-workspace">
-      <section className="asset-hero">
-        <div>
-          <span className="eyebrow">{t.assets.kicker}</span>
-          <h1>{t.nav.assets}</h1>
-          <p>{t.assets.subtitle}</p>
-        </div>
-        <div className="asset-hero__metrics" aria-live="polite">
-          <span>
-            <strong>{numberFormat.format(total)}</strong>
-            <small>{t.assets.positions}</small>
-          </span>
-          <span>
-            <strong>{numberFormat.format(page?.quantityTotal ?? 0)}</strong>
-            <small>{t.assets.units}</small>
-          </span>
-          <span>
-            <strong>
-              {page?.ageSeconds === null || page?.ageSeconds === undefined
-                ? "—"
-                : formatDataAge(page.ageSeconds, locale)}
-            </strong>
-            <small>{t.assets.age}</small>
-          </span>
-        </div>
-      </section>
-
-      <section className="asset-browser" aria-busy={loading}>
-        <div className="asset-toolbar">
-          <label className="asset-search">
-            <span>{t.assets.search}</span>
-            <div>
-              <Search size={16} aria-hidden="true" />
-              <input
-                value={search}
-                maxLength={120}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder={t.assets.search}
-                disabled={!available}
-              />
-            </div>
-          </label>
-          <label>
-            <span>{t.assets.owner}</span>
-            <select
-              aria-label={t.assets.owner}
-              value={ownerCharacterId ?? ""}
-              onChange={(event) => {
-                setOwnerCharacterId(event.target.value ? Number(event.target.value) : null);
-                setOffset(0);
-                setDeltaOffset(0);
-              }}
-              disabled={!available}
-            >
-              <option value="">{t.assets.allOwners}</option>
-              {(page?.owners ?? []).map((owner) => (
-                <option value={owner.characterId} key={owner.characterId}>{owner.name}</option>
-              ))}
-            </select>
-          </label>
-          <label>
-            <span>{t.assets.status}</span>
-            <select
-              aria-label={t.assets.status}
-              value={locationStatus ?? ""}
-              onChange={(event) => {
-                setLocationStatus((event.target.value || null) as AssetLocationStatus | null);
-                setOffset(0);
-              }}
-              disabled={!available}
-            >
-              <option value="">{t.assets.allStatuses}</option>
-              {assetLocationStatuses.map((status) => (
-                <option value={status} key={status}>{t.assets.statusLabels[status]}</option>
-              ))}
-            </select>
-          </label>
-          <button
-            className="secondary-button asset-export"
-            type="button"
-            onClick={() => void refreshAssets()}
-            disabled={!available || assetsSyncing}
-          >
-            <RefreshCw className={assetsSyncing ? "spin" : ""} size={15} />
-            {assetsSyncing ? t.assets.syncing : t.assets.sync}
-          </button>
-          <button
-            className="secondary-button asset-export"
-            type="button"
-            onClick={() => void createExport()}
-            disabled={!available || exporting || loading}
-          >
-            {exporting ? <RefreshCw className="spin" size={15} /> : <Download size={15} />}
-            {exporting ? t.assets.exporting : t.assets.export}
-          </button>
-        </div>
-
-        {(syncResult || syncFailed) && (
-          <div className={`asset-export-status ${syncFailed || (syncResult?.failed ?? 0) > 0 ? "asset-export-status--error" : ""}`} role="status">
-            {syncFailed
-              ? t.assets.syncError
-              : syncResult?.characters.length === 0
-                ? t.assets.syncEmpty
-                : (syncResult?.failed ?? 0) > 0
-                  ? t.assets.syncPartial
-                      .replace("{completed}", numberFormat.format(syncResult?.completed ?? 0))
-                      .replace("{failed}", numberFormat.format(syncResult?.failed ?? 0))
-                  : t.assets.syncComplete
-                      .replace("{assets}", numberFormat.format(syncResult?.assets ?? 0))
-                      .replace("{characters}", numberFormat.format(syncResult?.completed ?? 0))}
-          </div>
-        )}
-
-        {(exported || exportFailed) && (
-          <div className={`asset-export-status ${exportFailed ? "asset-export-status--error" : ""}`} role="status">
-            {exportFailed
-              ? t.assets.exportError
-              : t.assets.exported
-                  .replace("{rows}", numberFormat.format(exported?.rows ?? 0))
-                  .replace("{path}", exported?.relativePath ?? "")}
-          </div>
-        )}
-
-        {!available ? (
-          <div className="asset-empty"><Database size={22} />{t.assets.deltas.unavailable}</div>
-        ) : failed ? (
-          <div className="asset-empty asset-empty--error" role="alert">
-            <AlertTriangle size={22} />{t.assets.queryError}
-          </div>
-        ) : loading && page === null ? (
-          <div className="asset-empty"><RefreshCw className="spin" size={22} />{t.assets.loading}</div>
-        ) : page && page.items.length === 0 ? (
-          <div className="asset-empty">
-            <PackageSearch size={22} />
-            {page.observedAt === null ? t.assets.noData : t.assets.noMatches}
-          </div>
-        ) : page ? (
-          <div className="asset-table-wrap">
-            <table className="asset-table">
-              <thead>
-                <tr>
-                  <th aria-sort={sortBy === "type" ? (sortDirection === "asc" ? "ascending" : "descending") : "none"}>{sortHeader("type", t.assets.type)}</th>
-                  <th aria-sort={sortBy === "owner" ? (sortDirection === "asc" ? "ascending" : "descending") : "none"}>{sortHeader("owner", t.assets.owner)}</th>
-                  <th aria-sort={sortBy === "location" ? (sortDirection === "asc" ? "ascending" : "descending") : "none"}>{sortHeader("location", t.assets.location)}</th>
-                  <th aria-sort={sortBy === "flag" ? (sortDirection === "asc" ? "ascending" : "descending") : "none"}>{sortHeader("flag", t.assets.flag)}</th>
-                  <th className="asset-table__number" aria-sort={sortBy === "quantity" ? (sortDirection === "asc" ? "ascending" : "descending") : "none"}>{sortHeader("quantity", t.assets.quantity)}</th>
-                  <th aria-sort={sortBy === "age" ? (sortDirection === "asc" ? "ascending" : "descending") : "none"}>{sortHeader("age", t.assets.age)}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {page.items.map((item) => (
-                  <tr key={item.itemId}>
-                    <td>
-                      <strong>{item.typeName}</strong>
-                      <small>Type {item.typeId} · Item {item.itemId}</small>
-                    </td>
-                    <td><strong>{item.ownerName}</strong><small>EVE ID {item.ownerCharacterId}</small></td>
-                    <td>
-                      <span className={`asset-status asset-status--${statusTone(item.locationStatus)}`}>
-                        <StatusDot tone={statusTone(item.locationStatus)} />
-                        {t.assets.statusLabels[item.locationStatus]}
-                      </span>
-                      <small title={item.locationPath}>
-                        {item.locationPath || t.assets.pendingLocation}
-                      </small>
-                    </td>
-                    <td>{item.locationFlag}</td>
-                    <td className="asset-table__number"><strong>{numberFormat.format(item.quantity)}</strong></td>
-                    <td>{formatDataAge(item.ageSeconds, locale)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : null}
-
-        {available && page && (
-          <footer className="asset-pagination">
-            <span>{resultRange}</span>
-            <div>
-              <button
-                type="button"
-                onClick={() => setOffset(Math.max(0, offset - assetPageSize))}
-                disabled={loading || offset === 0}
-              >
-                <ChevronRight className="asset-pagination__previous" size={15} />
-                {t.assets.previous}
-              </button>
-              <button
-                type="button"
-                onClick={() => setOffset(offset + assetPageSize)}
-                disabled={loading || offset + assetPageSize >= total}
-              >
-                {t.assets.next}
-                <ChevronRight size={15} />
-              </button>
-            </div>
-          </footer>
-        )}
-      </section>
-
-      <section className="asset-browser asset-deltas" aria-busy={deltasLoading}>
-        <header className="asset-deltas__header">
-          <div>
-            <span className="eyebrow">{t.assets.deltas.kicker}</span>
-            <h2>{t.assets.deltas.title}</h2>
-            <p>{t.assets.deltas.subtitle}</p>
-          </div>
-          <label>
-            <span>{t.assets.deltas.filter}</span>
-            <select
-              aria-label={t.assets.deltas.filter}
-              value={deltaChangeType ?? ""}
-              disabled={!available}
-              onChange={(event) => {
-                setDeltaChangeType(event.target.value === "" ? null : event.target.value as AssetDeltaChangeType);
-                setDeltaOffset(0);
-              }}
-            >
-              <option value="">{t.assets.deltas.all}</option>
-              {assetDeltaChangeTypes.map((changeType) => (
-                <option key={changeType} value={changeType}>{t.assets.deltas.labels[changeType]}</option>
-              ))}
-            </select>
-          </label>
-        </header>
-
-        {deltaPage && (
-          <div className="asset-deltas__summary" aria-live="polite">
-            {assetDeltaChangeTypes.map((changeType) => (
-              <span key={changeType}>
-                <strong>{numberFormat.format(deltaPage.summary[changeType])}</strong>
-                <small>{t.assets.deltas.labels[changeType]}</small>
-              </span>
-            ))}
-          </div>
-        )}
-
-        {!available ? (
-          <div className="asset-empty"><Database size={22} />{t.assets.unavailable}</div>
-        ) : deltasFailed ? (
-          <div className="asset-empty asset-empty--error" role="alert">
-            <AlertTriangle size={22} />{t.assets.deltas.error}
-          </div>
-        ) : deltasLoading && deltaPage === null ? (
-          <div className="asset-empty"><RefreshCw className="spin" size={22} />{t.assets.deltas.loading}</div>
-        ) : deltaPage && deltaPage.items.length === 0 ? (
-          <div className="asset-empty">
-            <Clock3 size={22} />
-            {deltaPage.hasBaseline ? t.assets.deltas.noChanges : t.assets.deltas.noBaseline}
-          </div>
-        ) : deltaPage ? (
-          <div className="asset-table-wrap">
-            <table className="asset-table asset-delta-table">
-              <thead>
-                <tr>
-                  <th>{t.assets.type}</th>
-                  <th>{t.assets.deltas.changes}</th>
-                  <th>{t.assets.deltas.beforeAfter}</th>
-                  <th>{t.assets.location}</th>
-                  <th>{t.assets.deltas.interval}</th>
-                  <th>{t.assets.deltas.source}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {deltaPage.items.map((event) => (
-                  <tr key={event.eventId}>
-                    <td>
-                      <strong>{event.typeName}</strong>
-                      <small>{event.ownerName} · Item {event.itemId}</small>
-                    </td>
-                    <td>
+      setRuntimeStatus((current) =>…7680 tokens truncated…      <td>
                       <div className="asset-delta-table__badges">
                         {event.changeTypes.map((changeType) => (
                           <span key={changeType} className={`asset-delta-badge asset-delta-badge--${changeType}`}>
@@ -2987,6 +2276,7 @@ function PanelHeader({
 function BlueprintWorkspace({
   available, locale, t, loadBlueprints: loadPage, syncBlueprints: runSync, refreshRevision,
   loadIndustryJobs: loadJobs, syncIndustryJobs: runJobSync, industryJobRevision,
+  loadCharacterSkills: loadSkills, syncCharacterSkills: runSkillSync, characterSkillRevision,
 }: {
   available: boolean;
   locale: Locale;
@@ -2997,6 +2287,9 @@ function BlueprintWorkspace({
   loadIndustryJobs: (query: IndustryJobQuery) => Promise<IndustryJobPage>;
   syncIndustryJobs: () => Promise<IndustryJobSyncResult>;
   industryJobRevision: number;
+  loadCharacterSkills: (query: CharacterSkillQuery) => Promise<CharacterSkillPage>;
+  syncCharacterSkills: () => Promise<CharacterSkillSyncResult>;
+  characterSkillRevision: number;
 }) {
   const [search, setSearch] = useState("");
   const [appliedSearch, setAppliedSearch] = useState("");
@@ -3102,6 +2395,14 @@ function BlueprintWorkspace({
         loadJobs={loadJobs}
         syncJobs={runJobSync}
         refreshRevision={industryJobRevision}
+      />
+      <CharacterSkillsPanel
+        available={available}
+        locale={locale}
+        t={t}
+        loadSkills={loadSkills}
+        syncSkills={runSkillSync}
+        refreshRevision={characterSkillRevision}
       />
     </div>
   );
@@ -3263,6 +2564,145 @@ function IndustryJobsPanel({
             <td><span className={`status-pill status-pill--${item.correlationState === "linked" ? "good" : item.correlationState === "ambiguous" || item.correlationState === "partial" ? "warn" : "info"}`}>{t.blueprints.jobs.correlationLabels[item.correlationState]}</span><small>{blueprintEvidence(item.blueprintCorrelation.state)} · {assetEvidence(item.assetCorrelation.state)}</small><small>Run {item.jobSyncRunId}{item.assetCorrelation.eventIds[0] ? ` · ${item.assetCorrelation.eventIds[0].slice(0, 10)}` : ""}</small></td>
           </tr>)}</tbody></table></div> : null}
       {page && total > 0 && <div className="asset-pagination"><span>{range}</span><div><button type="button" onClick={() => setOffset(Math.max(0, offset - industryJobPageSize))} disabled={offset === 0}>{t.blueprints.previous}</button><button type="button" onClick={() => setOffset(offset + industryJobPageSize)} disabled={offset + industryJobPageSize >= total}>{t.blueprints.next}</button></div></div>}
+    </section>
+  );
+}
+
+function CharacterSkillsPanel({
+  available, locale, t, loadSkills, syncSkills, refreshRevision,
+}: {
+  available: boolean;
+  locale: Locale;
+  t: Translation;
+  loadSkills: (query: CharacterSkillQuery) => Promise<CharacterSkillPage>;
+  syncSkills: () => Promise<CharacterSkillSyncResult>;
+  refreshRevision: number;
+}) {
+  const [search, setSearch] = useState("");
+  const [appliedSearch, setAppliedSearch] = useState("");
+  const [ownerCharacterId, setOwnerCharacterId] = useState<number | null>(null);
+  const [trainedLevel, setTrainedLevel] = useState<number | null>(null);
+  const [activeState, setActiveState] = useState<CharacterSkillActiveState | null>(null);
+  const [sortBy, setSortBy] = useState<CharacterSkillSortField>("skill");
+  const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
+  const [offset, setOffset] = useState(0);
+  const [page, setPage] = useState<CharacterSkillPage | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const [syncingSkills, setSyncingSkills] = useState(false);
+  const [syncResult, setSyncResult] = useState<CharacterSkillSyncResult | null>(null);
+  const [syncFailed, setSyncFailed] = useState(false);
+  const numberFormat = useMemo(
+    () => new Intl.NumberFormat(locale === "de" ? "de-DE" : "en-US"),
+    [locale],
+  );
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setAppliedSearch(search.trim().replace(/\s+/g, " "));
+      setOffset(0);
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [search]);
+
+  useEffect(() => {
+    if (!available) return;
+    let active = true;
+    setLoading(true);
+    setFailed(false);
+    void loadSkills({
+      search: appliedSearch,
+      ownerCharacterId,
+      trainedLevel,
+      activeState,
+      offset,
+      limit: characterSkillPageSize,
+      sortBy,
+      sortDirection,
+    }).then((result) => {
+      if (!active) return;
+      if (result.total > 0 && result.offset >= result.total) {
+        setOffset(Math.floor((result.total - 1) / characterSkillPageSize) * characterSkillPageSize);
+        return;
+      }
+      setPage(result);
+    }).catch(() => {
+      if (active) setFailed(true);
+    }).finally(() => {
+      if (active) setLoading(false);
+    });
+    return () => { active = false; };
+  }, [activeState, appliedSearch, available, loadSkills, offset, ownerCharacterId, refreshRevision, sortBy, sortDirection, trainedLevel]);
+
+  const refresh = async () => {
+    if (!available || syncingSkills) return;
+    setSyncingSkills(true);
+    setSyncFailed(false);
+    setSyncResult(null);
+    try {
+      setSyncResult(await syncSkills());
+      setOffset(0);
+    } catch {
+      setSyncFailed(true);
+    } finally {
+      setSyncingSkills(false);
+    }
+  };
+  const changeSort = (field: CharacterSkillSortField) => {
+    if (sortBy === field) setSortDirection((value) => value === "asc" ? "desc" : "asc");
+    else { setSortBy(field); setSortDirection("asc"); }
+    setOffset(0);
+  };
+  const header = (field: CharacterSkillSortField, label: string) => (
+    <button type="button" className="asset-sort" onClick={() => changeSort(field)}>
+      {label}{sortBy === field && <ChevronDown className={sortDirection === "asc" ? "asset-sort__asc" : ""} size={14} />}
+    </button>
+  );
+  const total = page?.total ?? 0;
+  const range = t.blueprints.resultRange
+    .replace("{from}", numberFormat.format(total === 0 ? 0 : offset + 1))
+    .replace("{to}", numberFormat.format(Math.min(offset + (page?.items.length ?? 0), total)))
+    .replace("{total}", numberFormat.format(total));
+
+  return (
+    <section className="asset-browser character-skills" aria-busy={loading}>
+      <header className="asset-deltas__header industry-jobs__header">
+        <div>
+          <span className="eyebrow">{t.blueprints.skills.kicker}</span>
+          <h2>{t.blueprints.skills.title}</h2>
+          <p>{t.blueprints.skills.subtitle}</p>
+        </div>
+        <div className="asset-hero__metrics">
+          <span><strong>{numberFormat.format(total)}</strong><small>{t.blueprints.skills.count}</small></span>
+          <span><strong>{numberFormat.format(page?.totalSp ?? 0)}</strong><small>{t.blueprints.skills.totalSp}</small></span>
+          <span><strong>{numberFormat.format(page?.unallocatedSp ?? 0)}</strong><small>{t.blueprints.skills.unallocatedSp}</small></span>
+          <span><strong>{page?.ageSeconds == null ? "—" : formatDataAge(page.ageSeconds, locale)}</strong><small>{t.blueprints.skills.age}</small></span>
+        </div>
+      </header>
+      <div className="asset-toolbar industry-jobs__toolbar">
+        <label className="asset-search"><span>{t.blueprints.skills.search}</span><div><Search size={16} /><input value={search} maxLength={120} onChange={(event) => setSearch(event.target.value)} placeholder={t.blueprints.skills.search} disabled={!available} /></div></label>
+        <label><span>{t.blueprints.owner}</span><select value={ownerCharacterId ?? ""} onChange={(event) => { setOwnerCharacterId(event.target.value ? Number(event.target.value) : null); setOffset(0); }}><option value="">{t.blueprints.allOwners}</option>{(page?.owners ?? []).map((owner) => <option key={owner.characterId} value={owner.characterId}>{owner.name}</option>)}</select></label>
+        <label><span>{t.blueprints.skills.level}</span><select value={trainedLevel ?? ""} onChange={(event) => { setTrainedLevel(event.target.value ? Number(event.target.value) : null); setOffset(0); }}><option value="">{t.blueprints.skills.allLevels}</option>{(page?.levels ?? []).map((level) => <option key={level} value={level}>{level}</option>)}</select></label>
+        <label><span>{t.blueprints.skills.activeState}</span><select value={activeState ?? ""} onChange={(event) => { setActiveState((event.target.value || null) as CharacterSkillActiveState | null); setOffset(0); }}><option value="">{t.blueprints.skills.allActiveStates}</option>{(page?.activeStates ?? []).map((state) => <option key={state} value={state}>{t.blueprints.skills.stateLabels[state]}</option>)}</select></label>
+        <button className="secondary-button asset-export" type="button" onClick={() => void refresh()} disabled={!available || syncingSkills}><RefreshCw className={syncingSkills ? "spin" : ""} size={15} />{syncingSkills ? t.blueprints.skills.syncing : t.blueprints.skills.sync}</button>
+      </div>
+      {(syncResult || syncFailed) && <div className={`asset-export-status ${syncFailed || (syncResult?.failed ?? 0) > 0 ? "asset-export-status--error" : ""}`} role="status">{syncFailed ? t.blueprints.skills.syncError : syncResult?.characters.length === 0 ? t.blueprints.skills.syncEmpty : (syncResult?.failed ?? 0) > 0 ? t.blueprints.skills.syncPartial.replace("{completed}", String(syncResult?.completed ?? 0)).replace("{failed}", String(syncResult?.failed ?? 0)) : t.blueprints.skills.syncComplete.replace("{skills}", numberFormat.format(syncResult?.skills ?? 0)).replace("{characters}", String(syncResult?.completed ?? 0))}</div>}
+      {!available ? <div className="asset-empty"><Database size={22} />{t.blueprints.unavailable}</div>
+        : failed ? <div className="asset-empty asset-empty--error"><AlertTriangle size={22} />{t.blueprints.skills.queryError}</div>
+        : loading && page === null ? <div className="asset-empty"><RefreshCw className="spin" size={22} />{t.blueprints.skills.loading}</div>
+        : page && page.items.length === 0 ? <div className="asset-empty"><Sparkles size={22} />{page.observedAt === null ? t.blueprints.skills.noData : t.blueprints.skills.noMatches}</div>
+        : page ? <div className="asset-table-wrap"><table className="asset-table character-skill-table"><thead><tr>
+            <th>{header("skill", t.blueprints.skills.skill)}</th><th>{header("owner", t.blueprints.skills.owner)}</th><th>{header("trained", t.blueprints.skills.trained)}</th><th>{header("active", t.blueprints.skills.active)}</th><th>{header("skillpoints", t.blueprints.skills.skillpoints)}</th><th>{t.blueprints.skills.source}</th><th>{header("age", t.blueprints.skills.age)}</th>
+          </tr></thead><tbody>{page.items.map((item) => <tr key={`${item.ownerCharacterId}:${item.skillId}`}>
+            <td><strong>{item.skillName}</strong><small>Type #{item.skillId}</small></td>
+            <td>{item.ownerName}</td>
+            <td className="asset-table__number"><strong>{item.trainedLevel}</strong></td>
+            <td><span className={`status-pill status-pill--${item.activeState === "normal" ? "good" : item.activeState === "limited" ? "warn" : "info"}`}>{item.activeLevel}</span><small>{t.blueprints.skills.stateLabels[item.activeState]}</small></td>
+            <td className="asset-table__number">{numberFormat.format(item.skillpoints)}</td>
+            <td><strong>Snapshot #{item.snapshotId}</strong><small>Run #{item.syncRunId}</small></td>
+            <td>{formatDataAge(item.ageSeconds, locale)}</td>
+          </tr>)}</tbody></table></div> : null}
+      {page && total > 0 && <div className="asset-pagination"><span>{range}</span><div><button type="button" onClick={() => setOffset(Math.max(0, offset - characterSkillPageSize))} disabled={offset === 0}>{t.blueprints.previous}</button><button type="button" onClick={() => setOffset(offset + characterSkillPageSize)} disabled={offset + characterSkillPageSize >= total}>{t.blueprints.next}</button></div></div>}
     </section>
   );
 }
