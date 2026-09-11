@@ -59,11 +59,17 @@ const INDUSTRY_JOB_STATUSES: [&str; 6] = [
 const INDUSTRY_JOB_CORRELATIONS: [&str; 5] =
     ["linked", "partial", "ambiguous", "unmatched", "pending"];
 const INDUSTRY_JOB_ACTIVITY_IDS: [u8; 8] = [1, 3, 4, 5, 7, 8, 9, 11];
-const INDUSTRY_FACILITY_SORT_FIELDS: [&str; 7] =
-    ["facility", "system", "type", "cost", "jobs", "access", "age"];
+const INDUSTRY_FACILITY_SORT_FIELDS: [&str; 7] = [
+    "facility", "system", "type", "cost", "jobs", "access", "age",
+];
 const INDUSTRY_FACILITY_KINDS: [&str; 3] = ["station", "structure", "unknown"];
-const INDUSTRY_FACILITY_ACCESS_STATES: [&str; 5] =
-    ["public", "available", "restricted", "scope-missing", "unknown"];
+const INDUSTRY_FACILITY_ACCESS_STATES: [&str; 5] = [
+    "public",
+    "available",
+    "restricted",
+    "scope-missing",
+    "unknown",
+];
 const INDUSTRY_COST_ACTIVITIES: [&str; 6] = [
     "manufacturing",
     "reaction",
@@ -1359,7 +1365,11 @@ fn industry_facility_query_response_is_valid(response: &IndustryFacilityQueryRes
             .map(String::as_str)
             .collect::<Vec<_>>()
             == INDUSTRY_COST_ACTIVITIES
-        && response.kinds.iter().map(String::as_str).collect::<Vec<_>>()
+        && response
+            .kinds
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>()
             == INDUSTRY_FACILITY_KINDS
         && response
             .access_states
