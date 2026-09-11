@@ -80,6 +80,11 @@ from .research_planning import (
     validate_research_plan_identity,
     validate_research_query,
 )
+from .sde import (
+    SdeQueryError,
+    query_blueprint_activities,
+    validate_blueprint_activity_query,
+)
 from .storage import ProgramStorage, ProgramStorageError, prepare_program_storage
 from .startup_state import StartupDataState, inspect_startup_data_state
 from .sso_registration import (
@@ -806,6 +811,34 @@ def create_application(
             )
         except Exception:
             return JSONResponse(status_code=500, content={"detail": "industry_slot_query_failed"})
+        return JSONResponse(content=result)
+
+    @app.post("/sde/blueprint-activities/query")
+    async def post_sde_blueprint_activity_query(request: Request) -> JSONResponse:
+        try:
+            payload = await request.json()
+        except Exception:
+            return JSONResponse(
+                status_code=422,
+                content={"detail": "sde_blueprint_activity_query_invalid"},
+            )
+        try:
+            validate_blueprint_activity_query(payload)
+            with closing(connect_database(storage.database_path)) as connection:
+                result = query_blueprint_activities(connection, payload)
+        except SdeQueryError as error:
+            code = str(error)
+            return JSONResponse(
+                status_code=(
+                    422 if code == "sde_blueprint_activity_query_invalid" else 500
+                ),
+                content={"detail": code},
+            )
+        except Exception:
+            return JSONResponse(
+                status_code=500,
+                content={"detail": "sde_blueprint_activity_query_failed"},
+            )
         return JSONResponse(content=result)
 
     @app.post("/research-plans/query")

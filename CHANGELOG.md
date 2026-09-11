@@ -24,6 +24,36 @@ Keine.
 
 Keine.
 
+## 0.0.5-preview.12 – 11. September 2026
+
+### Neu hinzugefügt
+
+- Paket 29: build-versionierte Blueprint-Aktivitätsbasis für Fertigung und Reaktionen mit vollständigen Produkt-/Materialmengen und unveränderten SDE-Basiszeiten.
+- Rebuildbare SQLite-Tabellen für Aktivitäten, Produkte und Materialien mit geprüften Typreferenzen und aktivitätsspezifischen Suchindizes.
+- Authentifizierte, streng begrenzte Abfrage nach Blueprint-, Produkt- und Aktivitätsfilter einschließlich gemeinsamer Aktivitäts-Buildnummer.
+
+### Geändert
+
+- Der atomare SDE-Import ersetzt Gruppen, Typen, Orte und Blueprintaktivitäten in einer gemeinsamen Transaktion.
+- Die sichtbare Versionsnummer lautet `v0.0.5-preview.12`.
+
+### Behobene Fehler
+
+- Ungültige, leere, doppelte oder unvollständig referenzierte Blueprintrezepte können keinen Teilbestand und keinen neuen Buildmarker veröffentlichen.
+- Ein späterer Minimalimport kann keine veralteten Aktivitäten unter einer neuen allgemeinen SDE-Buildnummer zurücklassen.
+- Ohne vollständig belegten Aktivitätsimport wird ein allgemeiner SDE-Build nicht länger als Blueprint-Aktivitätsstand ausgegeben.
+
+### Bekannte Einschränkungen
+
+- Paket 29 stellt die unveränderte Fertigungs-/Reaktionsbasis bereit; Produktionsziele, Kettenauflösung, Bestand und Reservierungen folgen in Paket 30.
+- ME, Runs, Rundung, Charakter-, Anlagen- und Rigmodifikatoren, Systemkosten, Steuern und Preise werden noch nicht auf die Basiswerte angewendet.
+- Paket 22 wartet weiterhin auf das vollständige Windows-A0-Protokoll.
+
+### Update und Datenbankmigration
+
+- Keine Änderung am Anwendungsschema 8. Die neuen SDE-Tabellen sind vollständig rebuildbare, abgeleitete Daten.
+- Bestehende Charaktere, Aliasse, Gruppen, Credentials, Forschungspläne und vollständige Snapshots bleiben erhalten; es werden keine zusätzlichen ESI-Scopes benötigt.
+
 ## 0.0.5-preview.11 – 11. September 2026
 
 ### Neu hinzugefügt

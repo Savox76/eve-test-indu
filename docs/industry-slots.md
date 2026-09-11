@@ -32,7 +32,7 @@ Die aktuelle Jobbelegung zeigt je Bereich aktive, pausierte und abholbereite Arb
 - **blockiert:** das BPO oder der vollständige Skillstand fehlt,
 - **fertig:** beide gespeicherten ME-/TE-Ziele sind erreicht.
 
-Persistente Fertigungs- und Reaktionspläne existieren noch nicht. Die Oberfläche kennzeichnet diese Grenze ausdrücklich, statt aus Jobhistorie oder Bestand einen zukünftigen Arbeitsvorrat zu erfinden. Diese Planarten folgen nach der vollständigen SDE-Blueprint-Aktivitätsbasis in der Produktionsplanung.
+Persistente Fertigungs- und Reaktionspläne existieren noch nicht. Die Oberfläche kennzeichnet diese Grenze ausdrücklich, statt aus Jobhistorie oder Bestand einen zukünftigen Arbeitsvorrat zu erfinden. Die vollständige SDE-Blueprint-Aktivitätsbasis steht seit Paket 29 bereit; Ziele, Produktionsschritte und Bruttomaterialbedarf folgen mit der Produktionsplanung in Paket 30.
 
 ## Quellen und Vertrauensgrenzen
 
