@@ -103,7 +103,10 @@ jobs:
         shell: pwsh
         run: |
           $version = node --print "require('./package.json').version"
-          $installerPath = "src-tauri/target/release/bundle/nsis/New.Eden.Foundry_${version}_x64-setup.exe"
+          $installerCandidates = @(Get-ChildItem -LiteralPath 'src-tauri/target/release/bundle/nsis' `
+            -Filter "*_${version}_x64-setup.exe")
+          if ($installerCandidates.Count -ne 1) { throw 'Expected exactly one NSIS installer.' }
+          $installerPath = $installerCandidates[0].FullName
           ./scripts/smoke_installed_application.ps1 -InstallerPath $installerPath
 
       - name: Build ephemeral portable package
