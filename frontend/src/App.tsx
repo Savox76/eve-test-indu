@@ -74,6 +74,7 @@ import {
   loadCharacterSkills,
   loadIndustryFacilities,
   loadIndustryJobs,
+  loadIndustrySlots,
   loadResearchPlans,
   syncAssets,
   syncBlueprints,
@@ -121,6 +122,9 @@ import {
   type IndustryJobSortField,
   type IndustryJobStatus,
   type IndustryJobSyncResult,
+  type IndustrySlotActivityKey,
+  type IndustrySlotPage,
+  type IndustrySlotQuery,
   type ResearchPlanInput,
   type ResearchPlanPage,
   type ResearchPlanQuery,
@@ -140,6 +144,7 @@ import {
   blueprintPageSize,
   characterSkillPageSize,
   industryJobPageSize,
+  industrySlotPageSize,
   researchPlanPageSize,
 } from "./runtime";
 
@@ -695,6 +700,51 @@ const copy = {
         noMatches: "Keine Anlagen entsprechen der Auswahl.",
         queryError: "Der lokale Anlagenkatalog konnte nicht gelesen werden.",
       },
+      slots: {
+        kicker: "INDUSTRIE-SLOTS",
+        title: "Kapazität und Arbeitsvorrat",
+        subtitle: "Fertigung, Reaktionen und Wissenschaft je Charakter mit echter Skill-Kapazität und aktueller Jobbelegung.",
+        boundary: "Fehlt ein vollständiger Skill- oder Job-Snapshot, bleibt der betroffene Wert unbekannt. Fertigungs- und Reaktionspläne folgen erst mit der Produktionsplanung.",
+        owner: "Charakter",
+        allOwners: "Alle Charaktere",
+        characters: "Charaktere",
+        occupied: "belegte Slots",
+        ready: "fertige Jobs",
+        researchQueue: "Forschungspläne offen",
+        activityLabels: {
+          manufacturing: "Fertigung", reactions: "Reaktionen", science: "Wissenschaft",
+        },
+        stateLabels: {
+          unknown: "Daten fehlen", available: "Slots frei", full: "Voll belegt",
+          overbooked: "Über Kapazität",
+        },
+        slotValue: "{available} frei · {occupied}/{capacity} belegt",
+        slotUnknown: "Kapazität oder Belegung unbekannt",
+        jobs: "{active} aktiv · {ready} fertig · {paused} pausiert",
+        noJobSnapshot: "Job-Snapshot fehlt",
+        skillValue: "{primary} {primaryLevel} · {advanced} {advancedLevel}",
+        noSkillSnapshot: "Skill-Snapshot fehlt",
+        skillLabels: {
+          massProduction: "Mass Production",
+          advancedMassProduction: "Advanced Mass Production",
+          massReactions: "Mass Reactions",
+          advancedMassReactions: "Advanced Mass Reactions",
+          laboratoryOperation: "Laboratory Operation",
+          advancedLaboratoryOperation: "Advanced Laboratory Operation",
+        },
+        nextEnd: "Nächstes Ende {date}",
+        noActiveJob: "Kein aktiver Job",
+        plans: "{queued} geplant · {running} laufend · {blocked} blockiert · {complete} fertig",
+        planningPending: "Noch kein Fertigungs-Arbeitsvorrat",
+        source: "Skills #{skills} / Lauf #{skillRun} · Jobs #{jobs} / Lauf #{jobRun}",
+        sourceMissing: "Quellen noch unvollständig",
+        age: "Datenalter",
+        loading: "Industrie-Slots werden geladen …",
+        noData: "Noch keine verbundenen Charaktere vorhanden.",
+        noMatches: "Kein Charakter entspricht der Auswahl.",
+        queryError: "Die lokale Industrie-Slotübersicht konnte nicht gelesen werden.",
+        resultRange: "{from}–{to} von {total}",
+      },
       research: {
         kicker: "FORSCHUNGSPLANUNG",
         title: "ME-/TE-Forschungsplan",
@@ -773,7 +823,7 @@ const copy = {
     },
     planned: "Geplant",
     previewOnly: "Noch ohne Live-Funktion",
-    footerVersion: "v0.0.5-preview.10",
+    footerVersion: "v0.0.5-preview.11",
   },
   en: {
     nav: {
@@ -1303,6 +1353,51 @@ const copy = {
         noMatches: "No facilities match the selection.",
         queryError: "The local facility catalog could not be read.",
       },
+      slots: {
+        kicker: "INDUSTRY SLOTS",
+        title: "Capacity and work queue",
+        subtitle: "Manufacturing, reactions, and science per character with real skill capacity and current job occupancy.",
+        boundary: "If a complete skill or job snapshot is missing, the affected value remains unknown. Manufacturing and reaction plans become available with production planning.",
+        owner: "Character",
+        allOwners: "All characters",
+        characters: "characters",
+        occupied: "occupied slots",
+        ready: "ready jobs",
+        researchQueue: "open research plans",
+        activityLabels: {
+          manufacturing: "Manufacturing", reactions: "Reactions", science: "Science",
+        },
+        stateLabels: {
+          unknown: "Data missing", available: "Slots available", full: "Fully occupied",
+          overbooked: "Over capacity",
+        },
+        slotValue: "{available} free · {occupied}/{capacity} occupied",
+        slotUnknown: "Capacity or occupancy unknown",
+        jobs: "{active} active · {ready} ready · {paused} paused",
+        noJobSnapshot: "Job snapshot missing",
+        skillValue: "{primary} {primaryLevel} · {advanced} {advancedLevel}",
+        noSkillSnapshot: "Skill snapshot missing",
+        skillLabels: {
+          massProduction: "Mass Production",
+          advancedMassProduction: "Advanced Mass Production",
+          massReactions: "Mass Reactions",
+          advancedMassReactions: "Advanced Mass Reactions",
+          laboratoryOperation: "Laboratory Operation",
+          advancedLaboratoryOperation: "Advanced Laboratory Operation",
+        },
+        nextEnd: "Next completion {date}",
+        noActiveJob: "No active job",
+        plans: "{queued} planned · {running} running · {blocked} blocked · {complete} finished",
+        planningPending: "No manufacturing work queue yet",
+        source: "Skills #{skills} / run #{skillRun} · Jobs #{jobs} / run #{jobRun}",
+        sourceMissing: "Sources are still incomplete",
+        age: "Data age",
+        loading: "Loading industry slots …",
+        noData: "No connected characters are available yet.",
+        noMatches: "No character matches the selection.",
+        queryError: "The local industry-slot overview could not be read.",
+        resultRange: "{from}–{to} of {total}",
+      },
       research: {
         kicker: "RESEARCH PLANNING",
         title: "ME / TE research plan",
@@ -1381,7 +1476,7 @@ const copy = {
     },
     planned: "Planned",
     previewOnly: "No live function yet",
-    footerVersion: "v0.0.5-preview.10",
+    footerVersion: "v0.0.5-preview.11",
   },
 } as const;
 
@@ -1504,6 +1599,7 @@ export function App({
   characterSkillSyncer = syncCharacterSkills,
   industryFacilitiesLoader = loadIndustryFacilities,
   industryFacilitySyncer = syncIndustryFacilities,
+  industrySlotsLoader = loadIndustrySlots,
   researchPlansLoader = loadResearchPlans,
   researchPlanSaver = saveResearchPlan,
   researchPlanDeleter = deleteResearchPlan,
@@ -1535,6 +1631,7 @@ export function App({
   characterSkillSyncer?: () => Promise<CharacterSkillSyncResult>;
   industryFacilitiesLoader?: (query: IndustryFacilityQuery) => Promise<IndustryFacilityPage>;
   industryFacilitySyncer?: () => Promise<IndustryFacilitySyncResult>;
+  industrySlotsLoader?: (query: IndustrySlotQuery) => Promise<IndustrySlotPage>;
   researchPlansLoader?: (query: ResearchPlanQuery) => Promise<ResearchPlanPage>;
   researchPlanSaver?: (input: ResearchPlanInput) => Promise<unknown>;
   researchPlanDeleter?: (ownerCharacterId: number, blueprintItemId: number) => Promise<void>;
@@ -2146,6 +2243,8 @@ export function App({
             loadIndustryFacilities={industryFacilitiesLoader}
             syncIndustryFacilities={runIndustryFacilitySync}
             industryFacilityRevision={industryFacilityRevision}
+            loadIndustrySlots={industrySlotsLoader}
+            industrySlotRevision={blueprintRevision + industryJobRevision + characterSkillRevision + researchPlanRevision}
             loadResearchPlans={researchPlansLoader}
             saveResearchPlan={researchPlanSaver}
             deleteResearchPlan={researchPlanDeleter}
@@ -3330,6 +3429,7 @@ function BlueprintWorkspace({
   loadCharacterSkills: loadSkills, syncCharacterSkills: runSkillSync, characterSkillRevision,
   loadIndustryFacilities: loadFacilities, syncIndustryFacilities: runFacilitySync,
   industryFacilityRevision,
+  loadIndustrySlots: loadSlots, industrySlotRevision,
   loadResearchPlans: loadPlans, saveResearchPlan: savePlan,
   deleteResearchPlan: deletePlan, researchPlanRevision,
 }: {
@@ -3348,6 +3448,8 @@ function BlueprintWorkspace({
   loadIndustryFacilities: (query: IndustryFacilityQuery) => Promise<IndustryFacilityPage>;
   syncIndustryFacilities: () => Promise<IndustryFacilitySyncResult>;
   industryFacilityRevision: number;
+  loadIndustrySlots: (query: IndustrySlotQuery) => Promise<IndustrySlotPage>;
+  industrySlotRevision: number;
   loadResearchPlans: (query: ResearchPlanQuery) => Promise<ResearchPlanPage>;
   saveResearchPlan: (input: ResearchPlanInput) => Promise<unknown>;
   deleteResearchPlan: (ownerCharacterId: number, blueprintItemId: number) => Promise<void>;
@@ -3450,6 +3552,13 @@ function BlueprintWorkspace({
             </tr>)}</tbody></table></div> : null}
         {page && total > 0 && <div className="asset-pagination"><span>{range}</span><div><button type="button" onClick={() => setOffset(Math.max(0, offset - blueprintPageSize))} disabled={offset === 0}>{t.blueprints.previous}</button><button type="button" onClick={() => setOffset(offset + blueprintPageSize)} disabled={offset + blueprintPageSize >= total}>{t.blueprints.next}</button></div></div>}
       </section>
+      <IndustrySlotPanel
+        available={available}
+        locale={locale}
+        t={t}
+        loadSlots={loadSlots}
+        refreshRevision={industrySlotRevision}
+      />
       <IndustryJobsPanel
         available={available}
         locale={locale}
@@ -3484,6 +3593,108 @@ function BlueprintWorkspace({
         refreshRevision={researchPlanRevision}
       />
     </div>
+  );
+}
+
+function IndustrySlotPanel({
+  available, locale, t, loadSlots, refreshRevision,
+}: {
+  available: boolean;
+  locale: Locale;
+  t: Translation;
+  loadSlots: (query: IndustrySlotQuery) => Promise<IndustrySlotPage>;
+  refreshRevision: number;
+}) {
+  const [ownerCharacterId, setOwnerCharacterId] = useState<number | null>(null);
+  const [offset, setOffset] = useState(0);
+  const [page, setPage] = useState<IndustrySlotPage | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const numberFormat = useMemo(
+    () => new Intl.NumberFormat(locale === "de" ? "de-DE" : "en-US"),
+    [locale],
+  );
+
+  useEffect(() => {
+    if (!available) return;
+    let active = true;
+    setLoading(true);
+    setFailed(false);
+    void loadSlots({ ownerCharacterId, offset, limit: industrySlotPageSize })
+      .then((result) => {
+        if (!active) return;
+        if (result.total > 0 && result.offset >= result.total) {
+          setOffset(Math.floor((result.total - 1) / industrySlotPageSize) * industrySlotPageSize);
+          return;
+        }
+        setPage(result);
+      })
+      .catch(() => { if (active) setFailed(true); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [available, loadSlots, offset, ownerCharacterId, refreshRevision]);
+
+  const iconFor = (activity: IndustrySlotActivityKey) =>
+    activity === "manufacturing" ? Factory : activity === "reactions" ? Zap : FlaskConical;
+  const skillsFor: Record<IndustrySlotActivityKey, readonly [
+    keyof typeof t.blueprints.slots.skillLabels,
+    keyof typeof t.blueprints.slots.skillLabels,
+  ]> = {
+    manufacturing: ["massProduction", "advancedMassProduction"],
+    reactions: ["massReactions", "advancedMassReactions"],
+    science: ["laboratoryOperation", "advancedLaboratoryOperation"],
+  };
+  const stateTone = (state: string) => state === "available"
+    ? "good" : state === "full" ? "info" : state === "overbooked" ? "critical" : "warn";
+  const total = page?.total ?? 0;
+  const from = total === 0 ? 0 : offset + 1;
+  const to = Math.min(offset + (page?.items.length ?? 0), total);
+  const range = t.blueprints.slots.resultRange
+    .replace("{from}", numberFormat.format(from))
+    .replace("{to}", numberFormat.format(to))
+    .replace("{total}", numberFormat.format(total));
+
+  return (
+    <section className="asset-browser industry-slots" aria-busy={loading}>
+      <header className="asset-deltas__header industry-jobs__header">
+        <div>
+          <span className="eyebrow">{t.blueprints.slots.kicker}</span>
+          <h2>{t.blueprints.slots.title}</h2>
+          <p>{t.blueprints.slots.subtitle}</p>
+        </div>
+        <div className="asset-hero__metrics">
+          <span><strong>{numberFormat.format(total)}</strong><small>{t.blueprints.slots.characters}</small></span>
+          <span><strong>{page?.ageSeconds == null ? "—" : formatDataAge(page.ageSeconds, locale)}</strong><small>{t.blueprints.slots.age}</small></span>
+        </div>
+      </header>
+      <div className="asset-toolbar industry-slots__toolbar">
+        <label><span>{t.blueprints.slots.owner}</span><select value={ownerCharacterId ?? ""} onChange={(event) => { setOwnerCharacterId(event.target.value ? Number(event.target.value) : null); setOffset(0); }}><option value="">{t.blueprints.slots.allOwners}</option>{(page?.owners ?? []).map((owner) => <option key={owner.characterId} value={owner.characterId}>{owner.name}</option>)}</select></label>
+      </div>
+      <div className="asset-export-status facility-boundary">{t.blueprints.slots.boundary}</div>
+      {!available ? <div className="asset-empty"><Database size={22} />{t.blueprints.unavailable}</div>
+        : failed ? <div className="asset-empty asset-empty--error"><AlertTriangle size={22} />{t.blueprints.slots.queryError}</div>
+        : loading && page === null ? <div className="asset-empty"><RefreshCw className="spin" size={22} />{t.blueprints.slots.loading}</div>
+        : page && page.items.length === 0 ? <div className="asset-empty"><Factory size={22} />{page.owners.length === 0 ? t.blueprints.slots.noData : t.blueprints.slots.noMatches}</div>
+        : page ? <div className="industry-slots__characters">{page.items.map((character) => <article className="industry-slot-character" key={character.characterId}>
+            <header>
+              <div><span className="eyebrow">#{character.characterId}</span><h3>{character.name}</h3></div>
+              <span>{character.ageSeconds == null ? t.blueprints.slots.sourceMissing : formatDataAge(character.ageSeconds, locale)}</span>
+            </header>
+            <div className="industry-slot-character__grid">{character.activities.map((activity) => {
+              const ActivityIcon = iconFor(activity.activity);
+              const [primarySkill, advancedSkill] = skillsFor[activity.activity];
+              const percentage = activity.capacity == null || activity.occupied == null
+                ? 0 : Math.min(100, Math.round(activity.occupied / activity.capacity * 100));
+              return <section className={`industry-slot-card industry-slot-card--${activity.utilizationState}`} key={activity.activity}>
+                <div className="industry-slot-card__title"><span><ActivityIcon size={17} /></span><strong>{t.blueprints.slots.activityLabels[activity.activity]}</strong><span className={`status-pill status-pill--${stateTone(activity.utilizationState)}`}>{t.blueprints.slots.stateLabels[activity.utilizationState]}</span></div>
+                <div className="industry-slot-card__capacity"><strong>{activity.capacity == null || activity.occupied == null ? "—" : t.blueprints.slots.slotValue.replace("{available}", String(activity.available)).replace("{occupied}", String(activity.occupied)).replace("{capacity}", String(activity.capacity))}</strong><div className="industry-slot-card__bar"><span style={{ width: `${percentage}%` }} /></div><small>{activity.capacity == null || activity.occupied == null ? t.blueprints.slots.slotUnknown : t.blueprints.slots.jobs.replace("{active}", String(activity.activeJobs)).replace("{ready}", String(activity.readyJobs)).replace("{paused}", String(activity.pausedJobs))}</small></div>
+                <div className="industry-slot-card__detail"><span>{activity.primarySkillLevel == null ? t.blueprints.slots.noSkillSnapshot : t.blueprints.slots.skillValue.replace("{primary}", t.blueprints.slots.skillLabels[primarySkill]).replace("{primaryLevel}", String(activity.primarySkillLevel)).replace("{advanced}", t.blueprints.slots.skillLabels[advancedSkill]).replace("{advancedLevel}", String(activity.advancedSkillLevel))}</span><span>{activity.nextJobEndDate == null ? (activity.activeJobs == null ? t.blueprints.slots.noJobSnapshot : t.blueprints.slots.noActiveJob) : t.blueprints.slots.nextEnd.replace("{date}", new Date(activity.nextJobEndDate).toLocaleString(locale === "de" ? "de-DE" : "en-US"))}</span><span>{activity.planningAvailable ? t.blueprints.slots.plans.replace("{queued}", String(activity.queuedPlans)).replace("{running}", String(activity.runningPlans)).replace("{blocked}", String(activity.blockedPlans)).replace("{complete}", String(activity.completePlans)) : t.blueprints.slots.planningPending}</span></div>
+              </section>;
+            })}</div>
+            <footer>{character.skillSnapshotId == null || character.jobSnapshotId == null ? t.blueprints.slots.sourceMissing : t.blueprints.slots.source.replace("{skills}", String(character.skillSnapshotId)).replace("{skillRun}", String(character.skillSyncRunId)).replace("{jobs}", String(character.jobSnapshotId)).replace("{jobRun}", String(character.jobSyncRunId))}</footer>
+          </article>)}</div> : null}
+      {page && total > 0 && <div className="asset-pagination"><span>{range}</span><div><button type="button" onClick={() => setOffset(Math.max(0, offset - industrySlotPageSize))} disabled={offset === 0}>{t.blueprints.previous}</button><button type="button" onClick={() => setOffset(offset + industrySlotPageSize)} disabled={offset + industrySlotPageSize >= total}>{t.blueprints.next}</button></div></div>}
+    </section>
   );
 }
 

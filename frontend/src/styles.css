@@ -2623,6 +2623,157 @@ select:focus-visible {
   margin-top: 18px;
 }
 
+.industry-slots {
+  margin-top: 18px;
+}
+
+.industry-slots__toolbar {
+  grid-template-columns: minmax(220px, 360px);
+}
+
+.industry-slots__characters {
+  display: grid;
+  gap: 12px;
+  padding: 0 18px 18px;
+}
+
+.industry-slot-character {
+  overflow: hidden;
+  border: 1px solid #2a342d;
+  border-radius: 10px;
+  background: rgba(9, 13, 10, 0.58);
+}
+
+.industry-slot-character > header,
+.industry-slot-character > footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 13px 15px;
+}
+
+.industry-slot-character > header {
+  border-bottom: 1px solid #273129;
+}
+
+.industry-slot-character > header h3 {
+  margin: 3px 0 0;
+  color: #e3e8e4;
+  font-size: calc(15px * var(--font-scale));
+}
+
+.industry-slot-character > header > span,
+.industry-slot-character > footer {
+  color: #758078;
+  font-size: calc(9px * var(--font-scale));
+}
+
+.industry-slot-character > footer {
+  justify-content: flex-end;
+  border-top: 1px solid #232c25;
+}
+
+.industry-slot-character__grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  padding: 12px;
+}
+
+.industry-slot-card {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid #2a342d;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.015);
+}
+
+.industry-slot-card--overbooked {
+  border-color: rgba(227, 111, 94, 0.36);
+}
+
+.industry-slot-card__title {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+}
+
+.industry-slot-card__title > span:first-child {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border: 1px solid rgba(103, 198, 188, 0.24);
+  border-radius: 7px;
+  color: var(--teal);
+  background: var(--teal-soft);
+}
+
+.industry-slot-card__title > strong {
+  overflow: hidden;
+  color: #dce3dd;
+  font-size: calc(11px * var(--font-scale));
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.industry-slot-card__capacity {
+  margin-top: 14px;
+}
+
+.industry-slot-card__capacity > strong,
+.industry-slot-card__capacity > small,
+.industry-slot-card__detail > span {
+  display: block;
+}
+
+.industry-slot-card__capacity > strong {
+  color: #cdd6cf;
+  font-size: calc(11px * var(--font-scale));
+}
+
+.industry-slot-card__capacity > small,
+.industry-slot-card__detail > span {
+  color: #77827a;
+  font-size: calc(9px * var(--font-scale));
+}
+
+.industry-slot-card__bar {
+  height: 4px;
+  margin: 9px 0;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #202923;
+}
+
+.industry-slot-card__bar > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #4f9d92, #78cfc1);
+}
+
+.industry-slot-card--full .industry-slot-card__bar > span,
+.industry-slot-card--overbooked .industry-slot-card__bar > span {
+  background: linear-gradient(90deg, #c47d55, #e36f5e);
+}
+
+.industry-slot-card__detail {
+  display: grid;
+  gap: 6px;
+  margin-top: 13px;
+  padding-top: 11px;
+  border-top: 1px solid #253027;
+}
+
+.status-pill--critical {
+  color: #e9897b !important;
+  border-color: rgba(227, 111, 94, 0.34);
+  background: var(--coral-soft);
+}
+
 .industry-jobs__header {
   align-items: center;
 }
@@ -3069,11 +3220,13 @@ select:focus-visible {
 
   .character-skills .industry-jobs__toolbar,
   .industry-facility-toolbar,
+  .industry-slots__toolbar,
   .research-toolbar {
     grid-template-columns: repeat(2, minmax(220px, 1fr));
   }
 
   .industry-facilities .asset-hero__metrics,
+  .industry-slots .asset-hero__metrics,
   .research-planning .asset-hero__metrics {
     min-width: 0;
   }
@@ -3359,8 +3512,14 @@ select:focus-visible {
   .character-skills .industry-jobs__toolbar,
   .industry-facilities .asset-hero__metrics,
   .industry-facility-toolbar,
+  .industry-slots .asset-hero__metrics,
+  .industry-slots__toolbar,
   .research-planning .asset-hero__metrics,
   .research-toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .industry-slot-character__grid {
     grid-template-columns: 1fr;
   }
 

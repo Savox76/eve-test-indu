@@ -463,6 +463,65 @@ export interface IndustryFacilitySyncResult {
   resolvedNames: number;
 }
 
+export type IndustrySlotActivityKey = "manufacturing" | "reactions" | "science";
+export type IndustrySlotUtilizationState = "unknown" | "available" | "full" | "overbooked";
+export const industrySlotActivities: readonly IndustrySlotActivityKey[] = [
+  "manufacturing", "reactions", "science",
+];
+export const industrySlotPageSize = 50;
+
+export interface IndustrySlotActivity {
+  activity: IndustrySlotActivityKey;
+  capacity: number | null;
+  occupied: number | null;
+  available: number | null;
+  utilizationState: IndustrySlotUtilizationState;
+  activeJobs: number | null;
+  pausedJobs: number | null;
+  readyJobs: number | null;
+  nextJobEndDate: string | null;
+  primarySkillId: number;
+  primarySkillLevel: number | null;
+  advancedSkillId: number;
+  advancedSkillLevel: number | null;
+  queuedPlans: number | null;
+  blockedPlans: number | null;
+  runningPlans: number | null;
+  completePlans: number | null;
+  planningAvailable: boolean;
+}
+
+export interface IndustrySlotRecord {
+  characterId: number;
+  name: string;
+  activities: IndustrySlotActivity[];
+  skillSnapshotId: number | null;
+  skillSyncRunId: number | null;
+  skillObservedAt: string | null;
+  jobSnapshotId: number | null;
+  jobSyncRunId: number | null;
+  jobObservedAt: string | null;
+  observedAt: string | null;
+  ageSeconds: number | null;
+}
+
+export interface IndustrySlotQuery {
+  ownerCharacterId: number | null;
+  offset: number;
+  limit: number;
+}
+
+export interface IndustrySlotPage {
+  items: IndustrySlotRecord[];
+  total: number;
+  offset: number;
+  limit: number;
+  owners: AssetOwner[];
+  activities: IndustrySlotActivityKey[];
+  observedAt: string | null;
+  ageSeconds: number | null;
+}
+
 export type ResearchPlanActivity = "material" | "time";
 export type ResearchPlanState = "unplanned" | "ready" | "queued" | "running" | "complete" | "unverified" | "missing";
 export type ResearchPlanSortField = "priority" | "blueprint" | "owner" | "state" | "me" | "te" | "age";
@@ -2028,6 +2087,171 @@ export async function syncIndustryFacilities(
     throw new Error("The native runtime returned an invalid industry-facility sync result.");
   }
   return candidate as unknown as IndustryFacilitySyncResult;
+}
+
+const industrySlotSkillIds: Readonly<Record<IndustrySlotActivityKey, readonly [number, number]>> = {
+  manufacturing: [3387, 24625],
+  reactions: [45748, 45749],
+  science: [3406, 24624],
+};
+
+function parseIndustrySlotActivity(candidate: unknown): IndustrySlotActivity {
+  if (
+    !isRecord(candidate) ||
+    !industrySlotActivities.includes(candidate.activity as IndustrySlotActivityKey) ||
+    !["unknown", "available", "full", "overbooked"].includes(String(candidate.utilizationState)) ||
+    typeof candidate.planningAvailable !== "boolean" ||
+    !(candidate.nextJobEndDate === null || isBoundedText(candidate.nextJobEndDate, 64))
+  ) {
+    throw new Error("The native runtime returned invalid industry-slot activity data.");
+  }
+  const activity = candidate.activity as IndustrySlotActivityKey;
+  const expectedSkills = industrySlotSkillIds[activity];
+  const capacityKnown = candidate.capacity !== null;
+  const occupancyKnown = candidate.occupied !== null;
+  const skillLevelsKnown = candidate.primarySkillLevel !== null && candidate.advancedSkillLevel !== null;
+  const jobCountsKnown = candidate.activeJobs !== null && candidate.pausedJobs !== null &&
+    candidate.readyJobs !== null;
+  if (
+    candidate.primarySkillId !== expectedSkills[0] || candidate.advancedSkillId !== expectedSkills[1] ||
+    capacityKnown !== skillLevelsKnown ||
+    !(candidate.capacity === null ||
+      (isPositiveSafeInteger(candidate.capacity) && Number(candidate.capacity) <= 11)) ||
+    !(candidate.primarySkillLevel === null ||
+      (isNonNegativeSafeInteger(candidate.primarySkillLevel) && Number(candidate.primarySkillLevel) <= 5)) ||
+    !(candidate.advancedSkillLevel === null ||
+      (isNonNegativeSafeInteger(candidate.advancedSkillLevel) && Number(candidate.advancedSkillLevel) <= 5)) ||
+    (capacityKnown && Number(candidate.capacity) !== 1 + Number(candidate.primarySkillLevel) +
+      Number(candidate.advancedSkillLevel)) ||
+    occupancyKnown !== jobCountsKnown ||
+    !(candidate.occupied === null || isNonNegativeSafeInteger(candidate.occupied)) ||
+    !(candidate.activeJobs === null || isNonNegativeSafeInteger(candidate.activeJobs)) ||
+    !(candidate.pausedJobs === null || isNonNegativeSafeInteger(candidate.pausedJobs)) ||
+    !(candidate.readyJobs === null || isNonNegativeSafeInteger(candidate.readyJobs)) ||
+    (occupancyKnown && Number(candidate.occupied) !== Number(candidate.activeJobs) +
+      Number(candidate.pausedJobs) + Number(candidate.readyJobs)) ||
+    (candidate.nextJobEndDate !== null && Number(candidate.activeJobs) < 1)
+  ) {
+    throw new Error("The native runtime returned inconsistent industry-slot activity data.");
+  }
+  const availabilityKnown = capacityKnown && occupancyKnown;
+  const expectedAvailable = availabilityKnown
+    ? Math.max(0, Number(candidate.capacity) - Number(candidate.occupied))
+    : null;
+  const expectedState = !availabilityKnown
+    ? "unknown"
+    : Number(candidate.occupied) > Number(candidate.capacity)
+      ? "overbooked"
+      : Number(candidate.occupied) === Number(candidate.capacity)
+        ? "full"
+        : "available";
+  const planFields = [candidate.queuedPlans, candidate.blockedPlans,
+    candidate.runningPlans, candidate.completePlans];
+  if (
+    candidate.available !== expectedAvailable || candidate.utilizationState !== expectedState ||
+    (activity === "science" &&
+      (!candidate.planningAvailable || !planFields.every(isNonNegativeSafeInteger))) ||
+    (activity !== "science" &&
+      (candidate.planningAvailable || !planFields.every((value) => value === null)))
+  ) {
+    throw new Error("The native runtime returned inconsistent industry-slot capacity data.");
+  }
+  return candidate as unknown as IndustrySlotActivity;
+}
+
+function optionalSourceIsValid(id: unknown, runId: unknown, observedAt: unknown): boolean {
+  const present = id !== null;
+  return present === (runId !== null) && present === (observedAt !== null) &&
+    (!present || (isPositiveSafeInteger(id) && isPositiveSafeInteger(runId) &&
+      isBoundedText(observedAt, 64)));
+}
+
+function parseIndustrySlotRecord(candidate: unknown): IndustrySlotRecord {
+  if (
+    !isRecord(candidate) || !isPositiveSafeInteger(candidate.characterId) ||
+    !isBoundedText(candidate.name, 100) || !Array.isArray(candidate.activities) ||
+    candidate.activities.length !== industrySlotActivities.length ||
+    !optionalSourceIsValid(candidate.skillSnapshotId, candidate.skillSyncRunId,
+      candidate.skillObservedAt) ||
+    !optionalSourceIsValid(candidate.jobSnapshotId, candidate.jobSyncRunId,
+      candidate.jobObservedAt) ||
+    !(candidate.observedAt === null || isBoundedText(candidate.observedAt, 64)) ||
+    !(candidate.ageSeconds === null || isNonNegativeSafeInteger(candidate.ageSeconds)) ||
+    (candidate.observedAt === null) !== (candidate.ageSeconds === null)
+  ) {
+    throw new Error("The native runtime returned invalid industry-slot records.");
+  }
+  const activities = candidate.activities.map(parseIndustrySlotActivity);
+  if (!industrySlotActivities.every((value, index) => activities[index].activity === value)) {
+    throw new Error("The native runtime returned an invalid industry-slot activity order.");
+  }
+  return { ...candidate, activities } as unknown as IndustrySlotRecord;
+}
+
+function validateIndustrySlotQuery(query: IndustrySlotQuery): IndustrySlotQuery {
+  if (
+    !(query.ownerCharacterId === null || isPositiveSafeInteger(query.ownerCharacterId)) ||
+    !isNonNegativeSafeInteger(query.offset) || !Number.isSafeInteger(query.limit) ||
+    query.limit < 1 || query.limit > 200
+  ) {
+    throw new Error("The industry-slot query is invalid.");
+  }
+  return query;
+}
+
+function parseIndustrySlotPage(candidate: unknown): IndustrySlotPage {
+  const activities = isRecord(candidate) && Array.isArray(candidate.activities)
+    ? candidate.activities
+    : [];
+  if (
+    !isRecord(candidate) || !Array.isArray(candidate.items) || !Array.isArray(candidate.owners) ||
+    activities.length !== industrySlotActivities.length ||
+    !industrySlotActivities.every((value, index) => activities[index] === value) ||
+    !isNonNegativeSafeInteger(candidate.total) || !isNonNegativeSafeInteger(candidate.offset) ||
+    !Number.isSafeInteger(candidate.limit) || Number(candidate.limit) < 1 || Number(candidate.limit) > 200 ||
+    !(candidate.observedAt === null || isBoundedText(candidate.observedAt, 64)) ||
+    !(candidate.ageSeconds === null || isNonNegativeSafeInteger(candidate.ageSeconds)) ||
+    (candidate.observedAt === null) !== (candidate.ageSeconds === null)
+  ) {
+    throw new Error("The native runtime returned invalid industry-slot data.");
+  }
+  const items = candidate.items.map(parseIndustrySlotRecord);
+  const owners = candidate.owners.map((owner) => {
+    if (!isRecord(owner) || !isPositiveSafeInteger(owner.characterId) || !isBoundedText(owner.name, 100)) {
+      throw new Error("The native runtime returned invalid industry-slot owners.");
+    }
+    return owner as unknown as AssetOwner;
+  });
+  if (
+    items.length > Number(candidate.limit) || items.length > Number(candidate.total) ||
+    new Set(items.map(({ characterId }) => characterId)).size !== items.length ||
+    new Set(owners.map(({ characterId }) => characterId)).size !== owners.length ||
+    items.some((item) => !owners.some((owner) => owner.characterId === item.characterId &&
+      owner.name === item.name))
+  ) {
+    throw new Error("The native runtime returned inconsistent industry-slot data.");
+  }
+  return { ...candidate, items, owners } as unknown as IndustrySlotPage;
+}
+
+export async function loadIndustrySlots(
+  query: IndustrySlotQuery,
+  adapter: RuntimeAdapter = tauriAdapter,
+): Promise<IndustrySlotPage> {
+  const validated = validateIndustrySlotQuery(query);
+  if (!adapter.isAvailable()) return {
+    items: [], total: 0, offset: validated.offset, limit: validated.limit, owners: [],
+    activities: [...industrySlotActivities], observedAt: null, ageSeconds: null,
+  };
+  const page = parseIndustrySlotPage(JSON.parse(await adapter.invoke("query_industry_slots", {
+    ownerCharacterId: validated.ownerCharacterId,
+    offset: validated.offset,
+    limit: validated.limit,
+  })));
+  if (page.offset !== validated.offset || page.limit !== validated.limit) {
+    throw new Error("The native runtime returned a different industry-slot window.");
+  }
+  return page;
 }
 
 function validateResearchPlanQuery(query: ResearchPlanQuery): ResearchPlanQuery {
