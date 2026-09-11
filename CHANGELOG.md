@@ -18,11 +18,41 @@ Keine.
 
 ### Bekannte Einschränkungen
 
-- Paket 22 wartet nach Veröffentlichung des Abnahmekandidaten auf das vollständige Windows-A0-Protokoll.
+- Paket 22 wartet nach Veröffentlichung des korrigierten Abnahmekandidaten auf das vollständige Windows-A0-Protokoll.
 
 ### Update und Datenbankmigration
 
 Keine.
+
+## 0.0.5-preview.16 – 11. September 2026
+
+### Neu hinzugefügt
+
+- Der Windows-Workflow installiert den erzeugten NSIS-Installer und startet Hauptanwendung sowie Sidecar wirklich, bevor ein Release veröffentlicht werden darf.
+- Der Laufzeittest hält während der Übernahme absichtlich eine unwichtige Exportdatei gesperrt und prüft, dass die eigentliche Datenbank trotzdem sicher übernommen wird.
+
+### Geändert
+
+- Die `.13/.14`-Übernahme wiederholt kurzzeitig gesperrte Kopiervorgänge und fällt bei einem Problem mit unwichtigen Zusatzdateien auf die Datenbank, ihr WAL sowie erreichbare Backups und Exporte zurück.
+- Sidecar-Startfehler werden nicht mehr zu einer allgemeinen Meldung zusammengefasst, sondern als Speicher-, Datenbank-, Windows-Start- oder Loopback-Fehler angezeigt.
+- Die sichtbare Versionsnummer lautet `v0.0.5-preview.16`.
+
+### Behobene Fehler
+
+- Eine gesperrte Exportdatei oder ein ungültiger Zusatzpfad kann den ersten installierten Start nach `.15` nicht mehr vollständig blockieren.
+- Ein vom Sidecar gemeldeter Datenbank- oder Schreibfehler bleibt bis zur Oberfläche erhalten und wird nicht mehr fälschlich als unbekannter Sidecar-Fehler ausgegeben.
+
+### Bekannte Einschränkungen
+
+- Nicht erreichbare unwichtige Zusatzdateien bleiben sicher im unveränderten alten AppData-Ordner; die für Charaktere, Einstellungen, Pläne und Cache maßgebliche SQLite-Datenbank wird weiterhin zwingend und atomar übernommen.
+- EVE-Refresh-Tokens bleiben im Windows-Anmeldespeicher und müssen auf einem anderen Rechner erneut autorisiert werden.
+- Vollautomatische Installation bleibt bis zu einer produktiv signierten Update- und Rollback-Kette deaktiviert.
+
+### Update und Datenbankmigration
+
+- Das Datenbankschema bleibt bei Version 9.
+- `.15` vollständig schließen und `.16` installieren; die Datenlöschung muss abgewählt bleiben. `.16` verwendet einen bereits erfolgreich markierten Programmordner direkt weiter oder wiederholt eine zuvor gescheiterte Übernahme.
+- Der AppData-Quellbestand wird weiterhin nicht gelöscht.
 
 ## 0.0.5-preview.15 – 11. September 2026
 

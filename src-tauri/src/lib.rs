@@ -3049,12 +3049,78 @@ fn copy_directory_without_links(source: &Path, destination: &Path) -> Result<(),
         if file_type.is_dir() {
             copy_directory_without_links(&entry.path(), &target)?;
         } else if file_type.is_file() {
-            fs::copy(entry.path(), target).map_err(|_| "program-storage-migration-failed")?;
+            copy_file_with_retry(&entry.path(), &target)?;
         } else {
             return Err("program-storage-migration-failed");
         }
     }
     Ok(())
+}
+
+fn copy_file_with_retry(source: &Path, destination: &Path) -> Result<(), &'static str> {
+    for attempt in 0..5 {
+        if fs::copy(source, destination).is_ok() {
+            return Ok(());
+        }
+        if attempt < 4 {
+            thread::sleep(Duration::from_millis(100));
+        }
+    }
+    Err("program-storage-migration-failed")
+}
+
+fn copy_essential_program_data(source: &Path, destination: &Path) -> Result<(), &'static str> {
+    fs::create_dir(destination).map_err(|_| "program-storage-migration-failed")?;
+    let database = source.join("foundry.sqlite3");
+    if database.exists() {
+        if database.is_symlink() || !database.is_file() {
+            return Err("program-storage-migration-failed");
+        }
+        copy_file_with_retry(&database, &destination.join("foundry.sqlite3"))?;
+
+        let wal = source.join("foundry.sqlite3-wal");
+        if wal.exists() {
+            if wal.is_symlink() || !wal.is_file() {
+                return Err("program-storage-migration-failed");
+            }
+            copy_file_with_retry(&wal, &destination.join("foundry.sqlite3-wal"))?;
+        }
+    } else if source.join("foundry.sqlite3-wal").exists() {
+        return Err("program-storage-migration-failed");
+    }
+
+    for auxiliary_name in ["backups", "exports"] {
+        let auxiliary_source = source.join(auxiliary_name);
+        if auxiliary_source.is_dir() && !auxiliary_source.is_symlink() {
+            let auxiliary_destination = destination.join(auxiliary_name);
+            if copy_directory_without_links(&auxiliary_source, &auxiliary_destination).is_err() {
+                let _ = fs::remove_dir_all(auxiliary_destination);
+            }
+        }
+    }
+    Ok(())
+}
+
+fn staged_program_data_is_usable(staging: &Path) -> bool {
+    let database = staging.join("foundry.sqlite3");
+    if database.exists() && (database.is_symlink() || !database.is_file()) {
+        return false;
+    }
+    ["backups", "exports"].into_iter().all(|name| {
+        let path = staging.join(name);
+        !path.exists() || (!path.is_symlink() && path.is_dir())
+    })
+}
+
+fn stage_program_data(source: &Path, staging: &Path) -> Result<&'static str, &'static str> {
+    if copy_directory_without_links(source, staging).is_ok()
+        && staged_program_data_is_usable(staging)
+    {
+        return Ok("complete");
+    }
+    let _ = fs::remove_dir_all(staging);
+    copy_essential_program_data(source, staging)?;
+    Ok("essential-recovery")
 }
 
 fn available_program_data_backup(executable_dir: &Path) -> Result<PathBuf, &'static str> {
@@ -3091,9 +3157,13 @@ fn migrate_to_program_directory_storage(
         if staging.exists() {
             fs::remove_dir_all(&staging).map_err(|_| "program-storage-migration-failed")?;
         }
-        if let Err(error) = copy_directory_without_links(&previous_data, &staging).and_then(|_| {
-            fs::write(staging.join(PROGRAM_STORAGE_MARKER), b"program-directory\n")
-                .map_err(|_| "program-storage-migration-failed")
+        let staged = stage_program_data(&previous_data, &staging);
+        if let Err(error) = staged.and_then(|migration_mode| {
+            fs::write(
+                staging.join(PROGRAM_STORAGE_MARKER),
+                format!("program-directory\nmigration={migration_mode}\n"),
+            )
+            .map_err(|_| "program-storage-migration-failed")
         }) {
             let _ = fs::remove_dir_all(&staging);
             return Err(error);
@@ -3142,6 +3212,19 @@ fn select_storage_root(app: &AppHandle, executable_dir: &Path) -> Result<PathBuf
         .map_err(|_| "program-storage-unavailable")?;
     migrate_to_program_directory_storage(executable_dir, &previous_storage_root)?;
     Ok(executable_dir.to_path_buf())
+}
+
+fn sidecar_startup_error_code(value: &serde_json::Value) -> Option<&'static str> {
+    if value.get("event").and_then(serde_json::Value::as_str) != Some("error") {
+        return None;
+    }
+    match value.get("code").and_then(serde_json::Value::as_str) {
+        Some("invalid-startup") => Some("sidecar-startup-rejected"),
+        Some("program-storage-unavailable") => Some("program-storage-unavailable"),
+        Some("database-startup-failed") => Some("database-startup-failed"),
+        Some("loopback-bind-failed") => Some("sidecar-loopback-unavailable"),
+        _ => Some("sidecar-ready-invalid"),
+    }
 }
 
 fn launch_sidecar(
@@ -3210,8 +3293,13 @@ fn launch_sidecar(
             .recv_timeout(SIDECAR_READY_TIMEOUT)
             .map_err(|_| "sidecar-ready-timeout")?
             .map_err(|_| "sidecar-ready-read-failed")?;
-        let ready: SidecarReady =
+        let readiness_value: serde_json::Value =
             serde_json::from_str(&readiness_line).map_err(|_| "sidecar-ready-invalid")?;
+        if let Some(error_code) = sidecar_startup_error_code(&readiness_value) {
+            return Err(error_code);
+        }
+        let ready: SidecarReady =
+            serde_json::from_value(readiness_value).map_err(|_| "sidecar-ready-invalid")?;
         if ready.event != "ready"
             || ready.protocol != SIDECAR_PROTOCOL_VERSION
             || ready.host != "127.0.0.1"
@@ -4870,9 +4958,10 @@ mod tests {
         eve_character_record_is_valid, industry_job_query_response_is_valid,
         industry_job_sync_response_is_valid, industry_slot_query_response_is_valid,
         migrate_to_program_directory_storage, release_page_url,
-        research_plan_query_response_is_valid, sso_login_status_is_valid, AccountGroupRecord,
-        AssetDeltaCorrelation, AssetDeltaQueryResponse, AssetDeltaRecord, AssetDeltaSummary,
-        AssetExportResponse, AssetLocationNode, AssetOwner, AssetQueryResponse, AssetRecord,
+        research_plan_query_response_is_valid, sidecar_startup_error_code,
+        sso_login_status_is_valid, AccountGroupRecord, AssetDeltaCorrelation,
+        AssetDeltaQueryResponse, AssetDeltaRecord, AssetDeltaSummary, AssetExportResponse,
+        AssetLocationNode, AssetOwner, AssetQueryResponse, AssetRecord,
         CharacterSkillQueryResponse, CharacterSkillRecord, CharacterSkillSyncCharacterResponse,
         CharacterSkillSyncResponse, EveCharacterRecord, IndustryAssetCorrelation,
         IndustryBlueprintCorrelation, IndustryJobQueryResponse, IndustryJobRecord,
@@ -4978,6 +5067,63 @@ mod tests {
 
         assert!(executable_dir.join("data/.program-storage-v1").is_file());
         assert!(!previous_root.join("data").exists());
+    }
+
+    #[test]
+    fn migration_recovers_the_database_when_an_auxiliary_path_is_invalid() {
+        let root = TestDirectory::new("storage-essential-recovery");
+        let executable_dir = root.path().join("program");
+        let previous_root = root.path().join("appdata");
+        fs::create_dir(&executable_dir).expect("program directory must be created");
+        fs::create_dir_all(previous_root.join("data"))
+            .expect("previous data directory must be created");
+        fs::write(
+            previous_root.join("data/foundry.sqlite3"),
+            b"current-database",
+        )
+        .expect("previous database must be written");
+        fs::write(
+            previous_root.join("data/backups"),
+            b"invalid-directory-shape",
+        )
+        .expect("invalid auxiliary path must be written");
+
+        migrate_to_program_directory_storage(&executable_dir, &previous_root)
+            .expect("essential database recovery must succeed");
+
+        assert_eq!(
+            fs::read(executable_dir.join("data/foundry.sqlite3")).unwrap(),
+            b"current-database"
+        );
+        assert_eq!(
+            fs::read_to_string(executable_dir.join("data/.program-storage-v1")).unwrap(),
+            "program-directory\nmigration=essential-recovery\n"
+        );
+        assert!(previous_root.join("data/backups").is_file());
+        assert!(!executable_dir.join("data/backups").exists());
+    }
+
+    #[test]
+    fn preserves_specific_sidecar_startup_errors() {
+        let storage_error = serde_json::json!({
+            "event": "error",
+            "code": "program-storage-unavailable"
+        });
+        let database_error = serde_json::json!({
+            "event": "error",
+            "code": "database-startup-failed"
+        });
+        let ready = serde_json::json!({"event": "ready"});
+
+        assert_eq!(
+            sidecar_startup_error_code(&storage_error),
+            Some("program-storage-unavailable")
+        );
+        assert_eq!(
+            sidecar_startup_error_code(&database_error),
+            Some("database-startup-failed")
+        );
+        assert_eq!(sidecar_startup_error_code(&ready), None);
     }
 
     fn valid_authorization_url() -> String {

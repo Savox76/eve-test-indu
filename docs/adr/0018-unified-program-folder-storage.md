@@ -28,6 +28,11 @@ fehlgeschlagenen EVE-Synchronisierung.
   gelöscht. Ein Marker verhindert, dass er bei späteren Starts erneut über einen
   neueren Programmordner-Datenstand kopiert wird.
 - Schlägt die Übernahme fehl, startet die App nicht mit einer leeren Datenbank.
+- Ab `v0.0.5-preview.16` werden kurzzeitige Dateisperren begrenzt wiederholt. Ist nur
+  eine unwichtige Zusatzdatei betroffen, wird die SQLite-Datenbank samt vorhandenem
+  WAL zwingend übernommen; erreichbare Backups und Exporte werden ergänzt. Nicht
+  erreichbare Zusatzdateien bleiben im unveränderten AppData-Quellbestand, statt den
+  kompletten Anwendungsstart zu blockieren.
 - Ein normales Update oder eine Deinstallation ohne Löschbestätigung lässt
   `data` bestehen. Nur die ausdrücklich ausgewählte Installer-Option zum Löschen
   der Anwendungsdaten entfernt auch den programmordnergebundenen Datenbestand.
@@ -54,4 +59,3 @@ müssen Charaktere wegen des getrennten Anmeldespeichers erneut autorisiert werd
 - [ADR-010 – Sichtbare Datenhaltung im Programmordner](0010-program-folder-storage.md)
 - [ADR-013 – Updatefeste Anwendungsdaten](0013-update-stable-application-data.md)
 - [Tauri – Windows Installer](https://v2.tauri.app/distribute/windows-installer/)
-

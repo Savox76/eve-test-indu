@@ -237,8 +237,12 @@ const copy = {
     },
     runtimeErrors: {
       storage: "Programmordner ist nicht beschreibbar",
+      migration: "Datenübernahme aus der vorherigen Version konnte nicht abgeschlossen werden",
       database: "Datenbank konnte nicht sicher geöffnet werden",
       sidecar: "Lokaler Dienst wurde unerwartet beendet",
+      sidecarMissing: "Lokaler Dienst fehlt im Programmordner",
+      sidecarBlocked: "Windows konnte den lokalen Dienst nicht starten",
+      loopback: "Lokale Verbindung zu 127.0.0.1 konnte nicht geöffnet werden",
       fallback: "Sidecar oder Programmordner nicht verfügbar",
     },
     dataStatus: {
@@ -914,7 +918,7 @@ const copy = {
     },
     planned: "Geplant",
     previewOnly: "Noch ohne Live-Funktion",
-    footerVersion: "v0.0.5-preview.15",
+    footerVersion: "v0.0.5-preview.16",
   },
   en: {
     nav: {
@@ -963,8 +967,12 @@ const copy = {
     },
     runtimeErrors: {
       storage: "Program folder is not writable",
+      migration: "Data migration from the previous version could not be completed",
       database: "Database could not be opened safely",
       sidecar: "Local service stopped unexpectedly",
+      sidecarMissing: "Local service is missing from the program folder",
+      sidecarBlocked: "Windows could not start the local service",
+      loopback: "The local 127.0.0.1 connection could not be opened",
       fallback: "Sidecar or program folder is unavailable",
     },
     dataStatus: {
@@ -1640,7 +1648,7 @@ const copy = {
     },
     planned: "Planned",
     previewOnly: "No live function yet",
-    footerVersion: "v0.0.5-preview.15",
+    footerVersion: "v0.0.5-preview.16",
   },
 } as const;
 
@@ -2082,11 +2090,24 @@ export function App({
       case "program-storage-unavailable":
         runtimeDetail = t.runtimeErrors.storage;
         break;
+      case "program-storage-migration-failed":
+        runtimeDetail = t.runtimeErrors.migration;
+        break;
       case "database-startup-failed":
         runtimeDetail = t.runtimeErrors.database;
         break;
       case "sidecar-exited":
         runtimeDetail = t.runtimeErrors.sidecar;
+        break;
+      case "sidecar-resource-unavailable":
+      case "sidecar-not-found":
+        runtimeDetail = t.runtimeErrors.sidecarMissing;
+        break;
+      case "sidecar-spawn-failed":
+        runtimeDetail = t.runtimeErrors.sidecarBlocked;
+        break;
+      case "sidecar-loopback-unavailable":
+        runtimeDetail = t.runtimeErrors.loopback;
         break;
       default:
         runtimeDetail = t.runtimeErrors.fallback;
