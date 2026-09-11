@@ -81,6 +81,20 @@ const INDUSTRY_COST_ACTIVITIES: [&str; 6] = [
 const CHARACTER_SKILL_SORT_FIELDS: [&str; 6] =
     ["skill", "owner", "trained", "active", "skillpoints", "age"];
 const CHARACTER_SKILL_ACTIVE_STATES: [&str; 3] = ["normal", "limited", "boosted"];
+const RESEARCH_PLAN_SORT_FIELDS: [&str; 7] =
+    ["priority", "blueprint", "owner", "state", "me", "te", "age"];
+const RESEARCH_PLAN_STATES: [&str; 7] = [
+    "unplanned",
+    "ready",
+    "queued",
+    "running",
+    "complete",
+    "unverified",
+    "missing",
+];
+const RESEARCH_PLAN_ACTIVITIES: [&str; 2] = ["material", "time"];
+const RESEARCH_ACTIVE_JOB_STATUSES: [&str; 3] = ["active", "paused", "ready"];
+const RESEARCH_FACILITY_EVIDENCE: [&str; 3] = ["none", "active-job", "last-owner-job"];
 const SORT_DIRECTIONS: [&str; 2] = ["asc", "desc"];
 const MAX_ASSET_PAGE_SIZE: u64 = 200;
 const MAX_ASSET_SEARCH_CHARACTERS: usize = 120;
@@ -525,6 +539,120 @@ struct IndustryFacilitySyncResponse {
     restricted_structures: u64,
     systems: u64,
     resolved_names: u64,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ResearchPlanOwner {
+    character_id: u64,
+    name: String,
+    slot_capacity: Option<u8>,
+    slots_used: u64,
+    slots_available: Option<u8>,
+    laboratory_operation_level: u8,
+    advanced_laboratory_operation_level: u8,
+    research_level: u8,
+    metallurgy_level: u8,
+    skill_snapshot_id: Option<u64>,
+    skill_sync_run_id: Option<u64>,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ResearchPlanRecord {
+    owner_character_id: u64,
+    owner_name: String,
+    blueprint_item_id: u64,
+    blueprint_type_id: u64,
+    blueprint_name: String,
+    blueprint_present: bool,
+    current_material_efficiency: Option<u8>,
+    current_time_efficiency: Option<u8>,
+    location_id: Option<u64>,
+    location_flag: Option<String>,
+    planned: bool,
+    next_activity: String,
+    target_material_efficiency: u8,
+    target_time_efficiency: u8,
+    priority: u16,
+    note: Option<String>,
+    state: String,
+    slot_capacity: Option<u8>,
+    slots_used: u64,
+    slots_available: Option<u8>,
+    research_level: u8,
+    metallurgy_level: u8,
+    active_job_id: Option<u64>,
+    active_job_activity: Option<String>,
+    active_job_status: Option<String>,
+    active_job_start_date: Option<String>,
+    active_job_end_date: Option<String>,
+    active_job_cost: Option<f64>,
+    facility_id: Option<u64>,
+    facility_name: Option<String>,
+    facility_access: String,
+    solar_system_name: Option<String>,
+    system_cost_index: Option<f64>,
+    facility_evidence: String,
+    blueprint_snapshot_id: Option<u64>,
+    blueprint_sync_run_id: Option<u64>,
+    skill_snapshot_id: Option<u64>,
+    skill_sync_run_id: Option<u64>,
+    job_snapshot_id: Option<u64>,
+    job_sync_run_id: Option<u64>,
+    observed_at: Option<String>,
+    age_seconds: Option<u64>,
+    created_at: Option<String>,
+    updated_at: Option<String>,
+}
+
+#[derive(Deserialize, Serialize)]
+struct ResearchPlanSummary {
+    unplanned: u64,
+    ready: u64,
+    queued: u64,
+    running: u64,
+    complete: u64,
+    unverified: u64,
+    missing: u64,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ResearchPlanQueryResponse {
+    items: Vec<ResearchPlanRecord>,
+    total: u64,
+    offset: u64,
+    limit: u64,
+    owners: Vec<ResearchPlanOwner>,
+    states: Vec<String>,
+    activities: Vec<String>,
+    summary: ResearchPlanSummary,
+    observed_at: Option<String>,
+    age_seconds: Option<u64>,
+    estimates_available: bool,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ResearchPlanMutationResponse {
+    owner_character_id: u64,
+    blueprint_item_id: u64,
+    blueprint_type_id: u64,
+    next_activity: String,
+    target_material_efficiency: u8,
+    target_time_efficiency: u8,
+    priority: u16,
+    note: Option<String>,
+    saved: bool,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ResearchPlanDeleteResponse {
+    owner_character_id: u64,
+    blueprint_item_id: u64,
+    deleted: bool,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -1410,6 +1538,254 @@ fn industry_facility_sync_response_is_valid(response: &IndustryFacilitySyncRespo
         && response.systems <= JAVASCRIPT_MAX_SAFE_INTEGER
         && response.resolved_names > 0
         && response.resolved_names <= JAVASCRIPT_MAX_SAFE_INTEGER
+}
+
+fn optional_source_pair_is_valid(first: Option<u64>, second: Option<u64>) -> bool {
+    first.is_some() == second.is_some()
+        && first.is_none_or(|value| value > 0 && value <= JAVASCRIPT_MAX_SAFE_INTEGER)
+        && second.is_none_or(|value| value > 0 && value <= JAVASCRIPT_MAX_SAFE_INTEGER)
+}
+
+fn research_plan_owner_is_valid(owner: &ResearchPlanOwner) -> bool {
+    owner.character_id > 0
+        && owner.character_id <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && asset_text_is_valid(&owner.name, 100)
+        && owner.slot_capacity.is_some() == owner.slots_available.is_some()
+        && owner.slot_capacity.is_some() == owner.skill_snapshot_id.is_some()
+        && owner
+            .slot_capacity
+            .is_none_or(|value| (1..=11).contains(&value))
+        && owner.slots_available.is_none_or(|value| {
+            owner
+                .slot_capacity
+                .is_some_and(|capacity| value <= capacity)
+        })
+        && owner.slots_used <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && [
+            owner.laboratory_operation_level,
+            owner.advanced_laboratory_operation_level,
+            owner.research_level,
+            owner.metallurgy_level,
+        ]
+        .into_iter()
+        .all(|value| value <= 5)
+        && optional_source_pair_is_valid(owner.skill_snapshot_id, owner.skill_sync_run_id)
+}
+
+fn research_plan_record_is_valid(item: &ResearchPlanRecord) -> bool {
+    let current = item.current_material_efficiency.is_some()
+        && item.current_time_efficiency.is_some()
+        && item.location_id.is_some()
+        && item.location_flag.is_some()
+        && item.blueprint_snapshot_id.is_some()
+        && item.blueprint_sync_run_id.is_some()
+        && item.observed_at.is_some()
+        && item.age_seconds.is_some();
+    let no_current = item.current_material_efficiency.is_none()
+        && item.current_time_efficiency.is_none()
+        && item.location_id.is_none()
+        && item.location_flag.is_none()
+        && item.blueprint_snapshot_id.is_none()
+        && item.blueprint_sync_run_id.is_none()
+        && item.observed_at.is_none()
+        && item.age_seconds.is_none();
+    let active_job = match item.active_job_id {
+        Some(job_id) => {
+            job_id > 0
+                && job_id <= JAVASCRIPT_MAX_SAFE_INTEGER
+                && item
+                    .active_job_activity
+                    .as_deref()
+                    .is_some_and(|value| RESEARCH_PLAN_ACTIVITIES.contains(&value))
+                && item
+                    .active_job_status
+                    .as_deref()
+                    .is_some_and(|value| RESEARCH_ACTIVE_JOB_STATUSES.contains(&value))
+                && item
+                    .active_job_start_date
+                    .as_ref()
+                    .is_some_and(|value| asset_text_is_valid(value, 64))
+                && item
+                    .active_job_end_date
+                    .as_ref()
+                    .is_some_and(|value| asset_text_is_valid(value, 64))
+                && item.active_job_cost.is_none_or(|value| {
+                    value.is_finite() && (0.0..=JAVASCRIPT_MAX_SAFE_INTEGER as f64).contains(&value)
+                })
+        }
+        None => {
+            item.active_job_activity.is_none()
+                && item.active_job_status.is_none()
+                && item.active_job_start_date.is_none()
+                && item.active_job_end_date.is_none()
+                && item.active_job_cost.is_none()
+        }
+    };
+    let facility = match item.facility_evidence.as_str() {
+        "none" => {
+            item.facility_id.is_none()
+                && item.facility_name.is_none()
+                && item.solar_system_name.is_none()
+                && item.system_cost_index.is_none()
+                && item.facility_access == "unknown"
+        }
+        "active-job" | "last-owner-job" => {
+            item.facility_id
+                .is_some_and(|value| value > 0 && value <= JAVASCRIPT_MAX_SAFE_INTEGER)
+                && INDUSTRY_FACILITY_ACCESS_STATES.contains(&item.facility_access.as_str())
+                && item
+                    .facility_name
+                    .as_ref()
+                    .is_none_or(|value| asset_text_is_valid(value, 200))
+                && item
+                    .solar_system_name
+                    .as_ref()
+                    .is_none_or(|value| asset_text_is_valid(value, 200))
+                && item
+                    .system_cost_index
+                    .is_none_or(|value| value.is_finite() && (0.0..=1.0).contains(&value))
+        }
+        _ => false,
+    };
+    let persisted = if item.planned {
+        item.state != "unplanned"
+            && item
+                .created_at
+                .as_ref()
+                .is_some_and(|value| asset_text_is_valid(value, 64))
+            && item
+                .updated_at
+                .as_ref()
+                .is_some_and(|value| asset_text_is_valid(value, 64))
+    } else {
+        item.state == "unplanned"
+            && item.priority == 0
+            && item.note.is_none()
+            && item.created_at.is_none()
+            && item.updated_at.is_none()
+    };
+    item.owner_character_id > 0
+        && item.owner_character_id <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && asset_text_is_valid(&item.owner_name, 100)
+        && item.blueprint_item_id > 0
+        && item.blueprint_item_id <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && item.blueprint_type_id > 0
+        && item.blueprint_type_id <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && asset_text_is_valid(&item.blueprint_name, 200)
+        && item.blueprint_present == current
+        && (current || no_current)
+        && item
+            .current_material_efficiency
+            .is_none_or(|value| value <= 10)
+        && item.current_time_efficiency.is_none_or(|value| value <= 20)
+        && item
+            .location_id
+            .is_none_or(|value| value > 0 && value <= JAVASCRIPT_MAX_SAFE_INTEGER)
+        && item
+            .location_flag
+            .as_ref()
+            .is_none_or(|value| asset_text_is_valid(value, 100))
+        && RESEARCH_PLAN_ACTIVITIES.contains(&item.next_activity.as_str())
+        && item.target_material_efficiency <= 10
+        && item.target_time_efficiency <= 20
+        && item.priority <= 999
+        && item
+            .note
+            .as_ref()
+            .is_none_or(|value| asset_text_is_valid(value, 240))
+        && RESEARCH_PLAN_STATES.contains(&item.state.as_str())
+        && item.slot_capacity.is_some() == item.slots_available.is_some()
+        && item
+            .slot_capacity
+            .is_none_or(|value| (1..=11).contains(&value))
+        && item
+            .slots_available
+            .is_none_or(|value| item.slot_capacity.is_some_and(|capacity| value <= capacity))
+        && item.slots_used <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && item.research_level <= 5
+        && item.metallurgy_level <= 5
+        && active_job
+        && facility
+        && (item.facility_evidence != "active-job" || item.active_job_id.is_some())
+        && RESEARCH_FACILITY_EVIDENCE.contains(&item.facility_evidence.as_str())
+        && optional_source_pair_is_valid(item.blueprint_snapshot_id, item.blueprint_sync_run_id)
+        && optional_source_pair_is_valid(item.skill_snapshot_id, item.skill_sync_run_id)
+        && optional_source_pair_is_valid(item.job_snapshot_id, item.job_sync_run_id)
+        && persisted
+}
+
+fn research_plan_query_response_is_valid(response: &ResearchPlanQueryResponse) -> bool {
+    let item_keys = response
+        .items
+        .iter()
+        .map(|item| (item.owner_character_id, item.blueprint_item_id))
+        .collect::<HashSet<_>>();
+    let owner_ids = response
+        .owners
+        .iter()
+        .map(|owner| owner.character_id)
+        .collect::<HashSet<_>>();
+    let summary = [
+        response.summary.unplanned,
+        response.summary.ready,
+        response.summary.queued,
+        response.summary.running,
+        response.summary.complete,
+        response.summary.unverified,
+        response.summary.missing,
+    ];
+    response.limit > 0
+        && response.limit <= MAX_ASSET_PAGE_SIZE
+        && response.total <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && response.offset <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && response.items.len() as u64 <= response.limit
+        && response.items.len() as u64 <= response.total
+        && item_keys.len() == response.items.len()
+        && owner_ids.len() == response.owners.len()
+        && response.items.iter().all(research_plan_record_is_valid)
+        && response.owners.iter().all(research_plan_owner_is_valid)
+        && response
+            .states
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>()
+            == RESEARCH_PLAN_STATES
+        && response
+            .activities
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>()
+            == RESEARCH_PLAN_ACTIVITIES
+        && summary
+            .into_iter()
+            .all(|value| value <= JAVASCRIPT_MAX_SAFE_INTEGER)
+        && response.observed_at.is_some() == response.age_seconds.is_some()
+        && response
+            .observed_at
+            .as_ref()
+            .is_none_or(|value| asset_text_is_valid(value, 64))
+        && response
+            .age_seconds
+            .is_none_or(|value| value <= JAVASCRIPT_MAX_SAFE_INTEGER)
+        && !response.estimates_available
+}
+
+fn research_plan_mutation_response_is_valid(response: &ResearchPlanMutationResponse) -> bool {
+    response.owner_character_id > 0
+        && response.owner_character_id <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && response.blueprint_item_id > 0
+        && response.blueprint_item_id <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && response.blueprint_type_id > 0
+        && response.blueprint_type_id <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && RESEARCH_PLAN_ACTIVITIES.contains(&response.next_activity.as_str())
+        && response.target_material_efficiency <= 10
+        && response.target_time_efficiency <= 20
+        && response.priority <= 999
+        && response
+            .note
+            .as_ref()
+            .is_none_or(|value| asset_text_is_valid(value, 240))
+        && response.saved
 }
 
 fn character_skill_query_response_is_valid(response: &CharacterSkillQueryResponse) -> bool {
@@ -2674,6 +3050,169 @@ fn query_industry_facilities(
 }
 
 #[tauri::command]
+fn query_research_plans(
+    search: String,
+    owner_character_id: Option<u64>,
+    plan_state: Option<String>,
+    planned_only: bool,
+    offset: u64,
+    limit: u64,
+    sort_by: String,
+    sort_direction: String,
+    state: State<'_, RuntimeState>,
+) -> Result<String, String> {
+    if search.chars().count() > MAX_ASSET_SEARCH_CHARACTERS
+        || search.trim() != search
+        || owner_character_id == Some(0)
+        || owner_character_id.is_some_and(|value| value > JAVASCRIPT_MAX_SAFE_INTEGER)
+        || plan_state
+            .as_deref()
+            .is_some_and(|value| !RESEARCH_PLAN_STATES.contains(&value))
+        || limit == 0
+        || limit > MAX_ASSET_PAGE_SIZE
+        || offset > JAVASCRIPT_MAX_SAFE_INTEGER
+        || !RESEARCH_PLAN_SORT_FIELDS.contains(&sort_by.as_str())
+        || !SORT_DIRECTIONS.contains(&sort_direction.as_str())
+    {
+        return Err("research-query-invalid".to_owned());
+    }
+    refresh_sidecar_status(&state);
+    let body = serde_json::json!({
+        "search": search,
+        "ownerCharacterId": owner_character_id,
+        "state": plan_state,
+        "plannedOnly": planned_only,
+        "offset": offset,
+        "limit": limit,
+        "sortBy": sort_by,
+        "sortDirection": sort_direction,
+    })
+    .to_string();
+    let response = {
+        let sidecar = state
+            .sidecar
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let process = sidecar
+            .as_ref()
+            .ok_or_else(|| "sidecar-unavailable".to_owned())?;
+        sidecar_json_request(process, "POST", "/research-plans/query", &body)
+            .map_err(str::to_owned)?
+    };
+    let page: ResearchPlanQueryResponse =
+        serde_json::from_str(&response).map_err(|_| "sidecar-response-invalid".to_owned())?;
+    if !research_plan_query_response_is_valid(&page) || page.offset != offset || page.limit != limit
+    {
+        return Err("sidecar-response-invalid".to_owned());
+    }
+    serde_json::to_string(&page).map_err(|_| "status-serialization-failed".to_owned())
+}
+
+#[tauri::command]
+fn save_research_plan(
+    owner_character_id: u64,
+    blueprint_item_id: u64,
+    next_activity: String,
+    target_material_efficiency: u8,
+    target_time_efficiency: u8,
+    priority: u16,
+    note: Option<String>,
+    state: State<'_, RuntimeState>,
+) -> Result<String, String> {
+    if owner_character_id == 0
+        || owner_character_id > JAVASCRIPT_MAX_SAFE_INTEGER
+        || blueprint_item_id == 0
+        || blueprint_item_id > JAVASCRIPT_MAX_SAFE_INTEGER
+        || !RESEARCH_PLAN_ACTIVITIES.contains(&next_activity.as_str())
+        || target_material_efficiency > 10
+        || target_time_efficiency > 20
+        || priority > 999
+        || note
+            .as_ref()
+            .is_some_and(|value| !asset_text_is_valid(value, 240))
+    {
+        return Err("research-plan-invalid".to_owned());
+    }
+    refresh_sidecar_status(&state);
+    let body = serde_json::json!({
+        "ownerCharacterId": owner_character_id,
+        "blueprintItemId": blueprint_item_id,
+        "nextActivity": next_activity,
+        "targetMaterialEfficiency": target_material_efficiency,
+        "targetTimeEfficiency": target_time_efficiency,
+        "priority": priority,
+        "note": note,
+    })
+    .to_string();
+    let response = {
+        let sidecar = state
+            .sidecar
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let process = sidecar
+            .as_ref()
+            .ok_or_else(|| "sidecar-unavailable".to_owned())?;
+        sidecar_json_request(process, "POST", "/research-plans/save", &body)
+            .map_err(str::to_owned)?
+    };
+    let saved: ResearchPlanMutationResponse =
+        serde_json::from_str(&response).map_err(|_| "sidecar-response-invalid".to_owned())?;
+    if !research_plan_mutation_response_is_valid(&saved)
+        || saved.owner_character_id != owner_character_id
+        || saved.blueprint_item_id != blueprint_item_id
+        || saved.next_activity != next_activity
+        || saved.target_material_efficiency != target_material_efficiency
+        || saved.target_time_efficiency != target_time_efficiency
+        || saved.priority != priority
+        || saved.note != note
+    {
+        return Err("sidecar-response-invalid".to_owned());
+    }
+    serde_json::to_string(&saved).map_err(|_| "status-serialization-failed".to_owned())
+}
+
+#[tauri::command]
+fn delete_research_plan(
+    owner_character_id: u64,
+    blueprint_item_id: u64,
+    state: State<'_, RuntimeState>,
+) -> Result<String, String> {
+    if owner_character_id == 0
+        || owner_character_id > JAVASCRIPT_MAX_SAFE_INTEGER
+        || blueprint_item_id == 0
+        || blueprint_item_id > JAVASCRIPT_MAX_SAFE_INTEGER
+    {
+        return Err("research-plan-invalid".to_owned());
+    }
+    refresh_sidecar_status(&state);
+    let body = serde_json::json!({
+        "ownerCharacterId": owner_character_id,
+        "blueprintItemId": blueprint_item_id,
+    })
+    .to_string();
+    let response = {
+        let sidecar = state
+            .sidecar
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let process = sidecar
+            .as_ref()
+            .ok_or_else(|| "sidecar-unavailable".to_owned())?;
+        sidecar_json_request(process, "POST", "/research-plans/delete", &body)
+            .map_err(str::to_owned)?
+    };
+    let deleted: ResearchPlanDeleteResponse =
+        serde_json::from_str(&response).map_err(|_| "sidecar-response-invalid".to_owned())?;
+    if deleted.owner_character_id != owner_character_id
+        || deleted.blueprint_item_id != blueprint_item_id
+        || !deleted.deleted
+    {
+        return Err("sidecar-response-invalid".to_owned());
+    }
+    serde_json::to_string(&deleted).map_err(|_| "status-serialization-failed".to_owned())
+}
+
+#[tauri::command]
 fn query_character_skills(
     search: String,
     owner_character_id: Option<u64>,
@@ -3196,6 +3735,9 @@ pub fn run() {
             query_industry_jobs,
             sync_industry_facilities,
             query_industry_facilities,
+            query_research_plans,
+            save_research_plan,
+            delete_research_plan,
             sync_character_skills,
             query_character_skills,
             export_assets_csv,
@@ -3226,13 +3768,15 @@ mod tests {
         asset_export_response_is_valid, asset_query_response_is_valid, authorization_url_is_valid,
         character_skill_query_response_is_valid, character_skill_sync_response_is_valid,
         eve_character_record_is_valid, industry_job_query_response_is_valid,
-        industry_job_sync_response_is_valid, sso_login_status_is_valid, AccountGroupRecord,
-        AssetDeltaCorrelation, AssetDeltaQueryResponse, AssetDeltaRecord, AssetDeltaSummary,
-        AssetExportResponse, AssetLocationNode, AssetOwner, AssetQueryResponse, AssetRecord,
+        industry_job_sync_response_is_valid, research_plan_query_response_is_valid,
+        sso_login_status_is_valid, AccountGroupRecord, AssetDeltaCorrelation,
+        AssetDeltaQueryResponse, AssetDeltaRecord, AssetDeltaSummary, AssetExportResponse,
+        AssetLocationNode, AssetOwner, AssetQueryResponse, AssetRecord,
         CharacterSkillQueryResponse, CharacterSkillRecord, CharacterSkillSyncCharacterResponse,
         CharacterSkillSyncResponse, EveCharacterRecord, IndustryAssetCorrelation,
         IndustryBlueprintCorrelation, IndustryJobQueryResponse, IndustryJobRecord,
-        IndustryJobSyncCharacterResponse, IndustryJobSyncResponse, ScopePackageStatus,
+        IndustryJobSyncCharacterResponse, IndustryJobSyncResponse, ResearchPlanOwner,
+        ResearchPlanQueryResponse, ResearchPlanRecord, ResearchPlanSummary, ScopePackageStatus,
         SsoCharacterIdentity, SsoLoginStatus,
     };
 
@@ -3644,6 +4188,93 @@ mod tests {
             resolved_names: 7,
         };
         assert!(industry_facility_sync_response_is_valid(&sync));
+    }
+
+    #[test]
+    fn validates_research_plans_with_traceable_snapshot_evidence() {
+        let record = ResearchPlanRecord {
+            owner_character_id: 90_888_001,
+            owner_name: "Builder".to_owned(),
+            blueprint_item_id: 7_001,
+            blueprint_type_id: 6_001,
+            blueprint_name: "Synthetic Blueprint".to_owned(),
+            blueprint_present: true,
+            current_material_efficiency: Some(5),
+            current_time_efficiency: Some(10),
+            location_id: Some(60_000_001),
+            location_flag: Some("Hangar".to_owned()),
+            planned: true,
+            next_activity: "material".to_owned(),
+            target_material_efficiency: 10,
+            target_time_efficiency: 20,
+            priority: 100,
+            note: Some("Main line".to_owned()),
+            state: "running".to_owned(),
+            slot_capacity: Some(3),
+            slots_used: 1,
+            slots_available: Some(2),
+            research_level: 4,
+            metallurgy_level: 5,
+            active_job_id: Some(8_001),
+            active_job_activity: Some("material".to_owned()),
+            active_job_status: Some("active".to_owned()),
+            active_job_start_date: Some("2026-09-11T00:00:00Z".to_owned()),
+            active_job_end_date: Some("2026-09-11T01:00:00Z".to_owned()),
+            active_job_cost: Some(1_234.5),
+            facility_id: Some(60_000_001),
+            facility_name: Some("Synthetic Station".to_owned()),
+            facility_access: "public".to_owned(),
+            solar_system_name: Some("Synthetic System".to_owned()),
+            system_cost_index: Some(0.0125),
+            facility_evidence: "active-job".to_owned(),
+            blueprint_snapshot_id: Some(2),
+            blueprint_sync_run_id: Some(3),
+            skill_snapshot_id: Some(4),
+            skill_sync_run_id: Some(5),
+            job_snapshot_id: Some(6),
+            job_sync_run_id: Some(7),
+            observed_at: Some("2026-09-11T00:00:00Z".to_owned()),
+            age_seconds: Some(60),
+            created_at: Some("2026-09-10T00:00:00Z".to_owned()),
+            updated_at: Some("2026-09-11T00:00:00Z".to_owned()),
+        };
+        let mut page = ResearchPlanQueryResponse {
+            items: vec![record],
+            total: 1,
+            offset: 0,
+            limit: 100,
+            owners: vec![ResearchPlanOwner {
+                character_id: 90_888_001,
+                name: "Builder".to_owned(),
+                slot_capacity: Some(3),
+                slots_used: 1,
+                slots_available: Some(2),
+                laboratory_operation_level: 2,
+                advanced_laboratory_operation_level: 0,
+                research_level: 4,
+                metallurgy_level: 5,
+                skill_snapshot_id: Some(4),
+                skill_sync_run_id: Some(5),
+            }],
+            states: RESEARCH_PLAN_STATES.map(str::to_owned).to_vec(),
+            activities: RESEARCH_PLAN_ACTIVITIES.map(str::to_owned).to_vec(),
+            summary: ResearchPlanSummary {
+                unplanned: 0,
+                ready: 0,
+                queued: 0,
+                running: 1,
+                complete: 0,
+                unverified: 0,
+                missing: 0,
+            },
+            observed_at: Some("2026-09-11T00:00:00Z".to_owned()),
+            age_seconds: Some(60),
+            estimates_available: false,
+        };
+        assert!(research_plan_query_response_is_valid(&page));
+
+        page.estimates_available = true;
+        assert!(!research_plan_query_response_is_valid(&page));
     }
 
     #[test]

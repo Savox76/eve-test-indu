@@ -398,7 +398,7 @@ class SidecarIntegrationTests(unittest.TestCase):
             with opener.open(valid_request, timeout=3) as response:
                 health = json.loads(response.read())
             self.assertEqual(health["state"], "ready")
-            self.assertEqual(health["database"]["schemaVersion"], 7)
+            self.assertEqual(health["database"]["schemaVersion"], 8)
             self.assertEqual(health["database"]["location"], "data/foundry.sqlite3")
             self.assertIsNone(health["database"]["lastMigrationBackup"])
             self.assertEqual(health["data"]["state"], "empty")
@@ -582,6 +582,26 @@ class SidecarIntegrationTests(unittest.TestCase):
             self.assertEqual(industry_facility_page["total"], 0)
             self.assertEqual(industry_facility_page["activity"], "manufacturing")
             self.assertEqual(industry_facility_page["limit"], 100)
+
+            research_query_request = urllib.request.Request(
+                f"{base_url}/research-plans/query",
+                data=json.dumps({
+                    "search": "", "ownerCharacterId": None, "state": None,
+                    "plannedOnly": False, "offset": 0, "limit": 100,
+                    "sortBy": "priority", "sortDirection": "desc",
+                }).encode(),
+                method="POST",
+                headers={
+                    "Authorization": f"Bearer {SYNTHETIC_SESSION_TOKEN}",
+                    "Content-Type": "application/json",
+                },
+            )
+            with opener.open(research_query_request, timeout=3) as response:
+                research_page = json.loads(response.read())
+            self.assertEqual(research_page["items"], [])
+            self.assertEqual(research_page["total"], 0)
+            self.assertEqual(research_page["limit"], 100)
+            self.assertFalse(research_page["estimatesAvailable"])
 
             character_skill_query_request = urllib.request.Request(
                 f"{base_url}/skills/query",

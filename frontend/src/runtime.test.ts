@@ -5,6 +5,7 @@ import {
   createAccountGroup,
   deleteAccountGroup,
   deleteEveCharacter,
+  deleteResearchPlan,
   exportAssetsCsv,
   loadAccountGroups,
   loadAssetDeltas,
@@ -16,7 +17,9 @@ import {
   loadEveSsoStatus,
   loadIndustryJobs,
   loadIndustryFacilities,
+  loadResearchPlans,
   renameAccountGroup,
+  saveResearchPlan,
   setDesktopFontScale,
   setDesktopUpdateChannel,
   startEveSso,
@@ -66,13 +69,13 @@ function managedCharacter(overrides: Record<string, unknown> = {}) {
 function nativeStatus(overrides: Record<string, unknown> = {}) {
   return JSON.stringify({
     state: "ready",
-    version: "0.0.5-preview.9",
+    version: "0.0.5-preview.10",
     desktopShell: true,
     singleInstance: true,
     sidecar: "ready",
     database: "ready",
     databaseLocation: "data/foundry.sqlite3",
-    schemaVersion: 7,
+    schemaVersion: 8,
     errorCode: null,
     data: emptyData,
     updater: {
@@ -102,13 +105,13 @@ describe("desktop runtime status", () => {
       loadDesktopRuntimeStatus({ isAvailable: () => true, invoke }),
     ).resolves.toEqual({
       state: "ready",
-      version: "0.0.5-preview.9",
+      version: "0.0.5-preview.10",
       desktopShell: true,
       singleInstance: true,
       sidecar: "ready",
       database: "ready",
       databaseLocation: "data/foundry.sqlite3",
-      schemaVersion: 7,
+      schemaVersion: 8,
       errorCode: null,
       data: emptyData,
       updater: {
@@ -757,6 +760,59 @@ describe("desktop runtime status", () => {
     invoke.mockResolvedValueOnce(JSON.stringify(result));
     await expect(syncIndustryFacilities({ isAvailable: () => true, invoke })).resolves.toEqual(result);
     expect(invoke).toHaveBeenLastCalledWith("sync_industry_facilities");
+  });
+
+  it("validates research plans and persistent plan mutations", async () => {
+    const page = {
+      items: [{
+        ownerCharacterId: 7, ownerName: "Pilot", blueprintItemId: 9,
+        blueprintTypeId: 681, blueprintName: "Bantam Blueprint", blueprintPresent: true,
+        currentMaterialEfficiency: 4, currentTimeEfficiency: 8,
+        locationId: 60_003_760, locationFlag: "Hangar", planned: true,
+        nextActivity: "material", targetMaterialEfficiency: 10,
+        targetTimeEfficiency: 20, priority: 50, note: "First",
+        state: "running", slotCapacity: 6, slotsUsed: 1, slotsAvailable: 5,
+        researchLevel: 4, metallurgyLevel: 5, activeJobId: 8_001,
+        activeJobActivity: "material", activeJobStatus: "active",
+        activeJobStartDate: "2026-09-11T12:00:00Z",
+        activeJobEndDate: "2026-09-11T14:00:00Z", activeJobCost: 125_000.5,
+        facilityId: 60_003_760, facilityName: "Jita IV - Moon 4",
+        facilityAccess: "public", solarSystemName: "Jita", systemCostIndex: 0.0125,
+        facilityEvidence: "active-job", blueprintSnapshotId: 2, blueprintSyncRunId: 3,
+        skillSnapshotId: 4, skillSyncRunId: 5, jobSnapshotId: 6, jobSyncRunId: 7,
+        observedAt: "2026-09-11T12:01:00Z", ageSeconds: 60,
+        createdAt: "2026-09-11T11:00:00Z", updatedAt: "2026-09-11T11:30:00Z",
+      }],
+      total: 1, offset: 0, limit: 100,
+      owners: [{ characterId: 7, name: "Pilot", slotCapacity: 6, slotsUsed: 1,
+        slotsAvailable: 5, laboratoryOperationLevel: 3,
+        advancedLaboratoryOperationLevel: 2, researchLevel: 4, metallurgyLevel: 5,
+        skillSnapshotId: 4, skillSyncRunId: 5 }],
+      states: ["unplanned", "ready", "queued", "running", "complete", "unverified", "missing"],
+      activities: ["material", "time"],
+      summary: { unplanned: 0, ready: 0, queued: 0, running: 1,
+        complete: 0, unverified: 0, missing: 0 },
+      observedAt: "2026-09-11T12:01:00Z", ageSeconds: 60, estimatesAvailable: false,
+    };
+    const invoke = vi.fn<RuntimeAdapter["invoke"]>().mockResolvedValueOnce(JSON.stringify(page));
+    const query = { search: "", ownerCharacterId: null, state: null, plannedOnly: true,
+      offset: 0, limit: 100, sortBy: "priority", sortDirection: "desc" } as const;
+    await expect(loadResearchPlans(query, { isAvailable: () => true, invoke })).resolves.toEqual(page);
+    expect(invoke).toHaveBeenCalledWith("query_research_plans", expect.objectContaining({
+      planState: null, plannedOnly: true,
+    }));
+
+    const input = { ownerCharacterId: 7, blueprintItemId: 9, nextActivity: "material",
+      targetMaterialEfficiency: 10, targetTimeEfficiency: 20, priority: 50,
+      note: "First" } as const;
+    const saved = { ...input, blueprintTypeId: 681, saved: true };
+    invoke.mockResolvedValueOnce(JSON.stringify(saved));
+    await expect(saveResearchPlan(input, { isAvailable: () => true, invoke })).resolves.toEqual(saved);
+
+    invoke.mockResolvedValueOnce(JSON.stringify({
+      ownerCharacterId: 7, blueprintItemId: 9, deleted: true,
+    }));
+    await expect(deleteResearchPlan(7, 9, { isAvailable: () => true, invoke })).resolves.toBeUndefined();
   });
 
   it("validates bounded character-skill pages and sync summaries", async () => {

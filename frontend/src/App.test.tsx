@@ -11,6 +11,7 @@ import type {
   EveCharacter,
   IndustryFacilityPage,
   IndustryJobPage,
+  ResearchPlanPage,
   SsoLoginStatus,
 } from "./runtime";
 
@@ -26,13 +27,13 @@ const idleSso: SsoLoginStatus = {
 const nativeRuntime = (overrides: Partial<Extract<DesktopRuntimeStatus, { state: "ready" }>> = {}) =>
   Promise.resolve<DesktopRuntimeStatus>({
     state: "ready",
-    version: "0.0.5-preview.9",
+    version: "0.0.5-preview.10",
     desktopShell: true,
     singleInstance: true,
     sidecar: "ready",
     database: "ready",
     databaseLocation: "data/foundry.sqlite3",
-    schemaVersion: 7,
+    schemaVersion: 8,
     errorCode: null,
     data: {
       state: "empty",
@@ -202,6 +203,36 @@ const industryFacilityPage: IndustryFacilityPage = {
   kinds: ["station", "structure", "unknown"],
   accessStates: ["public", "available", "restricted", "scope-missing", "unknown"],
   observedAt: "2026-09-11T00:00:00Z", ageSeconds: 60,
+};
+
+const researchPlanPage: ResearchPlanPage = {
+  items: [{
+    ownerCharacterId: 90_888_001, ownerName: "Builder", blueprintItemId: 7_010,
+    blueprintTypeId: 681, blueprintName: "Merlin Blueprint", blueprintPresent: true,
+    currentMaterialEfficiency: 6, currentTimeEfficiency: 12,
+    locationId: 60_003_760, locationFlag: "Hangar", planned: true,
+    nextActivity: "material", targetMaterialEfficiency: 10,
+    targetTimeEfficiency: 20, priority: 80, note: "Doctrine first", state: "ready",
+    slotCapacity: 6, slotsUsed: 2, slotsAvailable: 4, researchLevel: 4,
+    metallurgyLevel: 5, activeJobId: null, activeJobActivity: null,
+    activeJobStatus: null, activeJobStartDate: null, activeJobEndDate: null,
+    activeJobCost: null, facilityId: 60_003_760, facilityName: "Jita IV - Moon 4",
+    facilityAccess: "public", solarSystemName: "Jita", systemCostIndex: 0.0125,
+    facilityEvidence: "last-owner-job", blueprintSnapshotId: 2, blueprintSyncRunId: 3,
+    skillSnapshotId: 4, skillSyncRunId: 5, jobSnapshotId: 6, jobSyncRunId: 7,
+    observedAt: "2026-09-11T12:01:00Z", ageSeconds: 60,
+    createdAt: "2026-09-11T11:00:00Z", updatedAt: "2026-09-11T11:30:00Z",
+  }],
+  total: 1, offset: 0, limit: 100,
+  owners: [{ characterId: 90_888_001, name: "Builder", slotCapacity: 6,
+    slotsUsed: 2, slotsAvailable: 4, laboratoryOperationLevel: 3,
+    advancedLaboratoryOperationLevel: 2, researchLevel: 4, metallurgyLevel: 5,
+    skillSnapshotId: 4, skillSyncRunId: 5 }],
+  states: ["unplanned", "ready", "queued", "running", "complete", "unverified", "missing"],
+  activities: ["material", "time"],
+  summary: { unplanned: 0, ready: 1, queued: 0, running: 0, complete: 0,
+    unverified: 0, missing: 0 },
+  observedAt: "2026-09-11T12:01:00Z", ageSeconds: 60, estimatesAvailable: false,
 };
 
 describe("New Eden Foundry design preview", () => {
@@ -466,7 +497,7 @@ describe("New Eden Foundry design preview", () => {
   it("credits Savoxmedia as the app creator next to the version", () => {
     render(<App />);
 
-    expect(screen.getByText("v0.0.5-preview.9")).toBeInTheDocument();
+    expect(screen.getByText("v0.0.5-preview.10")).toBeInTheDocument();
     expect(screen.getByText("Savoxmedia")).toBeInTheDocument();
     expect(screen.getByText("Erstellt von", { exact: false })).toBeInTheDocument();
     expect(screen.queryByText("Lokaler Betreiber")).not.toBeInTheDocument();
@@ -819,5 +850,33 @@ describe("New Eden Foundry design preview", () => {
     fireEvent.click(screen.getByRole("button", { name: "Anlagen aktualisieren" }));
     await waitFor(() => expect(industryFacilitySyncer).toHaveBeenCalledTimes(1));
     expect(await screen.findByText(/1 Anlagen und 1 Systemkostenstände/)).toBeInTheDocument();
+  });
+
+  it("edits persistent research goals with real slot and facility evidence", async () => {
+    const researchPlansLoader = vi.fn().mockResolvedValue(researchPlanPage);
+    const researchPlanSaver = vi.fn().mockResolvedValue({ saved: true });
+    const researchPlanDeleter = vi.fn().mockResolvedValue(undefined);
+    render(<App runtimeLoader={() => nativeRuntime()} ssoStatusLoader={() => Promise.resolve(idleSso)}
+      researchPlansLoader={researchPlansLoader} researchPlanSaver={researchPlanSaver}
+      researchPlanDeleter={researchPlanDeleter} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Blueprints & Jobs" }));
+
+    expect(await screen.findByText("Merlin Blueprint")).toBeInTheDocument();
+    expect(screen.getAllByText("Bereit").length).toBeGreaterThan(0);
+    expect(screen.getByText(/4 frei · 2\/6 belegt/)).toBeInTheDocument();
+    expect(screen.getByText(/zuletzt dort genutzt/)).toBeInTheDocument();
+    expect(screen.getByText(/Zeiten und Gesamtkosten werden vor dem Einbau nicht geschätzt/)).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Planstatus"), { target: { value: "ready" } });
+    await waitFor(() => expect(researchPlansLoader).toHaveBeenLastCalledWith(
+      expect.objectContaining({ state: "ready" }),
+    ));
+    fireEvent.change(screen.getByLabelText("Priorität"), { target: { value: "90" } });
+    fireEvent.click(screen.getByRole("button", { name: "Aktualisieren" }));
+    await waitFor(() => expect(researchPlanSaver).toHaveBeenCalledWith(
+      expect.objectContaining({ blueprintItemId: 7_010, priority: 90 }),
+    ));
+    fireEvent.click(screen.getByRole("button", { name: "Entfernen" }));
+    await waitFor(() => expect(researchPlanDeleter).toHaveBeenCalledWith(90_888_001, 7_010));
   });
 });

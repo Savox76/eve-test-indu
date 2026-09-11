@@ -66,6 +66,15 @@ from .location_resolution import (
     LocationResolutionError,
     resolve_latest_character_asset_locations,
 )
+from .research_planning import (
+    ResearchPlanningError,
+    delete_research_plan,
+    query_research_plans,
+    save_research_plan,
+    validate_research_plan,
+    validate_research_plan_identity,
+    validate_research_query,
+)
 from .storage import ProgramStorage, ProgramStorageError, prepare_program_storage
 from .startup_state import StartupDataState, inspect_startup_data_state
 from .sso_registration import (
@@ -773,6 +782,65 @@ def create_application(
                 "resolvedNames": synced.resolved_names,
             }
         )
+
+    @app.post("/research-plans/query")
+    async def post_research_plan_query(request: Request) -> JSONResponse:
+        try:
+            payload = await request.json()
+        except Exception:
+            return JSONResponse(status_code=422, content={"detail": "research_query_invalid"})
+        try:
+            validate_research_query(payload)
+            with closing(connect_database(storage.database_path)) as connection:
+                result = query_research_plans(connection, payload)
+        except ResearchPlanningError as error:
+            code = str(error)
+            return JSONResponse(
+                status_code=422 if code == "research_query_invalid" else 500,
+                content={"detail": code},
+            )
+        except Exception:
+            return JSONResponse(status_code=500, content={"detail": "research_query_failed"})
+        return JSONResponse(content=result)
+
+    @app.post("/research-plans/save")
+    async def post_research_plan_save(request: Request) -> JSONResponse:
+        try:
+            payload = await request.json()
+        except Exception:
+            return JSONResponse(status_code=422, content={"detail": "research_plan_invalid"})
+        try:
+            validate_research_plan(payload)
+            with closing(connect_database(storage.database_path)) as connection:
+                result = save_research_plan(connection, payload)
+        except ResearchPlanningError as error:
+            code = str(error)
+            if code == "research_blueprint_not_found":
+                status = 404
+            elif code == "research_target_below_current":
+                status = 409
+            else:
+                status = 422
+            return JSONResponse(status_code=status, content={"detail": code})
+        except Exception:
+            return JSONResponse(status_code=500, content={"detail": "research_plan_save_failed"})
+        return JSONResponse(content=result)
+
+    @app.post("/research-plans/delete")
+    async def post_research_plan_delete(request: Request) -> JSONResponse:
+        try:
+            payload = await request.json()
+        except Exception:
+            return JSONResponse(status_code=422, content={"detail": "research_plan_invalid"})
+        try:
+            validate_research_plan_identity(payload)
+            with closing(connect_database(storage.database_path)) as connection:
+                result = delete_research_plan(connection, payload)
+        except ResearchPlanningError as error:
+            return JSONResponse(status_code=422, content={"detail": str(error)})
+        except Exception:
+            return JSONResponse(status_code=500, content={"detail": "research_plan_delete_failed"})
+        return JSONResponse(content=result)
 
     @app.post("/assets/export")
     async def post_asset_export(request: Request) -> JSONResponse:

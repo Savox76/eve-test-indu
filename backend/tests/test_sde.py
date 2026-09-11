@@ -18,7 +18,7 @@ class MinimalSdeTests(unittest.TestCase):
         self.temp.cleanup()
 
     def test_import_bootstraps_derived_tables_without_app_migration(self):
-        self.assertEqual(SCHEMA_VERSION, 7)
+        self.assertEqual(SCHEMA_VERSION, 8)
         import_minimal_sde(
             self.db,
             build_number="sde-2026-09-10.1",
