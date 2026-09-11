@@ -459,6 +459,32 @@ class SidecarIntegrationTests(unittest.TestCase):
             self.assertEqual(asset_page["total"], 0)
             self.assertEqual(asset_page["limit"], 100)
 
+            asset_summary_request = urllib.request.Request(
+                f"{base_url}/assets/summary/query",
+                data=json.dumps(
+                    {
+                        "search": "",
+                        "ownerCharacterId": None,
+                        "locationStatus": None,
+                        "offset": 0,
+                        "limit": 100,
+                        "sortBy": "type",
+                        "sortDirection": "asc",
+                    }
+                ).encode(),
+                method="POST",
+                headers={
+                    "Authorization": f"Bearer {SYNTHETIC_SESSION_TOKEN}",
+                    "Content-Type": "application/json",
+                },
+            )
+            with opener.open(asset_summary_request, timeout=3) as response:
+                asset_summary = json.loads(response.read())
+            self.assertEqual(asset_summary["items"], [])
+            self.assertEqual(asset_summary["total"], 0)
+            self.assertEqual(asset_summary["positionTotal"], 0)
+            self.assertEqual(asset_summary["limit"], 100)
+
             asset_sync_request = urllib.request.Request(
                 f"{base_url}/assets/sync",
                 data=b"{}",
@@ -573,6 +599,7 @@ class SidecarIntegrationTests(unittest.TestCase):
                 data=json.dumps({
                     "search": "", "kind": None, "access": None,
                     "activity": "manufacturing", "usedOnly": False,
+                    "securityClass": None,
                     "offset": 0, "limit": 100, "sortBy": "facility",
                     "sortDirection": "asc",
                 }).encode(),

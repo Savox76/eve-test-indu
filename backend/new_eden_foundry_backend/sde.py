@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import sqlite3
 from dataclasses import dataclass
 from typing import Any, Iterable, Mapping, Sequence
@@ -86,8 +87,14 @@ def _ensure_sde_schema(connection: sqlite3.Connection) -> None:
         "location_id INTEGER PRIMARY KEY CHECK(location_id > 0), "
         "parent_location_id TEXT, "
         "name TEXT NOT NULL CHECK(length(trim(name)) BETWEEN 1 AND 200), "
-        "kind TEXT NOT NULL CHECK(length(trim(kind)) BETWEEN 1 AND 40))"
+        "kind TEXT NOT NULL CHECK(length(trim(kind)) BETWEEN 1 AND 40), "
+        "security_status REAL)"
     )
+    location_columns = {
+        str(row[1]) for row in connection.execute("PRAGMA table_info(sde_locations)")
+    }
+    if "security_status" not in location_columns:
+        connection.execute("ALTER TABLE sde_locations ADD COLUMN security_status REAL")
     connection.execute(
         "CREATE INDEX IF NOT EXISTS idx_sde_locations_name "
         "ON sde_locations(name COLLATE NOCASE)"
@@ -144,7 +151,7 @@ def _normalize_reference_data(
     str,
     list[tuple[int, str]],
     list[tuple[int, int, str]],
-    list[tuple[int, str | None, str, str]],
+    list[tuple[int, str | None, str, str, float | None]],
 ]:
     build = _text(build_number, "build_number", 80)
     normalized_groups = [
@@ -159,15 +166,28 @@ def _normalize_reference_data(
         )
         for row in _rows(types, "types")
     ]
-    normalized_locations = [
-        (
-            _positive_int(row.get("location_id"), "location_id"),
-            str(row.get("parent_location_id") or "") or None,
-            _text(row.get("name"), "location_name"),
-            _text(row.get("kind"), "location_kind", 40),
+    normalized_locations = []
+    for row in _rows(locations, "locations"):
+        security = row.get("security_status")
+        if security is not None and (
+            isinstance(security, bool)
+            or not isinstance(security, (int, float))
+            or not math.isfinite(float(security))
+            or not -1 <= float(security) <= 1
+        ):
+            raise SdeImportError("invalid_location_security_status")
+        kind = _text(row.get("kind"), "location_kind", 40)
+        if kind != "solar_system" and security is not None:
+            raise SdeImportError("invalid_location_security_status")
+        normalized_locations.append(
+            (
+                _positive_int(row.get("location_id"), "location_id"),
+                str(row.get("parent_location_id") or "") or None,
+                _text(row.get("name"), "location_name"),
+                kind,
+                None if security is None else float(security),
+            )
         )
-        for row in _rows(locations, "locations")
-    ]
     if not normalized_groups or not normalized_types or not normalized_locations:
         raise SdeImportError("minimal_sde_must_not_be_empty")
     if len({row[0] for row in normalized_groups}) != len(normalized_groups):
@@ -258,7 +278,7 @@ def _replace_sde(
     build: str,
     groups: Sequence[tuple[int, str]],
     types: Sequence[tuple[int, int, str]],
-    locations: Sequence[tuple[int, str | None, str, str]],
+    locations: Sequence[tuple[int, str | None, str, str, float | None]],
     activities: Sequence[tuple[int, str, int]],
     products: Sequence[tuple[int, str, int, int]],
     materials: Sequence[tuple[int, str, int, int]],
@@ -278,7 +298,8 @@ def _replace_sde(
             "INSERT INTO sde_types(type_id,group_id,name) VALUES (?,?,?)", types
         )
         connection.executemany(
-            "INSERT INTO sde_locations(location_id,parent_location_id,name,kind) VALUES (?,?,?,?)",
+            "INSERT INTO sde_locations("
+            "location_id,parent_location_id,name,kind,security_status) VALUES (?,?,?,?,?)",
             locations,
         )
         connection.executemany(

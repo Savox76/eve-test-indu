@@ -80,6 +80,17 @@ def query_blueprints(
     names = _type_names(connection)
     rows: list[dict[str, object]] = []
     owners = _enabled_owners(connection)
+    snapshot_status: dict[int, dict[str, object]] = {
+        int(owner["characterId"]): {
+            "characterId": int(owner["characterId"]),
+            "name": str(owner["name"]),
+            "state": "missing",
+            "itemCount": 0,
+            "observedAt": None,
+            "ageSeconds": None,
+        }
+        for owner in owners
+    }
     observed_values: list[str] = []
     snapshots = connection.execute(
         """
@@ -102,8 +113,6 @@ def query_blueprints(
     for snapshot in snapshots:
         character_id = int(snapshot["character_id"])
         owner_name = str(snapshot["alias"] or snapshot["name"])
-        if query["ownerCharacterId"] is not None and query["ownerCharacterId"] != character_id:
-            continue
         try:
             payload = json.loads(str(snapshot["payload_json"]))
             observed = datetime.fromisoformat(str(snapshot["observed_at"]).replace("Z", "+00:00"))
@@ -112,8 +121,18 @@ def query_blueprints(
         if not isinstance(payload, Mapping) or payload.get("characterId") != character_id or not isinstance(payload.get("blueprints"), list) or observed.tzinfo is None:
             raise BlueprintViewError("blueprint_snapshot_invalid")
         observed_text = str(snapshot["observed_at"])
-        observed_values.append(observed_text)
         age = max(0, int((current - observed.astimezone(timezone.utc)).total_seconds()))
+        snapshot_status[character_id] = {
+            "characterId": character_id,
+            "name": owner_name,
+            "state": "available",
+            "itemCount": len(payload["blueprints"]),
+            "observedAt": observed_text,
+            "ageSeconds": age,
+        }
+        if query["ownerCharacterId"] is not None and query["ownerCharacterId"] != character_id:
+            continue
+        observed_values.append(observed_text)
         seen: set[int] = set()
         for item in payload["blueprints"]:
             if not isinstance(item, Mapping):
@@ -162,4 +181,13 @@ def query_blueprints(
     if oldest is not None:
         parsed = datetime.fromisoformat(oldest.replace("Z", "+00:00")).astimezone(timezone.utc)
         age = max(0, int((current - parsed).total_seconds()))
-    return {"items": page, "total": total, "offset": query["offset"], "limit": query["limit"], "owners": owners, "observedAt": oldest, "ageSeconds": age}
+    return {
+        "items": page,
+        "total": total,
+        "offset": query["offset"],
+        "limit": query["limit"],
+        "owners": owners,
+        "snapshots": [snapshot_status[int(owner["characterId"])] for owner in owners],
+        "observedAt": oldest,
+        "ageSeconds": age,
+    }

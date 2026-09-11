@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import gzip
 import json
+import math
 import sqlite3
 from pathlib import Path
 from typing import Any, BinaryIO, Final, Iterable, Mapping
@@ -99,12 +100,21 @@ def build_official_industry_bundle(archive_path: Path) -> dict[str, object]:
                 location_id = row.get("_key")
                 if _positive_integer(location_id):
                     parent = row.get(parent_key) if parent_key is not None else None
+                    security = row.get("securityStatus") if kind == "solar_system" else None
+                    if security is not None and (
+                        isinstance(security, bool)
+                        or not isinstance(security, (int, float))
+                        or not math.isfinite(float(security))
+                        or not -1 <= float(security) <= 1
+                    ):
+                        raise OfficialSdeError("official_sde_record_invalid")
                     locations.append(
                         {
                             "location_id": location_id,
                             "parent_location_id": str(parent) if isinstance(parent, int) else None,
                             "name": _localized_name(row.get("name")),
                             "kind": kind,
+                            "security_status": None if security is None else float(security),
                         }
                     )
 
@@ -181,15 +191,6 @@ def install_bundled_industry_sde(
 
     if not resource_path.is_file():
         return None
-    source_path = resource_path.with_name("official-sde-source.json")
-    if source_path.is_file():
-        try:
-            source = json.loads(source_path.read_text(encoding="utf-8"))
-            bundled_build = str(source["buildNumber"])
-        except (OSError, KeyError, TypeError, json.JSONDecodeError) as error:
-            raise OfficialSdeError("bundled_sde_invalid") from error
-        if current_sde_blueprint_activity_build(connection) == bundled_build:
-            return None
     try:
         with gzip.open(resource_path, "rt", encoding="utf-8") as stream:
             payload = json.load(stream)
@@ -204,7 +205,32 @@ def install_bundled_industry_sde(
     }:
         raise OfficialSdeError("bundled_sde_invalid")
     build_number = payload["build_number"]
-    if current_sde_blueprint_activity_build(connection) == build_number:
+    locations = payload["locations"]
+    if (
+        not isinstance(build_number, str)
+        or not build_number.strip()
+        or not isinstance(locations, list)
+    ):
+        raise OfficialSdeError("bundled_sde_invalid")
+    contains_security = any(
+        isinstance(location, Mapping) and location.get("security_status") is not None
+        for location in locations
+    )
+    location_columns = {
+        str(column[1]) for column in connection.execute("PRAGMA table_info(sde_locations)")
+    }
+    installed_security = (
+        "security_status" in location_columns
+        and connection.execute(
+            "SELECT 1 FROM sde_locations WHERE kind='solar_system' "
+            "AND security_status IS NOT NULL LIMIT 1"
+        ).fetchone()
+        is not None
+    )
+    if (
+        current_sde_blueprint_activity_build(connection) == build_number
+        and (not contains_security or installed_security)
+    ):
         return None
     try:
         return import_industry_sde(connection, **payload)

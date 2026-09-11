@@ -160,6 +160,51 @@ export interface AssetPage {
   ageSeconds: number | null;
 }
 
+export type AssetSummarySortField = "type" | "quantity" | "positions" | "owners" | "locations" | "age";
+export const assetSummarySortFields: AssetSummarySortField[] = [
+  "type", "quantity", "positions", "owners", "locations", "age",
+];
+
+export interface AssetSummaryOwner extends AssetOwner {
+  quantity: number;
+  positionCount: number;
+}
+
+export interface AssetSummaryRecord {
+  typeId: number;
+  typeName: string;
+  quantityTotal: number;
+  positionCount: number;
+  ownerCount: number;
+  locationCount: number;
+  owners: AssetSummaryOwner[];
+  locationStatuses: AssetLocationStatus[];
+  ageSeconds: number;
+}
+
+export interface AssetSummaryQuery {
+  search: string;
+  ownerCharacterId: number | null;
+  locationStatus: AssetLocationStatus | null;
+  offset: number;
+  limit: number;
+  sortBy: AssetSummarySortField;
+  sortDirection: SortDirection;
+}
+
+export interface AssetSummaryPage {
+  items: AssetSummaryRecord[];
+  total: number;
+  positionTotal: number;
+  quantityTotal: number;
+  offset: number;
+  limit: number;
+  owners: AssetOwner[];
+  locationStatuses: AssetLocationStatus[];
+  observedAt: string | null;
+  ageSeconds: number | null;
+}
+
 export interface AssetCsvExport {
   filename: string;
   relativePath: string;
@@ -221,6 +266,14 @@ export interface BlueprintPage {
   offset: number;
   limit: number;
   owners: AssetOwner[];
+  snapshots: Array<{
+    characterId: number;
+    name: string;
+    state: "available" | "missing";
+    itemCount: number;
+    observedAt: string | null;
+    ageSeconds: number | null;
+  }>;
   observedAt: string | null;
   ageSeconds: number | null;
 }
@@ -404,10 +457,12 @@ export interface IndustryJobSyncResult {
 
 export type IndustryFacilityKind = "station" | "structure" | "unknown";
 export type IndustryFacilityAccess = "public" | "available" | "restricted" | "scope-missing" | "unknown";
+export type IndustrySecurityClass = "highsec" | "lowsec" | "nullsec" | "unknown";
 export type IndustryCostActivity = "manufacturing" | "reaction" | "copying" | "invention" | "researching_material_efficiency" | "researching_time_efficiency";
 export type IndustryFacilitySortField = "facility" | "system" | "type" | "cost" | "jobs" | "access" | "age";
 export const industryFacilityKinds: readonly IndustryFacilityKind[] = ["station", "structure", "unknown"];
 export const industryFacilityAccessStates: readonly IndustryFacilityAccess[] = ["public", "available", "restricted", "scope-missing", "unknown"];
+export const industrySecurityClasses: readonly IndustrySecurityClass[] = ["highsec", "lowsec", "nullsec", "unknown"];
 export const industryCostActivities: readonly IndustryCostActivity[] = ["manufacturing", "reaction", "copying", "invention", "researching_material_efficiency", "researching_time_efficiency"];
 export const industryFacilitySortFields: readonly IndustryFacilitySortField[] = ["facility", "system", "type", "cost", "jobs", "access", "age"];
 export const industryFacilityPageSize = 100;
@@ -425,6 +480,8 @@ export interface IndustryFacilityRecord {
   regionName: string | null;
   solarSystemId: number | null;
   solarSystemName: string | null;
+  securityStatus: number | null;
+  securityClass: IndustrySecurityClass;
   tax: number | null;
   activityCostIndex: number | null;
   usedByCharacterIds: number[];
@@ -442,6 +499,7 @@ export interface IndustryFacilityQuery {
   search: string;
   kind: IndustryFacilityKind | null;
   access: IndustryFacilityAccess | null;
+  securityClass: IndustrySecurityClass | null;
   activity: IndustryCostActivity;
   usedOnly: boolean;
   offset: number;
@@ -463,6 +521,7 @@ export interface IndustryFacilityPage {
   activities: IndustryCostActivity[];
   kinds: IndustryFacilityKind[];
   accessStates: IndustryFacilityAccess[];
+  securityClasses: IndustrySecurityClass[];
   observedAt: string | null;
   ageSeconds: number | null;
 }
@@ -1280,6 +1339,100 @@ function validateAssetQuery(query: AssetQuery): AssetQuery {
   return { ...query, search };
 }
 
+function validateAssetSummaryQuery(query: AssetSummaryQuery): AssetSummaryQuery {
+  const search = query.search.trim().replace(/\s+/g, " ");
+  if (
+    search.length > 120 ||
+    !(query.ownerCharacterId === null || isPositiveSafeInteger(query.ownerCharacterId)) ||
+    !(query.locationStatus === null || assetLocationStatuses.includes(query.locationStatus)) ||
+    !isNonNegativeSafeInteger(query.offset) ||
+    !Number.isSafeInteger(query.limit) ||
+    query.limit < 1 ||
+    query.limit > 200 ||
+    !assetSummarySortFields.includes(query.sortBy) ||
+    !["asc", "desc"].includes(query.sortDirection)
+  ) {
+    throw new Error("The asset summary query is invalid.");
+  }
+  return { ...query, search };
+}
+
+function parseAssetSummaryPage(candidate: unknown): AssetSummaryPage {
+  if (
+    !isRecord(candidate) ||
+    !Array.isArray(candidate.items) ||
+    !isNonNegativeSafeInteger(candidate.total) ||
+    !isNonNegativeSafeInteger(candidate.positionTotal) ||
+    !isNonNegativeSafeInteger(candidate.quantityTotal) ||
+    !isNonNegativeSafeInteger(candidate.offset) ||
+    !Number.isSafeInteger(candidate.limit) ||
+    Number(candidate.limit) < 1 ||
+    Number(candidate.limit) > 200 ||
+    !Array.isArray(candidate.owners) ||
+    !Array.isArray(candidate.locationStatuses) ||
+    candidate.locationStatuses.length !== assetLocationStatuses.length ||
+    !assetLocationStatuses.every((status) =>
+      (candidate.locationStatuses as unknown[]).includes(status)) ||
+    !(candidate.observedAt === null || isBoundedText(candidate.observedAt, 50)) ||
+    !(candidate.ageSeconds === null || isNonNegativeSafeInteger(candidate.ageSeconds)) ||
+    (candidate.observedAt === null) !== (candidate.ageSeconds === null)
+  ) {
+    throw new Error("The native runtime returned an invalid asset summary.");
+  }
+  const owners = candidate.owners.map((owner): AssetOwner => {
+    if (!isRecord(owner) || !isPositiveSafeInteger(owner.characterId) ||
+      !isBoundedText(owner.name, 100)) {
+      throw new Error("The native runtime returned invalid asset-summary owners.");
+    }
+    return owner as unknown as AssetOwner;
+  });
+  const items = candidate.items.map((item): AssetSummaryRecord => {
+    if (
+      !isRecord(item) ||
+      !isPositiveSafeInteger(item.typeId) ||
+      !isBoundedText(item.typeName, 220) ||
+      !isNonNegativeSafeInteger(item.quantityTotal) ||
+      !isPositiveSafeInteger(item.positionCount) ||
+      !isPositiveSafeInteger(item.ownerCount) ||
+      !isPositiveSafeInteger(item.locationCount) ||
+      Number(item.locationCount) > Number(item.positionCount) ||
+      !Array.isArray(item.owners) ||
+      item.owners.length !== Number(item.ownerCount) ||
+      !Array.isArray(item.locationStatuses) ||
+      item.locationStatuses.length < 1 ||
+      new Set(item.locationStatuses).size !== item.locationStatuses.length ||
+      !item.locationStatuses.every((status) =>
+        typeof status === "string" && assetLocationStatuses.includes(status as AssetLocationStatus)) ||
+      !isNonNegativeSafeInteger(item.ageSeconds)
+    ) {
+      throw new Error("The native runtime returned invalid asset-summary records.");
+    }
+    const itemOwners = item.owners.map((owner) => {
+      if (!isRecord(owner) || !isPositiveSafeInteger(owner.characterId) ||
+        !isBoundedText(owner.name, 100) || !isNonNegativeSafeInteger(owner.quantity) ||
+        !isPositiveSafeInteger(owner.positionCount)) {
+        throw new Error("The native runtime returned invalid asset-summary distribution.");
+      }
+      return owner as unknown as AssetSummaryOwner;
+    });
+    return { ...item, owners: itemOwners } as unknown as AssetSummaryRecord;
+  });
+  if (
+    items.length > Number(candidate.limit) ||
+    items.length > Number(candidate.total) ||
+    new Set(items.map(({ typeId }) => typeId)).size !== items.length ||
+    new Set(owners.map(({ characterId }) => characterId)).size !== owners.length ||
+    items.some((item) =>
+      item.owners.some((owner) => !owners.some((candidateOwner) =>
+        candidateOwner.characterId === owner.characterId && candidateOwner.name === owner.name)) ||
+      item.owners.reduce((total, owner) => total + owner.quantity, 0) !== item.quantityTotal ||
+      item.owners.reduce((total, owner) => total + owner.positionCount, 0) !== item.positionCount)
+  ) {
+    throw new Error("The native runtime returned inconsistent asset-summary metadata.");
+  }
+  return { ...candidate, items, owners } as unknown as AssetSummaryPage;
+}
+
 function parseNullablePositiveInteger(value: unknown): number | null {
   if (value === null) return null;
   if (!isPositiveSafeInteger(value)) {
@@ -1786,6 +1939,42 @@ export async function loadAssets(
   return page;
 }
 
+export async function loadAssetSummary(
+  query: AssetSummaryQuery,
+  adapter: RuntimeAdapter = tauriAdapter,
+): Promise<AssetSummaryPage> {
+  const validated = validateAssetSummaryQuery(query);
+  if (!adapter.isAvailable()) {
+    return {
+      items: [],
+      total: 0,
+      positionTotal: 0,
+      quantityTotal: 0,
+      offset: validated.offset,
+      limit: validated.limit,
+      owners: [],
+      locationStatuses: [...assetLocationStatuses],
+      observedAt: null,
+      ageSeconds: null,
+    };
+  }
+  const page = parseAssetSummaryPage(
+    JSON.parse(await adapter.invoke("query_asset_summary", {
+      search: validated.search,
+      ownerCharacterId: validated.ownerCharacterId,
+      locationStatus: validated.locationStatus,
+      sortBy: validated.sortBy,
+      sortDirection: validated.sortDirection,
+      offset: validated.offset,
+      limit: validated.limit,
+    })),
+  );
+  if (page.offset !== validated.offset || page.limit !== validated.limit) {
+    throw new Error("The native runtime returned a different asset-summary window.");
+  }
+  return page;
+}
+
 export async function syncAssets(
   adapter: RuntimeAdapter = tauriAdapter,
 ): Promise<AssetSyncResult> {
@@ -1852,6 +2041,7 @@ function validateBlueprintQuery(query: BlueprintQuery): BlueprintQuery {
 function parseBlueprintPage(candidate: unknown): BlueprintPage {
   if (
     !isRecord(candidate) || !Array.isArray(candidate.items) || !Array.isArray(candidate.owners) ||
+    !Array.isArray(candidate.snapshots) ||
     !isNonNegativeSafeInteger(candidate.total) || !isNonNegativeSafeInteger(candidate.offset) ||
     !Number.isSafeInteger(candidate.limit) || Number(candidate.limit) < 1 || Number(candidate.limit) > 200 ||
     !(candidate.observedAt === null || isBoundedText(candidate.observedAt, 64)) ||
@@ -1863,6 +2053,19 @@ function parseBlueprintPage(candidate: unknown): BlueprintPage {
       throw new Error("The native runtime returned invalid blueprint owners.");
     }
     return owner as unknown as AssetOwner;
+  });
+  const snapshots = candidate.snapshots.map((snapshot) => {
+    if (!isRecord(snapshot) || !isPositiveSafeInteger(snapshot.characterId) ||
+      !isBoundedText(snapshot.name, 100) ||
+      !["available", "missing"].includes(String(snapshot.state)) ||
+      !isNonNegativeSafeInteger(snapshot.itemCount) ||
+      !(snapshot.observedAt === null || isBoundedText(snapshot.observedAt, 64)) ||
+      !(snapshot.ageSeconds === null || isNonNegativeSafeInteger(snapshot.ageSeconds)) ||
+      (snapshot.state === "available") !== (snapshot.observedAt !== null && snapshot.ageSeconds !== null) ||
+      (snapshot.state === "missing" && Number(snapshot.itemCount) !== 0)) {
+      throw new Error("The native runtime returned invalid blueprint snapshot status.");
+    }
+    return snapshot as unknown as BlueprintPage["snapshots"][number];
   });
   const items = candidate.items.map((item) => {
     if (
@@ -1881,9 +2084,13 @@ function parseBlueprintPage(candidate: unknown): BlueprintPage {
     items.length > Number(candidate.limit) || items.length > Number(candidate.total) ||
     new Set(items.map(({ itemId }) => itemId)).size !== items.length ||
     new Set(owners.map(({ characterId }) => characterId)).size !== owners.length ||
+    snapshots.length !== owners.length ||
+    new Set(snapshots.map(({ characterId }) => characterId)).size !== snapshots.length ||
+    snapshots.some((snapshot) => !owners.some((owner) =>
+      owner.characterId === snapshot.characterId && owner.name === snapshot.name)) ||
     items.some((item) => !owners.some((owner) => owner.characterId === item.ownerCharacterId))
   ) throw new Error("The native runtime returned inconsistent blueprint data.");
-  return { ...candidate, items, owners } as unknown as BlueprintPage;
+  return { ...candidate, items, owners, snapshots } as unknown as BlueprintPage;
 }
 
 export async function loadBlueprints(
@@ -1893,7 +2100,7 @@ export async function loadBlueprints(
   const validated = validateBlueprintQuery(query);
   if (!adapter.isAvailable()) return {
     items: [], total: 0, offset: validated.offset, limit: validated.limit,
-    owners: [], observedAt: null, ageSeconds: null,
+    owners: [], snapshots: [], observedAt: null, ageSeconds: null,
   };
   const page = parseBlueprintPage(JSON.parse(await adapter.invoke("query_blueprints", {
     search: validated.search,
@@ -2162,6 +2369,7 @@ function validateIndustryFacilityQuery(query: IndustryFacilityQuery): IndustryFa
     search.length > 120 ||
     !(query.kind === null || industryFacilityKinds.includes(query.kind)) ||
     !(query.access === null || industryFacilityAccessStates.includes(query.access)) ||
+    !(query.securityClass === null || industrySecurityClasses.includes(query.securityClass)) ||
     !industryCostActivities.includes(query.activity) ||
     typeof query.usedOnly !== "boolean" ||
     !isNonNegativeSafeInteger(query.offset) ||
@@ -2189,6 +2397,10 @@ function parseIndustryFacilityRecord(candidate: unknown): IndustryFacilityRecord
     !nullableIdAndName(candidate, "ownerId", "ownerName") ||
     !nullableIdAndName(candidate, "regionId", "regionName") ||
     !nullableIdAndName(candidate, "solarSystemId", "solarSystemName") ||
+    !(candidate.securityStatus === null || (typeof candidate.securityStatus === "number" &&
+      Number.isFinite(candidate.securityStatus) && candidate.securityStatus >= -1 && candidate.securityStatus <= 1)) ||
+    !industrySecurityClasses.includes(candidate.securityClass as IndustrySecurityClass) ||
+    ((candidate.securityStatus === null) !== (candidate.securityClass === "unknown")) ||
     !(candidate.tax === null || (typeof candidate.tax === "number" && Number.isFinite(candidate.tax) &&
       candidate.tax >= 0 && candidate.tax <= 1)) ||
     !(candidate.activityCostIndex === null ||
@@ -2241,6 +2453,8 @@ function parseIndustryFacilityPage(candidate: unknown): IndustryFacilityPage {
     !industryFacilityKinds.every((value, index) => (candidate.kinds as unknown[])[index] === value) ||
     !Array.isArray(candidate.accessStates) || candidate.accessStates.length !== industryFacilityAccessStates.length ||
     !industryFacilityAccessStates.every((value, index) => (candidate.accessStates as unknown[])[index] === value) ||
+    !Array.isArray(candidate.securityClasses) || candidate.securityClasses.length !== industrySecurityClasses.length ||
+    !industrySecurityClasses.every((value, index) => (candidate.securityClasses as unknown[])[index] === value) ||
     !(candidate.observedAt === null || isBoundedText(candidate.observedAt, 64)) ||
     !(candidate.ageSeconds === null || isNonNegativeSafeInteger(candidate.ageSeconds)) ||
     (candidate.observedAt === null) !== (candidate.ageSeconds === null)
@@ -2270,12 +2484,14 @@ export async function loadIndustryFacilities(
     items: [], total: 0, npcFacilities: 0, observedFacilities: 0, restrictedStructures: 0,
     systems: 0, offset: validated.offset, limit: validated.limit, activity: validated.activity,
     activities: [...industryCostActivities], kinds: [...industryFacilityKinds],
-    accessStates: [...industryFacilityAccessStates], observedAt: null, ageSeconds: null,
+    accessStates: [...industryFacilityAccessStates], securityClasses: [...industrySecurityClasses],
+    observedAt: null, ageSeconds: null,
   };
   const page = parseIndustryFacilityPage(JSON.parse(await adapter.invoke("query_industry_facilities", {
     search: validated.search,
     kind: validated.kind,
     access: validated.access,
+    securityClass: validated.securityClass,
     activity: validated.activity,
     usedOnly: validated.usedOnly,
     offset: validated.offset,

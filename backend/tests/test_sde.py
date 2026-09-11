@@ -29,7 +29,8 @@ def synthetic_industry_bundle(*, build_number: str = "synthetic-sde-2026-09-11.1
             {"type_id": 202, "group_id": 1, "name": "Synthetic Gas"},
         ],
         "locations": [
-            {"location_id": 30000142, "name": "Synthetic Jita", "kind": "solar_system"}
+            {"location_id": 30000142, "name": "Synthetic Jita", "kind": "solar_system",
+             "security_status": 0.9}
         ],
         "blueprint_activities": [
             {
@@ -117,6 +118,12 @@ class SdeTests(unittest.TestCase):
         self.assertEqual(
             current_sde_blueprint_activity_build(self.db), bundle["build_number"]
         )
+        self.assertEqual(
+            self.db.execute(
+                "SELECT security_status FROM sde_locations WHERE location_id=30000142"
+            ).fetchone()[0],
+            0.9,
+        )
 
         page = query_blueprint_activities(
             self.db,
@@ -170,6 +177,23 @@ class SdeTests(unittest.TestCase):
                 "WHERE blueprint_type_id=100 AND activity='manufacturing'"
             ).fetchone()[0],
             6_000,
+        )
+
+    def test_invalid_security_status_cannot_replace_previous_build(self) -> None:
+        first = synthetic_industry_bundle()
+        import_industry_sde(self.db, **first)
+        broken = synthetic_industry_bundle(build_number="synthetic-sde-broken-security")
+        broken["locations"][0]["security_status"] = 1.5
+
+        with self.assertRaisesRegex(SdeImportError, "invalid_location_security_status"):
+            import_industry_sde(self.db, **broken)
+
+        self.assertEqual(current_sde_build(self.db), first["build_number"])
+        self.assertEqual(
+            self.db.execute(
+                "SELECT security_status FROM sde_locations WHERE location_id=30000142"
+            ).fetchone()[0],
+            0.9,
         )
 
     def test_database_failure_rolls_back_reference_and_activity_tables(self) -> None:

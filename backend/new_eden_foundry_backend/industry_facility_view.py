@@ -30,6 +30,7 @@ DISPLAY_COST_ACTIVITIES = (
 )
 FACILITY_KINDS = ("station", "structure", "unknown")
 FACILITY_ACCESS_STATES = ("public", "available", "restricted", "scope-missing", "unknown")
+SECURITY_CLASSES = ("highsec", "lowsec", "nullsec", "unknown")
 SORT_FIELDS = ("facility", "system", "type", "cost", "jobs", "access", "age")
 JOB_COST_ACTIVITIES = {
     1: "manufacturing",
@@ -52,6 +53,7 @@ def validate_industry_facility_query(payload: Any) -> dict[str, Any]:
         "search",
         "kind",
         "access",
+        "securityClass",
         "activity",
         "usedOnly",
         "offset",
@@ -67,6 +69,7 @@ def validate_industry_facility_query(payload: Any) -> dict[str, Any]:
         or len(search) > 120
         or payload["kind"] not in (None, *FACILITY_KINDS)
         or payload["access"] not in (None, *FACILITY_ACCESS_STATES)
+        or payload["securityClass"] not in (None, *SECURITY_CLASSES)
         or payload["activity"] not in DISPLAY_COST_ACTIVITIES
         or not isinstance(payload["usedOnly"], bool)
         or isinstance(payload["offset"], bool)
@@ -137,6 +140,7 @@ def _usage(connection: sqlite3.Connection) -> dict[int, dict[str, Any]]:
 
 
 def _facility_index(
+    connection: sqlite3.Connection,
     row: sqlite3.Row,
     payload: Mapping[str, Any],
 ) -> dict[int, dict[str, Any]]:
@@ -148,10 +152,34 @@ def _facility_index(
         }
         for system in payload["systems"]
     }
+    security_by_system: dict[int, float] = {}
+    location_columns = {
+        str(column[1])
+        for column in connection.execute("PRAGMA table_info(sde_locations)")
+    }
+    if "security_status" in location_columns:
+        security_by_system = {
+            int(system[0]): float(system[1])
+            for system in connection.execute(
+                "SELECT location_id,security_status FROM sde_locations "
+                "WHERE kind='solar_system' AND security_status IS NOT NULL"
+            )
+        }
+
+    def security(system_id: int | None) -> tuple[float | None, str]:
+        value = None if system_id is None else security_by_system.get(system_id)
+        if value is None:
+            return None, "unknown"
+        if value >= 0.45:
+            return value, "highsec"
+        if value > 0:
+            return value, "lowsec"
+        return value, "nullsec"
     result: dict[int, dict[str, Any]] = {}
     for facility in payload["facilities"]:
         facility_id = int(facility["facility_id"])
         system_id = int(facility["solar_system_id"])
+        security_status, security_class = security(system_id)
         result[facility_id] = {
             "facilityId": facility_id,
             "facilityName": names[facility_id],
@@ -165,6 +193,8 @@ def _facility_index(
             "regionName": names[int(facility["region_id"])],
             "solarSystemId": system_id,
             "solarSystemName": names[system_id],
+            "securityStatus": security_status,
+            "securityClass": security_class,
             "tax": facility["tax"],
             "costIndices": systems.get(system_id, {}),
             "errorCode": None,
@@ -177,6 +207,9 @@ def _facility_index(
         system_id = structure["solar_system_id"]
         type_id = structure["type_id"]
         owner_id = structure["owner_id"]
+        security_status, security_class = security(
+            None if system_id is None else int(system_id)
+        )
         result[facility_id] = {
             "facilityId": facility_id,
             "facilityName": structure["name"],
@@ -190,6 +223,8 @@ def _facility_index(
             "regionName": None,
             "solarSystemId": system_id,
             "solarSystemName": None if system_id is None else names[int(system_id)],
+            "securityStatus": security_status,
+            "securityClass": security_class,
             "tax": None,
             "costIndices": {} if system_id is None else systems.get(int(system_id), {}),
             "errorCode": structure["error_code"],
@@ -206,7 +241,7 @@ def industry_facility_index(connection: sqlite3.Connection) -> dict[int, dict[st
     latest = _latest_reference(connection)
     if latest is None:
         return {}
-    return _facility_index(*latest)
+    return _facility_index(connection, *latest)
 
 
 def query_industry_facilities(
@@ -231,6 +266,7 @@ def query_industry_facilities(
             "activities": list(DISPLAY_COST_ACTIVITIES),
             "kinds": list(FACILITY_KINDS),
             "accessStates": list(FACILITY_ACCESS_STATES),
+            "securityClasses": list(SECURITY_CLASSES),
             "observedAt": None,
             "ageSeconds": None,
         }
@@ -238,7 +274,7 @@ def query_industry_facilities(
     current = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
     age = max(0, int((current - parse_timestamp(str(row["observed_at"]))).total_seconds()))
     usage = _usage(connection)
-    facilities = _facility_index(row, payload)
+    facilities = _facility_index(connection, row, payload)
     rows: list[dict[str, Any]] = []
     tokens = query["search"].casefold().split()
     for facility in facilities.values():
@@ -249,6 +285,11 @@ def query_industry_facilities(
         if query["kind"] is not None and query["kind"] != facility["kind"]:
             continue
         if query["access"] is not None and query["access"] != facility["access"]:
+            continue
+        if (
+            query["securityClass"] is not None
+            and query["securityClass"] != facility["securityClass"]
+        ):
             continue
         if query["usedOnly"] and facility_usage["jobs"] == 0:
             continue
@@ -276,6 +317,7 @@ def query_industry_facilities(
                     "regionName",
                     "solarSystemId",
                     "solarSystemName",
+                    "securityClass",
                     "kind",
                     "access",
                     "errorCode",
@@ -322,6 +364,7 @@ def query_industry_facilities(
         "activities": list(DISPLAY_COST_ACTIVITIES),
         "kinds": list(FACILITY_KINDS),
         "accessStates": list(FACILITY_ACCESS_STATES),
+        "securityClasses": list(SECURITY_CLASSES),
         "observedAt": str(row["observed_at"]),
         "ageSeconds": age,
     }

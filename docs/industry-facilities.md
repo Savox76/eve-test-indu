@@ -22,12 +22,15 @@ Die zweisprachige Ansicht unter **Blueprints & Jobs** zeigt:
 
 - Anlagenname, ID, NPC-Station oder beobachtete Spielerstruktur,
 - Anlagentyp, Eigentümer, Sonnensystem und – sofern öffentlich bekannt – Region,
+- den offiziellen SDE-Sicherheitsstatus des belegten Sonnensystems und seine Einordnung als Highsec (ab 0,45), Lowsec (über 0 bis unter 0,45) oder Nullsec (bis 0); ohne belegtes System bleibt der Zustand unbekannt,
 - den ausgewählten Systemkostenindex für Produktion, Reaktion, Kopieren, Erfindung sowie ME-/TE-Forschung,
 - öffentliche, verfügbare, ACL-eingeschränkte, scope-bedingt eingeschränkte und unbekannte Zustände,
 - Anzahl der persönlichen Jobs und der darunter aktiven Jobs,
 - Snapshot-ID, Sync-Run-ID und Datenalter.
 
-Suche, Anlagenart, Zugriffszustand, Kostenaktivität, der Filter **Nur in Jobs verwendet** und die Sortierung werden vor der Seitenteilung im lokalen Sidecar angewendet. Pro Anfrage werden höchstens 200 und in der Oberfläche standardmäßig 100 Anlagen übertragen. Die persönlichen Jobzeilen verwenden denselben Snapshot für Anlagenname, System und passenden Kostenindex.
+Suche, Anlagenart, Zugriffszustand, Sicherheitsraum, Kostenaktivität, der Filter **Nur in Jobs verwendet** und die Sortierung werden vor der Seitenteilung im lokalen Sidecar angewendet. Der Sicherheitsraum kann auf Highsec, Lowsec, Nullsec oder unbekannt begrenzt werden. Pro Anfrage werden höchstens 200 und in der Oberfläche standardmäßig 100 Anlagen übertragen. Die persönlichen Jobzeilen verwenden denselben Snapshot für Anlagenname, System und passenden Kostenindex.
+
+Der Sicherheitsstatus wird aus dem mitgelieferten offiziellen SDE-Ausschnitt gelesen. Bei einem Update wird die abgeleitete SDE-Tabelle atomar um die neue Spalte ergänzt und bei gleicher Buildnummer genau einmal neu befüllt; Charaktere, Einstellungen, Pläne und Snapshots in `foundry.sqlite3` werden dabei nicht ersetzt.
 
 ## Bewusste Kostengrenze
 

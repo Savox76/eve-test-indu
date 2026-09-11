@@ -434,12 +434,16 @@ def resolve_production_plan(
                 "materials": direct_materials,
             }
         )
+    execution_steps = [
+        {**step, "sequence": sequence}
+        for sequence, step in enumerate(reversed(steps), start=1)
+    ]
     return {
         "state": "ready",
         "buildNumber": build_number,
         "blueprintName": root.blueprint_name,
         "productName": root.product_name,
-        "steps": steps,
+        "steps": execution_steps,
         "grossMaterials": [
             {"typeId": type_id, "typeName": value[0], "quantity": value[1]}
             for type_id, value in sorted(

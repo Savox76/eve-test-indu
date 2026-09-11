@@ -5,6 +5,7 @@ import { App } from "./App";
 import type {
   AssetDeltaPage,
   AssetPage,
+  AssetSummaryPage,
   BlueprintPage,
   CharacterSkillPage,
   DesktopRuntimeStatus,
@@ -93,6 +94,30 @@ const assetPage = (overrides: Partial<AssetPage> = {}): AssetPage => ({
   ...overrides,
 });
 
+const assetSummaryPage = (overrides: Partial<AssetSummaryPage> = {}): AssetSummaryPage => ({
+  items: [{
+    typeId: 98_001,
+    typeName: "Synthetic Component",
+    quantityTotal: 34,
+    positionCount: 2,
+    ownerCount: 1,
+    locationCount: 2,
+    owners: [{ characterId: 90_888_001, name: "Builder", quantity: 34, positionCount: 2 }],
+    locationStatuses: ["resolved"],
+    ageSeconds: 3_600,
+  }],
+  total: 1,
+  positionTotal: 2,
+  quantityTotal: 34,
+  offset: 0,
+  limit: 100,
+  owners: [{ characterId: 90_888_001, name: "Builder" }],
+  locationStatuses: ["resolved", "restricted", "unresolved", "cycle", "pending"],
+  observedAt: "2026-09-10T10:00:00Z",
+  ageSeconds: 3_600,
+  ...overrides,
+});
+
 const blueprintPage: BlueprintPage = {
   items: [{ itemId: 7_001, typeId: 681, typeName: "Bantam Blueprint",
     ownerCharacterId: 90_888_001, ownerName: "Builder", kind: "copy",
@@ -101,6 +126,8 @@ const blueprintPage: BlueprintPage = {
     observedAt: "2026-09-10T10:00:00Z", ageSeconds: 3_600 }],
   total: 1, offset: 0, limit: 100,
   owners: [{ characterId: 90_888_001, name: "Builder" }],
+  snapshots: [{ characterId: 90_888_001, name: "Builder", state: "available",
+    itemCount: 1, observedAt: "2026-09-10T10:00:00Z", ageSeconds: 3_600 }],
   observedAt: "2026-09-10T10:00:00Z", ageSeconds: 3_600,
 };
 
@@ -196,6 +223,7 @@ const industryFacilityPage: IndustryFacilityPage = {
     access: "public", typeId: 1_928, typeName: "Caldari Station",
     ownerId: 1_000_001, ownerName: "Caldari Navy", regionId: 10_000_002,
     regionName: "The Forge", solarSystemId: 30_000_142, solarSystemName: "Jita",
+    securityStatus: 0.9, securityClass: "highsec",
     tax: null, activityCostIndex: 0.0125, usedByCharacterIds: [90_888_001],
     observedActivityIds: [1], jobCount: 1, activeJobs: 0, errorCode: null,
     snapshotId: 10, syncRunId: 11, observedAt: "2026-09-11T00:00:00Z", ageSeconds: 60,
@@ -206,6 +234,7 @@ const industryFacilityPage: IndustryFacilityPage = {
     "researching_material_efficiency", "researching_time_efficiency"],
   kinds: ["station", "structure", "unknown"],
   accessStates: ["public", "available", "restricted", "scope-missing", "unknown"],
+  securityClasses: ["highsec", "lowsec", "nullsec", "unknown"],
   observedAt: "2026-09-11T00:00:00Z", ageSeconds: 60,
 };
 
@@ -343,6 +372,7 @@ describe("New Eden Foundry design preview", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: /Assets/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Einzelpositionen" }));
 
     expect(await screen.findByText("Synthetic Component")).toBeInTheDocument();
     expect(screen.getAllByText("Builder")).toHaveLength(2);
@@ -372,6 +402,39 @@ describe("New Eden Foundry design preview", () => {
     expect((await screen.findByText(/101–101 von 100\.000/))).toBeInTheDocument();
   });
 
+  it("starts with a grouped stock overview and drills into matching positions", async () => {
+    const assetSummaryLoader = vi.fn().mockResolvedValue(assetSummaryPage());
+    const assetsLoader = vi.fn().mockResolvedValue(assetPage());
+    render(
+      <App
+        runtimeLoader={() => nativeRuntime()}
+        ssoStatusLoader={() => Promise.resolve(idleSso)}
+        charactersLoader={() => Promise.resolve([])}
+        accountGroupsLoader={() => Promise.resolve([])}
+        assetSummaryLoader={assetSummaryLoader}
+        assetsLoader={assetsLoader}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Assets/i }));
+    expect(await screen.findByText("Synthetic Component")).toBeInTheDocument();
+    expect(screen.getByText("Verteilung: Builder 34")).toBeInTheDocument();
+    expect(assetSummaryLoader).toHaveBeenCalledWith({
+      search: "",
+      ownerCharacterId: null,
+      locationStatus: null,
+      offset: 0,
+      limit: 100,
+      sortBy: "type",
+      sortDirection: "asc",
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Einzelpositionen anzeigen" }));
+    await waitFor(() => expect(assetsLoader).toHaveBeenLastCalledWith(
+      expect.objectContaining({ search: "Synthetic Component" }),
+    ));
+  });
+
   it("sorts asset columns before requesting the first page", async () => {
     const assetsLoader = vi.fn().mockResolvedValue(assetPage());
     render(
@@ -384,6 +447,7 @@ describe("New Eden Foundry design preview", () => {
       />,
     );
     fireEvent.click(screen.getByRole("button", { name: /Assets/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Einzelpositionen" }));
     await screen.findByText("Synthetic Component");
 
     fireEvent.click(screen.getByRole("button", { name: "Menge" }));
@@ -414,6 +478,7 @@ describe("New Eden Foundry design preview", () => {
       />,
     );
     fireEvent.click(screen.getByRole("button", { name: /Assets/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Einzelpositionen" }));
     await screen.findByText("Synthetic Component");
 
     fireEvent.change(screen.getByPlaceholderText(/Typ, Standort, Besitzer oder ID suchen/), {
@@ -477,6 +542,7 @@ describe("New Eden Foundry design preview", () => {
       />,
     );
     fireEvent.click(screen.getByRole("button", { name: /Assets/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Einzelpositionen" }));
     await screen.findByText("Synthetic Component");
 
     fireEvent.click(screen.getByRole("button", { name: "Assets aktualisieren" }));
@@ -573,7 +639,7 @@ describe("New Eden Foundry design preview", () => {
   it("credits Savoxmedia as the app creator next to the version", () => {
     render(<App />);
 
-    expect(screen.getByText("v0.0.5-preview.17")).toBeInTheDocument();
+    expect(screen.getByText("v0.0.5-preview.18")).toBeInTheDocument();
     expect(screen.getByText("Savoxmedia")).toBeInTheDocument();
     expect(screen.getByText("Erstellt von", { exact: false })).toBeInTheDocument();
     expect(screen.queryByText("Lokaler Betreiber")).not.toBeInTheDocument();
@@ -750,6 +816,44 @@ describe("New Eden Foundry design preview", () => {
     }));
   });
 
+  it("renders component steps before the selected production goal", async () => {
+    const basePlan = productionPlanPage.items[0];
+    const componentStep = {
+      ...basePlan.steps[0],
+      sequence: 1,
+      blueprintTypeId: 110,
+      blueprintName: "Synthetic Component Blueprint",
+      productTypeId: 111,
+      productName: "Synthetic Component",
+      requiredQuantity: 4,
+      outputQuantityPerRun: 1,
+      runs: 4,
+      producedQuantity: 4,
+      surplusQuantity: 0,
+      materials: [{ typeId: 901, typeName: "Synthetic Ore", quantityPerRun: 2,
+        grossQuantity: 8, producedByPlan: false }],
+    };
+    const goalStep = {
+      ...basePlan.steps[0],
+      sequence: 2,
+      materials: [{ typeId: 111, typeName: "Synthetic Component", quantityPerRun: 2,
+        grossQuantity: 4, producedByPlan: true }],
+    };
+    const productionPlansLoader = vi.fn().mockResolvedValue({
+      ...productionPlanPage,
+      items: [{ ...basePlan, steps: [componentStep, goalStep] }],
+    } satisfies ProductionPlanPage);
+    render(<App runtimeLoader={() => nativeRuntime()}
+      productionPlansLoader={productionPlansLoader} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Produktion" }));
+    const component = await screen.findByText(/Schritt 1 · Vorprodukt: Synthetic Component/);
+    const goal = screen.getByText(/Schritt 2 · Zielprodukt: Synthetic Hull/);
+    expect(component.closest("li")).not.toHaveClass("production-step--goal");
+    expect(goal.closest("li")).toHaveClass("production-step--goal");
+    expect(component.compareDocumentPosition(goal) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it("starts and cancels one-character-at-a-time PKCE login with selected scopes", async () => {
     const waiting: SsoLoginStatus = {
       state: "waiting",
@@ -922,8 +1026,16 @@ describe("New Eden Foundry design preview", () => {
     render(<App runtimeLoader={() => nativeRuntime()} ssoStatusLoader={() => Promise.resolve(idleSso)} blueprintsLoader={blueprintsLoader} />);
     fireEvent.click(await screen.findByRole("button", { name: "Blueprints & Jobs" }));
     expect(await screen.findByText("Bantam Blueprint")).toBeInTheDocument();
+    expect(screen.getByText("Snapshot-Status")).toBeInTheDocument();
+    expect(screen.getByText(/1 Blueprints · 1 Std\./)).toBeInTheDocument();
     expect(screen.getByText("BPC")).toBeInTheDocument();
     expect(screen.getByText("12")).toBeInTheDocument();
+    fireEvent.change(screen.getByPlaceholderText("Blueprint, Besitzer, Ort oder ID suchen"), {
+      target: { value: "Bantam" },
+    });
+    await waitFor(() => expect(blueprintsLoader).toHaveBeenLastCalledWith(
+      expect.objectContaining({ search: "Bantam" }),
+    ));
     fireEvent.click(screen.getByRole("button", { name: "ME" }));
     await waitFor(() => expect(blueprintsLoader).toHaveBeenLastCalledWith(expect.objectContaining({ sortBy: "me", sortDirection: "asc" })));
   });
@@ -952,6 +1064,40 @@ describe("New Eden Foundry design preview", () => {
     fireEvent.click(screen.getByRole("button", { name: "Jobs aktualisieren" }));
     await waitFor(() => expect(industryJobSyncer).toHaveBeenCalledTimes(1));
     expect(await screen.findByText(/1 Jobs von 1 Charakter/)).toBeInTheDocument();
+  });
+
+  it("separates running jobs from ready jobs and shows live remaining time", async () => {
+    const endDate = new Date(Date.now() + 90 * 60_000).toISOString();
+    const baseJob = industryJobPage.items[0];
+    const industryJobsLoader = vi.fn().mockResolvedValue({
+      ...industryJobPage,
+      items: [
+        {
+          ...baseJob,
+          jobId: 8_002,
+          status: "active",
+          endDate,
+          completedDate: null,
+          correlationState: "pending",
+          assetCorrelation: { state: "pending", eventIds: [], candidateCount: 0, locationMatched: false },
+        },
+        {
+          ...baseJob,
+          jobId: 8_003,
+          status: "ready",
+          completedDate: null,
+        },
+      ],
+      total: 2,
+      activeTotal: 2,
+    } satisfies IndustryJobPage);
+    render(<App runtimeLoader={() => nativeRuntime()} ssoStatusLoader={() => Promise.resolve(idleSso)}
+      industryJobsLoader={industryJobsLoader} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Blueprints & Jobs" }));
+    expect((await screen.findAllByText("Läuft")).length).toBeGreaterThan(0);
+    expect(screen.getByText(/Noch 1 Std\./)).toBeInTheDocument();
+    expect(screen.getAllByText("Abholbereit").length).toBeGreaterThanOrEqual(2);
   });
 
   it("shows character-separated industry capacity and research work queues", async () => {
@@ -1013,6 +1159,10 @@ describe("New Eden Foundry design preview", () => {
     fireEvent.change(screen.getByLabelText("Anlagenart"), { target: { value: "station" } });
     await waitFor(() => expect(industryFacilitiesLoader).toHaveBeenLastCalledWith(
       expect.objectContaining({ kind: "station" }),
+    ));
+    fireEvent.change(screen.getByLabelText("Sicherheitsraum"), { target: { value: "highsec" } });
+    await waitFor(() => expect(industryFacilitiesLoader).toHaveBeenLastCalledWith(
+      expect.objectContaining({ securityClass: "highsec" }),
     ));
     fireEvent.click(screen.getByRole("button", { name: "Systemkostenindex" }));
     await waitFor(() => expect(industryFacilitiesLoader).toHaveBeenLastCalledWith(

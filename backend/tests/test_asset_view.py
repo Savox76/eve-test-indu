@@ -9,10 +9,13 @@ from pathlib import Path
 
 from new_eden_foundry_backend.asset_view import (
     AssetQuery,
+    AssetSummaryQuery,
     AssetViewError,
     export_assets_csv,
+    query_asset_summary,
     query_assets,
     validate_asset_query,
+    validate_asset_summary_query,
 )
 from new_eden_foundry_backend.database import connect_database, initialize_database
 from new_eden_foundry_backend.sde import import_minimal_sde
@@ -287,6 +290,75 @@ class AssetViewTests(unittest.TestCase):
         self.assertEqual([9, 5], [row["quantity"] for row in descending["items"]])
         with self.assertRaisesRegex(AssetViewError, "asset_query_invalid"):
             validate_asset_query(sort_by="unknown")
+
+    def test_summary_groups_positions_by_type_with_owner_and_location_counts(self) -> None:
+        first = self.publish_assets(
+            CHARACTER_ID,
+            [asset(9_800_201, quantity=9), asset(9_800_202, quantity=5)],
+            "2026-09-10T10:00:00Z",
+        )
+        self.publish_locations(
+            CHARACTER_ID,
+            first,
+            [self.resolved_location(9_800_201), self.resolved_location(9_800_202)],
+            "2026-09-10T10:01:00Z",
+        )
+        self.publish_assets(
+            SECOND_CHARACTER_ID,
+            [asset(9_800_203, quantity=2), asset(9_800_204, SECOND_TYPE_ID, 4)],
+            "2026-09-10T09:30:00Z",
+        )
+
+        result = query_asset_summary(
+            self.database,
+            AssetSummaryQuery(sort_by="quantity", sort_direction="desc"),
+            now=datetime(2026, 9, 10, 11, 0, tzinfo=timezone.utc),
+        )
+
+        self.assertEqual(result["total"], 2)
+        self.assertEqual(result["positionTotal"], 4)
+        self.assertEqual(result["quantityTotal"], 20)
+        component = result["items"][0]
+        self.assertEqual(component["typeName"], "Synthetic Component")
+        self.assertEqual(component["quantityTotal"], 16)
+        self.assertEqual(component["positionCount"], 3)
+        self.assertEqual(component["ownerCount"], 2)
+        self.assertEqual(component["locationCount"], 2)
+        self.assertEqual(
+            component["owners"],
+            [
+                {"characterId": CHARACTER_ID, "name": "Builder", "quantity": 14, "positionCount": 2},
+                {"characterId": SECOND_CHARACTER_ID, "name": "Synthetic Hauler", "quantity": 2, "positionCount": 1},
+            ],
+        )
+        self.assertEqual(component["locationStatuses"], ["resolved", "pending"])
+
+    def test_summary_filters_before_grouping_and_rejects_unknown_sort(self) -> None:
+        snapshot = self.publish_assets(
+            CHARACTER_ID,
+            [asset(9_800_211, quantity=9), asset(9_800_212, quantity=5)],
+            "2026-09-10T10:00:00Z",
+        )
+        self.publish_locations(
+            CHARACTER_ID,
+            snapshot,
+            [
+                self.resolved_location(9_800_211),
+                self.resolved_location(9_800_212, "restricted"),
+            ],
+            "2026-09-10T10:01:00Z",
+        )
+
+        result = query_asset_summary(
+            self.database,
+            AssetSummaryQuery(location_status="restricted"),
+        )
+
+        self.assertEqual(result["total"], 1)
+        self.assertEqual(result["quantityTotal"], 5)
+        self.assertEqual(result["items"][0]["locationStatuses"], ["restricted"])
+        with self.assertRaisesRegex(AssetViewError, "asset_summary_query_invalid"):
+            validate_asset_summary_query(sort_by="owner")
 
     def test_new_asset_snapshot_never_uses_paths_from_an_older_snapshot(self) -> None:
         old = self.publish_assets(
