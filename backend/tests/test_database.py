@@ -111,6 +111,7 @@ class DatabaseFoundationTests(unittest.TestCase):
                 "character_scopes",
                 "migration_backups",
                 "app_settings",
+                "research_plans",
             }
             <= tables
         )

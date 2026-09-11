@@ -2714,6 +2714,109 @@ select:focus-visible {
 .industry-facility-table th:nth-child(6) { width: 11%; }
 .industry-facility-table th:nth-child(7) { width: 12%; }
 
+.research-planning {
+  margin-top: 18px;
+}
+
+.research-planning .asset-hero__metrics {
+  grid-template-columns: repeat(4, minmax(105px, 1fr));
+  min-width: 600px;
+}
+
+.research-toolbar {
+  grid-template-columns: minmax(280px, 1.5fr) repeat(2, minmax(160px, 0.75fr)) auto;
+}
+
+.research-table {
+  min-width: 1580px;
+}
+
+.research-table th:nth-child(1) { width: 18%; }
+.research-table th:nth-child(2) { width: 13%; }
+.research-table th:nth-child(3) { width: 27%; }
+.research-table th:nth-child(4) { width: 14%; }
+.research-table th:nth-child(5) { width: 17%; }
+.research-table th:nth-child(6) { width: 11%; }
+
+.research-plan-editor {
+  display: grid;
+  gap: 7px;
+  min-width: 360px;
+}
+
+.research-plan-editor select,
+.research-plan-editor input {
+  min-height: 31px;
+  border: 1px solid #303a32;
+  border-radius: 7px;
+  color: #cdd6cf;
+  background: #171d18;
+  font: inherit;
+}
+
+.research-plan-editor > select,
+.research-note {
+  width: 100%;
+  padding: 5px 8px;
+}
+
+.research-targets {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(76px, 1fr));
+  gap: 6px;
+}
+
+.research-targets label {
+  display: grid;
+  gap: 3px;
+}
+
+.research-targets label span {
+  color: #77827a;
+  font-size: calc(7px * var(--font-scale));
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.research-targets select,
+.research-targets input {
+  width: 100%;
+  padding: 4px 6px;
+}
+
+.research-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.research-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 30px;
+  padding: 5px 9px;
+  border: 1px solid rgba(103, 198, 188, 0.3);
+  border-radius: 7px;
+  color: #a9ddd6;
+  background: var(--teal-soft);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+}
+
+.research-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.research-actions .research-remove {
+  border-color: rgba(223, 121, 104, 0.28);
+  color: #d79083;
+  background: var(--coral-soft);
+}
+
 .asset-status {
   display: inline-flex;
   align-items: center;
@@ -2965,11 +3068,13 @@ select:focus-visible {
   }
 
   .character-skills .industry-jobs__toolbar,
-  .industry-facility-toolbar {
+  .industry-facility-toolbar,
+  .research-toolbar {
     grid-template-columns: repeat(2, minmax(220px, 1fr));
   }
 
-  .industry-facilities .asset-hero__metrics {
+  .industry-facilities .asset-hero__metrics,
+  .research-planning .asset-hero__metrics {
     min-width: 0;
   }
 }
@@ -3253,7 +3358,9 @@ select:focus-visible {
   .character-skills .asset-hero__metrics,
   .character-skills .industry-jobs__toolbar,
   .industry-facilities .asset-hero__metrics,
-  .industry-facility-toolbar {
+  .industry-facility-toolbar,
+  .research-planning .asset-hero__metrics,
+  .research-toolbar {
     grid-template-columns: 1fr;
   }
 

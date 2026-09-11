@@ -17,7 +17,7 @@ from .recovery import (
 
 
 BUSY_TIMEOUT_MILLISECONDS: Final = 5_000
-SCHEMA_VERSION: Final = 7
+SCHEMA_VERSION: Final = 8
 
 MIGRATIONS: Final = (
     (
@@ -222,6 +222,46 @@ MIGRATIONS: Final = (
             """
             CREATE INDEX idx_resolved_type_names_name
                 ON resolved_type_names(name COLLATE NOCASE)
+            """,
+        ),
+    ),
+    (
+        8,
+        "research_plans",
+        (
+            """
+            CREATE TABLE research_plans (
+                owner_character_id INTEGER NOT NULL
+                    REFERENCES characters(character_id) ON DELETE CASCADE,
+                blueprint_item_id INTEGER NOT NULL CHECK(blueprint_item_id > 0),
+                blueprint_type_id INTEGER NOT NULL CHECK(blueprint_type_id > 0),
+                next_activity TEXT NOT NULL CHECK(
+                    next_activity IN ('material', 'time')
+                ),
+                target_material_efficiency INTEGER NOT NULL CHECK(
+                    target_material_efficiency BETWEEN 0 AND 10
+                ),
+                target_time_efficiency INTEGER NOT NULL CHECK(
+                    target_time_efficiency BETWEEN 0 AND 20
+                ),
+                priority INTEGER NOT NULL DEFAULT 0 CHECK(
+                    priority BETWEEN 0 AND 999
+                ),
+                note TEXT CHECK(
+                    note IS NULL OR length(trim(note)) BETWEEN 1 AND 240
+                ),
+                created_at TEXT NOT NULL DEFAULT (
+                    strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                ),
+                updated_at TEXT NOT NULL DEFAULT (
+                    strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                ),
+                PRIMARY KEY (owner_character_id, blueprint_item_id)
+            )
+            """,
+            """
+            CREATE INDEX idx_research_plans_priority
+                ON research_plans(priority DESC, updated_at DESC)
             """,
         ),
     ),

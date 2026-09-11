@@ -1,10 +1,10 @@
 # Masterplan – New Eden Foundry
 
-**Fassung:** 3.2 (lebendes Repository-Dokument)
+**Fassung:** 3.3 (lebendes Repository-Dokument)
 
 **Stand:** 11. September 2026
 
-**Status:** Paket 26 – Anlagen- und Systemkostenbasis technisch abgeschlossen; Windows-A0 für Paket 22 bleibt offen
+**Status:** Paket 27 – Forschungsplanung technisch abgeschlossen; Windows-A0 für Paket 22 bleibt offen
 
 **Geltungsbereich:** `Savox76/eve-test-indu`
 
@@ -192,6 +192,8 @@ Die Reihenfolge ist verbindlicher als eine Kalenderangabe.
 | 24 | Charakter-Jobs | persönliche Industrieaufträge werden vollständig synchronisiert, mit Blueprint- und Asset-Änderungen nachvollziehbar korreliert und nach Status dargestellt |
 | 25 | Charakter-Skills | vollständige trainierte und aktive Skillstände werden charaktergetrennt synchronisiert und als Grundlage für spätere Machbarkeits- und Lückenprüfungen dargestellt |
 | 26 | Anlagen- und Systemkostenbasis | öffentlicher NPC-Anlagenkatalog und Systemkostenindizes werden atomar synchronisiert; in persönlichen Jobs beobachtete Spielerstrukturen behalten nachvollziehbare Scope-/ACL-Zustände |
+| 27 | Forschungsplanung | persistente ME-/TE-Ziele werden aus echten BPO-, Skill-, Job- und Anlagenständen mit belegbaren Zuständen und ohne unbelegte Zeit-/Kostenprognose dargestellt |
+| 28 | Industrie-Slotübersicht | Fertigungs-, Reaktions- und Wissenschaftskapazitäten werden charaktergetrennt mit realer Belegung und Arbeitsvorrat in einer gemeinsamen Übersicht dargestellt |
 
 ### Aktueller Stand
 
@@ -215,12 +217,13 @@ Die Reihenfolge ist verbindlicher als eine Kalenderangabe.
 - **Abgeschlossen:** 20 – die zweisprachige Asset-Oberfläche liest ausschließlich die letzten vollständigen charaktergetrennten Snapshots, verbindet nur exakt passende Standort-Snapshots und zeigt Typ, Besitzer, Standortpfad und -status, Bereich, Menge und Datenalter. Suche sowie Besitzer- und Standortstatusfilter laufen serverseitig; höchstens 100 Zeilen werden gleichzeitig übertragen und gerendert. Ein synthetischer 100.000-Zeilen-Test sichert den begrenzten Transport. Der gefilterte CSV-Export schreibt atomar und formelneutralisiert unter `data\exports`.
 - **Abgeschlossen:** 21 – jeder vollständige Charakter-Asset-Sync veröffentlicht atomar eine Baseline oder ein Delta zum vorherigen vollständigen Snapshot. Hinzufügungen, Entfernungen, Mengen- und Standortänderungen tragen deterministische Fingerabdrücke, Snapshot-/Run-IDs und ein Beobachtungsfenster. Die zweisprachige Historie ist serverseitig such- und filterbar und überträgt höchstens 50 Ereignisse pro Seite. Charakter-/Typ-Schlüssel, Richtung und Mengendifferenz bereiten die spätere Jobkorrelation vor, ohne bereits unbelegte Zuordnungen zu behaupten.
 - **Zusätzlich umgesetzt:** Die vollständige sichtbare Oberfläche unterstützt fünf globale Schriftgrößenstufen; die Auswahl bleibt in der bestehenden `app_settings`-Tabelle am updatefesten Datenort erhalten.
-- **In Arbeit:** 22 – Der Gerätetest bestätigte Einzelinstanz, zweiten Start und updatefesten Speicher. `v0.0.5-preview.9` ist der aktuelle technische Kandidat. Das vollständige A0-Protokoll bleibt vor der ersten `0.2.0`-Alpha erforderlich.
+- **In Arbeit:** 22 – Der Gerätetest bestätigte Einzelinstanz, zweiten Start und updatefesten Speicher. `v0.0.5-preview.10` ist der aktuelle technische Kandidat. Das vollständige A0-Protokoll bleibt vor der ersten `0.2.0`-Alpha erforderlich.
 - **Abgeschlossen:** 23 – vollständige charaktergetrennte Blueprint-Snapshots werden automatisch und manuell aktualisiert. Die echte BPO/BPC-Ansicht bietet Namen, ME/TE, Läufe, Besitzer, Bereich, Datenalter, Suche, Filter, serverseitige Sortierung und begrenzte Seiten. Unvollständige Läufe überschreiben keinen gültigen Bestand. Die SSO-Anmeldung fordert alle benötigten Pakete automatisch an und weist bei Scope-Drift sichtbar auf die erforderliche Neuanmeldung hin.
 - **Abgeschlossen:** 24 – persönliche Industrieaufträge werden vollständig und charaktergetrennt synchronisiert. Die zweisprachige Ansicht bietet Status, Aktivität, Läufe, Kosten, Zeit, Quelle, Suche, Filter, Sortierung und begrenzte Seiten. Exakte Blueprint-Item-IDs und passende eingehende Asset-Änderungen werden mit aktuellen oder historischen Belegen korreliert; Mehrdeutigkeit und fehlende Quellen bleiben sichtbar. Die Asset-Historie zeigt eindeutige Zuordnungen mit Job-ID in Gegenrichtung.
 - **Abgeschlossen:** 25 – vollständige charaktergetrennte Skill-Snapshots zeigen echte Namen, trainiertes und aktuell wirksames Level, Skillpunkte, Besitzer, Datenalter und stabile Quell-IDs. Suche, Besitzer-, Level- und Aktivzustandsfilter sowie Sortierung und begrenzte Seiten laufen im lokalen Sidecar. Fehlgeschlagene oder ungültige Abrufe lassen den letzten vollständigen Stand unverändert.
 - **Abgeschlossen:** 26 – der öffentliche NPC-Anlagenkatalog, aktivitätsspezifische Systemkostenindizes und ihre offiziellen Namen werden in einem vollständigen globalen Snapshot veröffentlicht. Tatsächlich in persönlichen Jobs beobachtete Spielerstrukturen werden charakterbezogen mit verfügbarem, fehlendem Scope, ACL-403 oder unbekanntem Zustand ergänzt. Die zweisprachige Ansicht bietet Suche, Anlagenart, Zugriff, Kostenaktivität, Jobnutzung, Sortierung, begrenzte Seiten und stabile Quell-IDs; Jobzeilen verwenden denselben Anlagen- und Kostenbeleg.
-- **Als Nächstes:** Paket 27 führt die Forschungsplanung auf Basis realer Blueprints, Skills, Jobs und Anlagen fort. Das noch offene Paket 22 wird unabhängig davon mit dem vollständigen Windows-A0-Protokoll für den aktuellen Kandidaten abgeschlossen. Die bereits technisch vorgezogenen Fachpakete 23–26 bleiben Previews; eine erste `0.2.0`-Alpha wird erst nach bestandenem A0 freigegeben.
+- **Abgeschlossen:** 27 – persistente, charakter- und BPO-genaue ME-/TE-Pläne verbinden aktuelle Blueprintstände, wirksame Forschungs-Skills, persönliche Jobs und Anlagenbelege. Die Ansicht zeigt Ziele, Priorität, Notiz, Wissenschaftskapazität und belastbare Zustände; fehlende Quellen bleiben ungeprüft und Dauer oder Gesamtkosten werden ohne vollständige SDE- und Modifikatorbasis nicht geschätzt. Schema 8 bewahrt Pläne auch dann, wenn ein BPO im aktuellen Snapshot fehlt.
+- **Als Nächstes:** Paket 28 führt Fertigungs-, Reaktions- und Wissenschaftsslots mit realer Belegung und Arbeitsvorrat in einer gemeinsamen Übersicht zusammen. Das noch offene Paket 22 wird unabhängig davon mit dem vollständigen Windows-A0-Protokoll für den aktuellen Kandidaten abgeschlossen. Die bereits technisch vorgezogenen Fachpakete 23–27 bleiben Previews; eine erste `0.2.0`-Alpha wird erst nach bestandenem A0 freigegeben.
 - Architektur-Gate A0 ist technisch weitgehend umgesetzt, aber bis zur vollständigen Windows-Abnahme noch nicht erfüllt; die Alpha-Freigabe bleibt davon blockiert.
 
 ## 13. Entscheidungs- und Quellenrang

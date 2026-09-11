@@ -463,6 +463,119 @@ export interface IndustryFacilitySyncResult {
   resolvedNames: number;
 }
 
+export type ResearchPlanActivity = "material" | "time";
+export type ResearchPlanState = "unplanned" | "ready" | "queued" | "running" | "complete" | "unverified" | "missing";
+export type ResearchPlanSortField = "priority" | "blueprint" | "owner" | "state" | "me" | "te" | "age";
+export type ResearchFacilityEvidence = "none" | "active-job" | "last-owner-job";
+export type ResearchActiveJobStatus = "active" | "paused" | "ready";
+export const researchPlanActivities: readonly ResearchPlanActivity[] = ["material", "time"];
+export const researchPlanStates: readonly ResearchPlanState[] = ["unplanned", "ready", "queued", "running", "complete", "unverified", "missing"];
+export const researchPlanSortFields: readonly ResearchPlanSortField[] = ["priority", "blueprint", "owner", "state", "me", "te", "age"];
+export const researchFacilityEvidence: readonly ResearchFacilityEvidence[] = ["none", "active-job", "last-owner-job"];
+export const researchActiveJobStatuses: readonly ResearchActiveJobStatus[] = ["active", "paused", "ready"];
+export const researchPlanPageSize = 100;
+
+export interface ResearchPlanOwner {
+  characterId: number;
+  name: string;
+  slotCapacity: number | null;
+  slotsUsed: number;
+  slotsAvailable: number | null;
+  laboratoryOperationLevel: number;
+  advancedLaboratoryOperationLevel: number;
+  researchLevel: number;
+  metallurgyLevel: number;
+  skillSnapshotId: number | null;
+  skillSyncRunId: number | null;
+}
+
+export interface ResearchPlanRecord {
+  ownerCharacterId: number;
+  ownerName: string;
+  blueprintItemId: number;
+  blueprintTypeId: number;
+  blueprintName: string;
+  blueprintPresent: boolean;
+  currentMaterialEfficiency: number | null;
+  currentTimeEfficiency: number | null;
+  locationId: number | null;
+  locationFlag: string | null;
+  planned: boolean;
+  nextActivity: ResearchPlanActivity;
+  targetMaterialEfficiency: number;
+  targetTimeEfficiency: number;
+  priority: number;
+  note: string | null;
+  state: ResearchPlanState;
+  slotCapacity: number | null;
+  slotsUsed: number;
+  slotsAvailable: number | null;
+  researchLevel: number;
+  metallurgyLevel: number;
+  activeJobId: number | null;
+  activeJobActivity: ResearchPlanActivity | null;
+  activeJobStatus: ResearchActiveJobStatus | null;
+  activeJobStartDate: string | null;
+  activeJobEndDate: string | null;
+  activeJobCost: number | null;
+  facilityId: number | null;
+  facilityName: string | null;
+  facilityAccess: IndustryFacilityAccess;
+  solarSystemName: string | null;
+  systemCostIndex: number | null;
+  facilityEvidence: ResearchFacilityEvidence;
+  blueprintSnapshotId: number | null;
+  blueprintSyncRunId: number | null;
+  skillSnapshotId: number | null;
+  skillSyncRunId: number | null;
+  jobSnapshotId: number | null;
+  jobSyncRunId: number | null;
+  observedAt: string | null;
+  ageSeconds: number | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+}
+
+export interface ResearchPlanQuery {
+  search: string;
+  ownerCharacterId: number | null;
+  state: ResearchPlanState | null;
+  plannedOnly: boolean;
+  offset: number;
+  limit: number;
+  sortBy: ResearchPlanSortField;
+  sortDirection: SortDirection;
+}
+
+export interface ResearchPlanPage {
+  items: ResearchPlanRecord[];
+  total: number;
+  offset: number;
+  limit: number;
+  owners: ResearchPlanOwner[];
+  states: ResearchPlanState[];
+  activities: ResearchPlanActivity[];
+  summary: Record<ResearchPlanState, number>;
+  observedAt: string | null;
+  ageSeconds: number | null;
+  estimatesAvailable: false;
+}
+
+export interface ResearchPlanInput {
+  ownerCharacterId: number;
+  blueprintItemId: number;
+  nextActivity: ResearchPlanActivity;
+  targetMaterialEfficiency: number;
+  targetTimeEfficiency: number;
+  priority: number;
+  note: string | null;
+}
+
+export interface ResearchPlanMutation extends ResearchPlanInput {
+  blueprintTypeId: number;
+  saved: true;
+}
+
 export type CharacterSkillActiveState = "normal" | "limited" | "boosted";
 export type CharacterSkillSortField = "skill" | "owner" | "trained" | "active" | "skillpoints" | "age";
 export const characterSkillLevels = [0, 1, 2, 3, 4, 5] as const;
@@ -1915,6 +2028,251 @@ export async function syncIndustryFacilities(
     throw new Error("The native runtime returned an invalid industry-facility sync result.");
   }
   return candidate as unknown as IndustryFacilitySyncResult;
+}
+
+function validateResearchPlanQuery(query: ResearchPlanQuery): ResearchPlanQuery {
+  const search = query.search.trim().replace(/\s+/g, " ");
+  if (
+    search.length > 120 ||
+    !(query.ownerCharacterId === null || isPositiveSafeInteger(query.ownerCharacterId)) ||
+    !(query.state === null || researchPlanStates.includes(query.state)) ||
+    typeof query.plannedOnly !== "boolean" ||
+    !isNonNegativeSafeInteger(query.offset) ||
+    !Number.isSafeInteger(query.limit) || query.limit < 1 || query.limit > 200 ||
+    !researchPlanSortFields.includes(query.sortBy) ||
+    !["asc", "desc"].includes(query.sortDirection)
+  ) {
+    throw new Error("The research-plan query is invalid.");
+  }
+  return { ...query, search };
+}
+
+function sourcePairIsValid(first: unknown, second: unknown): boolean {
+  return (first === null) === (second === null) &&
+    (first === null || isPositiveSafeInteger(first)) &&
+    (second === null || isPositiveSafeInteger(second));
+}
+
+function parseResearchPlanOwner(candidate: unknown): ResearchPlanOwner {
+  if (
+    !isRecord(candidate) || !isPositiveSafeInteger(candidate.characterId) ||
+    !isBoundedText(candidate.name, 100) ||
+    !isNonNegativeSafeInteger(candidate.slotsUsed) ||
+    ![candidate.laboratoryOperationLevel, candidate.advancedLaboratoryOperationLevel,
+      candidate.researchLevel, candidate.metallurgyLevel]
+      .every((value) => isNonNegativeSafeInteger(value) && Number(value) <= 5) ||
+    !sourcePairIsValid(candidate.skillSnapshotId, candidate.skillSyncRunId) ||
+    (candidate.slotCapacity === null) !== (candidate.slotsAvailable === null) ||
+    (candidate.slotCapacity === null) !== (candidate.skillSnapshotId === null) ||
+    !(candidate.slotCapacity === null ||
+      (isPositiveSafeInteger(candidate.slotCapacity) && candidate.slotCapacity <= 11)) ||
+    !(candidate.slotsAvailable === null ||
+      (isNonNegativeSafeInteger(candidate.slotsAvailable) &&
+        candidate.slotCapacity !== null && candidate.slotsAvailable <= candidate.slotCapacity))
+  ) {
+    throw new Error("The native runtime returned invalid research-slot metadata.");
+  }
+  return candidate as unknown as ResearchPlanOwner;
+}
+
+function parseResearchPlanRecord(candidate: unknown): ResearchPlanRecord {
+  if (
+    !isRecord(candidate) || !isPositiveSafeInteger(candidate.ownerCharacterId) ||
+    !isBoundedText(candidate.ownerName, 100) ||
+    !isPositiveSafeInteger(candidate.blueprintItemId) ||
+    !isPositiveSafeInteger(candidate.blueprintTypeId) || !isBoundedText(candidate.blueprintName, 200) ||
+    typeof candidate.blueprintPresent !== "boolean" || typeof candidate.planned !== "boolean" ||
+    !researchPlanActivities.includes(candidate.nextActivity as ResearchPlanActivity) ||
+    !isNonNegativeSafeInteger(candidate.targetMaterialEfficiency) || candidate.targetMaterialEfficiency > 10 ||
+    !isNonNegativeSafeInteger(candidate.targetTimeEfficiency) || candidate.targetTimeEfficiency > 20 ||
+    !isNonNegativeSafeInteger(candidate.priority) || candidate.priority > 999 ||
+    !(candidate.note === null || isBoundedText(candidate.note, 240)) ||
+    !researchPlanStates.includes(candidate.state as ResearchPlanState) ||
+    !isNonNegativeSafeInteger(candidate.slotsUsed) ||
+    ![candidate.researchLevel, candidate.metallurgyLevel]
+      .every((value) => isNonNegativeSafeInteger(value) && Number(value) <= 5) ||
+    (candidate.slotCapacity === null) !== (candidate.slotsAvailable === null) ||
+    !(candidate.slotCapacity === null ||
+      (isPositiveSafeInteger(candidate.slotCapacity) && candidate.slotCapacity <= 11)) ||
+    !(candidate.slotsAvailable === null ||
+      (isNonNegativeSafeInteger(candidate.slotsAvailable) &&
+        candidate.slotCapacity !== null && candidate.slotsAvailable <= candidate.slotCapacity)) ||
+    !industryFacilityAccessStates.includes(candidate.facilityAccess as IndustryFacilityAccess) ||
+    !researchFacilityEvidence.includes(candidate.facilityEvidence as ResearchFacilityEvidence) ||
+    !sourcePairIsValid(candidate.blueprintSnapshotId, candidate.blueprintSyncRunId) ||
+    !sourcePairIsValid(candidate.skillSnapshotId, candidate.skillSyncRunId) ||
+    !sourcePairIsValid(candidate.jobSnapshotId, candidate.jobSyncRunId)
+  ) {
+    throw new Error("The native runtime returned invalid research-plan records.");
+  }
+  const currentFields = [candidate.currentMaterialEfficiency, candidate.currentTimeEfficiency,
+    candidate.locationId, candidate.locationFlag, candidate.blueprintSnapshotId,
+    candidate.blueprintSyncRunId, candidate.observedAt, candidate.ageSeconds];
+  const currentPresent = currentFields.every((value) => value !== null);
+  const currentMissing = currentFields.every((value) => value === null);
+  if (
+    candidate.blueprintPresent !== currentPresent || (!currentPresent && !currentMissing) ||
+    (currentPresent && (
+      !isNonNegativeSafeInteger(candidate.currentMaterialEfficiency) || candidate.currentMaterialEfficiency > 10 ||
+      !isNonNegativeSafeInteger(candidate.currentTimeEfficiency) || candidate.currentTimeEfficiency > 20 ||
+      !isPositiveSafeInteger(candidate.locationId) || !isBoundedText(candidate.locationFlag, 100) ||
+      !isBoundedText(candidate.observedAt, 64) || !isNonNegativeSafeInteger(candidate.ageSeconds)
+    )) ||
+    (candidate.planned
+      ? candidate.state === "unplanned" || !isBoundedText(candidate.createdAt, 64) || !isBoundedText(candidate.updatedAt, 64)
+      : candidate.state !== "unplanned" || candidate.priority !== 0 || candidate.note !== null ||
+        candidate.createdAt !== null || candidate.updatedAt !== null)
+  ) {
+    throw new Error("The native runtime returned inconsistent research-plan records.");
+  }
+  const hasActiveJob = candidate.activeJobId !== null;
+  if (
+    hasActiveJob !== [candidate.activeJobActivity, candidate.activeJobStatus,
+      candidate.activeJobStartDate, candidate.activeJobEndDate].every((value) => value !== null) ||
+    (hasActiveJob && (
+      !isPositiveSafeInteger(candidate.activeJobId) ||
+      !researchPlanActivities.includes(candidate.activeJobActivity as ResearchPlanActivity) ||
+      !researchActiveJobStatuses.includes(candidate.activeJobStatus as ResearchActiveJobStatus) ||
+      !isBoundedText(candidate.activeJobStartDate, 64) || !isBoundedText(candidate.activeJobEndDate, 64) ||
+      !(candidate.activeJobCost === null ||
+        (typeof candidate.activeJobCost === "number" && Number.isFinite(candidate.activeJobCost) && candidate.activeJobCost >= 0))
+    )) ||
+    (!hasActiveJob && candidate.activeJobCost !== null)
+  ) {
+    throw new Error("The native runtime returned inconsistent research-job evidence.");
+  }
+  const hasFacility = candidate.facilityEvidence !== "none";
+  if (
+    hasFacility !== (candidate.facilityId !== null) ||
+    (hasFacility && (
+      !isPositiveSafeInteger(candidate.facilityId) ||
+      !(candidate.facilityName === null || isBoundedText(candidate.facilityName, 200)) ||
+      !(candidate.solarSystemName === null || isBoundedText(candidate.solarSystemName, 200)) ||
+      !(candidate.systemCostIndex === null ||
+        (typeof candidate.systemCostIndex === "number" && Number.isFinite(candidate.systemCostIndex) &&
+          candidate.systemCostIndex >= 0 && candidate.systemCostIndex <= 1))
+    )) ||
+    (!hasFacility && (candidate.facilityName !== null || candidate.solarSystemName !== null ||
+      candidate.systemCostIndex !== null || candidate.facilityAccess !== "unknown")) ||
+    (candidate.facilityEvidence === "active-job" && !hasActiveJob)
+  ) {
+    throw new Error("The native runtime returned inconsistent research-facility evidence.");
+  }
+  return candidate as unknown as ResearchPlanRecord;
+}
+
+function emptyResearchSummary(): Record<ResearchPlanState, number> {
+  return Object.fromEntries(researchPlanStates.map((state) => [state, 0])) as Record<ResearchPlanState, number>;
+}
+
+function parseResearchPlanPage(candidate: unknown): ResearchPlanPage {
+  if (
+    !isRecord(candidate) || !Array.isArray(candidate.items) || !Array.isArray(candidate.owners) ||
+    !Array.isArray(candidate.states) || !Array.isArray(candidate.activities) || !isRecord(candidate.summary) ||
+    !isNonNegativeSafeInteger(candidate.total) || !isNonNegativeSafeInteger(candidate.offset) ||
+    !Number.isSafeInteger(candidate.limit) || Number(candidate.limit) < 1 || Number(candidate.limit) > 200 ||
+    candidate.states.length !== researchPlanStates.length ||
+    !researchPlanStates.every((value, index) => (candidate.states as unknown[])[index] === value) ||
+    candidate.activities.length !== researchPlanActivities.length ||
+    !researchPlanActivities.every((value, index) => (candidate.activities as unknown[])[index] === value) ||
+    !researchPlanStates.every((state) => isNonNegativeSafeInteger((candidate.summary as Record<string, unknown>)[state])) ||
+    !(candidate.observedAt === null || isBoundedText(candidate.observedAt, 64)) ||
+    !(candidate.ageSeconds === null || isNonNegativeSafeInteger(candidate.ageSeconds)) ||
+    (candidate.observedAt === null) !== (candidate.ageSeconds === null) ||
+    candidate.estimatesAvailable !== false
+  ) {
+    throw new Error("The native runtime returned invalid research-plan data.");
+  }
+  const items = candidate.items.map(parseResearchPlanRecord);
+  const owners = candidate.owners.map(parseResearchPlanOwner);
+  if (
+    items.length > Number(candidate.limit) || items.length > Number(candidate.total) ||
+    new Set(items.map((item) => `${item.ownerCharacterId}:${item.blueprintItemId}`)).size !== items.length ||
+    new Set(owners.map((owner) => owner.characterId)).size !== owners.length
+  ) {
+    throw new Error("The native runtime returned inconsistent research-plan data.");
+  }
+  return { ...candidate, items, owners } as unknown as ResearchPlanPage;
+}
+
+export async function loadResearchPlans(
+  query: ResearchPlanQuery,
+  adapter: RuntimeAdapter = tauriAdapter,
+): Promise<ResearchPlanPage> {
+  const validated = validateResearchPlanQuery(query);
+  if (!adapter.isAvailable()) return {
+    items: [], total: 0, offset: validated.offset, limit: validated.limit, owners: [],
+    states: [...researchPlanStates], activities: [...researchPlanActivities],
+    summary: emptyResearchSummary(), observedAt: null, ageSeconds: null, estimatesAvailable: false,
+  };
+  const page = parseResearchPlanPage(JSON.parse(await adapter.invoke("query_research_plans", {
+    search: validated.search,
+    ownerCharacterId: validated.ownerCharacterId,
+    planState: validated.state,
+    plannedOnly: validated.plannedOnly,
+    offset: validated.offset,
+    limit: validated.limit,
+    sortBy: validated.sortBy,
+    sortDirection: validated.sortDirection,
+  })));
+  if (page.offset !== validated.offset || page.limit !== validated.limit) {
+    throw new Error("The native runtime returned a different research-plan window.");
+  }
+  return page;
+}
+
+function validateResearchPlanInput(input: ResearchPlanInput): ResearchPlanInput {
+  const note = input.note === null ? null : input.note.trim().replace(/\s+/g, " ");
+  if (
+    !isPositiveSafeInteger(input.ownerCharacterId) || !isPositiveSafeInteger(input.blueprintItemId) ||
+    !researchPlanActivities.includes(input.nextActivity) ||
+    !isNonNegativeSafeInteger(input.targetMaterialEfficiency) || input.targetMaterialEfficiency > 10 ||
+    !isNonNegativeSafeInteger(input.targetTimeEfficiency) || input.targetTimeEfficiency > 20 ||
+    !isNonNegativeSafeInteger(input.priority) || input.priority > 999 ||
+    !(note === null || note === "" || note.length <= 240)
+  ) {
+    throw new Error("The research plan is invalid.");
+  }
+  return { ...input, note: note || null };
+}
+
+export async function saveResearchPlan(
+  input: ResearchPlanInput,
+  adapter: RuntimeAdapter = tauriAdapter,
+): Promise<ResearchPlanMutation> {
+  if (!adapter.isAvailable()) throw new Error("Research planning is available only in the desktop application.");
+  const validated = validateResearchPlanInput(input);
+  const candidate: unknown = JSON.parse(await adapter.invoke("save_research_plan", { ...validated }));
+  if (
+    !isRecord(candidate) || candidate.saved !== true || !isPositiveSafeInteger(candidate.blueprintTypeId) ||
+    candidate.ownerCharacterId !== validated.ownerCharacterId ||
+    candidate.blueprintItemId !== validated.blueprintItemId ||
+    candidate.nextActivity !== validated.nextActivity ||
+    candidate.targetMaterialEfficiency !== validated.targetMaterialEfficiency ||
+    candidate.targetTimeEfficiency !== validated.targetTimeEfficiency ||
+    candidate.priority !== validated.priority || candidate.note !== validated.note
+  ) {
+    throw new Error("The native runtime returned an invalid research-plan update.");
+  }
+  return candidate as unknown as ResearchPlanMutation;
+}
+
+export async function deleteResearchPlan(
+  ownerCharacterId: number,
+  blueprintItemId: number,
+  adapter: RuntimeAdapter = tauriAdapter,
+): Promise<void> {
+  if (!adapter.isAvailable()) throw new Error("Research planning is available only in the desktop application.");
+  if (!isPositiveSafeInteger(ownerCharacterId) || !isPositiveSafeInteger(blueprintItemId)) {
+    throw new Error("The research-plan identity is invalid.");
+  }
+  const candidate: unknown = JSON.parse(await adapter.invoke("delete_research_plan", {
+    ownerCharacterId, blueprintItemId,
+  }));
+  if (!isRecord(candidate) || candidate.deleted !== true ||
+      candidate.ownerCharacterId !== ownerCharacterId || candidate.blueprintItemId !== blueprintItemId) {
+    throw new Error("The native runtime returned an invalid research-plan deletion.");
+  }
 }
 
 function validateCharacterSkillQuery(query: CharacterSkillQuery): CharacterSkillQuery {

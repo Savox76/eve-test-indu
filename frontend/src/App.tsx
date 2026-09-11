@@ -59,6 +59,7 @@ import {
   createAccountGroup,
   deleteAccountGroup,
   deleteEveCharacter,
+  deleteResearchPlan,
   fontScales,
   industryFacilityPageSize,
   initialRuntimeStatus,
@@ -73,12 +74,14 @@ import {
   loadCharacterSkills,
   loadIndustryFacilities,
   loadIndustryJobs,
+  loadResearchPlans,
   syncAssets,
   syncBlueprints,
   syncCharacterSkills,
   syncIndustryFacilities,
   syncIndustryJobs,
   renameAccountGroup,
+  saveResearchPlan,
   setDesktopUpdateChannel,
   setDesktopFontScale,
   startEveSso,
@@ -118,6 +121,11 @@ import {
   type IndustryJobSortField,
   type IndustryJobStatus,
   type IndustryJobSyncResult,
+  type ResearchPlanInput,
+  type ResearchPlanPage,
+  type ResearchPlanQuery,
+  type ResearchPlanSortField,
+  type ResearchPlanState,
   type CharacterUpdate,
   type DesktopRuntimeStatus,
   type EveCharacter,
@@ -132,6 +140,7 @@ import {
   blueprintPageSize,
   characterSkillPageSize,
   industryJobPageSize,
+  researchPlanPageSize,
 } from "./runtime";
 
 type Locale = "de" | "en";
@@ -686,6 +695,60 @@ const copy = {
         noMatches: "Keine Anlagen entsprechen der Auswahl.",
         queryError: "Der lokale Anlagenkatalog konnte nicht gelesen werden.",
       },
+      research: {
+        kicker: "FORSCHUNGSPLANUNG",
+        title: "ME-/TE-Forschungsplan",
+        subtitle: "Updatefeste Ziele für eigene BPOs mit echten Skill-Slots, laufenden Jobs und beobachteten Anlagen.",
+        boundary: "Zeiten und Gesamtkosten werden vor dem Einbau nicht geschätzt: ESI liefert weder Jobangebote noch Struktur- und Rigboni. Laufende Jobs zeigen ihre belegten Werte.",
+        search: "Blueprint, Besitzer, Notiz, Anlage oder ID suchen",
+        state: "Planstatus",
+        allStates: "Alle Status",
+        stateLabels: {
+          unplanned: "Nicht geplant", ready: "Bereit", queued: "Wartet auf Slot",
+          running: "Läuft", complete: "Ziel erreicht", unverified: "Skills fehlen",
+          missing: "BPO nicht im Bestand",
+        },
+        plannedOnly: "Nur gespeicherte Pläne",
+        blueprint: "Blueprint / Besitzer",
+        status: "Status / Bestand",
+        plan: "Nächster Schritt / Ziele",
+        activityLabels: { material: "Materialforschung", time: "Zeitforschung" },
+        targetMe: "Ziel-ME",
+        targetTe: "Ziel-TE",
+        priority: "Priorität",
+        note: "Notiz",
+        notePlaceholder: "Optionaler Planungshinweis",
+        slots: "Forschungsslots / Skills",
+        slotsUnknown: "Skill-Snapshot fehlt",
+        slotsValue: "{available} frei · {used}/{capacity} belegt",
+        skillValue: "Research {research} · Metallurgy {metallurgy}",
+        evidence: "Job / Anlage",
+        noActiveJob: "Kein laufender Forschungsjob",
+        activeJob: "Job #{job} · {activity}",
+        ends: "Ende {date}",
+        lastFacility: "zuletzt dort genutzt",
+        currentFacility: "laufender Job",
+        noFacility: "Noch keine Anlage belegt",
+        systemCost: "Systemkostenindex {value}",
+        source: "Quellen",
+        save: "Plan speichern",
+        update: "Aktualisieren",
+        remove: "Entfernen",
+        saving: "Wird gespeichert …",
+        saved: "Forschungsplan gespeichert.",
+        deleted: "Forschungsplan entfernt.",
+        mutationError: "Der Forschungsplan konnte nicht geändert werden.",
+        plans: "gespeicherte Pläne",
+        ready: "bereit",
+        running: "laufend",
+        freeSlots: "freie Slots",
+        age: "Datenalter",
+        loading: "Forschungsplanung wird geladen …",
+        noData: "Noch kein vollständiger Blueprint-Snapshot vorhanden.",
+        noMatches: "Keine Forschungszeilen entsprechen der Auswahl.",
+        queryError: "Die lokale Forschungsplanung konnte nicht gelesen werden.",
+        resultRange: "{from}–{to} von {total}",
+      },
     },
     moduleKicker: "MODULVORSCHAU",
     moduleText:
@@ -710,7 +773,7 @@ const copy = {
     },
     planned: "Geplant",
     previewOnly: "Noch ohne Live-Funktion",
-    footerVersion: "v0.0.5-preview.9",
+    footerVersion: "v0.0.5-preview.10",
   },
   en: {
     nav: {
@@ -1240,6 +1303,60 @@ const copy = {
         noMatches: "No facilities match the selection.",
         queryError: "The local facility catalog could not be read.",
       },
+      research: {
+        kicker: "RESEARCH PLANNING",
+        title: "ME / TE research plan",
+        subtitle: "Update-safe goals for owned BPOs using real skill slots, running jobs, and observed facilities.",
+        boundary: "Times and total costs are not estimated before installation: ESI provides neither job quotes nor structure and rig bonuses. Running jobs show their evidenced values.",
+        search: "Search blueprint, owner, note, facility, or ID",
+        state: "Plan state",
+        allStates: "All states",
+        stateLabels: {
+          unplanned: "Not planned", ready: "Ready", queued: "Waiting for slot",
+          running: "Running", complete: "Goal reached", unverified: "Skills missing",
+          missing: "BPO not in inventory",
+        },
+        plannedOnly: "Saved plans only",
+        blueprint: "Blueprint / owner",
+        status: "State / inventory",
+        plan: "Next step / targets",
+        activityLabels: { material: "Material research", time: "Time research" },
+        targetMe: "Target ME",
+        targetTe: "Target TE",
+        priority: "Priority",
+        note: "Note",
+        notePlaceholder: "Optional planning note",
+        slots: "Research slots / skills",
+        slotsUnknown: "Skill snapshot missing",
+        slotsValue: "{available} free · {used}/{capacity} used",
+        skillValue: "Research {research} · Metallurgy {metallurgy}",
+        evidence: "Job / facility",
+        noActiveJob: "No running research job",
+        activeJob: "Job #{job} · {activity}",
+        ends: "Ends {date}",
+        lastFacility: "last used there",
+        currentFacility: "running job",
+        noFacility: "No facility evidenced yet",
+        systemCost: "System cost index {value}",
+        source: "Sources",
+        save: "Save plan",
+        update: "Update",
+        remove: "Remove",
+        saving: "Saving …",
+        saved: "Research plan saved.",
+        deleted: "Research plan removed.",
+        mutationError: "The research plan could not be changed.",
+        plans: "saved plans",
+        ready: "ready",
+        running: "running",
+        freeSlots: "free slots",
+        age: "Data age",
+        loading: "Loading research planning …",
+        noData: "No complete blueprint snapshot is available yet.",
+        noMatches: "No research rows match the selection.",
+        queryError: "The local research planning could not be read.",
+        resultRange: "{from}–{to} of {total}",
+      },
     },
     moduleKicker: "MODULE PREVIEW",
     moduleText:
@@ -1264,7 +1381,7 @@ const copy = {
     },
     planned: "Planned",
     previewOnly: "No live function yet",
-    footerVersion: "v0.0.5-preview.9",
+    footerVersion: "v0.0.5-preview.10",
   },
 } as const;
 
@@ -1387,6 +1504,9 @@ export function App({
   characterSkillSyncer = syncCharacterSkills,
   industryFacilitiesLoader = loadIndustryFacilities,
   industryFacilitySyncer = syncIndustryFacilities,
+  researchPlansLoader = loadResearchPlans,
+  researchPlanSaver = saveResearchPlan,
+  researchPlanDeleter = deleteResearchPlan,
   fontScaleSetter = setDesktopFontScale,
 }: {
   runtimeLoader?: () => Promise<DesktopRuntimeStatus>;
@@ -1415,6 +1535,9 @@ export function App({
   characterSkillSyncer?: () => Promise<CharacterSkillSyncResult>;
   industryFacilitiesLoader?: (query: IndustryFacilityQuery) => Promise<IndustryFacilityPage>;
   industryFacilitySyncer?: () => Promise<IndustryFacilitySyncResult>;
+  researchPlansLoader?: (query: ResearchPlanQuery) => Promise<ResearchPlanPage>;
+  researchPlanSaver?: (input: ResearchPlanInput) => Promise<unknown>;
+  researchPlanDeleter?: (ownerCharacterId: number, blueprintItemId: number) => Promise<void>;
   fontScaleSetter?: (fontScale: FontScale) => Promise<AppearanceStatus>;
 }) {
   const [locale, setLocale] = useState<Locale>("de");
@@ -1427,6 +1550,7 @@ export function App({
   const [industryJobRevision, setIndustryJobRevision] = useState(0);
   const [characterSkillRevision, setCharacterSkillRevision] = useState(0);
   const [industryFacilityRevision, setIndustryFacilityRevision] = useState(0);
+  const [researchPlanRevision, setResearchPlanRevision] = useState(0);
   const initialAssetSyncStarted = useRef(false);
   const [runtimeStatus, setRuntimeStatus] = useState(initialRuntimeStatus);
   const [overviewScope, setOverviewScope] = useState<OverviewScopeId>("all");
@@ -1480,18 +1604,21 @@ export function App({
   const runBlueprintSync = useCallback(async () => {
     const result = await blueprintSyncer();
     setBlueprintRevision((revision) => revision + 1);
+    setResearchPlanRevision((revision) => revision + 1);
     return result;
   }, [blueprintSyncer]);
 
   const runIndustryJobSync = useCallback(async () => {
     const result = await industryJobSyncer();
     setIndustryJobRevision((revision) => revision + 1);
+    setResearchPlanRevision((revision) => revision + 1);
     return result;
   }, [industryJobSyncer]);
 
   const runCharacterSkillSync = useCallback(async () => {
     const result = await characterSkillSyncer();
     setCharacterSkillRevision((revision) => revision + 1);
+    setResearchPlanRevision((revision) => revision + 1);
     return result;
   }, [characterSkillSyncer]);
 
@@ -1499,6 +1626,7 @@ export function App({
     const result = await industryFacilitySyncer();
     setIndustryFacilityRevision((revision) => revision + 1);
     setIndustryJobRevision((revision) => revision + 1);
+    setResearchPlanRevision((revision) => revision + 1);
     return result;
   }, [industryFacilitySyncer]);
 
@@ -2018,6 +2146,10 @@ export function App({
             loadIndustryFacilities={industryFacilitiesLoader}
             syncIndustryFacilities={runIndustryFacilitySync}
             industryFacilityRevision={industryFacilityRevision}
+            loadResearchPlans={researchPlansLoader}
+            saveResearchPlan={researchPlanSaver}
+            deleteResearchPlan={researchPlanDeleter}
+            researchPlanRevision={researchPlanRevision}
           />
         ) : (
           <ModulePreview activeModule={activeModule} t={t} />
@@ -3198,6 +3330,8 @@ function BlueprintWorkspace({
   loadCharacterSkills: loadSkills, syncCharacterSkills: runSkillSync, characterSkillRevision,
   loadIndustryFacilities: loadFacilities, syncIndustryFacilities: runFacilitySync,
   industryFacilityRevision,
+  loadResearchPlans: loadPlans, saveResearchPlan: savePlan,
+  deleteResearchPlan: deletePlan, researchPlanRevision,
 }: {
   available: boolean;
   locale: Locale;
@@ -3214,6 +3348,10 @@ function BlueprintWorkspace({
   loadIndustryFacilities: (query: IndustryFacilityQuery) => Promise<IndustryFacilityPage>;
   syncIndustryFacilities: () => Promise<IndustryFacilitySyncResult>;
   industryFacilityRevision: number;
+  loadResearchPlans: (query: ResearchPlanQuery) => Promise<ResearchPlanPage>;
+  saveResearchPlan: (input: ResearchPlanInput) => Promise<unknown>;
+  deleteResearchPlan: (ownerCharacterId: number, blueprintItemId: number) => Promise<void>;
+  researchPlanRevision: number;
 }) {
   const [search, setSearch] = useState("");
   const [appliedSearch, setAppliedSearch] = useState("");
@@ -3335,6 +3473,15 @@ function BlueprintWorkspace({
         loadFacilities={loadFacilities}
         syncFacilities={runFacilitySync}
         refreshRevision={industryFacilityRevision}
+      />
+      <ResearchPlanningPanel
+        available={available}
+        locale={locale}
+        t={t}
+        loadPlans={loadPlans}
+        savePlan={savePlan}
+        deletePlan={deletePlan}
+        refreshRevision={researchPlanRevision}
       />
     </div>
   );
@@ -3777,6 +3924,201 @@ function IndustryFacilitiesPanel({
             <td><strong>Snapshot #{item.snapshotId}</strong><small>Run #{item.syncRunId} · {formatDataAge(item.ageSeconds, locale)}</small></td>
           </tr>)}</tbody></table></div> : null}
       {page && total > 0 && <div className="asset-pagination"><span>{range}</span><div><button type="button" onClick={() => setOffset(Math.max(0, offset - industryFacilityPageSize))} disabled={offset === 0}>{t.blueprints.previous}</button><button type="button" onClick={() => setOffset(offset + industryFacilityPageSize)} disabled={offset + industryFacilityPageSize >= total}>{t.blueprints.next}</button></div></div>}
+    </section>
+  );
+}
+
+function ResearchPlanningPanel({
+  available, locale, t, loadPlans, savePlan, deletePlan, refreshRevision,
+}: {
+  available: boolean;
+  locale: Locale;
+  t: Translation;
+  loadPlans: (query: ResearchPlanQuery) => Promise<ResearchPlanPage>;
+  savePlan: (input: ResearchPlanInput) => Promise<unknown>;
+  deletePlan: (ownerCharacterId: number, blueprintItemId: number) => Promise<void>;
+  refreshRevision: number;
+}) {
+  const [search, setSearch] = useState("");
+  const [appliedSearch, setAppliedSearch] = useState("");
+  const [ownerCharacterId, setOwnerCharacterId] = useState<number | null>(null);
+  const [planState, setPlanState] = useState<ResearchPlanState | null>(null);
+  const [plannedOnly, setPlannedOnly] = useState(false);
+  const [sortBy, setSortBy] = useState<ResearchPlanSortField>("priority");
+  const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
+  const [offset, setOffset] = useState(0);
+  const [page, setPage] = useState<ResearchPlanPage | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const [localRevision, setLocalRevision] = useState(0);
+  const [drafts, setDrafts] = useState<Record<string, ResearchPlanInput>>({});
+  const [mutationKey, setMutationKey] = useState<string | null>(null);
+  const [mutationStatus, setMutationStatus] = useState<"saved" | "deleted" | "error" | null>(null);
+  const numberFormat = useMemo(
+    () => new Intl.NumberFormat(locale === "de" ? "de-DE" : "en-US", { maximumFractionDigits: 2 }),
+    [locale],
+  );
+  const percentFormat = useMemo(
+    () => new Intl.NumberFormat(locale === "de" ? "de-DE" : "en-US", {
+      style: "percent", maximumFractionDigits: 4,
+    }),
+    [locale],
+  );
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setAppliedSearch(search.trim().replace(/\s+/g, " "));
+      setOffset(0);
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [search]);
+
+  useEffect(() => {
+    if (!available) return;
+    let activeRequest = true;
+    setLoading(true);
+    setFailed(false);
+    void loadPlans({
+      search: appliedSearch, ownerCharacterId, state: planState, plannedOnly,
+      offset, limit: researchPlanPageSize, sortBy, sortDirection,
+    }).then((result) => {
+      if (!activeRequest) return;
+      if (result.total > 0 && result.offset >= result.total) {
+        setOffset(Math.floor((result.total - 1) / researchPlanPageSize) * researchPlanPageSize);
+        return;
+      }
+      const nextDrafts: Record<string, ResearchPlanInput> = {};
+      result.items.forEach((item) => {
+        const key = `${item.ownerCharacterId}:${item.blueprintItemId}`;
+        nextDrafts[key] = {
+          ownerCharacterId: item.ownerCharacterId,
+          blueprintItemId: item.blueprintItemId,
+          nextActivity: item.planned
+            ? item.nextActivity
+            : (item.currentMaterialEfficiency ?? 0) < 10 ? "material" : "time",
+          targetMaterialEfficiency: item.planned
+            ? item.targetMaterialEfficiency
+            : Math.max(item.currentMaterialEfficiency ?? 0, 10),
+          targetTimeEfficiency: item.planned
+            ? item.targetTimeEfficiency
+            : Math.max(item.currentTimeEfficiency ?? 0, 20),
+          priority: item.planned ? item.priority : 50,
+          note: item.note,
+        };
+      });
+      setDrafts(nextDrafts);
+      setPage(result);
+    }).catch(() => {
+      if (activeRequest) setFailed(true);
+    }).finally(() => {
+      if (activeRequest) setLoading(false);
+    });
+    return () => { activeRequest = false; };
+  }, [appliedSearch, available, loadPlans, localRevision, offset, ownerCharacterId, planState, plannedOnly, refreshRevision, sortBy, sortDirection]);
+
+  const changeSort = (field: ResearchPlanSortField) => {
+    if (sortBy === field) setSortDirection((value) => value === "asc" ? "desc" : "asc");
+    else { setSortBy(field); setSortDirection(field === "priority" ? "desc" : "asc"); }
+    setOffset(0);
+  };
+  const header = (field: ResearchPlanSortField, label: string) => (
+    <button type="button" className="asset-sort" onClick={() => changeSort(field)}>
+      {label}{sortBy === field && <ChevronDown className={sortDirection === "asc" ? "asset-sort__asc" : ""} size={14} />}
+    </button>
+  );
+  const updateDraft = (key: string, update: Partial<ResearchPlanInput>) => {
+    setDrafts((current) => ({ ...current, [key]: { ...current[key], ...update } }));
+    setMutationStatus(null);
+  };
+  const save = async (key: string) => {
+    const draft = drafts[key];
+    if (!draft || mutationKey) return;
+    setMutationKey(key);
+    setMutationStatus(null);
+    try {
+      await savePlan(draft);
+      setMutationStatus("saved");
+      setLocalRevision((value) => value + 1);
+    } catch {
+      setMutationStatus("error");
+    } finally {
+      setMutationKey(null);
+    }
+  };
+  const remove = async (key: string, ownerId: number, itemId: number) => {
+    if (mutationKey) return;
+    setMutationKey(key);
+    setMutationStatus(null);
+    try {
+      await deletePlan(ownerId, itemId);
+      setMutationStatus("deleted");
+      setLocalRevision((value) => value + 1);
+    } catch {
+      setMutationStatus("error");
+    } finally {
+      setMutationKey(null);
+    }
+  };
+  const stateTone = (state: ResearchPlanState) => state === "ready" || state === "complete"
+    ? "good" : state === "queued" || state === "unverified" || state === "missing" ? "warn"
+      : state === "running" ? "info" : "neutral";
+  const total = page?.total ?? 0;
+  const plannedCount = page == null
+    ? 0
+    : Object.entries(page.summary).reduce((sum, [state, count]) => sum + (state === "unplanned" ? 0 : count), 0);
+  const freeSlots = page?.owners.reduce((sum, owner) => sum + (owner.slotsAvailable ?? 0), 0) ?? 0;
+  const range = t.blueprints.research.resultRange
+    .replace("{from}", numberFormat.format(total === 0 ? 0 : offset + 1))
+    .replace("{to}", numberFormat.format(Math.min(offset + (page?.items.length ?? 0), total)))
+    .replace("{total}", numberFormat.format(total));
+
+  return (
+    <section className="asset-browser research-planning" aria-busy={loading}>
+      <header className="asset-deltas__header industry-jobs__header">
+        <div>
+          <span className="eyebrow">{t.blueprints.research.kicker}</span>
+          <h2>{t.blueprints.research.title}</h2>
+          <p>{t.blueprints.research.subtitle}</p>
+        </div>
+        <div className="asset-hero__metrics">
+          <span><strong>{numberFormat.format(plannedCount)}</strong><small>{t.blueprints.research.plans}</small></span>
+          <span><strong>{numberFormat.format(page?.summary.ready ?? 0)}</strong><small>{t.blueprints.research.ready}</small></span>
+          <span><strong>{numberFormat.format(page?.summary.running ?? 0)}</strong><small>{t.blueprints.research.running}</small></span>
+          <span><strong>{numberFormat.format(freeSlots)}</strong><small>{t.blueprints.research.freeSlots}</small></span>
+        </div>
+      </header>
+      <div className="asset-toolbar research-toolbar">
+        <label className="asset-search"><span>{t.blueprints.research.search}</span><div><Search size={16} /><input value={search} maxLength={120} onChange={(event) => setSearch(event.target.value)} placeholder={t.blueprints.research.search} disabled={!available} /></div></label>
+        <label><span>{t.blueprints.owner}</span><select value={ownerCharacterId ?? ""} onChange={(event) => { setOwnerCharacterId(event.target.value ? Number(event.target.value) : null); setOffset(0); }}><option value="">{t.blueprints.allOwners}</option>{(page?.owners ?? []).map((owner) => <option key={owner.characterId} value={owner.characterId}>{owner.name}</option>)}</select></label>
+        <label><span>{t.blueprints.research.state}</span><select value={planState ?? ""} onChange={(event) => { setPlanState((event.target.value || null) as ResearchPlanState | null); setOffset(0); }}><option value="">{t.blueprints.research.allStates}</option>{(page?.states ?? []).map((state) => <option key={state} value={state}>{t.blueprints.research.stateLabels[state]}</option>)}</select></label>
+        <button className={`secondary-button facility-used-toggle ${plannedOnly ? "is-active" : ""}`} type="button" aria-pressed={plannedOnly} onClick={() => { setPlannedOnly((value) => !value); setOffset(0); }}>{t.blueprints.research.plannedOnly}</button>
+      </div>
+      <div className="asset-export-status facility-boundary">{t.blueprints.research.boundary}</div>
+      {mutationStatus && <div className={`asset-export-status ${mutationStatus === "error" ? "asset-export-status--error" : ""}`} role="status">{mutationStatus === "saved" ? t.blueprints.research.saved : mutationStatus === "deleted" ? t.blueprints.research.deleted : t.blueprints.research.mutationError}</div>}
+      {!available ? <div className="asset-empty"><Database size={22} />{t.blueprints.unavailable}</div>
+        : failed ? <div className="asset-empty asset-empty--error"><AlertTriangle size={22} />{t.blueprints.research.queryError}</div>
+        : loading && page === null ? <div className="asset-empty"><RefreshCw className="spin" size={22} />{t.blueprints.research.loading}</div>
+        : page && page.items.length === 0 ? <div className="asset-empty"><FlaskConical size={22} />{page.observedAt === null ? t.blueprints.research.noData : t.blueprints.research.noMatches}</div>
+        : page ? <div className="asset-table-wrap"><table className="asset-table research-table"><thead><tr>
+            <th>{header("blueprint", t.blueprints.research.blueprint)}</th><th>{header("state", t.blueprints.research.status)}</th><th>{header("priority", t.blueprints.research.plan)}</th><th>{t.blueprints.research.slots}</th><th>{t.blueprints.research.evidence}</th><th>{t.blueprints.research.source}</th>
+          </tr></thead><tbody>{page.items.map((item) => {
+            const key = `${item.ownerCharacterId}:${item.blueprintItemId}`;
+            const draft = drafts[key];
+            return <tr key={key}>
+              <td><strong>{item.blueprintName}</strong><small>{item.ownerName} · BPO #{item.blueprintItemId}</small><small>{item.locationFlag == null ? t.blueprints.research.stateLabels.missing : `${item.locationFlag} · #${item.locationId}`}</small></td>
+              <td><span className={`status-pill status-pill--${stateTone(item.state)}`}>{t.blueprints.research.stateLabels[item.state]}</span><small>ME {item.currentMaterialEfficiency ?? "—"} → {draft?.targetMaterialEfficiency ?? item.targetMaterialEfficiency} · TE {item.currentTimeEfficiency ?? "—"} → {draft?.targetTimeEfficiency ?? item.targetTimeEfficiency}</small></td>
+              <td>{draft && <div className="research-plan-editor">
+                <select aria-label={t.blueprints.research.plan} value={draft.nextActivity} onChange={(event) => updateDraft(key, { nextActivity: event.target.value as "material" | "time" })}><option value="material">{t.blueprints.research.activityLabels.material}</option><option value="time">{t.blueprints.research.activityLabels.time}</option></select>
+                <div className="research-targets"><label><span>{t.blueprints.research.targetMe}</span><select value={draft.targetMaterialEfficiency} onChange={(event) => updateDraft(key, { targetMaterialEfficiency: Number(event.target.value) })}>{Array.from({ length: 11 }, (_, value) => value).filter((value) => value >= (item.currentMaterialEfficiency ?? 0)).map((value) => <option key={value} value={value}>{value}</option>)}</select></label><label><span>{t.blueprints.research.targetTe}</span><select value={draft.targetTimeEfficiency} onChange={(event) => updateDraft(key, { targetTimeEfficiency: Number(event.target.value) })}>{Array.from({ length: 21 }, (_, value) => value).filter((value) => value >= (item.currentTimeEfficiency ?? 0)).map((value) => <option key={value} value={value}>{value}</option>)}</select></label><label><span>{t.blueprints.research.priority}</span><input type="number" min={0} max={999} value={draft.priority} onChange={(event) => updateDraft(key, { priority: Math.max(0, Math.min(999, Number(event.target.value))) })} /></label></div>
+                <input className="research-note" aria-label={t.blueprints.research.note} maxLength={240} value={draft.note ?? ""} placeholder={t.blueprints.research.notePlaceholder} onChange={(event) => updateDraft(key, { note: event.target.value || null })} />
+                <div className="research-actions"><button type="button" onClick={() => void save(key)} disabled={mutationKey !== null || !item.blueprintPresent && !item.planned}><Check size={14} />{mutationKey === key ? t.blueprints.research.saving : item.planned ? t.blueprints.research.update : t.blueprints.research.save}</button>{item.planned && <button className="research-remove" type="button" onClick={() => void remove(key, item.ownerCharacterId, item.blueprintItemId)} disabled={mutationKey !== null}><X size={14} />{t.blueprints.research.remove}</button>}</div>
+              </div>}</td>
+              <td>{item.slotCapacity == null ? <><strong>—</strong><small>{t.blueprints.research.slotsUnknown}</small></> : <><strong>{t.blueprints.research.slotsValue.replace("{available}", String(item.slotsAvailable)).replace("{used}", String(item.slotsUsed)).replace("{capacity}", String(item.slotCapacity))}</strong><small>{t.blueprints.research.skillValue.replace("{research}", String(item.researchLevel)).replace("{metallurgy}", String(item.metallurgyLevel))}</small></>}</td>
+              <td>{item.activeJobId == null ? <><strong>{t.blueprints.research.noActiveJob}</strong></> : <><strong>{t.blueprints.research.activeJob.replace("{job}", String(item.activeJobId)).replace("{activity}", t.blueprints.research.activityLabels[item.activeJobActivity!])}</strong><small>{t.blueprints.research.ends.replace("{date}", new Date(item.activeJobEndDate!).toLocaleString(locale === "de" ? "de-DE" : "en-US"))}{item.activeJobCost == null ? "" : ` · ${numberFormat.format(item.activeJobCost)} ISK`}</small></>}<small>{item.facilityId == null ? t.blueprints.research.noFacility : `${item.facilityName ?? `#${item.facilityId}`} · ${item.facilityEvidence === "active-job" ? t.blueprints.research.currentFacility : t.blueprints.research.lastFacility}`}</small>{item.solarSystemName && <small>{item.solarSystemName}{item.systemCostIndex == null ? "" : ` · ${t.blueprints.research.systemCost.replace("{value}", percentFormat.format(item.systemCostIndex))}`}</small>}</td>
+              <td><strong>{item.blueprintSnapshotId == null ? "BP —" : `BP #${item.blueprintSnapshotId}`}</strong><small>{item.skillSnapshotId == null ? "Skills —" : `Skills #${item.skillSnapshotId}`} · {item.jobSnapshotId == null ? "Jobs —" : `Jobs #${item.jobSnapshotId}`}</small><small>{item.ageSeconds == null ? "—" : formatDataAge(item.ageSeconds, locale)}</small></td>
+            </tr>;
+          })}</tbody></table></div> : null}
+      {page && total > 0 && <div className="asset-pagination"><span>{range}</span><div><button type="button" onClick={() => setOffset(Math.max(0, offset - researchPlanPageSize))} disabled={offset === 0}>{t.blueprints.previous}</button><button type="button" onClick={() => setOffset(offset + researchPlanPageSize)} disabled={offset + researchPlanPageSize >= total}>{t.blueprints.next}</button></div></div>}
     </section>
   );
 }
