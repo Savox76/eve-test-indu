@@ -573,7 +573,7 @@ describe("New Eden Foundry design preview", () => {
   it("credits Savoxmedia as the app creator next to the version", () => {
     render(<App />);
 
-    expect(screen.getByText("v0.0.5-preview.16")).toBeInTheDocument();
+    expect(screen.getByText("v0.0.5-preview.17")).toBeInTheDocument();
     expect(screen.getByText("Savoxmedia")).toBeInTheDocument();
     expect(screen.getByText("Erstellt von", { exact: false })).toBeInTheDocument();
     expect(screen.queryByText("Lokaler Betreiber")).not.toBeInTheDocument();
@@ -643,7 +643,11 @@ describe("New Eden Foundry design preview", () => {
       />,
     );
 
-    expect(await screen.findByText("Programmordner ist nicht beschreibbar")).toBeInTheDocument();
+    expect(
+      await screen.findByText(
+        "Programmordner ist nicht beschreibbar · Fehlercode: program-storage-unavailable",
+      ),
+    ).toBeInTheDocument();
     expect(screen.queryByText(/Users\\|AppData|tmp/i)).not.toBeInTheDocument();
   });
 
@@ -670,7 +674,7 @@ describe("New Eden Foundry design preview", () => {
 
     expect(
       await screen.findByText(
-        "Datenübernahme aus der vorherigen Version konnte nicht abgeschlossen werden",
+        "Datenübernahme aus der vorherigen Version konnte nicht abgeschlossen werden · Fehlercode: program-storage-migration-failed",
       ),
     ).toBeInTheDocument();
     expect(screen.queryByText("Lokaler Dienst fehlt im Programmordner")).not.toBeInTheDocument();

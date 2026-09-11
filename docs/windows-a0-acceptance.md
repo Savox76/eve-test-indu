@@ -1,6 +1,6 @@
 # Windows-Abnahme A0 für Paket 22
 
-Diese Abnahme ist der letzte externe Nachweis vor der ersten `0.2.0`-Alpha. Sie wird auf einem freigegebenen Windows-10- oder Windows-11-x64-Testgerät mit einer vorhandenen Preview und dem Korrekturkandidaten `v0.0.5-preview.16` durchgeführt. Der CI-Pakettest installiert und startet den Kandidaten inzwischen wirklich; den vollständigen Gerätetest ersetzt er dennoch nicht.
+Diese Abnahme ist der letzte externe Nachweis vor der ersten `0.2.0`-Alpha. Sie wird auf einem freigegebenen Windows-10- oder Windows-11-x64-Testgerät mit einer vorhandenen Preview und dem Korrekturkandidaten `v0.0.5-preview.17` durchgeführt. Der CI-Pakettest installiert den Kandidaten, schließt ihn normal und startet denselben Datenstand erneut; den vollständigen Gerätetest ersetzt er dennoch nicht.
 
 ## Vorbereitung
 
@@ -16,7 +16,7 @@ Diese Abnahme ist der letzte externe Nachweis vor der ersten `0.2.0`-Alpha. Sie 
 | 2 | Lokaler Kern | Die Oberfläche meldet Desktop-Kern, Sidecar und Datenbank als bereit; die installierte Ausgabe verwendet ausschließlich `data` direkt im Installationsordner. |
 | 3 | Zweiter Start | Ein zweiter Programmstart erzeugt keine zweite unabhängige Instanz und fokussiert das vorhandene Fenster. |
 | 4 | Ausgangsdaten | Mindestens ein Charakter wird verbunden, **Assets aktualisieren** liefert einen Bestand und eine ungefährliche lokale Einstellung wird gespeichert. |
-| 5 | Installer-Update | Nach vollständigem Schließen wird `v0.0.5-preview.16` über `.15` installiert. Die Datenlöschung bleibt abgewählt; anschließend sind Version, Charaktere, Einstellungen, Pläne und Snapshots vorhanden und `data` liegt neben der EXE. |
+| 5 | Installer-Update | Nach vollständigem Schließen wird `v0.0.5-preview.17` über `.16` installiert. Die Datenlöschung bleibt abgewählt; anschließend sind Version, Charaktere, Einstellungen, Pläne und Snapshots vorhanden und `data` liegt neben der EXE. |
 | 6 | Datenerhalt | Datenbank, Einstellungen, Charakterliste, Forschungspläne und letzte vollständige Snapshots sind nach dem Update weiterhin vorhanden; die automatische Migration auf Schema 9 ist abgeschlossen. |
 | 7 | Portable Ausgabe | Die ZIP wird vollständig in einen beschreibbaren Ordner entpackt; Hauptprogramm und Sidecar starten ohne Installation. |
 | 8 | Entfernung | Nach dem Schließen beendet die Deinstallation die Anwendung und entfernt ausgelieferte Programmdateien. Benutzerspezifische Daten bleiben wie dokumentiert erhalten. |
