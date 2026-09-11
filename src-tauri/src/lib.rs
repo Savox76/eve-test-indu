@@ -36,6 +36,29 @@ const ASSET_LOCATION_STATUSES: [&str; 5] =
 const ASSET_DELTA_CHANGE_TYPES: [&str; 4] = ["added", "removed", "quantity", "location"];
 const ASSET_SORT_FIELDS: [&str; 6] = ["type", "owner", "location", "flag", "quantity", "age"];
 const BLUEPRINT_SORT_FIELDS: [&str; 7] = ["type", "owner", "kind", "me", "te", "runs", "age"];
+const INDUSTRY_JOB_SORT_FIELDS: [&str; 10] = [
+    "start",
+    "end",
+    "type",
+    "owner",
+    "activity",
+    "status",
+    "runs",
+    "cost",
+    "correlation",
+    "age",
+];
+const INDUSTRY_JOB_STATUSES: [&str; 6] = [
+    "active",
+    "cancelled",
+    "delivered",
+    "paused",
+    "ready",
+    "reverted",
+];
+const INDUSTRY_JOB_CORRELATIONS: [&str; 5] =
+    ["linked", "partial", "ambiguous", "unmatched", "pending"];
+const INDUSTRY_JOB_ACTIVITY_IDS: [u8; 8] = [1, 3, 4, 5, 7, 8, 9, 11];
 const SORT_DIRECTIONS: [&str; 2] = ["asc", "desc"];
 const MAX_ASSET_PAGE_SIZE: u64 = 200;
 const MAX_ASSET_SEARCH_CHARACTERS: usize = 120;
@@ -326,12 +349,108 @@ struct BlueprintSyncResponse {
 
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
+struct IndustryBlueprintCorrelation {
+    state: String,
+    snapshot_id: Option<u64>,
+    sync_run_id: Option<u64>,
+    observed_at: Option<String>,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct IndustryAssetCorrelation {
+    state: String,
+    event_ids: Vec<String>,
+    candidate_count: u64,
+    location_matched: bool,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct IndustryJobRecord {
+    job_id: u64,
+    owner_character_id: u64,
+    owner_name: String,
+    activity_id: u8,
+    activity_key: String,
+    status: String,
+    blueprint_item_id: u64,
+    blueprint_type_id: u64,
+    blueprint_name: String,
+    product_type_id: Option<u64>,
+    product_name: Option<String>,
+    runs: u64,
+    successful_runs: Option<u64>,
+    licensed_runs: Option<u64>,
+    probability: Option<f64>,
+    cost: Option<f64>,
+    duration_seconds: u64,
+    facility_id: u64,
+    station_id: u64,
+    blueprint_location_id: u64,
+    output_location_id: u64,
+    start_date: String,
+    end_date: String,
+    completed_date: Option<String>,
+    pause_date: Option<String>,
+    blueprint_correlation: IndustryBlueprintCorrelation,
+    asset_correlation: IndustryAssetCorrelation,
+    correlation_state: String,
+    job_snapshot_id: u64,
+    job_sync_run_id: u64,
+    observed_at: String,
+    age_seconds: u64,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct IndustryJobQueryResponse {
+    items: Vec<IndustryJobRecord>,
+    total: u64,
+    active_total: u64,
+    offset: u64,
+    limit: u64,
+    owners: Vec<AssetOwner>,
+    statuses: Vec<String>,
+    activities: Vec<u8>,
+    correlations: Vec<String>,
+    observed_at: Option<String>,
+    age_seconds: Option<u64>,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct IndustryJobSyncCharacterResponse {
+    character_id: u64,
+    status: String,
+    jobs: u64,
+    active: u64,
+    completed_jobs: u64,
+    error_code: Option<String>,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct IndustryJobSyncResponse {
+    characters: Vec<IndustryJobSyncCharacterResponse>,
+    completed: u64,
+    failed: u64,
+    jobs: u64,
+    active: u64,
+    completed_jobs: u64,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct AssetDeltaCorrelation {
     state: String,
     key: String,
     direction: String,
     window_start: String,
     window_end: String,
+    job_ids: Vec<u64>,
+    candidate_count: u64,
+    location_matched: bool,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -753,6 +872,233 @@ fn blueprint_sync_response_is_valid(response: &BlueprintSyncResponse) -> bool {
         })
 }
 
+fn industry_activity_key(activity_id: u8) -> Option<&'static str> {
+    match activity_id {
+        1 => Some("manufacturing"),
+        3 => Some("research-time"),
+        4 => Some("research-material"),
+        5 => Some("copying"),
+        7 => Some("reverse-engineering"),
+        8 => Some("invention"),
+        9 | 11 => Some("reactions"),
+        _ => None,
+    }
+}
+
+fn industry_blueprint_correlation_is_valid(value: &IndustryBlueprintCorrelation) -> bool {
+    match value.state.as_str() {
+        "current" | "historical" => {
+            value
+                .snapshot_id
+                .is_some_and(|id| id > 0 && id <= JAVASCRIPT_MAX_SAFE_INTEGER)
+                && value
+                    .sync_run_id
+                    .is_some_and(|id| id > 0 && id <= JAVASCRIPT_MAX_SAFE_INTEGER)
+                && value
+                    .observed_at
+                    .as_ref()
+                    .is_some_and(|timestamp| asset_text_is_valid(timestamp, 64))
+        }
+        "unmatched" | "unavailable" => {
+            value.snapshot_id.is_none()
+                && value.sync_run_id.is_none()
+                && value.observed_at.is_none()
+        }
+        _ => false,
+    }
+}
+
+fn industry_asset_correlation_is_valid(value: &IndustryAssetCorrelation) -> bool {
+    let unique_event_ids = value.event_ids.iter().collect::<HashSet<_>>();
+    value.candidate_count <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && value.event_ids.len() <= 20
+        && unique_event_ids.len() == value.event_ids.len()
+        && value.event_ids.iter().all(|event_id| {
+            event_id.len() == 64
+                && event_id
+                    .bytes()
+                    .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+        })
+        && match value.state.as_str() {
+            "linked" => value.candidate_count == 1 && value.event_ids.len() == 1,
+            "ambiguous" => value.candidate_count > 1 && !value.event_ids.is_empty(),
+            "unmatched" | "unavailable" | "pending" | "not-applicable" => {
+                value.candidate_count == 0 && value.event_ids.is_empty() && !value.location_matched
+            }
+            _ => false,
+        }
+}
+
+fn industry_job_query_response_is_valid(response: &IndustryJobQueryResponse) -> bool {
+    let owner_ids = response
+        .owners
+        .iter()
+        .map(|owner| owner.character_id)
+        .collect::<HashSet<_>>();
+    let job_ids = response
+        .items
+        .iter()
+        .map(|job| job.job_id)
+        .collect::<HashSet<_>>();
+    let activities = response.activities.iter().copied().collect::<HashSet<_>>();
+    let active_items = response
+        .items
+        .iter()
+        .filter(|job| matches!(job.status.as_str(), "active" | "paused" | "ready"))
+        .count() as u64;
+    response.limit > 0
+        && response.limit <= MAX_ASSET_PAGE_SIZE
+        && response.total <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && response.active_total <= response.total
+        && active_items <= response.active_total
+        && response.offset <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && response.items.len() as u64 <= response.limit
+        && response.items.len() as u64 <= response.total
+        && response.observed_at.is_some() == response.age_seconds.is_some()
+        && response
+            .observed_at
+            .as_ref()
+            .is_none_or(|value| asset_text_is_valid(value, 64))
+        && response
+            .statuses
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>()
+            == INDUSTRY_JOB_STATUSES
+        && response
+            .correlations
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>()
+            == INDUSTRY_JOB_CORRELATIONS
+        && activities.len() == response.activities.len()
+        && response
+            .activities
+            .iter()
+            .all(|activity| INDUSTRY_JOB_ACTIVITY_IDS.contains(activity))
+        && owner_ids.len() == response.owners.len()
+        && job_ids.len() == response.items.len()
+        && response.owners.iter().all(|owner| {
+            owner.character_id > 0
+                && owner.character_id <= JAVASCRIPT_MAX_SAFE_INTEGER
+                && asset_text_is_valid(&owner.name, 100)
+        })
+        && response.items.iter().all(|job| {
+            let blueprint_linked = matches!(
+                job.blueprint_correlation.state.as_str(),
+                "current" | "historical"
+            );
+            let asset_linked = job.asset_correlation.state == "linked";
+            let expected_correlation =
+                if matches!(job.status.as_str(), "active" | "paused" | "ready") {
+                    "pending"
+                } else if job.asset_correlation.state == "ambiguous" {
+                    "ambiguous"
+                } else if blueprint_linked
+                    && (asset_linked || job.asset_correlation.state == "not-applicable")
+                {
+                    "linked"
+                } else if blueprint_linked || asset_linked {
+                    "partial"
+                } else {
+                    "unmatched"
+                };
+            job.job_id > 0
+                && job.job_id <= JAVASCRIPT_MAX_SAFE_INTEGER
+                && owner_ids.contains(&job.owner_character_id)
+                && response.owners.iter().any(|owner| {
+                    owner.character_id == job.owner_character_id && owner.name == job.owner_name
+                })
+                && industry_activity_key(job.activity_id) == Some(job.activity_key.as_str())
+                && INDUSTRY_JOB_STATUSES.contains(&job.status.as_str())
+                && job.blueprint_item_id > 0
+                && job.blueprint_item_id <= JAVASCRIPT_MAX_SAFE_INTEGER
+                && job.blueprint_type_id > 0
+                && job.blueprint_type_id <= JAVASCRIPT_MAX_SAFE_INTEGER
+                && asset_text_is_valid(&job.blueprint_name, 220)
+                && job.product_type_id.is_some() == job.product_name.is_some()
+                && job
+                    .product_type_id
+                    .is_none_or(|value| value > 0 && value <= JAVASCRIPT_MAX_SAFE_INTEGER)
+                && job
+                    .product_name
+                    .as_ref()
+                    .is_none_or(|value| asset_text_is_valid(value, 220))
+                && job.runs > 0
+                && job.runs <= JAVASCRIPT_MAX_SAFE_INTEGER
+                && job.successful_runs.is_none_or(|value| value <= job.runs)
+                && job
+                    .licensed_runs
+                    .is_none_or(|value| value <= JAVASCRIPT_MAX_SAFE_INTEGER)
+                && job
+                    .probability
+                    .is_none_or(|value| value.is_finite() && (0.0..=1.0).contains(&value))
+                && job.cost.is_none_or(|value| {
+                    value.is_finite() && (0.0..=JAVASCRIPT_MAX_SAFE_INTEGER as f64).contains(&value)
+                })
+                && job.duration_seconds <= JAVASCRIPT_MAX_SAFE_INTEGER
+                && [
+                    job.facility_id,
+                    job.station_id,
+                    job.blueprint_location_id,
+                    job.output_location_id,
+                    job.job_snapshot_id,
+                    job.job_sync_run_id,
+                ]
+                .into_iter()
+                .all(|value| value > 0 && value <= JAVASCRIPT_MAX_SAFE_INTEGER)
+                && asset_text_is_valid(&job.start_date, 64)
+                && asset_text_is_valid(&job.end_date, 64)
+                && job
+                    .completed_date
+                    .as_ref()
+                    .is_none_or(|value| asset_text_is_valid(value, 64))
+                && job
+                    .pause_date
+                    .as_ref()
+                    .is_none_or(|value| asset_text_is_valid(value, 64))
+                && industry_blueprint_correlation_is_valid(&job.blueprint_correlation)
+                && industry_asset_correlation_is_valid(&job.asset_correlation)
+                && job.correlation_state == expected_correlation
+                && asset_text_is_valid(&job.observed_at, 64)
+                && asset_text_is_valid(&job.owner_name, 100)
+        })
+}
+
+fn industry_job_sync_response_is_valid(response: &IndustryJobSyncResponse) -> bool {
+    let jobs = response
+        .characters
+        .iter()
+        .try_fold(0_u64, |sum, item| sum.checked_add(item.jobs));
+    let active = response
+        .characters
+        .iter()
+        .try_fold(0_u64, |sum, item| sum.checked_add(item.active));
+    let completed_jobs = response
+        .characters
+        .iter()
+        .try_fold(0_u64, |sum, item| sum.checked_add(item.completed_jobs));
+    response.completed.checked_add(response.failed) == Some(response.characters.len() as u64)
+        && jobs == Some(response.jobs)
+        && active == Some(response.active)
+        && completed_jobs == Some(response.completed_jobs)
+        && response.characters.iter().all(|item| {
+            item.character_id > 0
+                && item.character_id <= JAVASCRIPT_MAX_SAFE_INTEGER
+                && matches!(item.status.as_str(), "completed" | "failed")
+                && item.active.checked_add(item.completed_jobs) == Some(item.jobs)
+                && ((item.status == "completed" && item.error_code.is_none())
+                    || (item.status == "failed"
+                        && item.jobs == 0
+                        && item.active == 0
+                        && item.completed_jobs == 0
+                        && item
+                            .error_code
+                            .as_ref()
+                            .is_some_and(|code| asset_text_is_valid(code, 120))))
+        })
+}
+
 fn asset_export_response_is_valid(response: &AssetExportResponse) -> bool {
     response.rows <= JAVASCRIPT_MAX_SAFE_INTEGER
         && response.filename.starts_with("assets-")
@@ -888,7 +1234,14 @@ fn asset_delta_response_is_valid(response: &AssetDeltaQueryResponse) -> bool {
                 && event.current_asset_snapshot_id > 0
                 && event.current_asset_sync_run_id > 0
                 && asset_text_is_valid(&event.observed_at, 64)
-                && event.job_correlation.state == "unmatched"
+                && [
+                    "linked",
+                    "ambiguous",
+                    "unmatched",
+                    "unavailable",
+                    "not-applicable",
+                ]
+                .contains(&event.job_correlation.state.as_str())
                 && event.job_correlation.key
                     == format!("{}:{}", event.owner_character_id, event.type_id)
                 && ["inbound", "outbound", "neutral"]
@@ -896,6 +1249,35 @@ fn asset_delta_response_is_valid(response: &AssetDeltaQueryResponse) -> bool {
                 && event.job_correlation.direction == expected_direction
                 && asset_text_is_valid(&event.job_correlation.window_start, 64)
                 && asset_text_is_valid(&event.job_correlation.window_end, 64)
+                && event.job_correlation.candidate_count <= JAVASCRIPT_MAX_SAFE_INTEGER
+                && event.job_correlation.job_ids.len() <= 20
+                && event
+                    .job_correlation
+                    .job_ids
+                    .iter()
+                    .all(|job_id| *job_id > 0 && *job_id <= JAVASCRIPT_MAX_SAFE_INTEGER)
+                && event
+                    .job_correlation
+                    .job_ids
+                    .iter()
+                    .collect::<HashSet<_>>()
+                    .len()
+                    == event.job_correlation.job_ids.len()
+                && match event.job_correlation.state.as_str() {
+                    "linked" => {
+                        event.job_correlation.candidate_count == 1
+                            && event.job_correlation.job_ids.len() == 1
+                    }
+                    "ambiguous" => {
+                        event.job_correlation.candidate_count > 1
+                            && !event.job_correlation.job_ids.is_empty()
+                    }
+                    _ => {
+                        event.job_correlation.candidate_count == 0
+                            && event.job_correlation.job_ids.is_empty()
+                            && !event.job_correlation.location_matched
+                    }
+                }
         })
 }
 
@@ -1611,6 +1993,34 @@ fn sync_blueprints(state: State<'_, RuntimeState>) -> Result<String, String> {
 }
 
 #[tauri::command]
+fn sync_industry_jobs(state: State<'_, RuntimeState>) -> Result<String, String> {
+    refresh_sidecar_status(&state);
+    let response = {
+        let sidecar = state
+            .sidecar
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let process = sidecar
+            .as_ref()
+            .ok_or_else(|| "sidecar-unavailable".to_owned())?;
+        sidecar_json_request_with_timeout(
+            process,
+            "POST",
+            "/industry-jobs/sync",
+            "{}",
+            ASSET_SYNC_TIMEOUT,
+        )
+        .map_err(str::to_owned)?
+    };
+    let result: IndustryJobSyncResponse =
+        serde_json::from_str(&response).map_err(|_| "sidecar-response-invalid".to_owned())?;
+    if !industry_job_sync_response_is_valid(&result) {
+        return Err("sidecar-response-invalid".to_owned());
+    }
+    serde_json::to_string(&result).map_err(|_| "status-serialization-failed".to_owned())
+}
+
+#[tauri::command]
 fn query_blueprints(
     search: String,
     owner_character_id: Option<u64>,
@@ -1655,6 +2065,71 @@ fn query_blueprints(
     let page: BlueprintQueryResponse =
         serde_json::from_str(&response).map_err(|_| "sidecar-response-invalid".to_owned())?;
     if !blueprint_query_response_is_valid(&page) || page.offset != offset || page.limit != limit {
+        return Err("sidecar-response-invalid".to_owned());
+    }
+    serde_json::to_string(&page).map_err(|_| "status-serialization-failed".to_owned())
+}
+
+#[tauri::command]
+fn query_industry_jobs(
+    search: String,
+    owner_character_id: Option<u64>,
+    status: Option<String>,
+    activity_id: Option<u8>,
+    correlation: Option<String>,
+    offset: u64,
+    limit: u64,
+    sort_by: String,
+    sort_direction: String,
+    state: State<'_, RuntimeState>,
+) -> Result<String, String> {
+    if search.chars().count() > MAX_ASSET_SEARCH_CHARACTERS
+        || search.trim() != search
+        || owner_character_id == Some(0)
+        || owner_character_id.is_some_and(|value| value > JAVASCRIPT_MAX_SAFE_INTEGER)
+        || status
+            .as_deref()
+            .is_some_and(|value| !INDUSTRY_JOB_STATUSES.contains(&value))
+        || activity_id.is_some_and(|value| !INDUSTRY_JOB_ACTIVITY_IDS.contains(&value))
+        || correlation
+            .as_deref()
+            .is_some_and(|value| !INDUSTRY_JOB_CORRELATIONS.contains(&value))
+        || limit == 0
+        || limit > MAX_ASSET_PAGE_SIZE
+        || offset > JAVASCRIPT_MAX_SAFE_INTEGER
+        || !INDUSTRY_JOB_SORT_FIELDS.contains(&sort_by.as_str())
+        || !SORT_DIRECTIONS.contains(&sort_direction.as_str())
+    {
+        return Err("industry-job-query-invalid".to_owned());
+    }
+    refresh_sidecar_status(&state);
+    let body = serde_json::json!({
+        "search": search,
+        "ownerCharacterId": owner_character_id,
+        "status": status,
+        "activityId": activity_id,
+        "correlation": correlation,
+        "offset": offset,
+        "limit": limit,
+        "sortBy": sort_by,
+        "sortDirection": sort_direction,
+    })
+    .to_string();
+    let response = {
+        let sidecar = state
+            .sidecar
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let process = sidecar
+            .as_ref()
+            .ok_or_else(|| "sidecar-unavailable".to_owned())?;
+        sidecar_json_request(process, "POST", "/industry-jobs/query", &body)
+            .map_err(str::to_owned)?
+    };
+    let page: IndustryJobQueryResponse =
+        serde_json::from_str(&response).map_err(|_| "sidecar-response-invalid".to_owned())?;
+    if !industry_job_query_response_is_valid(&page) || page.offset != offset || page.limit != limit
+    {
         return Err("sidecar-response-invalid".to_owned());
     }
     serde_json::to_string(&page).map_err(|_| "status-serialization-failed".to_owned())
@@ -2118,6 +2593,8 @@ pub fn run() {
             query_assets,
             sync_blueprints,
             query_blueprints,
+            sync_industry_jobs,
+            query_industry_jobs,
             export_assets_csv,
             query_asset_deltas,
             update_eve_character,
@@ -2144,10 +2621,13 @@ mod tests {
     use super::{
         account_group_record_is_valid, asset_delta_response_is_valid,
         asset_export_response_is_valid, asset_query_response_is_valid, authorization_url_is_valid,
-        eve_character_record_is_valid, sso_login_status_is_valid, AccountGroupRecord,
+        eve_character_record_is_valid, industry_job_query_response_is_valid,
+        industry_job_sync_response_is_valid, sso_login_status_is_valid, AccountGroupRecord,
         AssetDeltaCorrelation, AssetDeltaQueryResponse, AssetDeltaRecord, AssetDeltaSummary,
         AssetExportResponse, AssetLocationNode, AssetOwner, AssetQueryResponse, AssetRecord,
-        EveCharacterRecord, ScopePackageStatus, SsoCharacterIdentity, SsoLoginStatus,
+        EveCharacterRecord, IndustryAssetCorrelation, IndustryBlueprintCorrelation,
+        IndustryJobQueryResponse, IndustryJobRecord, IndustryJobSyncCharacterResponse,
+        IndustryJobSyncResponse, ScopePackageStatus, SsoCharacterIdentity, SsoLoginStatus,
     };
 
     fn valid_authorization_url() -> String {
@@ -2372,6 +2852,9 @@ mod tests {
                     direction: "outbound".to_owned(),
                     window_start: "2026-09-10T10:00:00Z".to_owned(),
                     window_end: "2026-09-10T11:00:00Z".to_owned(),
+                    job_ids: Vec::new(),
+                    candidate_count: 0,
+                    location_matched: false,
                 },
             }],
             total: 1,
@@ -2401,5 +2884,97 @@ mod tests {
 
         let invalid = AssetDeltaQueryResponse { limit: 201, ..page };
         assert!(!asset_delta_response_is_valid(&invalid));
+    }
+
+    #[test]
+    fn validates_industry_job_pages_and_sync_aggregates() {
+        let page = IndustryJobQueryResponse {
+            items: vec![IndustryJobRecord {
+                job_id: 8_001,
+                owner_character_id: 90_888_001,
+                owner_name: "Builder".to_owned(),
+                activity_id: 1,
+                activity_key: "manufacturing".to_owned(),
+                status: "delivered".to_owned(),
+                blueprint_item_id: 7_001,
+                blueprint_type_id: 6_001,
+                blueprint_name: "Synthetic Blueprint".to_owned(),
+                product_type_id: Some(6_002),
+                product_name: Some("Synthetic Product".to_owned()),
+                runs: 2,
+                successful_runs: Some(2),
+                licensed_runs: Some(0),
+                probability: Some(1.0),
+                cost: Some(1_234.5),
+                duration_seconds: 3_600,
+                facility_id: 60_000_001,
+                station_id: 60_000_001,
+                blueprint_location_id: 60_000_001,
+                output_location_id: 60_000_001,
+                start_date: "2026-09-10T10:00:00Z".to_owned(),
+                end_date: "2026-09-10T11:00:00Z".to_owned(),
+                completed_date: Some("2026-09-10T11:00:00Z".to_owned()),
+                pause_date: None,
+                blueprint_correlation: IndustryBlueprintCorrelation {
+                    state: "current".to_owned(),
+                    snapshot_id: Some(2),
+                    sync_run_id: Some(3),
+                    observed_at: Some("2026-09-10T11:01:00Z".to_owned()),
+                },
+                asset_correlation: IndustryAssetCorrelation {
+                    state: "linked".to_owned(),
+                    event_ids: vec!["a".repeat(64)],
+                    candidate_count: 1,
+                    location_matched: true,
+                },
+                correlation_state: "linked".to_owned(),
+                job_snapshot_id: 4,
+                job_sync_run_id: 5,
+                observed_at: "2026-09-10T11:02:00Z".to_owned(),
+                age_seconds: 60,
+            }],
+            total: 1,
+            active_total: 0,
+            offset: 0,
+            limit: 100,
+            owners: vec![AssetOwner {
+                character_id: 90_888_001,
+                name: "Builder".to_owned(),
+            }],
+            statuses: [
+                "active",
+                "cancelled",
+                "delivered",
+                "paused",
+                "ready",
+                "reverted",
+            ]
+            .map(str::to_owned)
+            .to_vec(),
+            activities: vec![1],
+            correlations: ["linked", "partial", "ambiguous", "unmatched", "pending"]
+                .map(str::to_owned)
+                .to_vec(),
+            observed_at: Some("2026-09-10T11:02:00Z".to_owned()),
+            age_seconds: Some(60),
+        };
+        assert!(industry_job_query_response_is_valid(&page));
+
+        let sync = IndustryJobSyncResponse {
+            characters: vec![IndustryJobSyncCharacterResponse {
+                character_id: 90_888_001,
+                status: "completed".to_owned(),
+                jobs: 1,
+                active: 0,
+                completed_jobs: 1,
+                error_code: None,
+            }],
+            completed: 1,
+            failed: 0,
+            jobs: 1,
+            active: 0,
+            completed_jobs: 1,
+        };
+        assert!(industry_job_sync_response_is_valid(&sync));
     }
 }

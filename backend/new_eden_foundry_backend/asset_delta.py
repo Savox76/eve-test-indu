@@ -9,6 +9,12 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Final, Iterable, Mapping
 
+from .industry_job_evidence import (
+    IndustryJobEvidenceError,
+    correlate_asset_event,
+    load_latest_job_snapshots,
+)
+
 
 DEFAULT_DELTA_PAGE_SIZE: Final = 50
 MAX_DELTA_PAGE_SIZE: Final = 200
@@ -412,6 +418,10 @@ def query_asset_deltas(
     )
     current_time = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
     type_names = _type_names(connection)
+    try:
+        industry_jobs = load_latest_job_snapshots(connection)
+    except IndustryJobEvidenceError as error:
+        raise AssetDeltaError("asset_delta_job_evidence_invalid") from error
     search_tokens = query.search.casefold().split()
     events: list[dict[str, object]] = []
     owners: dict[int, str] = {}
@@ -467,6 +477,22 @@ def query_asset_deltas(
             seen_event_ids.add(str(event["eventId"]))
             if query.change_type is not None and query.change_type not in event["changeTypes"]:
                 continue
+            persisted_correlation = event["jobCorrelation"]
+            if not isinstance(persisted_correlation, Mapping):
+                raise AssetDeltaError("asset_delta_snapshot_invalid")
+            event["jobCorrelation"] = correlate_asset_event(
+                industry_jobs,
+                character_id=character_id,
+                type_id=int(event["typeId"]),
+                direction=str(persisted_correlation["direction"]),
+                window_start=str(persisted_correlation["windowStart"]),
+                window_end=str(persisted_correlation["windowEnd"]),
+                location_id_after=(
+                    None
+                    if event["locationIdAfter"] is None
+                    else int(event["locationIdAfter"])
+                ),
+            )
             type_name = type_names.get(int(event["typeId"]), f"Type #{event['typeId']}")
             if search_tokens:
                 haystack = " ".join(
@@ -481,6 +507,7 @@ def query_asset_deltas(
                         str(event["locationFlagAfter"] or ""),
                         str(event["locationIdBefore"] or ""),
                         str(event["locationIdAfter"] or ""),
+                        " ".join(str(value) for value in event["jobCorrelation"]["jobIds"]),
                     )
                 ).casefold()
                 if not all(token in haystack for token in search_tokens):

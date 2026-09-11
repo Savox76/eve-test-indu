@@ -269,6 +269,45 @@ def main() -> int:
             if characters != {"characters": []}:
                 raise RuntimeError("The packaged character roster is invalid.")
 
+            industry_job_query = urllib.request.Request(
+                f"http://127.0.0.1:{int(ready['port'])}/industry-jobs/query",
+                data=json.dumps({
+                    "search": "", "ownerCharacterId": None, "status": None,
+                    "activityId": None, "correlation": None, "offset": 0,
+                    "limit": 100, "sortBy": "end", "sortDirection": "desc",
+                }).encode("utf-8"),
+                method="POST",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": "application/json",
+                },
+            )
+            with opener.open(industry_job_query, timeout=3) as response:
+                industry_job_page = json.loads(response.read())
+            if (
+                industry_job_page.get("items") != []
+                or industry_job_page.get("total") != 0
+                or industry_job_page.get("activeTotal") != 0
+            ):
+                raise RuntimeError("The packaged industry-job query is invalid.")
+
+            industry_job_sync = urllib.request.Request(
+                f"http://127.0.0.1:{int(ready['port'])}/industry-jobs/sync",
+                data=b"{}",
+                method="POST",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": "application/json",
+                },
+            )
+            with opener.open(industry_job_sync, timeout=3) as response:
+                industry_job_result = json.loads(response.read())
+            if industry_job_result != {
+                "characters": [], "completed": 0, "failed": 0, "jobs": 0,
+                "active": 0, "completedJobs": 0,
+            }:
+                raise RuntimeError("The packaged industry-job sync is invalid.")
+
             sso_login_url = f"http://127.0.0.1:{int(ready['port'])}/sso/login"
             sso_status_request = urllib.request.Request(
                 sso_login_url,
@@ -424,7 +463,8 @@ def main() -> int:
 
     print(
         "Frozen sidecar handshake, signed updater skeleton, PKCE start/cancel, character "
-        "roster, ESI policy, font scale, migration backup, database location and shutdown verified."
+        "roster, industry-job endpoints, ESI policy, font scale, migration backup, database "
+        "location and shutdown verified."
     )
     return 0
 
