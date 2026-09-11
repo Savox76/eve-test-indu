@@ -19,6 +19,8 @@ const SIDECAR_REQUEST_TIMEOUT: Duration = Duration::from_secs(3);
 const ASSET_SYNC_TIMEOUT: Duration = Duration::from_secs(120);
 const UPDATE_NOTICE_TIMEOUT: Duration = Duration::from_secs(8);
 const PORTABLE_MARKER: &str = "PORTABLE-README-DE-EN.txt";
+const PROGRAM_STORAGE_MARKER: &str = ".program-storage-v1";
+const PREVIOUS_PROGRAM_DATA_BACKUP: &str = "data-before-appdata-migration";
 const SIDECAR_MAX_RESPONSE_BYTES: u64 = 4_194_304;
 const WINDOWS_CREATE_NO_WINDOW: u32 = 0x0800_0000;
 const EVE_SSO_AUTHORIZATION_ENDPOINT: &str = "https://login.eveonline.com/v2/oauth/authorize";
@@ -3055,30 +3057,94 @@ fn copy_directory_without_links(source: &Path, destination: &Path) -> Result<(),
     Ok(())
 }
 
-fn select_storage_root(app: &AppHandle, executable_dir: &Path) -> Result<PathBuf, &'static str> {
-    if executable_dir.join(PORTABLE_MARKER).is_file() {
-        return Ok(executable_dir.to_path_buf());
+fn available_program_data_backup(executable_dir: &Path) -> Result<PathBuf, &'static str> {
+    for suffix in 0..100_u8 {
+        let name = if suffix == 0 {
+            PREVIOUS_PROGRAM_DATA_BACKUP.to_owned()
+        } else {
+            format!("{PREVIOUS_PROGRAM_DATA_BACKUP}-{suffix}")
+        };
+        let candidate = executable_dir.join(name);
+        if !candidate.exists() {
+            return Ok(candidate);
+        }
     }
-    let stable_root = app
-        .path()
-        .app_local_data_dir()
-        .map_err(|_| "program-storage-unavailable")?;
-    fs::create_dir_all(&stable_root).map_err(|_| "program-storage-unavailable")?;
-    let legacy_data = executable_dir.join("data");
-    let stable_data = stable_root.join("data");
-    if legacy_data.is_dir() && !stable_data.exists() {
-        let staging = stable_root.join(format!("data-migration-{}", std::process::id()));
+    Err("program-storage-migration-failed")
+}
+
+fn migrate_to_program_directory_storage(
+    executable_dir: &Path,
+    previous_storage_root: &Path,
+) -> Result<(), &'static str> {
+    let program_data = executable_dir.join("data");
+    let migration_marker = program_data.join(PROGRAM_STORAGE_MARKER);
+    if migration_marker.is_file() {
+        return Ok(());
+    }
+
+    let previous_data = previous_storage_root.join("data");
+    if previous_data.is_symlink() || program_data.is_symlink() {
+        return Err("program-storage-migration-failed");
+    }
+    if previous_data.is_dir() {
+        let staging = executable_dir.join(format!(
+            "data-appdata-migration-{}",
+            std::process::id()
+        ));
         if staging.exists() {
             fs::remove_dir_all(&staging).map_err(|_| "program-storage-migration-failed")?;
         }
-        if let Err(error) = copy_directory_without_links(&legacy_data, &staging).and_then(|_| {
-            fs::rename(&staging, &stable_data).map_err(|_| "program-storage-migration-failed")
+        if let Err(error) = copy_directory_without_links(&previous_data, &staging).and_then(|_| {
+            fs::write(staging.join(PROGRAM_STORAGE_MARKER), b"program-directory\n")
+                .map_err(|_| "program-storage-migration-failed")
         }) {
             let _ = fs::remove_dir_all(&staging);
             return Err(error);
         }
+
+        let backup = if program_data.exists() {
+            let backup = match available_program_data_backup(executable_dir) {
+                Ok(value) => value,
+                Err(error) => {
+                    let _ = fs::remove_dir_all(&staging);
+                    return Err(error);
+                }
+            };
+            fs::rename(&program_data, &backup).map_err(|_| {
+                let _ = fs::remove_dir_all(&staging);
+                "program-storage-migration-failed"
+            })?;
+            Some(backup)
+        } else {
+            None
+        };
+
+        if fs::rename(&staging, &program_data).is_err() {
+            if let Some(backup) = backup {
+                let _ = fs::rename(backup, &program_data);
+            }
+            let _ = fs::remove_dir_all(&staging);
+            return Err("program-storage-migration-failed");
+        }
+        return Ok(());
     }
-    Ok(stable_root)
+
+    fs::create_dir_all(&program_data).map_err(|_| "program-storage-unavailable")?;
+    fs::write(migration_marker, b"program-directory\n")
+        .map_err(|_| "program-storage-unavailable")?;
+    Ok(())
+}
+
+fn select_storage_root(app: &AppHandle, executable_dir: &Path) -> Result<PathBuf, &'static str> {
+    if executable_dir.join(PORTABLE_MARKER).is_file() {
+        return Ok(executable_dir.to_path_buf());
+    }
+    let previous_storage_root = app
+        .path()
+        .app_local_data_dir()
+        .map_err(|_| "program-storage-unavailable")?;
+    migrate_to_program_directory_storage(executable_dir, &previous_storage_root)?;
+    Ok(executable_dir.to_path_buf())
 }
 
 fn launch_sidecar(
@@ -4806,7 +4872,8 @@ mod tests {
         character_skill_query_response_is_valid, character_skill_sync_response_is_valid,
         eve_character_record_is_valid, industry_job_query_response_is_valid,
         industry_job_sync_response_is_valid, industry_slot_query_response_is_valid,
-        release_page_url, research_plan_query_response_is_valid, sso_login_status_is_valid,
+        migrate_to_program_directory_storage, release_page_url,
+        research_plan_query_response_is_valid, sso_login_status_is_valid,
         AccountGroupRecord, AssetDeltaCorrelation, AssetDeltaQueryResponse, AssetDeltaRecord,
         AssetDeltaSummary, AssetExportResponse, AssetLocationNode, AssetOwner, AssetQueryResponse,
         AssetRecord, CharacterSkillQueryResponse, CharacterSkillRecord,
@@ -4817,6 +4884,99 @@ mod tests {
         ResearchPlanQueryResponse, ResearchPlanRecord, ResearchPlanSummary, ScopePackageStatus,
         SsoCharacterIdentity, SsoLoginStatus,
     };
+    use std::fs;
+    use std::path::{Path, PathBuf};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    struct TestDirectory(PathBuf);
+
+    impl TestDirectory {
+        fn new(label: &str) -> Self {
+            let nonce = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("system clock must be after the Unix epoch")
+                .as_nanos();
+            let path = std::env::temp_dir().join(format!(
+                "new-eden-foundry-{label}-{}-{nonce}",
+                std::process::id()
+            ));
+            fs::create_dir(&path).expect("test directory must be created");
+            Self(path)
+        }
+
+        fn path(&self) -> &Path {
+            &self.0
+        }
+    }
+
+    impl Drop for TestDirectory {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn migrates_appdata_into_the_program_directory_once() {
+        let root = TestDirectory::new("storage-migration");
+        let executable_dir = root.path().join("program");
+        let previous_root = root.path().join("appdata");
+        fs::create_dir_all(executable_dir.join("data"))
+            .expect("old program data directory must be created");
+        fs::create_dir_all(previous_root.join("data/backups"))
+            .expect("previous app data directory must be created");
+        fs::write(executable_dir.join("data/foundry.sqlite3"), b"old-program")
+            .expect("old program database must be written");
+        fs::write(previous_root.join("data/foundry.sqlite3"), b"appdata-current")
+            .expect("current database must be written");
+        fs::write(previous_root.join("data/backups/backup.sqlite3"), b"backup")
+            .expect("backup must be written");
+
+        migrate_to_program_directory_storage(&executable_dir, &previous_root)
+            .expect("migration must succeed");
+
+        assert_eq!(
+            fs::read(executable_dir.join("data/foundry.sqlite3")).unwrap(),
+            b"appdata-current"
+        );
+        assert_eq!(
+            fs::read(executable_dir.join("data/backups/backup.sqlite3")).unwrap(),
+            b"backup"
+        );
+        assert_eq!(
+            fs::read(executable_dir.join("data-before-appdata-migration/foundry.sqlite3"))
+                .unwrap(),
+            b"old-program"
+        );
+        assert!(executable_dir.join("data/.program-storage-v1").is_file());
+        assert_eq!(
+            fs::read(previous_root.join("data/foundry.sqlite3")).unwrap(),
+            b"appdata-current"
+        );
+
+        fs::write(executable_dir.join("data/foundry.sqlite3"), b"program-newer")
+            .expect("program database must remain writable");
+        migrate_to_program_directory_storage(&executable_dir, &previous_root)
+            .expect("marked program storage must be reused");
+        assert_eq!(
+            fs::read(executable_dir.join("data/foundry.sqlite3")).unwrap(),
+            b"program-newer"
+        );
+    }
+
+    #[test]
+    fn initializes_new_installs_in_the_program_directory() {
+        let root = TestDirectory::new("storage-initialization");
+        let executable_dir = root.path().join("program");
+        let previous_root = root.path().join("appdata");
+        fs::create_dir(&executable_dir).expect("program directory must be created");
+        fs::create_dir(&previous_root).expect("previous root must be created");
+
+        migrate_to_program_directory_storage(&executable_dir, &previous_root)
+            .expect("program storage must initialize");
+
+        assert!(executable_dir.join("data/.program-storage-v1").is_file());
+        assert!(!previous_root.join("data").exists());
+    }
 
     fn valid_authorization_url() -> String {
         concat!(

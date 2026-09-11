@@ -300,8 +300,8 @@ const copy = {
       releaseError: "Release-Prüfung derzeit nicht möglich",
       checkNow: "Jetzt prüfen",
       openRelease: "Release öffnen",
-      portableHint: "Portable: App schließen und die neue ZIP vollständig in denselben Elternordner entpacken. Portable bedeutet entpackbarer App-Ordner, nicht Start im ZIP oder einzelne EXE. Der Ordner data bleibt erhalten.",
-      installedHint: "Installer: Neue Setup-Datei starten; die updatefesten App-Daten bleiben erhalten.",
+      portableHint: "Portable: Die ZIP vollständig an einen beliebigen beschreibbaren Ort entpacken – Desktop, USB-Stick oder eigener Ordner. Keine Installation und kein Installationsordner nötig. Für Updates den vorhandenen Ordner data sichern und übernehmen.",
+      installedHint: "Installer: App schließen und die neue Setup-Datei starten. Den Haken zum Löschen der Anwendungsdaten nicht setzen. Datenbank und Sicherungen liegen sichtbar im Unterordner data des Installationsordners.",
       signedBoundary: "Automatische Installation bleibt bis zur produktiv signierten Updatekette gesperrt.",
       saving: "Kanal wird gespeichert …",
       saveError: "Kanal konnte nicht gespeichert werden",
@@ -914,7 +914,7 @@ const copy = {
     },
     planned: "Geplant",
     previewOnly: "Noch ohne Live-Funktion",
-    footerVersion: "v0.0.5-preview.14",
+    footerVersion: "v0.0.5-preview.15",
   },
   en: {
     nav: {
@@ -1026,8 +1026,8 @@ const copy = {
       releaseError: "Release check is currently unavailable",
       checkNow: "Check now",
       openRelease: "Open release",
-      portableHint: "Portable: close the app and fully extract the new ZIP into the same parent folder. Portable means an extractable app folder, not running inside the ZIP or a single EXE. The data folder is retained.",
-      installedHint: "Installer: run the new setup file; update-stable app data is retained.",
+      portableHint: "Portable: fully extract the ZIP to any writable location – desktop, USB drive, or another folder. No installation or installer directory is required. For updates, back up and retain the existing data folder.",
+      installedHint: "Installer: close the app and run the new setup. Do not select the checkbox that deletes application data. The database and backups are visible in the data subfolder of the installation directory.",
       signedBoundary: "Automatic installation remains blocked until the production-signed update chain is available.",
       saving: "Saving channel …",
       saveError: "Channel could not be saved",
@@ -1640,7 +1640,7 @@ const copy = {
     },
     planned: "Planned",
     previewOnly: "No live function yet",
-    footerVersion: "v0.0.5-preview.14",
+    footerVersion: "v0.0.5-preview.15",
   },
 } as const;
 

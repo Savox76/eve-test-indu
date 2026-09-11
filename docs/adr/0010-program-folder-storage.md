@@ -1,6 +1,6 @@
 # ADR-010: Sichtbare Datenhaltung im Programmordner
 
-- **Status:** Teilweise ersetzt durch ADR-013
+- **Status:** Angenommen; zwischenzeitlich durch ADR-013 geändert, mit ADR-018 wiederhergestellt
 - **Datum:** 8. September 2026
 - **Entscheider:** Projektverantwortlicher
 - **Ersetzt:** den Speicherort aus ADR-003; die übrigen SQLite-Regeln bleiben bestehen

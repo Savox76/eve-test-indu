@@ -4,7 +4,8 @@ NEW EDEN FOUNDRY - PORTABLE WINDOWS VERSION
 DEUTSCH
 -------
 
-1. Das ZIP-Archiv vollständig in einen eigenen Ordner entpacken.
+1. Das ZIP-Archiv vollständig an einen beliebigen beschreibbaren Ort entpacken,
+   zum Beispiel auf den Desktop, einen USB-Stick oder in einen eigenen Ordner.
 2. "New Eden Foundry.exe" aus dem entpackten Ordner starten.
 3. Die Anwendung benötigt keine Installation und keine Administratorrechte.
 
@@ -34,12 +35,12 @@ Wichtig:
   signierte Pakete, Rollback und das Windows-Update-Gate bereitstehen.
 - Zum Umziehen oder Sichern die Anwendung zuerst schließen und anschließend den
   vollständigen Programmordner einschließlich "data" kopieren.
-- Portables Update: App vollständig schließen, den Ordner "data" zusätzlich
-  sichern und die neue ZIP in denselben übergeordneten Ordner entpacken. Bei
-  Rückfrage die ausgelieferten Programmdateien ersetzen. Das Archiv verwendet
-  dauerhaft "New Eden Foundry Portable" und enthält keinen "data"-Ordner;
-  deshalb bleibt der bestehende Datenordner erhalten. Danach die EXE starten
-  und die neue Versionsnummer sowie vorhandene Charaktere und Pläne prüfen.
+- Portables Update: App vollständig schließen und den Ordner "data" zusätzlich
+  sichern. Die neue ZIP entweder am bisherigen Ort entpacken und nur die
+  ausgelieferten Programmdateien ersetzen, oder in einen neuen beliebigen
+  Ordner entpacken und den bisherigen Ordner "data" dorthin kopieren. Ein
+  Installationsordner wird dafür niemals benötigt. Danach die EXE starten und
+  die neue Versionsnummer sowie vorhandene Charaktere und Pläne prüfen.
 - Beim einmaligen Wechsel von einer älteren, versionsabhängigen Ausgabe den
   bisherigen "data"-Ordner nach "New Eden Foundry Portable" kopieren.
 - Spätere EVE-Zugangsdaten bleiben im Windows-Anmeldespeicher und werden beim
@@ -55,7 +56,8 @@ auf der GitHub-Release-Seite.
 ENGLISH
 -------
 
-1. Extract the complete ZIP archive into its own folder.
+1. Fully extract the ZIP archive to any writable location, for example the
+   desktop, a USB drive, or another folder of your choice.
 2. Run "New Eden Foundry.exe" from the extracted folder.
 3. The application requires no installation and no administrator privileges.
 
@@ -83,12 +85,12 @@ Important:
   packages, rollback, and the Windows update gate are available.
 - To move or back up the app, close it first and then copy the complete program
   folder including "data".
-- Portable update: close the app completely, make an additional backup of the
-  "data" folder, and extract the new ZIP into the same parent folder. Confirm
-  replacement of the bundled program files if prompted. The archive always
-  uses "New Eden Foundry Portable" and contains no "data" folder, so existing
-  data remains in place. Start the EXE and verify the new version plus existing
-  characters and plans.
+- Portable update: close the app completely and make an additional backup of
+  the "data" folder. Either extract the new ZIP at the existing location and
+  replace only the bundled application files, or extract it to any new folder
+  and copy the previous "data" folder there. An installer directory is never
+  required. Start the EXE and verify the new version plus existing characters
+  and plans.
 - When moving once from an older version-specific package, copy its existing
   "data" directory into "New Eden Foundry Portable".
 - Future EVE credentials remain in Windows Credential Manager and do not travel

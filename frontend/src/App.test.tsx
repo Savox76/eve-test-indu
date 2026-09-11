@@ -573,7 +573,7 @@ describe("New Eden Foundry design preview", () => {
   it("credits Savoxmedia as the app creator next to the version", () => {
     render(<App />);
 
-    expect(screen.getByText("v0.0.5-preview.14")).toBeInTheDocument();
+    expect(screen.getByText("v0.0.5-preview.15")).toBeInTheDocument();
     expect(screen.getByText("Savoxmedia")).toBeInTheDocument();
     expect(screen.getByText("Erstellt von", { exact: false })).toBeInTheDocument();
     expect(screen.queryByText("Lokaler Betreiber")).not.toBeInTheDocument();
@@ -685,7 +685,8 @@ describe("New Eden Foundry design preview", () => {
     );
 
     expect(await screen.findByText("Version 0.0.5-preview.14 ist verfügbar")).toBeInTheDocument();
-    expect(screen.getByText(/Portable: App schließen/)).toBeInTheDocument();
+    expect(screen.getByText(/Portable: Die ZIP vollständig an einen beliebigen beschreibbaren Ort/))
+      .toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Release öffnen" }));
     expect(releaseDownloadsOpener).toHaveBeenCalledWith("0.0.5-preview.14");
   });
