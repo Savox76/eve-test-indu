@@ -635,6 +635,20 @@ select:focus-visible {
   font-size: var(--font-size-2xs);
 }
 
+.production-resolution .production-sequence-hint {
+  color: #aeb9b1;
+  background: rgba(103, 198, 188, 0.045);
+}
+
+.production-resolution li.production-step--goal {
+  border-top-color: rgba(103, 198, 188, 0.4);
+  background: rgba(103, 198, 188, 0.08);
+}
+
+.production-resolution li.production-step--goal strong {
+  color: #bfe4dc;
+}
+
 .production-resolution p {
   margin: 0;
   padding: 12px;
@@ -2762,6 +2776,29 @@ select:focus-visible {
   box-shadow: var(--shadow);
 }
 
+.asset-view-switch {
+  display: flex;
+  gap: 6px;
+  padding: 12px 16px 0;
+  background: rgba(255, 255, 255, 0.012);
+}
+
+.asset-view-switch button {
+  padding: 8px 13px;
+  border: 1px solid #343e36;
+  border-radius: 8px 8px 0 0;
+  color: #879288;
+  background: #151a16;
+  font-size: calc(9px * var(--font-scale));
+  cursor: pointer;
+}
+
+.asset-view-switch button.is-active {
+  border-color: rgba(103, 198, 188, 0.45);
+  color: #b9ddd5;
+  background: rgba(103, 198, 188, 0.1);
+}
+
 .asset-toolbar {
   display: grid;
   grid-template-columns: minmax(260px, 1fr) minmax(165px, 220px) minmax(165px, 220px) auto;
@@ -2955,6 +2992,31 @@ select:focus-visible {
   text-align: right !important;
 }
 
+.asset-summary-table th:nth-child(1) { width: 28%; }
+.asset-summary-table th:nth-child(2) { width: 13%; }
+.asset-summary-table th:nth-child(3) { width: 11%; }
+.asset-summary-table th:nth-child(4) { width: 27%; }
+.asset-summary-table th:nth-child(5) { width: 11%; }
+.asset-summary-table th:nth-child(6) { width: 10%; }
+
+.asset-summary-drilldown {
+  display: inline-flex;
+  margin-top: 7px;
+  padding: 4px 8px;
+  border: 1px solid rgba(103, 198, 188, 0.25);
+  border-radius: 6px;
+  color: #8fc8bc;
+  background: rgba(103, 198, 188, 0.06);
+  font-size: calc(8px * var(--font-scale));
+  cursor: pointer;
+}
+
+.asset-summary-drilldown:hover,
+.asset-summary-drilldown:focus-visible {
+  border-color: rgba(103, 198, 188, 0.55);
+  color: #c8e7df;
+}
+
 .blueprint-table { min-width: 1120px; }
 .blueprint-table th:nth-child(1) { width: 24%; }
 .blueprint-table th:nth-child(2) { width: 13%; }
@@ -2964,6 +3026,41 @@ select:focus-visible {
 .blueprint-table th:nth-child(6) { width: 7%; }
 .blueprint-table th:nth-child(7) { width: 20%; }
 .blueprint-table th:nth-child(8) { width: 12%; }
+
+.blueprint-snapshot-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--line-soft);
+  color: #7e8a81;
+  background: rgba(255, 255, 255, 0.01);
+  font-size: calc(8px * var(--font-scale));
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+
+.blueprint-snapshot-status > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border: 1px solid #303931;
+  border-radius: 7px;
+  color: #aab4ac;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.blueprint-snapshot-status b {
+  color: #dce3dd;
+  font-weight: 600;
+}
+
+.blueprint-snapshot-status small {
+  color: #748078;
+}
 
 .industry-jobs {
   margin-top: 18px;
@@ -3180,7 +3277,7 @@ select:focus-visible {
 }
 
 .industry-facility-toolbar {
-  grid-template-columns: minmax(260px, 1.5fr) repeat(3, minmax(135px, 0.75fr)) auto auto;
+  grid-template-columns: minmax(260px, 1.5fr) repeat(4, minmax(135px, 0.75fr)) auto auto;
 }
 
 .facility-used-toggle {

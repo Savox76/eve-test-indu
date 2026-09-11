@@ -9,13 +9,15 @@ Jeder Charakter erhält einen eigenen `character_industry_jobs`-Lauf. Erst ein v
 Die zweisprachige Ansicht unter **Blueprints & Jobs** zeigt:
 
 - Blueprint und Produkt mit lokal aufgelöstem Typnamen,
-- Charakter, Aktivität und ESI-Status,
+- Charakter, Aktivität und den klar getrennten ESI-Status **Läuft**, **Pausiert**, **Abholbereit**, **Abgeholt**, **Abgebrochen** oder **Zurückgesetzt**,
 - Läufe, erfolgreiche Läufe und Kosten,
-- Start, geplantes Ende und Abschluss,
+- Start, geplantes Ende und Abschluss; laufende beziehungsweise pausierte Jobs zeigen zusätzlich eine alle 30 Sekunden erneuerte Restzeit,
 - Anlage, Ausgabelocation und Datenalter; seit Paket 26 außerdem den belegten Anlagen-/Systemnamen und den zur Aktivität passenden Systemkostenindex,
 - die getrennten Blueprint-, Asset- und Quellnachweise.
 
 Suche, Besitzer-, Status-, Aktivitäts- und Korrelationsfilter sowie die Sortierung werden vor der Seitenteilung im lokalen Sidecar angewendet. Pro Anfrage werden höchstens 200 und in der Oberfläche standardmäßig 100 Jobs übertragen. Die angezeigte Aktiv-Zahl bezieht sich auf das gesamte gefilterte Ergebnis, nicht nur auf die sichtbare Seite.
+
+`ready` wird als **Abholbereit** und `delivered` als **Abgeholt** dargestellt. Beide Zustände werden deshalb nicht mehr mit einem laufenden Auftrag verwechselt. Erreicht ein noch als aktiv gespeicherter Job seine Endzeit, fordert die Zeile zur Aktualisierung auf, statt ohne neuen ESI-Nachweis selbstständig einen Statuswechsel zu behaupten.
 
 ## Korrelation statt unbelegter Kausalität
 

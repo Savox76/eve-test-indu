@@ -24,6 +24,7 @@ LOCATION_STATUSES: Final = (
     "pending",
 )
 SORT_FIELDS: Final = ("type", "owner", "location", "flag", "quantity", "age")
+SUMMARY_SORT_FIELDS: Final = ("type", "quantity", "positions", "owners", "locations", "age")
 SORT_DIRECTIONS: Final = ("asc", "desc")
 
 
@@ -33,6 +34,17 @@ class AssetViewError(RuntimeError):
 
 @dataclass(frozen=True, slots=True)
 class AssetQuery:
+    search: str = ""
+    owner_character_id: int | None = None
+    location_status: str | None = None
+    offset: int = 0
+    limit: int = DEFAULT_PAGE_SIZE
+    sort_by: str = "type"
+    sort_direction: str = "asc"
+
+
+@dataclass(frozen=True, slots=True)
+class AssetSummaryQuery:
     search: str = ""
     owner_character_id: int | None = None
     location_status: str | None = None
@@ -98,6 +110,38 @@ def validate_asset_query(
         limit,
         sort_by,
         sort_direction,
+    )
+
+
+def validate_asset_summary_query(
+    *,
+    search: Any = "",
+    owner_character_id: Any = None,
+    location_status: Any = None,
+    offset: Any = 0,
+    limit: Any = DEFAULT_PAGE_SIZE,
+    sort_by: Any = "type",
+    sort_direction: Any = "asc",
+) -> AssetSummaryQuery:
+    base = validate_asset_query(
+        search=search,
+        owner_character_id=owner_character_id,
+        location_status=location_status,
+        offset=offset,
+        limit=limit,
+        sort_by="type",
+        sort_direction=sort_direction,
+    )
+    if sort_by not in SUMMARY_SORT_FIELDS:
+        raise AssetViewError("asset_summary_query_invalid")
+    return AssetSummaryQuery(
+        base.search,
+        base.owner_character_id,
+        base.location_status,
+        base.offset,
+        base.limit,
+        sort_by,
+        base.sort_direction,
     )
 
 
@@ -382,6 +426,7 @@ def _build_rows(
                     "ownerCharacterId": character_id,
                     "ownerName": owner_name,
                     "locationFlag": str(asset["location_flag"]),
+                    "_sourceLocationId": int(asset["location_id"]),
                     "locationStatus": location_status,
                     "locationPath": path_label,
                     "locationNodes": path_nodes,
@@ -429,13 +474,142 @@ def query_assets(
     current_time = now or datetime.now(timezone.utc)
     rows, owners, observed_at, age_seconds = _build_rows(connection, query, current_time)
     total = len(rows)
-    page = rows[query.offset : query.offset + query.limit]
+    page = [
+        {key: value for key, value in row.items() if key != "_sourceLocationId"}
+        for row in rows[query.offset : query.offset + query.limit]
+    ]
     quantity_total = sum(int(row["quantity"]) for row in rows)
     if quantity_total > MAX_SAFE_INTEGER:
         raise AssetViewError("asset_quantity_overflow")
     return {
         "items": page,
         "total": total,
+        "quantityTotal": quantity_total,
+        "offset": query.offset,
+        "limit": query.limit,
+        "owners": owners,
+        "locationStatuses": list(LOCATION_STATUSES),
+        "observedAt": observed_at,
+        "ageSeconds": age_seconds,
+    }
+
+
+def query_asset_summary(
+    connection: sqlite3.Connection,
+    query: AssetSummaryQuery,
+    *,
+    now: datetime | None = None,
+) -> dict[str, object]:
+    query = validate_asset_summary_query(
+        search=query.search,
+        owner_character_id=query.owner_character_id,
+        location_status=query.location_status,
+        offset=query.offset,
+        limit=query.limit,
+        sort_by=query.sort_by,
+        sort_direction=query.sort_direction,
+    )
+    current_time = now or datetime.now(timezone.utc)
+    rows, owners, observed_at, age_seconds = _build_rows(
+        connection,
+        AssetQuery(
+            query.search,
+            query.owner_character_id,
+            query.location_status,
+            0,
+            MAX_PAGE_SIZE,
+            "type",
+            "asc",
+        ),
+        current_time,
+    )
+    grouped: dict[int, dict[str, Any]] = {}
+    for row in rows:
+        type_id = int(row["typeId"])
+        summary = grouped.setdefault(
+            type_id,
+            {
+                "typeId": type_id,
+                "typeName": str(row["typeName"]),
+                "quantityTotal": 0,
+                "positionCount": 0,
+                "owners": {},
+                "locations": set(),
+                "locationStatuses": set(),
+                "ageSeconds": 0,
+            },
+        )
+        quantity = int(row["quantity"])
+        summary["quantityTotal"] = int(summary["quantityTotal"]) + quantity
+        summary["positionCount"] = int(summary["positionCount"]) + 1
+        if int(summary["quantityTotal"]) > MAX_SAFE_INTEGER:
+            raise AssetViewError("asset_quantity_overflow")
+        owner_id = int(row["ownerCharacterId"])
+        owner_rows = summary["owners"]
+        owner = owner_rows.setdefault(
+            owner_id,
+            {
+                "characterId": owner_id,
+                "name": str(row["ownerName"]),
+                "quantity": 0,
+                "positionCount": 0,
+            },
+        )
+        owner["quantity"] += quantity
+        owner["positionCount"] += 1
+        if owner["quantity"] > MAX_SAFE_INTEGER:
+            raise AssetViewError("asset_quantity_overflow")
+        summary["locations"].add(
+            (
+                owner_id,
+                int(row["_sourceLocationId"]),
+                str(row["locationFlag"]),
+            )
+        )
+        summary["locationStatuses"].add(str(row["locationStatus"]))
+        summary["ageSeconds"] = max(int(summary["ageSeconds"]), int(row["ageSeconds"]))
+
+    summaries = []
+    for summary in grouped.values():
+        owner_rows = sorted(
+            summary.pop("owners").values(),
+            key=lambda owner: (str(owner["name"]).casefold(), int(owner["characterId"])),
+        )
+        locations = summary.pop("locations")
+        statuses = summary.pop("locationStatuses")
+        summaries.append(
+            {
+                **summary,
+                "ownerCount": len(owner_rows),
+                "locationCount": len(locations),
+                "owners": owner_rows,
+                "locationStatuses": [
+                    status for status in LOCATION_STATUSES if status in statuses
+                ],
+            }
+        )
+    getters = {
+        "type": lambda row: str(row["typeName"]).casefold(),
+        "quantity": lambda row: int(row["quantityTotal"]),
+        "positions": lambda row: int(row["positionCount"]),
+        "owners": lambda row: int(row["ownerCount"]),
+        "locations": lambda row: int(row["locationCount"]),
+        "age": lambda row: int(row["ageSeconds"]),
+    }
+    summaries.sort(
+        key=lambda row: (getters[query.sort_by](row), int(row["typeId"])),
+        reverse=query.sort_direction == "desc",
+    )
+    total = len(summaries)
+    page = summaries[query.offset : query.offset + query.limit]
+    quantity_total = sum(int(row["quantityTotal"]) for row in summaries)
+    position_total = sum(int(row["positionCount"]) for row in summaries)
+    if quantity_total > MAX_SAFE_INTEGER or position_total > MAX_SAFE_INTEGER:
+        raise AssetViewError("asset_quantity_overflow")
+    return {
+        "items": page,
+        "total": total,
+        "positionTotal": position_total,
         "quantityTotal": quantity_total,
         "offset": query.offset,
         "limit": query.limit,

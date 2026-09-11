@@ -26,8 +26,10 @@ from .asset_delta import (
 from .asset_view import (
     AssetViewError,
     export_assets_csv,
+    query_asset_summary,
     query_assets,
     validate_asset_query,
+    validate_asset_summary_query,
 )
 from .asset_sync import AssetSyncError, sync_character_assets
 from .blueprint_sync import BlueprintSyncError, sync_character_blueprints
@@ -516,6 +518,48 @@ def create_application(
             code = str(error)
             return JSONResponse(
                 status_code=422 if code == "asset_query_invalid" else 500,
+                content={"detail": code},
+            )
+        return JSONResponse(content=result)
+
+    @app.post("/assets/summary/query")
+    async def post_asset_summary_query(request: Request) -> JSONResponse:
+        try:
+            payload = await request.json()
+        except Exception:
+            return JSONResponse(
+                status_code=422, content={"detail": "asset_summary_query_invalid"}
+            )
+        if not isinstance(payload, dict) or set(payload) != {
+            "search",
+            "ownerCharacterId",
+            "locationStatus",
+            "offset",
+            "limit",
+            "sortBy",
+            "sortDirection",
+        }:
+            return JSONResponse(
+                status_code=422, content={"detail": "asset_summary_query_invalid"}
+            )
+        try:
+            summary_query = validate_asset_summary_query(
+                search=payload["search"],
+                owner_character_id=payload["ownerCharacterId"],
+                location_status=payload["locationStatus"],
+                offset=payload["offset"],
+                limit=payload["limit"],
+                sort_by=payload["sortBy"],
+                sort_direction=payload["sortDirection"],
+            )
+            with closing(connect_database(storage.database_path)) as connection:
+                result = query_asset_summary(connection, summary_query)
+        except AssetViewError as error:
+            code = str(error)
+            return JSONResponse(
+                status_code=422
+                if code in {"asset_query_invalid", "asset_summary_query_invalid"}
+                else 500,
                 content={"detail": code},
             )
         return JSONResponse(content=result)
@@ -1516,3 +1560,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+    query_asset_summary,

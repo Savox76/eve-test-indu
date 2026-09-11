@@ -18,6 +18,7 @@ from new_eden_foundry_backend.industry_facility_view import (
 from new_eden_foundry_backend.industry_job_sync import sync_character_industry_jobs
 from new_eden_foundry_backend.industry_job_view import query_industry_jobs
 from new_eden_foundry_backend.location_resolution import STRUCTURE_SCOPE
+from new_eden_foundry_backend.sde import import_minimal_sde
 
 
 CHARACTER_ID = 90_000_001
@@ -147,6 +148,18 @@ class IndustryFacilityTests(unittest.TestCase):
             "INSERT INTO characters(character_id,name) VALUES(?,?)",
             (CHARACTER_ID, "Industry Pilot"),
         )
+        import_minimal_sde(
+            self.db,
+            build_number="facility-security-1",
+            groups=[{"group_id": 1, "name": "Synthetic"}],
+            types=[{"type_id": 1, "group_id": 1, "name": "Synthetic Type"}],
+            locations=[{
+                "location_id": SYSTEM_ID,
+                "name": "Synthetic System",
+                "kind": "solar_system",
+                "security_status": 0.9,
+            }],
+        )
         self.db.commit()
 
     def tearDown(self):
@@ -188,6 +201,7 @@ class IndustryFacilityTests(unittest.TestCase):
                 "search": "engineering",
                 "kind": "structure",
                 "access": "available",
+                "securityClass": "highsec",
                 "activity": "manufacturing",
                 "usedOnly": True,
                 "offset": 0,
@@ -202,6 +216,7 @@ class IndustryFacilityTests(unittest.TestCase):
         self.assertEqual(record["facilityName"], "Example Engineering Complex")
         self.assertEqual(record["solarSystemName"], f"Name {SYSTEM_ID}")
         self.assertEqual(record["activityCostIndex"], 0.0125)
+        self.assertEqual((record["securityClass"], record["securityStatus"]), ("highsec", 0.9))
         self.assertEqual(record["usedByCharacterIds"], [CHARACTER_ID])
         self.assertEqual((record["jobCount"], record["activeJobs"]), (1, 1))
         jobs = query_industry_jobs(
@@ -229,6 +244,7 @@ class IndustryFacilityTests(unittest.TestCase):
             "search": "",
             "kind": "structure",
             "access": "scope-missing",
+            "securityClass": None,
             "activity": "manufacturing",
             "usedOnly": True,
             "offset": 0,

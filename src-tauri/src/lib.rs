@@ -40,6 +40,14 @@ const ASSET_LOCATION_STATUSES: [&str; 5] =
     ["resolved", "restricted", "unresolved", "cycle", "pending"];
 const ASSET_DELTA_CHANGE_TYPES: [&str; 4] = ["added", "removed", "quantity", "location"];
 const ASSET_SORT_FIELDS: [&str; 6] = ["type", "owner", "location", "flag", "quantity", "age"];
+const ASSET_SUMMARY_SORT_FIELDS: [&str; 6] = [
+    "type",
+    "quantity",
+    "positions",
+    "owners",
+    "locations",
+    "age",
+];
 const BLUEPRINT_SORT_FIELDS: [&str; 7] = ["type", "owner", "kind", "me", "te", "runs", "age"];
 const INDUSTRY_JOB_SORT_FIELDS: [&str; 10] = [
     "start",
@@ -75,6 +83,7 @@ const INDUSTRY_FACILITY_ACCESS_STATES: [&str; 5] = [
     "scope-missing",
     "unknown",
 ];
+const INDUSTRY_SECURITY_CLASSES: [&str; 4] = ["highsec", "lowsec", "nullsec", "unknown"];
 const INDUSTRY_COST_ACTIVITIES: [&str; 6] = [
     "manufacturing",
     "reaction",
@@ -327,6 +336,44 @@ struct AssetQueryResponse {
 
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
+struct AssetSummaryOwner {
+    character_id: u64,
+    name: String,
+    quantity: u64,
+    position_count: u64,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AssetSummaryRecord {
+    type_id: u64,
+    type_name: String,
+    quantity_total: u64,
+    position_count: u64,
+    owner_count: u64,
+    location_count: u64,
+    owners: Vec<AssetSummaryOwner>,
+    location_statuses: Vec<String>,
+    age_seconds: u64,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AssetSummaryQueryResponse {
+    items: Vec<AssetSummaryRecord>,
+    total: u64,
+    position_total: u64,
+    quantity_total: u64,
+    offset: u64,
+    limit: u64,
+    owners: Vec<AssetOwner>,
+    location_statuses: Vec<String>,
+    observed_at: Option<String>,
+    age_seconds: Option<u64>,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct AssetExportResponse {
     filename: String,
     relative_path: String,
@@ -382,6 +429,18 @@ struct BlueprintQueryResponse {
     offset: u64,
     limit: u64,
     owners: Vec<AssetOwner>,
+    snapshots: Vec<BlueprintSnapshotStatus>,
+    observed_at: Option<String>,
+    age_seconds: Option<u64>,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BlueprintSnapshotStatus {
+    character_id: u64,
+    name: String,
+    state: String,
+    item_count: u64,
     observed_at: Option<String>,
     age_seconds: Option<u64>,
 }
@@ -518,6 +577,8 @@ struct IndustryFacilityRecord {
     region_name: Option<String>,
     solar_system_id: Option<u64>,
     solar_system_name: Option<String>,
+    security_status: Option<f64>,
+    security_class: String,
     tax: Option<f64>,
     activity_cost_index: Option<f64>,
     used_by_character_ids: Vec<u64>,
@@ -546,6 +607,7 @@ struct IndustryFacilityQueryResponse {
     activities: Vec<String>,
     kinds: Vec<String>,
     access_states: Vec<String>,
+    security_classes: Vec<String>,
     observed_at: Option<String>,
     age_seconds: Option<u64>,
 }
@@ -1312,6 +1374,96 @@ fn asset_query_response_is_valid(response: &AssetQueryResponse) -> bool {
         })
 }
 
+fn asset_summary_query_response_is_valid(response: &AssetSummaryQueryResponse) -> bool {
+    let owner_ids = response
+        .owners
+        .iter()
+        .map(|owner| owner.character_id)
+        .collect::<HashSet<_>>();
+    let type_ids = response
+        .items
+        .iter()
+        .map(|item| item.type_id)
+        .collect::<HashSet<_>>();
+    let statuses = response
+        .location_statuses
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>();
+    response.limit > 0
+        && response.limit <= MAX_ASSET_PAGE_SIZE
+        && response.total <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && response.position_total <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && response.quantity_total <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && response.offset <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && response.items.len() as u64 <= response.limit
+        && response.items.len() as u64 <= response.total
+        && type_ids.len() == response.items.len()
+        && owner_ids.len() == response.owners.len()
+        && statuses.as_slice() == ASSET_LOCATION_STATUSES.as_slice()
+        && response.observed_at.is_some() == response.age_seconds.is_some()
+        && response
+            .observed_at
+            .as_ref()
+            .is_none_or(|value| asset_text_is_valid(value, 64))
+        && response.owners.iter().all(|owner| {
+            owner.character_id > 0
+                && owner.character_id <= JAVASCRIPT_MAX_SAFE_INTEGER
+                && asset_text_is_valid(&owner.name, 100)
+        })
+        && response.items.iter().all(|item| {
+            let item_owner_ids = item
+                .owners
+                .iter()
+                .map(|owner| owner.character_id)
+                .collect::<HashSet<_>>();
+            let item_statuses = item
+                .location_statuses
+                .iter()
+                .map(String::as_str)
+                .collect::<HashSet<_>>();
+            let owner_quantity = item
+                .owners
+                .iter()
+                .try_fold(0_u64, |sum, owner| sum.checked_add(owner.quantity));
+            let owner_positions = item
+                .owners
+                .iter()
+                .try_fold(0_u64, |sum, owner| sum.checked_add(owner.position_count));
+            item.type_id > 0
+                && item.type_id <= JAVASCRIPT_MAX_SAFE_INTEGER
+                && asset_text_is_valid(&item.type_name, 220)
+                && item.quantity_total <= JAVASCRIPT_MAX_SAFE_INTEGER
+                && item.position_count > 0
+                && item.position_count <= response.position_total
+                && item.owner_count == item.owners.len() as u64
+                && item.owner_count > 0
+                && item.location_count > 0
+                && item.location_count <= item.position_count
+                && item_owner_ids.len() == item.owners.len()
+                && item_statuses.len() == item.location_statuses.len()
+                && item
+                    .location_statuses
+                    .iter()
+                    .all(|status| ASSET_LOCATION_STATUSES.contains(&status.as_str()))
+                && !item.location_statuses.is_empty()
+                && item.owners.iter().all(|owner| {
+                    owner.character_id > 0
+                        && owner.character_id <= JAVASCRIPT_MAX_SAFE_INTEGER
+                        && response.owners.iter().any(|candidate| {
+                            candidate.character_id == owner.character_id
+                                && candidate.name == owner.name
+                        })
+                        && asset_text_is_valid(&owner.name, 100)
+                        && owner.quantity <= JAVASCRIPT_MAX_SAFE_INTEGER
+                        && owner.position_count > 0
+                        && owner.position_count <= item.position_count
+                })
+                && owner_quantity == Some(item.quantity_total)
+                && owner_positions == Some(item.position_count)
+        })
+}
+
 fn blueprint_query_response_is_valid(response: &BlueprintQueryResponse) -> bool {
     let owner_ids = response
         .owners
@@ -1331,6 +1483,14 @@ fn blueprint_query_response_is_valid(response: &BlueprintQueryResponse) -> bool 
         && response.items.len() as u64 <= response.total
         && item_ids.len() == response.items.len()
         && owner_ids.len() == response.owners.len()
+        && response.snapshots.len() == response.owners.len()
+        && response
+            .snapshots
+            .iter()
+            .map(|snapshot| snapshot.character_id)
+            .collect::<HashSet<_>>()
+            .len()
+            == response.snapshots.len()
         && response.observed_at.is_some() == response.age_seconds.is_some()
         && response
             .observed_at
@@ -1340,6 +1500,24 @@ fn blueprint_query_response_is_valid(response: &BlueprintQueryResponse) -> bool 
             owner.character_id > 0
                 && owner.character_id <= JAVASCRIPT_MAX_SAFE_INTEGER
                 && asset_text_is_valid(&owner.name, 100)
+        })
+        && response.snapshots.iter().all(|snapshot| {
+            owner_ids.contains(&snapshot.character_id)
+                && response.owners.iter().any(|owner| {
+                    owner.character_id == snapshot.character_id && owner.name == snapshot.name
+                })
+                && matches!(snapshot.state.as_str(), "available" | "missing")
+                && snapshot.item_count <= JAVASCRIPT_MAX_SAFE_INTEGER
+                && asset_text_is_valid(&snapshot.name, 100)
+                && snapshot.observed_at.is_some() == snapshot.age_seconds.is_some()
+                && ((snapshot.state == "available" && snapshot.observed_at.is_some())
+                    || (snapshot.state == "missing"
+                        && snapshot.item_count == 0
+                        && snapshot.observed_at.is_none()))
+                && snapshot
+                    .observed_at
+                    .as_ref()
+                    .is_none_or(|value| asset_text_is_valid(value, 64))
         })
         && response.items.iter().all(|item| {
             item.item_id > 0
@@ -1652,6 +1830,11 @@ fn industry_facility_record_is_valid(item: &IndustryFacilityRecord) -> bool {
         && optional_id_name_is_valid(item.region_id, &item.region_name)
         && optional_id_name_is_valid(item.solar_system_id, &item.solar_system_name)
         && item
+            .security_status
+            .is_none_or(|value| value.is_finite() && (-1.0..=1.0).contains(&value))
+        && INDUSTRY_SECURITY_CLASSES.contains(&item.security_class.as_str())
+        && (item.security_status.is_none() == (item.security_class == "unknown"))
+        && item
             .tax
             .is_none_or(|value| value.is_finite() && (0.0..=1.0).contains(&value))
         && item
@@ -1747,6 +1930,12 @@ fn industry_facility_query_response_is_valid(response: &IndustryFacilityQueryRes
             .map(String::as_str)
             .collect::<Vec<_>>()
             == INDUSTRY_FACILITY_ACCESS_STATES
+        && response
+            .security_classes
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>()
+            == INDUSTRY_SECURITY_CLASSES
         && response.observed_at.is_some() == response.age_seconds.is_some()
         && response
             .observed_at
@@ -3908,6 +4097,7 @@ fn query_industry_facilities(
     search: String,
     kind: Option<String>,
     access: Option<String>,
+    security_class: Option<String>,
     activity: String,
     used_only: bool,
     offset: u64,
@@ -3924,6 +4114,9 @@ fn query_industry_facilities(
         || access
             .as_deref()
             .is_some_and(|value| !INDUSTRY_FACILITY_ACCESS_STATES.contains(&value))
+        || security_class
+            .as_deref()
+            .is_some_and(|value| !INDUSTRY_SECURITY_CLASSES.contains(&value))
         || !INDUSTRY_COST_ACTIVITIES.contains(&activity.as_str())
         || limit == 0
         || limit > MAX_ASSET_PAGE_SIZE
@@ -3938,6 +4131,7 @@ fn query_industry_facilities(
         "search": search,
         "kind": kind,
         "access": access,
+        "securityClass": security_class,
         "activity": activity,
         "usedOnly": used_only,
         "offset": offset,
@@ -4540,6 +4734,63 @@ fn query_assets(
 }
 
 #[tauri::command]
+fn query_asset_summary(
+    search: String,
+    owner_character_id: Option<u64>,
+    location_status: Option<String>,
+    offset: u64,
+    limit: u64,
+    sort_by: String,
+    sort_direction: String,
+    state: State<'_, RuntimeState>,
+) -> Result<String, String> {
+    if search.chars().count() > MAX_ASSET_SEARCH_CHARACTERS
+        || search.trim() != search
+        || owner_character_id == Some(0)
+        || owner_character_id.is_some_and(|value| value > JAVASCRIPT_MAX_SAFE_INTEGER)
+        || location_status
+            .as_deref()
+            .is_some_and(|status| !ASSET_LOCATION_STATUSES.contains(&status))
+        || limit == 0
+        || limit > MAX_ASSET_PAGE_SIZE
+        || offset > JAVASCRIPT_MAX_SAFE_INTEGER
+        || !ASSET_SUMMARY_SORT_FIELDS.contains(&sort_by.as_str())
+        || !SORT_DIRECTIONS.contains(&sort_direction.as_str())
+    {
+        return Err("asset-summary-query-invalid".to_owned());
+    }
+    refresh_sidecar_status(&state);
+    let body = serde_json::json!({
+        "search": search,
+        "ownerCharacterId": owner_character_id,
+        "locationStatus": location_status,
+        "offset": offset,
+        "limit": limit,
+        "sortBy": sort_by,
+        "sortDirection": sort_direction,
+    })
+    .to_string();
+    let response = {
+        let sidecar = state
+            .sidecar
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let process = sidecar
+            .as_ref()
+            .ok_or_else(|| "sidecar-unavailable".to_owned())?;
+        sidecar_json_request(process, "POST", "/assets/summary/query", &body)
+            .map_err(str::to_owned)?
+    };
+    let page: AssetSummaryQueryResponse =
+        serde_json::from_str(&response).map_err(|_| "sidecar-response-invalid".to_owned())?;
+    if !asset_summary_query_response_is_valid(&page) || page.offset != offset || page.limit != limit
+    {
+        return Err("sidecar-response-invalid".to_owned());
+    }
+    serde_json::to_string(&page).map_err(|_| "status-serialization-failed".to_owned())
+}
+
+#[tauri::command]
 fn export_assets_csv(
     search: String,
     owner_character_id: Option<u64>,
@@ -4940,6 +5191,7 @@ pub fn run() {
             list_account_groups,
             sync_assets,
             query_assets,
+            query_asset_summary,
             sync_blueprints,
             query_blueprints,
             sync_industry_jobs,
@@ -5374,6 +5626,44 @@ mod tests {
     }
 
     #[test]
+    fn validates_bounded_grouped_asset_summary() {
+        let page = AssetSummaryQueryResponse {
+            items: vec![AssetSummaryRecord {
+                type_id: 98_001,
+                type_name: "Synthetic Component".to_owned(),
+                quantity_total: 34,
+                position_count: 2,
+                owner_count: 1,
+                location_count: 2,
+                owners: vec![AssetSummaryOwner {
+                    character_id: 90_888_001,
+                    name: "Builder".to_owned(),
+                    quantity: 34,
+                    position_count: 2,
+                }],
+                location_statuses: vec!["resolved".to_owned()],
+                age_seconds: 3_600,
+            }],
+            total: 1,
+            position_total: 2,
+            quantity_total: 34,
+            offset: 0,
+            limit: 100,
+            owners: vec![AssetOwner {
+                character_id: 90_888_001,
+                name: "Builder".to_owned(),
+            }],
+            location_statuses: ASSET_LOCATION_STATUSES.map(str::to_owned).to_vec(),
+            observed_at: Some("2026-09-10T10:00:00Z".to_owned()),
+            age_seconds: Some(3_600),
+        };
+        assert!(asset_summary_query_response_is_valid(&page));
+
+        let invalid = AssetSummaryQueryResponse { limit: 201, ..page };
+        assert!(!asset_summary_query_response_is_valid(&invalid));
+    }
+
+    #[test]
     fn validates_bounded_asset_delta_history_and_correlation_evidence() {
         let page = AssetDeltaQueryResponse {
             items: vec![AssetDeltaRecord {
@@ -5552,6 +5842,8 @@ mod tests {
                 region_name: Some("Synthetic Region".to_owned()),
                 solar_system_id: Some(30_000_001),
                 solar_system_name: Some("Synthetic System".to_owned()),
+                security_status: Some(0.9),
+                security_class: "highsec".to_owned(),
                 tax: None,
                 activity_cost_index: Some(0.0125),
                 used_by_character_ids: vec![90_888_001],
@@ -5575,6 +5867,7 @@ mod tests {
             activities: INDUSTRY_COST_ACTIVITIES.map(str::to_owned).to_vec(),
             kinds: INDUSTRY_FACILITY_KINDS.map(str::to_owned).to_vec(),
             access_states: INDUSTRY_FACILITY_ACCESS_STATES.map(str::to_owned).to_vec(),
+            security_classes: INDUSTRY_SECURITY_CLASSES.map(str::to_owned).to_vec(),
             observed_at: Some("2026-09-11T00:00:00Z".to_owned()),
             age_seconds: Some(60),
         };

@@ -140,7 +140,7 @@ class ProductionPlanningTests(unittest.TestCase):
         self.assertEqual(
             [(step["productTypeId"], step["requiredQuantity"], step["runs"], step["producedQuantity"])
              for step in record["steps"]],
-            [(101, 3, 2, 4), (111, 6, 3, 6), (121, 23, 3, 30)],
+            [(121, 23, 3, 30), (111, 6, 3, 6), (101, 3, 2, 4)],
         )
         self.assertEqual(record["grossMaterials"], [
             {"typeId": 900, "typeName": "Synthetic Mineral", "quantity": 27}

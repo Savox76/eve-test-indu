@@ -11,6 +11,7 @@ import {
   exportAssetsCsv,
   loadAccountGroups,
   loadAssetDeltas,
+  loadAssetSummary,
   loadAssets,
   loadBlueprints,
   loadCharacterSkills,
@@ -384,6 +385,45 @@ describe("desktop runtime status", () => {
     expect(invoke).toHaveBeenCalledWith("query_assets", query);
   });
 
+  it("loads and validates a grouped asset summary", async () => {
+    const query = {
+      search: "component",
+      ownerCharacterId: null,
+      locationStatus: null,
+      offset: 0,
+      limit: 100,
+      sortBy: "quantity" as const,
+      sortDirection: "desc" as const,
+    };
+    const page = {
+      items: [{
+        typeId: 98_001,
+        typeName: "Synthetic Component",
+        quantityTotal: 34,
+        positionCount: 2,
+        ownerCount: 1,
+        locationCount: 2,
+        owners: [{ characterId: 90_888_001, name: "Builder", quantity: 34, positionCount: 2 }],
+        locationStatuses: ["resolved"],
+        ageSeconds: 3_600,
+      }],
+      total: 1,
+      positionTotal: 2,
+      quantityTotal: 34,
+      offset: 0,
+      limit: 100,
+      owners: [{ characterId: 90_888_001, name: "Builder" }],
+      locationStatuses: ["resolved", "restricted", "unresolved", "cycle", "pending"],
+      observedAt: "2026-09-10T10:00:00Z",
+      ageSeconds: 3_600,
+    };
+    const invoke = vi.fn<RuntimeAdapter["invoke"]>().mockResolvedValue(JSON.stringify(page));
+
+    await expect(loadAssetSummary(query, { isAvailable: () => true, invoke }))
+      .resolves.toEqual(page);
+    expect(invoke).toHaveBeenCalledWith("query_asset_summary", query);
+  });
+
   it("rejects oversized or internally inconsistent asset pages", async () => {
     const invoke = vi.fn<RuntimeAdapter["invoke"]>().mockResolvedValue(JSON.stringify({
       items: [],
@@ -686,6 +726,8 @@ describe("desktop runtime status", () => {
         runs: -1, locationId: 60_003_760, locationFlag: "Hangar",
         observedAt: "2026-09-10T00:00:00Z", ageSeconds: 1 }],
       total: 1, offset: 0, limit: 100, owners: [{ characterId: 7, name: "Pilot" }],
+      snapshots: [{ characterId: 7, name: "Pilot", state: "available", itemCount: 1,
+        observedAt: "2026-09-10T00:00:00Z", ageSeconds: 1 }],
       observedAt: "2026-09-10T00:00:00Z", ageSeconds: 1,
     };
     const invoke = vi.fn<RuntimeAdapter["invoke"]>().mockResolvedValueOnce(JSON.stringify(page));
@@ -744,6 +786,7 @@ describe("desktop runtime status", () => {
         access: "public", typeId: 1_928, typeName: "Amarr Station", ownerId: 1_000_001,
         ownerName: "Caldari Navy", regionId: 10_000_002, regionName: "The Forge",
         solarSystemId: 30_000_142, solarSystemName: "Jita", tax: null,
+        securityStatus: 0.9, securityClass: "highsec",
         activityCostIndex: 0.0125, usedByCharacterIds: [7], observedActivityIds: [1],
         jobCount: 1, activeJobs: 0, errorCode: null, snapshotId: 10, syncRunId: 11,
         observedAt: "2026-09-11T00:00:00Z", ageSeconds: 60,
@@ -754,10 +797,11 @@ describe("desktop runtime status", () => {
         "researching_material_efficiency", "researching_time_efficiency"],
       kinds: ["station", "structure", "unknown"],
       accessStates: ["public", "available", "restricted", "scope-missing", "unknown"],
+      securityClasses: ["highsec", "lowsec", "nullsec", "unknown"],
       observedAt: "2026-09-11T00:00:00Z", ageSeconds: 60,
     };
     const invoke = vi.fn<RuntimeAdapter["invoke"]>().mockResolvedValueOnce(JSON.stringify(page));
-    const query = { search: "Jita", kind: null, access: null, activity: "manufacturing",
+    const query = { search: "Jita", kind: null, access: null, securityClass: null, activity: "manufacturing",
       usedOnly: true, offset: 0, limit: 100, sortBy: "cost", sortDirection: "asc" } as const;
     await expect(loadIndustryFacilities(query, { isAvailable: () => true, invoke }))
       .resolves.toEqual(page);

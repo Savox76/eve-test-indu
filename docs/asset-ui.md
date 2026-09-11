@@ -4,9 +4,13 @@ Paket 20 bindet die Asset-Ansicht an die letzten vollständig abgeschlossenen, c
 
 Beim Programmstart und nach einer neuen Charakterverbindung startet die App den echten ESI-Lauf für alle aktivierten Charaktere automatisch im Hintergrund. Mit **Assets aktualisieren** lässt er sich zusätzlich manuell anstoßen. Nach Abschluss werden Bestand und Änderungsverlauf neu geladen. Teilfehler werden sichtbar gemeldet, während erfolgreiche Charakterläufe erhalten bleiben.
 
-## Sichtbares Lesemodell
+## Bestandsübersicht und Einzelpositionen
 
-Jede Position zeigt:
+Die Asset-Seite öffnet standardmäßig eine nach Typ gruppierte Bestandsübersicht. Sie zeigt je Gegenstand die Gesamtmenge, Zahl der EVE-Positionen, Verteilung auf Charaktere, Zahl der tatsächlichen Asset-Orte, vorkommende Standortzustände und das älteste Datenalter. **Einzelpositionen anzeigen** übernimmt den Typnamen als Suche und wechselt gezielt in die Detailansicht.
+
+Suche sowie Besitzer- und Standortstatusfilter gelten in beiden Ansichten. Erst werden die passenden Positionen gefiltert, anschließend wird die Bestandsübersicht gruppiert. Damit beantworten Summen und Verteilungen immer genau die aktuell gewählte Suche.
+
+Jede Einzelposition zeigt:
 
 - den lokal gespeicherten SDE- oder ESI-Typnamen sowie Type- und Item-ID,
 - lokalen Alias beziehungsweise Charakternamen als Besitzer,
@@ -18,7 +22,7 @@ Ein Standort-Snapshot wird nur verwendet, wenn seine `assetSnapshotId` exakt dem
 
 ## Suche und Filter
 
-Die serverseitige Suche berücksichtigt Typname, Besitzer, Standortpfad, Hangar/Bereich, Type-ID und Item-ID. Besitzer- und Standortstatusfilter lassen sich kombinieren. Jede sichtbare Spalte kann auf- oder absteigend sortiert werden; die Sortierung erfolgt vor der Seitenteilung. Suche, Filterung, Summenbildung und stabile Sortierung erfolgen im lokalen Python-Sidecar; die React-Oberfläche erhält nie den vollständigen Snapshot.
+Die serverseitige Suche berücksichtigt Typname, Besitzer, Standortpfad, Hangar/Bereich, Type-ID und Item-ID. Besitzer- und Standortstatusfilter lassen sich kombinieren. Sichtbare Spalten können auf- oder absteigend sortiert werden; die Sortierung erfolgt vor der Seitenteilung. Suche, Filterung, Gruppierung, Summenbildung und stabile Sortierung erfolgen im lokalen Python-Sidecar; die React-Oberfläche erhält nie den vollständigen Snapshot.
 
 ## 100.000-Zeilen-Vertrag
 

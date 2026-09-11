@@ -71,6 +71,7 @@ import {
   loadEveSsoStatus,
   loadDesktopRuntimeStatus,
   loadAssets,
+  loadAssetSummary,
   loadAssetDeltas,
   loadBlueprints,
   loadCharacterSkills,
@@ -101,6 +102,9 @@ import {
   type AssetDeltaQuery,
   type AssetLocationStatus,
   type AssetPage,
+  type AssetSummaryPage,
+  type AssetSummaryQuery,
+  type AssetSummarySortField,
   type AssetSortField,
   type AssetSyncResult,
   type AssetQuery,
@@ -123,6 +127,7 @@ import {
   type IndustryFacilityQuery,
   type IndustryFacilitySortField,
   type IndustryFacilitySyncResult,
+  type IndustrySecurityClass,
   type IndustryJobPage,
   type IndustryJobQuery,
   type IndustryJobSortField,
@@ -496,7 +501,15 @@ const copy = {
     localOnly: "Lokal verarbeitet",
     assets: {
       kicker: "LOKALER ASSET-BESTAND",
-      subtitle: "Vollständige Snapshots durchsuchen, nach Besitzer und Standortstatus filtern und als CSV sichern.",
+      subtitle: "Bestände nach Gegenstand zusammenfassen oder bis zur einzelnen Position und ihrem Standort auflösen.",
+      view: "Darstellung",
+      summaryView: "Bestandsübersicht",
+      positionsView: "Einzelpositionen",
+      itemTypes: "Gegenstände",
+      ownersCount: "Besitzer",
+      locationsCount: "Standorte",
+      showPositions: "Einzelpositionen anzeigen",
+      distribution: "Verteilung",
       search: "Typ, Standort, Besitzer oder ID suchen",
       owner: "Besitzer",
       allOwners: "Alle Besitzer",
@@ -567,7 +580,7 @@ const copy = {
     },
     blueprints: {
       kicker: "LOKALER BLUEPRINT-BESTAND",
-      subtitle: "BPOs und BPCs aller aktiven Charaktere mit ME, TE und verbleibenden Läufen.",
+      subtitle: "Persönliche BPOs und BPCs aller aktiven Charaktere mit ME, TE und verbleibenden Läufen. Corporation-Blueprints sind nicht enthalten.",
       search: "Blueprint, Besitzer, Ort oder ID suchen",
       owner: "Besitzer",
       allOwners: "Alle Besitzer",
@@ -592,13 +605,16 @@ const copy = {
       syncError: "Blueprint-Sync konnte nicht gestartet werden.",
       loading: "Blueprint-Bestand wird geladen …",
       unavailable: "Die echte Blueprint-Ansicht ist in der Windows-App verfügbar.",
-      noData: "Noch kein vollständiger Blueprint-Snapshot vorhanden.",
+      noData: "Noch kein persönlicher Blueprint-Snapshot vorhanden. Jetzt aktualisieren; bei einem Berechtigungsfehler den Charakter neu anmelden.",
       noMatches: "Keine Blueprints entsprechen der Auswahl.",
       queryError: "Der lokale Blueprint-Bestand konnte nicht gelesen werden.",
       resultRange: "{from}–{to} von {total}",
       previous: "Vorherige Seite",
       next: "Nächste Seite",
       liveNotice: "Echte lokale Blueprint-Snapshots · automatisch beim Programmstart",
+      snapshotTitle: "Snapshot-Status",
+      snapshotAvailable: "{count} Blueprints · {age}",
+      snapshotMissing: "Kein Snapshot – jetzt aktualisieren; bei Berechtigungsfehler neu anmelden",
       jobs: {
         kicker: "PERSÖNLICHE INDUSTRIEAUFTRÄGE",
         title: "Industrieaufträge",
@@ -607,8 +623,8 @@ const copy = {
         status: "Status",
         allStatuses: "Alle Status",
         statusLabels: {
-          active: "Aktiv", cancelled: "Abgebrochen", delivered: "Ausgeliefert",
-          paused: "Pausiert", ready: "Fertig", reverted: "Zurückgesetzt",
+          active: "Läuft", cancelled: "Abgebrochen", delivered: "Abgeholt",
+          paused: "Pausiert", ready: "Abholbereit", reverted: "Zurückgesetzt",
         },
         activity: "Aktivität",
         allActivities: "Alle Aktivitäten",
@@ -642,7 +658,7 @@ const copy = {
         assetUnavailable: "kein Asset-Verlauf",
         assetNotApplicable: "keine Ausgabe erwartet",
         successful: "erfolgreich",
-        activeCount: "aktive Jobs",
+        activeCount: "offene Jobs",
         count: "Jobs",
         age: "Datenalter",
         sync: "Jobs aktualisieren",
@@ -706,6 +722,11 @@ const copy = {
         accessLabels: {
           public: "Öffentlich", available: "Verfügbar", restricted: "ACL eingeschränkt",
           "scope-missing": "Neuanmeldung nötig", unknown: "Unbekannt",
+        },
+        security: "Sicherheitsraum",
+        allSecurity: "Alle Sicherheitsräume",
+        securityLabels: {
+          highsec: "Highsec", lowsec: "Lowsec", nullsec: "Nullsec", unknown: "Unbekannt",
         },
         activity: "Kostenaktivität",
         activityLabels: {
@@ -830,7 +851,7 @@ const copy = {
         freeSlots: "freie Slots",
         age: "Datenalter",
         loading: "Forschungsplanung wird geladen …",
-        noData: "Noch kein vollständiger Blueprint-Snapshot vorhanden.",
+        noData: "Noch kein persönlicher Blueprint-Snapshot vorhanden. Aktualisiere oben zuerst die Blueprints; nur eigene BPOs können als Forschungsziel erscheinen.",
         noMatches: "Keine Forschungszeilen entsprechen der Auswahl.",
         queryError: "Die lokale Forschungsplanung konnte nicht gelesen werden.",
         resultRange: "{from}–{to} von {total}",
@@ -877,8 +898,12 @@ const copy = {
         activity: "Aktivität", state: "Status", updated: "Zuletzt geändert",
       },
       quantity: "Zielmenge",
-      steps: "Produktionsschritte",
+      goalQuantity: "Ziel: {quantity}",
+      steps: "Herstellungsreihenfolge",
+      sequenceHint: "Vorprodukte werden zuerst hergestellt; das gewählte Zielprodukt steht bewusst am Ende.",
       step: "Schritt {sequence}",
+      intermediateStep: "Vorprodukt",
+      goalStep: "Zielprodukt",
       runs: "{runs} Läufe · {produced} produziert · {surplus} Überschuss",
       baseTime: "SDE-Basiszeit {time}",
       gross: "Bruttomaterialbedarf",
@@ -919,7 +944,7 @@ const copy = {
     },
     planned: "Geplant",
     previewOnly: "Noch ohne Live-Funktion",
-    footerVersion: "v0.0.5-preview.17",
+    footerVersion: "v0.0.5-preview.18",
   },
   en: {
     nav: {
@@ -1227,7 +1252,15 @@ const copy = {
     localOnly: "Processed locally",
     assets: {
       kicker: "LOCAL ASSET INVENTORY",
-      subtitle: "Search complete snapshots, filter by owner and location status, and save the result as CSV.",
+      subtitle: "Group stock by item or drill down to each individual position and its location.",
+      view: "View",
+      summaryView: "Stock overview",
+      positionsView: "Individual positions",
+      itemTypes: "items",
+      ownersCount: "Owners",
+      locationsCount: "Locations",
+      showPositions: "Show individual positions",
+      distribution: "Distribution",
       search: "Search type, location, owner, or ID",
       owner: "Owner",
       allOwners: "All owners",
@@ -1298,7 +1331,7 @@ const copy = {
     },
     blueprints: {
       kicker: "LOCAL BLUEPRINT INVENTORY",
-      subtitle: "BPOs and BPCs for all active characters, including ME, TE, and remaining runs.",
+      subtitle: "Personal BPOs and BPCs for all active characters, including ME, TE, and remaining runs. Corporation blueprints are not included.",
       search: "Search blueprint, owner, location, or ID",
       owner: "Owner",
       allOwners: "All owners",
@@ -1323,13 +1356,16 @@ const copy = {
       syncError: "Blueprint sync could not be started.",
       loading: "Loading blueprint inventory …",
       unavailable: "The live blueprint view is available in the Windows app.",
-      noData: "No complete blueprint snapshot is available yet.",
+      noData: "No personal blueprint snapshot is available yet. Refresh now; sign in the character again if permission fails.",
       noMatches: "No blueprints match the selection.",
       queryError: "The local blueprint inventory could not be read.",
       resultRange: "{from}–{to} of {total}",
       previous: "Previous page",
       next: "Next page",
       liveNotice: "Live local blueprint snapshots · automatic at application startup",
+      snapshotTitle: "Snapshot status",
+      snapshotAvailable: "{count} blueprints · {age}",
+      snapshotMissing: "No snapshot – refresh now; sign in again if permission fails",
       jobs: {
         kicker: "PERSONAL INDUSTRY JOBS",
         title: "Industry jobs",
@@ -1338,8 +1374,8 @@ const copy = {
         status: "Status",
         allStatuses: "All statuses",
         statusLabels: {
-          active: "Active", cancelled: "Cancelled", delivered: "Delivered",
-          paused: "Paused", ready: "Ready", reverted: "Reverted",
+          active: "Running", cancelled: "Cancelled", delivered: "Delivered",
+          paused: "Paused", ready: "Ready for delivery", reverted: "Reverted",
         },
         activity: "Activity",
         allActivities: "All activities",
@@ -1373,7 +1409,7 @@ const copy = {
         assetUnavailable: "no asset history",
         assetNotApplicable: "no output expected",
         successful: "successful",
-        activeCount: "active jobs",
+        activeCount: "open jobs",
         count: "jobs",
         age: "Data age",
         sync: "Refresh jobs",
@@ -1437,6 +1473,11 @@ const copy = {
         accessLabels: {
           public: "Public", available: "Available", restricted: "ACL restricted",
           "scope-missing": "Sign-in required", unknown: "Unknown",
+        },
+        security: "Security space",
+        allSecurity: "All security spaces",
+        securityLabels: {
+          highsec: "Highsec", lowsec: "Lowsec", nullsec: "Nullsec", unknown: "Unknown",
         },
         activity: "Cost activity",
         activityLabels: {
@@ -1561,7 +1602,7 @@ const copy = {
         freeSlots: "free slots",
         age: "Data age",
         loading: "Loading research planning …",
-        noData: "No complete blueprint snapshot is available yet.",
+        noData: "No personal blueprint snapshot is available yet. Refresh blueprints above first; only owned BPOs can become research goals.",
         noMatches: "No research rows match the selection.",
         queryError: "The local research planning could not be read.",
         resultRange: "{from}–{to} of {total}",
@@ -1608,8 +1649,12 @@ const copy = {
         activity: "Activity", state: "State", updated: "Last changed",
       },
       quantity: "Target quantity",
-      steps: "Production steps",
+      goalQuantity: "Goal: {quantity}",
+      steps: "Manufacturing order",
+      sequenceHint: "Components are manufactured first; the selected goal product deliberately comes last.",
       step: "Step {sequence}",
+      intermediateStep: "Component",
+      goalStep: "Goal product",
       runs: "{runs} runs · {produced} produced · {surplus} surplus",
       baseTime: "SDE base time {time}",
       gross: "Gross material demand",
@@ -1650,7 +1695,7 @@ const copy = {
     },
     planned: "Planned",
     previewOnly: "No live function yet",
-    footerVersion: "v0.0.5-preview.17",
+    footerVersion: "v0.0.5-preview.18",
   },
 } as const;
 
@@ -1702,6 +1747,24 @@ function formatDataAge(seconds: number, locale: Locale): string {
   if (hours < 48) return locale === "de" ? `${hours} Std.` : `${hours} hr`;
   const days = Math.floor(hours / 24);
   return locale === "de" ? `${days} Tage` : `${days} days`;
+}
+
+function formatRemainingTime(endDate: string, now: number, locale: Locale): string {
+  const remainingMilliseconds = new Date(endDate).getTime() - now;
+  if (remainingMilliseconds <= 0) {
+    return locale === "de" ? "Endzeit erreicht – aktualisieren" : "End time reached – refresh";
+  }
+  const totalMinutes = Math.max(1, Math.ceil(remainingMilliseconds / 60_000));
+  const days = Math.floor(totalMinutes / 1_440);
+  const hours = Math.floor((totalMinutes % 1_440) / 60);
+  const minutes = totalMinutes % 60;
+  if (days > 0) return locale === "de"
+    ? `Noch ${days} T. ${hours} Std.`
+    : `${days} d ${hours} hr remaining`;
+  if (hours > 0) return minutes > 0
+    ? locale === "de" ? `Noch ${hours} Std. ${minutes} Min.` : `${hours} hr ${minutes} min remaining`
+    : locale === "de" ? `Noch ${hours} Std.` : `${hours} hr remaining`;
+  return locale === "de" ? `Noch ${minutes} Min.` : `${minutes} min remaining`;
 }
 
 function describeAssetSyncError(
@@ -1795,6 +1858,7 @@ export function App({
   accountGroupRenamer = renameAccountGroup,
   accountGroupDeleter = deleteAccountGroup,
   assetsLoader = loadAssets,
+  assetSummaryLoader = loadAssetSummary,
   assetsCsvExporter = exportAssetsCsv,
   assetDeltasLoader = loadAssetDeltas,
   assetSyncer = syncAssets,
@@ -1831,6 +1895,7 @@ export function App({
   accountGroupRenamer?: (groupId: number, label: string) => Promise<AccountGroup>;
   accountGroupDeleter?: (groupId: number) => Promise<void>;
   assetsLoader?: (query: AssetQuery) => Promise<AssetPage>;
+  assetSummaryLoader?: (query: AssetSummaryQuery) => Promise<AssetSummaryPage>;
   assetsCsvExporter?: (
     query: Omit<AssetQuery, "offset" | "limit">,
   ) => Promise<AssetCsvExport>;
@@ -2502,6 +2567,7 @@ export function App({
             locale={locale}
             t={t}
             loadAssets={assetsLoader}
+            loadSummary={assetSummaryLoader}
             exportCsv={assetsCsvExporter}
             loadDeltas={assetDeltasLoader}
             syncAssets={runAssetSync}
@@ -2556,6 +2622,7 @@ function AssetWorkspace({
   locale,
   t,
   loadAssets: loadAssetPage,
+  loadSummary,
   exportCsv,
   loadDeltas: loadDeltaPage,
   syncAssets: runAssetSync,
@@ -2565,6 +2632,7 @@ function AssetWorkspace({
   locale: Locale;
   t: Translation;
   loadAssets: (query: AssetQuery) => Promise<AssetPage>;
+  loadSummary: (query: AssetSummaryQuery) => Promise<AssetSummaryPage>;
   exportCsv: (query: Omit<AssetQuery, "offset" | "limit">) => Promise<AssetCsvExport>;
   loadDeltas: (query: AssetDeltaQuery) => Promise<AssetDeltaPage>;
   syncAssets: () => Promise<AssetSyncResult>;
@@ -2574,10 +2642,13 @@ function AssetWorkspace({
   const [appliedSearch, setAppliedSearch] = useState("");
   const [ownerCharacterId, setOwnerCharacterId] = useState<number | null>(null);
   const [locationStatus, setLocationStatus] = useState<AssetLocationStatus | null>(null);
+  const [viewMode, setViewMode] = useState<"summary" | "positions">("summary");
   const [sortBy, setSortBy] = useState<AssetSortField>("type");
+  const [summarySortBy, setSummarySortBy] = useState<AssetSummarySortField>("type");
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
   const [offset, setOffset] = useState(0);
   const [page, setPage] = useState<AssetPage | null>(null);
+  const [summaryPage, setSummaryPage] = useState<AssetSummaryPage | null>(null);
   const [loading, setLoading] = useState(false);
   const [failed, setFailed] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -2610,22 +2681,34 @@ function AssetWorkspace({
     let active = true;
     setLoading(true);
     setFailed(false);
-    void loadAssetPage({
-      search: appliedSearch,
-      ownerCharacterId,
-      locationStatus,
-      offset,
-      limit: assetPageSize,
-      sortBy,
-      sortDirection,
-    })
+    const request = viewMode === "summary"
+      ? loadSummary({
+          search: appliedSearch,
+          ownerCharacterId,
+          locationStatus,
+          offset,
+          limit: assetPageSize,
+          sortBy: summarySortBy,
+          sortDirection,
+        })
+      : loadAssetPage({
+          search: appliedSearch,
+          ownerCharacterId,
+          locationStatus,
+          offset,
+          limit: assetPageSize,
+          sortBy,
+          sortDirection,
+        });
+    void request
       .then((loadedPage) => {
         if (!active) return;
         if (loadedPage.total > 0 && loadedPage.offset >= loadedPage.total) {
           setOffset(Math.floor((loadedPage.total - 1) / assetPageSize) * assetPageSize);
           return;
         }
-        setPage(loadedPage);
+        if (viewMode === "summary") setSummaryPage(loadedPage as AssetSummaryPage);
+        else setPage(loadedPage as AssetPage);
         setFailed(false);
       })
       .catch(() => {
@@ -2637,7 +2720,7 @@ function AssetWorkspace({
     return () => {
       active = false;
     };
-  }, [appliedSearch, available, loadAssetPage, locationStatus, offset, ownerCharacterId, refreshRevision, sortBy, sortDirection]);
+  }, [appliedSearch, available, loadAssetPage, loadSummary, locationStatus, offset, ownerCharacterId, refreshRevision, sortBy, sortDirection, summarySortBy, viewMode]);
 
   useEffect(() => {
     if (!available) return;
@@ -2708,9 +2791,10 @@ function AssetWorkspace({
     }
   };
 
-  const total = page?.total ?? 0;
+  const activePage = viewMode === "summary" ? summaryPage : page;
+  const total = activePage?.total ?? 0;
   const from = total === 0 ? 0 : offset + 1;
-  const to = Math.min(offset + (page?.items.length ?? 0), total);
+  const to = Math.min(offset + (activePage?.items.length ?? 0), total);
   const resultRange = t.assets.resultRange
     .replace("{from}", numberFormat.format(from))
     .replace("{to}", numberFormat.format(to))
@@ -2730,10 +2814,31 @@ function AssetWorkspace({
     }
     setOffset(0);
   };
+  const changeSummarySort = (field: AssetSummarySortField) => {
+    if (summarySortBy === field) {
+      setSortDirection((direction) => direction === "asc" ? "desc" : "asc");
+    } else {
+      setSummarySortBy(field);
+      setSortDirection("asc");
+    }
+    setOffset(0);
+  };
   const sortHeader = (field: AssetSortField, label: string) => (
     <button type="button" className="asset-sort" onClick={() => changeSort(field)}>
       {label}
       {sortBy === field && (
+        <ChevronDown
+          className={sortDirection === "asc" ? "asset-sort__asc" : ""}
+          size={14}
+          aria-hidden="true"
+        />
+      )}
+    </button>
+  );
+  const summarySortHeader = (field: AssetSummarySortField, label: string) => (
+    <button type="button" className="asset-sort" onClick={() => changeSummarySort(field)}>
+      {label}
+      {summarySortBy === field && (
         <ChevronDown
           className={sortDirection === "asc" ? "asset-sort__asc" : ""}
           size={14}
@@ -2755,17 +2860,17 @@ function AssetWorkspace({
         <div className="asset-hero__metrics" aria-live="polite">
           <span>
             <strong>{numberFormat.format(total)}</strong>
-            <small>{t.assets.positions}</small>
+            <small>{viewMode === "summary" ? t.assets.itemTypes : t.assets.positions}</small>
           </span>
           <span>
-            <strong>{numberFormat.format(page?.quantityTotal ?? 0)}</strong>
+            <strong>{numberFormat.format(activePage?.quantityTotal ?? 0)}</strong>
             <small>{t.assets.units}</small>
           </span>
           <span>
             <strong>
-              {page?.ageSeconds === null || page?.ageSeconds === undefined
+              {activePage?.ageSeconds === null || activePage?.ageSeconds === undefined
                 ? "—"
-                : formatDataAge(page.ageSeconds, locale)}
+                : formatDataAge(activePage.ageSeconds, locale)}
             </strong>
             <small>{t.assets.age}</small>
           </span>
@@ -2773,6 +2878,24 @@ function AssetWorkspace({
       </section>
 
       <section className="asset-browser" aria-busy={loading}>
+        <div className="asset-view-switch" role="group" aria-label={t.assets.view}>
+          <button
+            type="button"
+            className={viewMode === "summary" ? "is-active" : ""}
+            aria-pressed={viewMode === "summary"}
+            onClick={() => { setViewMode("summary"); setOffset(0); setSortDirection("asc"); }}
+          >
+            {t.assets.summaryView}
+          </button>
+          <button
+            type="button"
+            className={viewMode === "positions" ? "is-active" : ""}
+            aria-pressed={viewMode === "positions"}
+            onClick={() => { setViewMode("positions"); setOffset(0); setSortDirection("asc"); }}
+          >
+            {t.assets.positionsView}
+          </button>
+        </div>
         <div className="asset-toolbar">
           <label className="asset-search">
             <span>{t.assets.search}</span>
@@ -2800,7 +2923,7 @@ function AssetWorkspace({
               disabled={!available}
             >
               <option value="">{t.assets.allOwners}</option>
-              {(page?.owners ?? []).map((owner) => (
+              {(activePage?.owners ?? []).map((owner) => (
                 <option value={owner.characterId} key={owner.characterId}>{owner.name}</option>
               ))}
             </select>
@@ -2859,7 +2982,7 @@ function AssetWorkspace({
                         .replace("{characters}", numberFormat.format(syncResult?.completed ?? 0))}
             </span>
             {syncIssues.map((character) => {
-              const owner = page?.owners.find((candidate) => candidate.characterId === character.characterId);
+              const owner = activePage?.owners.find((candidate) => candidate.characterId === character.characterId);
               const label = owner?.name ?? `EVE ID ${character.characterId}`;
               return (
                 <small key={character.characterId}>
@@ -2888,12 +3011,60 @@ function AssetWorkspace({
           <div className="asset-empty asset-empty--error" role="alert">
             <AlertTriangle size={22} />{t.assets.queryError}
           </div>
-        ) : loading && page === null ? (
+        ) : loading && activePage === null ? (
           <div className="asset-empty"><RefreshCw className="spin" size={22} />{t.assets.loading}</div>
-        ) : page && page.items.length === 0 ? (
+        ) : activePage && activePage.items.length === 0 ? (
           <div className="asset-empty">
             <PackageSearch size={22} />
-            {page.observedAt === null ? t.assets.noData : t.assets.noMatches}
+            {activePage.observedAt === null ? t.assets.noData : t.assets.noMatches}
+          </div>
+        ) : viewMode === "summary" && summaryPage ? (
+          <div className="asset-table-wrap">
+            <table className="asset-table asset-summary-table">
+              <thead>
+                <tr>
+                  <th>{summarySortHeader("type", t.assets.type)}</th>
+                  <th className="asset-table__number">{summarySortHeader("quantity", t.assets.quantity)}</th>
+                  <th className="asset-table__number">{summarySortHeader("positions", t.assets.positions)}</th>
+                  <th>{summarySortHeader("owners", t.assets.ownersCount)}</th>
+                  <th className="asset-table__number">{summarySortHeader("locations", t.assets.locationsCount)}</th>
+                  <th>{summarySortHeader("age", t.assets.age)}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {summaryPage.items.map((item) => (
+                  <tr key={item.typeId}>
+                    <td>
+                      <strong>{item.typeName}</strong>
+                      <small>Type {item.typeId}</small>
+                      <button
+                        type="button"
+                        className="asset-summary-drilldown"
+                        onClick={() => {
+                          setSearch(item.typeName);
+                          setAppliedSearch(item.typeName);
+                          setViewMode("positions");
+                          setOffset(0);
+                        }}
+                      >
+                        {t.assets.showPositions}
+                      </button>
+                    </td>
+                    <td className="asset-table__number"><strong>{numberFormat.format(item.quantityTotal)}</strong></td>
+                    <td className="asset-table__number">{numberFormat.format(item.positionCount)}</td>
+                    <td>
+                      <strong>{numberFormat.format(item.ownerCount)}</strong>
+                      <small>{t.assets.distribution}: {item.owners.map((owner) => `${owner.name} ${numberFormat.format(owner.quantity)}`).join(" · ")}</small>
+                    </td>
+                    <td className="asset-table__number">
+                      <strong>{numberFormat.format(item.locationCount)}</strong>
+                      <small>{item.locationStatuses.map((status) => t.assets.statusLabels[status]).join(" · ")}</small>
+                    </td>
+                    <td>{formatDataAge(item.ageSeconds, locale)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         ) : page ? (
           <div className="asset-table-wrap">
@@ -2935,7 +3106,7 @@ function AssetWorkspace({
           </div>
         ) : null}
 
-        {available && page && (
+        {available && activePage && (
           <footer className="asset-pagination">
             <span>{resultRange}</span>
             <div>
@@ -3847,6 +4018,18 @@ function BlueprintWorkspace({
           <label><span>{t.blueprints.kind}</span><select value={kind ?? ""} onChange={(event) => { setKind((event.target.value || null) as BlueprintKind | null); setOffset(0); }}><option value="">{t.blueprints.allKinds}</option><option value="original">{t.blueprints.original}</option><option value="copy">{t.blueprints.copy}</option></select></label>
           <button className="secondary-button asset-export" type="button" onClick={() => void refresh()} disabled={!available || syncingBlueprints}><RefreshCw className={syncingBlueprints ? "spin" : ""} size={15} />{syncingBlueprints ? t.blueprints.syncing : t.blueprints.sync}</button>
         </div>
+        {page && page.snapshots.length > 0 && <div className="blueprint-snapshot-status" aria-label={t.blueprints.snapshotTitle}>
+          <strong>{t.blueprints.snapshotTitle}</strong>
+          {page.snapshots.map((snapshot) => <span key={snapshot.characterId}>
+            <StatusDot tone={snapshot.state === "available" ? "good" : "warn"} />
+            <b>{snapshot.name}</b>
+            <small>{snapshot.state === "available"
+              ? t.blueprints.snapshotAvailable
+                  .replace("{count}", numberFormat.format(snapshot.itemCount))
+                  .replace("{age}", formatDataAge(snapshot.ageSeconds ?? 0, locale))
+              : t.blueprints.snapshotMissing}</small>
+          </span>)}
+        </div>}
         {(syncResult || syncFailed) && <div className={`asset-export-status asset-sync-status ${syncFailed || syncIssues.length > 0 ? "asset-export-status--error" : ""}`} role="status">
           <span>{syncFailed ? t.blueprints.syncError : syncResult?.characters.length === 0 ? t.blueprints.syncEmpty : syncIssues.length > 0 ? t.blueprints.syncPartial.replace("{completed}", String(syncResult?.completed ?? 0)).replace("{failed}", String(syncResult?.failed ?? 0)) : t.blueprints.syncComplete.replace("{blueprints}", numberFormat.format(syncResult?.blueprints ?? 0)).replace("{characters}", String(syncResult?.completed ?? 0))}</span>
           {syncIssues.map((character) => <small key={character.characterId}>{t.blueprints.syncDetail.replace("{character}", page?.owners.find((owner) => owner.characterId === character.characterId)?.name ?? `EVE ID ${character.characterId}`).replace("{reason}", describeAssetSyncError(character.errorCode, locale, locale === "de" ? "Blueprint-Abruf" : "Blueprint fetch"))}</small>)}
@@ -4033,6 +4216,7 @@ function IndustryJobsPanel({
   const [syncingJobs, setSyncingJobs] = useState(false);
   const [syncResult, setSyncResult] = useState<IndustryJobSyncResult | null>(null);
   const [syncFailed, setSyncFailed] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
   const numberFormat = useMemo(
     () => new Intl.NumberFormat(locale === "de" ? "de-DE" : "en-US"),
     [locale],
@@ -4047,6 +4231,11 @@ function IndustryJobsPanel({
     }),
     [locale],
   );
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -4161,9 +4350,16 @@ function IndustryJobsPanel({
             <td><strong>{item.blueprintName}</strong><small>Job #{item.jobId} · Item #{item.blueprintItemId}</small></td>
             <td><strong>{item.productName ?? "—"}</strong>{item.productTypeId && <small>Type #{item.productTypeId}</small>}</td>
             <td><strong>{item.ownerName}</strong><small>{t.blueprints.jobs.activityLabels[item.activityKey]}</small></td>
-            <td><span className={`status-pill status-pill--${item.status === "delivered" ? "good" : item.status === "cancelled" || item.status === "reverted" ? "warn" : "info"}`}>{t.blueprints.jobs.statusLabels[item.status]}</span></td>
+            <td><span className={`status-pill status-pill--${item.status === "ready" || item.status === "delivered" ? "good" : item.status === "cancelled" || item.status === "reverted" ? "warn" : "info"}`}>{t.blueprints.jobs.statusLabels[item.status]}</span></td>
             <td className="asset-table__number"><strong>{numberFormat.format(item.runs)}</strong><small>{item.successfulRuns == null ? "" : `${numberFormat.format(item.successfulRuns)} ${t.blueprints.jobs.successful}`}{item.cost == null ? "" : ` · ${iskFormat.format(item.cost)} ISK`}</small></td>
-            <td><strong>{dateFormat.format(new Date(item.endDate))}</strong><small>{dateFormat.format(new Date(item.startDate))} → {item.completedDate ? dateFormat.format(new Date(item.completedDate)) : "—"}</small></td>
+            <td>
+              <strong>{item.status === "ready"
+                ? t.blueprints.jobs.statusLabels.ready
+                : item.status === "active" || item.status === "paused"
+                  ? formatRemainingTime(item.endDate, now, locale)
+                  : dateFormat.format(new Date(item.completedDate ?? item.endDate))}</strong>
+              <small>{dateFormat.format(new Date(item.startDate))} → {dateFormat.format(new Date(item.endDate))}</small>
+            </td>
             <td><strong>{item.facilityName ?? `#${item.facilityId}`}</strong><small>{item.solarSystemName ?? t.blueprints.facilities.accessLabels[item.facilityAccess]}{item.systemCostIndex == null ? "" : ` · ${(item.systemCostIndex * 100).toLocaleString(locale === "de" ? "de-DE" : "en-US", { maximumFractionDigits: 4 })} %`}</small><small>Output #{item.outputLocationId}</small></td>
             <td><span className={`status-pill status-pill--${item.correlationState === "linked" ? "good" : item.correlationState === "ambiguous" || item.correlationState === "partial" ? "warn" : "info"}`}>{t.blueprints.jobs.correlationLabels[item.correlationState]}</span><small>{blueprintEvidence(item.blueprintCorrelation.state)} · {assetEvidence(item.assetCorrelation.state)}</small><small>Run {item.jobSyncRunId}{item.assetCorrelation.eventIds[0] ? ` · ${item.assetCorrelation.eventIds[0].slice(0, 10)}` : ""}</small></td>
           </tr>)}</tbody></table></div> : null}
@@ -4325,6 +4521,7 @@ function IndustryFacilitiesPanel({
   const [appliedSearch, setAppliedSearch] = useState("");
   const [kind, setKind] = useState<IndustryFacilityKind | null>(null);
   const [access, setAccess] = useState<IndustryFacilityAccess | null>(null);
+  const [securityClass, setSecurityClass] = useState<IndustrySecurityClass | null>(null);
   const [activity, setActivity] = useState<IndustryCostActivity>("manufacturing");
   const [usedOnly, setUsedOnly] = useState(false);
   const [sortBy, setSortBy] = useState<IndustryFacilitySortField>("facility");
@@ -4361,7 +4558,7 @@ function IndustryFacilitiesPanel({
     setLoading(true);
     setFailed(false);
     void loadFacilities({
-      search: appliedSearch, kind, access, activity, usedOnly,
+      search: appliedSearch, kind, access, securityClass, activity, usedOnly,
       offset, limit: industryFacilityPageSize, sortBy, sortDirection,
     }).then((result) => {
       if (!activeRequest) return;
@@ -4376,7 +4573,7 @@ function IndustryFacilitiesPanel({
       if (activeRequest) setLoading(false);
     });
     return () => { activeRequest = false; };
-  }, [access, activity, appliedSearch, available, kind, loadFacilities, offset, refreshRevision, sortBy, sortDirection, usedOnly]);
+  }, [access, activity, appliedSearch, available, kind, loadFacilities, offset, refreshRevision, securityClass, sortBy, sortDirection, usedOnly]);
 
   const refresh = async () => {
     if (!available || syncingFacilities) return;
@@ -4427,6 +4624,7 @@ function IndustryFacilitiesPanel({
         <label className="asset-search"><span>{t.blueprints.facilities.search}</span><div><Search size={16} /><input value={search} maxLength={120} onChange={(event) => setSearch(event.target.value)} placeholder={t.blueprints.facilities.search} disabled={!available} /></div></label>
         <label><span>{t.blueprints.facilities.kind}</span><select value={kind ?? ""} onChange={(event) => { setKind((event.target.value || null) as IndustryFacilityKind | null); setOffset(0); }}><option value="">{t.blueprints.facilities.allKinds}</option>{(page?.kinds ?? []).map((value) => <option key={value} value={value}>{t.blueprints.facilities.kindLabels[value]}</option>)}</select></label>
         <label><span>{t.blueprints.facilities.access}</span><select value={access ?? ""} onChange={(event) => { setAccess((event.target.value || null) as IndustryFacilityAccess | null); setOffset(0); }}><option value="">{t.blueprints.facilities.allAccess}</option>{(page?.accessStates ?? []).map((value) => <option key={value} value={value}>{t.blueprints.facilities.accessLabels[value]}</option>)}</select></label>
+        <label><span>{t.blueprints.facilities.security}</span><select value={securityClass ?? ""} onChange={(event) => { setSecurityClass((event.target.value || null) as IndustrySecurityClass | null); setOffset(0); }}><option value="">{t.blueprints.facilities.allSecurity}</option>{(page?.securityClasses ?? []).map((value) => <option key={value} value={value}>{t.blueprints.facilities.securityLabels[value]}</option>)}</select></label>
         <label><span>{t.blueprints.facilities.activity}</span><select value={activity} onChange={(event) => { setActivity(event.target.value as IndustryCostActivity); setOffset(0); }}>{(page?.activities ?? []).map((value) => <option key={value} value={value}>{t.blueprints.facilities.activityLabels[value]}</option>)}</select></label>
         <button className={`secondary-button facility-used-toggle ${usedOnly ? "is-active" : ""}`} type="button" aria-pressed={usedOnly} onClick={() => { setUsedOnly((value) => !value); setOffset(0); }}>{t.blueprints.facilities.usedOnly}</button>
         <button className="secondary-button asset-export" type="button" onClick={() => void refresh()} disabled={!available || syncingFacilities}><RefreshCw className={syncingFacilities ? "spin" : ""} size={15} />{syncingFacilities ? t.blueprints.facilities.syncing : t.blueprints.facilities.sync}</button>
@@ -4441,7 +4639,7 @@ function IndustryFacilitiesPanel({
             <th>{header("facility", t.blueprints.facilities.facility)}</th><th>{header("system", t.blueprints.facilities.system)}</th><th>{t.blueprints.facilities.owner}</th><th>{header("cost", t.blueprints.facilities.cost)}</th><th>{header("jobs", t.blueprints.facilities.jobs)}</th><th>{header("access", t.blueprints.facilities.access)}</th><th>{header("age", t.blueprints.facilities.source)}</th>
           </tr></thead><tbody>{page.items.map((item) => <tr key={item.facilityId}>
             <td><strong>{item.facilityName ?? `#${item.facilityId}`}</strong><small>{item.typeName ?? t.blueprints.facilities.kindLabels[item.kind]}{item.typeId == null ? "" : ` · Type #${item.typeId}`}</small></td>
-            <td><strong>{item.solarSystemName ?? "—"}</strong><small>{item.regionName ?? (item.solarSystemId == null ? "—" : `#${item.solarSystemId}`)}</small></td>
+            <td><strong>{item.solarSystemName ?? "—"}</strong><small>{item.regionName ?? (item.solarSystemId == null ? "—" : `#${item.solarSystemId}`)} · {t.blueprints.facilities.securityLabels[item.securityClass]}{item.securityStatus == null ? "" : ` ${item.securityStatus.toLocaleString(locale === "de" ? "de-DE" : "en-US", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}`}</small></td>
             <td><strong>{item.ownerName ?? "—"}</strong><small>{item.ownerId == null ? "—" : `#${item.ownerId}`}</small></td>
             <td className="asset-table__number"><strong>{item.activityCostIndex == null ? "—" : percentFormat.format(item.activityCostIndex)}</strong><small>{item.tax == null ? t.blueprints.facilities.taxUnknown : percentFormat.format(item.tax)}</small></td>
             <td className="asset-table__number"><strong>{numberFormat.format(item.jobCount)}</strong><small>{item.jobCount === 0 ? t.blueprints.facilities.noJobs : `${numberFormat.format(item.activeJobs)} ${t.blueprints.facilities.active}`}</small></td>
@@ -4868,7 +5066,7 @@ function ProductionWorkspace({
           : plans ? <div className="production-plan-list">{plans.items.map((item) => {
               const draft = drafts[item.planId] ?? { owner: item.ownerCharacterId, quantity: item.targetQuantity, priority: item.priority, note: item.note ?? "" };
               return <article className="production-plan-card" key={item.planId}>
-                <header><div><span className={`status-pill status-pill--${item.state === "ready" ? "good" : "warn"}`}>{t.productionPlanning.stateLabels[item.state]}</span><h2>{item.productName}</h2><p>{item.blueprintName} · {t.productionPlanning.activityLabels[item.activity]} · #{item.blueprintTypeId}</p></div><strong>{numberFormat.format(item.targetQuantity)}</strong></header>
+                <header><div><span className={`status-pill status-pill--${item.state === "ready" ? "good" : "warn"}`}>{t.productionPlanning.stateLabels[item.state]}</span><h2>{item.productName}</h2><p>{item.blueprintName} · {t.productionPlanning.activityLabels[item.activity]} · #{item.blueprintTypeId}</p></div><strong>{t.productionPlanning.goalQuantity.replace("{quantity}", numberFormat.format(item.targetQuantity))}</strong></header>
                 <div className="production-plan-editor">
                   <label><span>{t.productionPlanning.owner}</span><select value={draft.owner} onChange={(event) => setDrafts((current) => ({ ...current, [item.planId]: { ...draft, owner: Number(event.target.value) } }))}>{!plans.owners.some((owner) => owner.characterId === draft.owner) && <option value={draft.owner}>{item.ownerName}</option>}{plans.owners.map((owner) => <option key={owner.characterId} value={owner.characterId}>{owner.name}</option>)}</select></label>
                   <label><span>{t.productionPlanning.quantity}</span><input type="number" min={1} value={draft.quantity} onChange={(event) => setDrafts((current) => ({ ...current, [item.planId]: { ...draft, quantity: Math.max(1, Number(event.target.value) || 1) } }))} /></label>
@@ -4879,7 +5077,7 @@ function ProductionWorkspace({
                 </div>
                 {item.warnings.map((warning) => <div className="production-warning" key={`${warning.typeId}:${warning.selectedBlueprintTypeId}`}><AlertTriangle size={14} />{t.productionPlanning.alternatives.replace("{type}", warning.typeName).replace("{count}", String(warning.candidateCount)).replace("{blueprint}", String(warning.selectedBlueprintTypeId))}</div>)}
                 {item.state === "ready" && <div className="production-resolution">
-                  <details open><summary>{t.productionPlanning.steps} · {item.steps.length}</summary><ol>{item.steps.map((step) => <li key={`${step.sequence}:${step.productTypeId}`}><div><strong>{t.productionPlanning.step.replace("{sequence}", String(step.sequence))}: {step.productName}</strong><span>{step.blueprintName} · {t.productionPlanning.activityLabels[step.activity]}</span></div><div><strong>{t.productionPlanning.runs.replace("{runs}", numberFormat.format(step.runs)).replace("{produced}", numberFormat.format(step.producedQuantity)).replace("{surplus}", numberFormat.format(step.surplusQuantity))}</strong><span>{t.productionPlanning.baseTime.replace("{time}", formatDuration(step.totalBaseTimeSeconds))}</span></div></li>)}</ol></details>
+                  <details open><summary>{t.productionPlanning.steps} · {item.steps.length}</summary><p className="production-sequence-hint">{t.productionPlanning.sequenceHint}</p><ol>{item.steps.map((step, index) => { const isGoal = index === item.steps.length - 1; return <li className={isGoal ? "production-step--goal" : ""} key={`${step.sequence}:${step.productTypeId}`}><div><strong>{t.productionPlanning.step.replace("{sequence}", String(step.sequence))} · {isGoal ? t.productionPlanning.goalStep : t.productionPlanning.intermediateStep}: {step.productName}</strong><span>{step.blueprintName} · {t.productionPlanning.activityLabels[step.activity]}</span></div><div><strong>{t.productionPlanning.runs.replace("{runs}", numberFormat.format(step.runs)).replace("{produced}", numberFormat.format(step.producedQuantity)).replace("{surplus}", numberFormat.format(step.surplusQuantity))}</strong><span>{t.productionPlanning.baseTime.replace("{time}", formatDuration(step.totalBaseTimeSeconds))}</span></div></li>; })}</ol></details>
                   <details open><summary>{t.productionPlanning.gross} · {item.grossMaterials.length}</summary>{item.grossMaterials.length === 0 ? <p>{t.productionPlanning.noGross}</p> : <ul>{item.grossMaterials.map((material) => <li key={material.typeId}><span>{material.typeName}<small>Type #{material.typeId}</small></span><strong>{numberFormat.format(material.quantity)}</strong></li>)}</ul>}</details>
                 </div>}
               </article>;
