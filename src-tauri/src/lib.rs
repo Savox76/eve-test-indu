@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 52476)
-Total output lines: 5775
-
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -2813,7 +2810,280 @@ fn sso_login_status_is_valid(status: &SsoLoginStatus) -> bool {
             status
                 .attempt_id
                 .as_ref()
-                .is_some_and(|…2476 tokens truncated…"foundry.sqlite3-wal"))?;
+                .is_some_and(|value| !value.is_empty())
+                && packages_are_valid
+                && status
+                    .expires_at
+                    .as_ref()
+                    .is_some_and(|value| !value.is_empty())
+                && status.error_code.is_none()
+                && status.character.is_none()
+        }
+        "connected" => {
+            status
+                .attempt_id
+                .as_ref()
+                .is_some_and(|value| !value.is_empty())
+                && packages_are_valid
+                && status
+                    .expires_at
+                    .as_ref()
+                    .is_some_and(|value| !value.is_empty())
+                && status.error_code.is_none()
+                && status
+                    .character
+                    .as_ref()
+                    .is_some_and(sso_character_identity_is_valid)
+        }
+        "timed-out" => {
+            status
+                .attempt_id
+                .as_ref()
+                .is_some_and(|value| !value.is_empty())
+                && packages_are_valid
+                && status
+                    .expires_at
+                    .as_ref()
+                    .is_some_and(|value| !value.is_empty())
+                && status.error_code.as_deref() == Some("login-timeout")
+                && status.character.is_none()
+        }
+        "failed" => {
+            status
+                .attempt_id
+                .as_ref()
+                .is_some_and(|value| !value.is_empty())
+                && packages_are_valid
+                && status
+                    .expires_at
+                    .as_ref()
+                    .is_some_and(|value| !value.is_empty())
+                && status.error_code.as_ref().is_some_and(|code| {
+                    matches!(
+                        code.as_str(),
+                        "authorization-denied"
+                            | "authorization-failed"
+                            | "callback-invalid"
+                            | "pkce-state-missing"
+                            | "sso-metadata-unavailable"
+                            | "sso-metadata-invalid"
+                            | "token-request-invalid"
+                            | "token-exchange-failed"
+                            | "token-response-invalid"
+                            | "jwks-unavailable"
+                            | "jwks-invalid"
+                            | "jwt-malformed"
+                            | "jwt-header-invalid"
+                            | "jwt-key-not-found"
+                            | "jwt-signature-invalid"
+                            | "jwt-claims-invalid"
+                            | "jwt-expired"
+                            | "jwt-identity-invalid"
+                            | "jwt-scopes-missing"
+                            | "character-save-failed"
+                    )
+                })
+                && status.character.is_none()
+        }
+        _ => false,
+    }
+}
+
+fn authorization_url_is_valid(value: &str) -> bool {
+    let Ok(url) = tauri::Url::parse(value) else {
+        return false;
+    };
+    if url.as_str().len() > 8_192
+        || url.scheme() != "https"
+        || url.host_str() != Some("login.eveonline.com")
+        || url.port_or_known_default() != Some(443)
+        || url.path() != "/v2/oauth/authorize"
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.fragment().is_some()
+        || !value.starts_with(EVE_SSO_AUTHORIZATION_ENDPOINT)
+    {
+        return false;
+    }
+
+    let mut parameters: HashMap<String, String> = HashMap::new();
+    for (key, value) in url.query_pairs() {
+        if parameters
+            .insert(key.into_owned(), value.into_owned())
+            .is_some()
+        {
+            return false;
+        }
+    }
+    let expected_keys: HashSet<&str> = [
+        "response_type",
+        "client_id",
+        "redirect_uri",
+        "scope",
+        "state",
+        "code_challenge",
+        "code_challenge_method",
+    ]
+    .into_iter()
+    .collect();
+    if parameters
+        .keys()
+        .map(String::as_str)
+        .collect::<HashSet<_>>()
+        != expected_keys
+    {
+        return false;
+    }
+    let is_pkce_token = |candidate: &str| {
+        candidate.len() == 43
+            && candidate
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+    };
+    parameters.get("response_type").map(String::as_str) == Some("code")
+        && parameters.get("client_id").map(String::as_str) == Some(EVE_SSO_CLIENT_ID)
+        && parameters.get("redirect_uri").map(String::as_str) == Some(EVE_SSO_REDIRECT_URI)
+        && parameters.get("code_challenge_method").map(String::as_str) == Some("S256")
+        && parameters
+            .get("state")
+            .is_some_and(|candidate| is_pkce_token(candidate))
+        && parameters
+            .get("code_challenge")
+            .is_some_and(|candidate| is_pkce_token(candidate))
+        && parameters.get("scope").is_some_and(|scope| {
+            !scope.is_empty()
+                && scope.split(' ').all(|item| {
+                    item.starts_with("esi-")
+                        && item.ends_with(".v1")
+                        && item.bytes().all(|byte| {
+                            byte.is_ascii_lowercase()
+                                || byte.is_ascii_digit()
+                                || matches!(byte, b'-' | b'_' | b'.')
+                        })
+                })
+        })
+}
+
+fn launch_system_browser(url: &str) -> Result<(), &'static str> {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        Command::new("rundll32.exe")
+            .arg("url.dll,FileProtocolHandler")
+            .arg(url)
+            .creation_flags(WINDOWS_CREATE_NO_WINDOW)
+            .spawn()
+            .map_err(|_| "system-browser-unavailable")?;
+    }
+    #[cfg(target_os = "macos")]
+    Command::new("open")
+        .arg(url)
+        .spawn()
+        .map_err(|_| "system-browser-unavailable")?;
+    #[cfg(all(unix, not(target_os = "macos")))]
+    Command::new("xdg-open")
+        .arg(url)
+        .spawn()
+        .map_err(|_| "system-browser-unavailable")?;
+    Ok(())
+}
+
+fn open_system_browser(url: &str) -> Result<(), &'static str> {
+    if !authorization_url_is_valid(url) {
+        return Err("sso-authorization-url-invalid");
+    }
+    launch_system_browser(url)
+}
+
+fn semantic_release_version_is_valid(value: &str) -> bool {
+    if value.is_empty() || value.len() > 80 || value.contains('+') {
+        return false;
+    }
+    let (core, prerelease) = value
+        .split_once('-')
+        .map_or((value, None), |(core, prerelease)| (core, Some(prerelease)));
+    let core_parts = core.split('.').collect::<Vec<_>>();
+    let numeric_component_is_valid = |part: &str| {
+        !part.is_empty()
+            && part.bytes().all(|byte| byte.is_ascii_digit())
+            && (part == "0" || !part.starts_with('0'))
+    };
+    if core_parts.len() != 3 || !core_parts.into_iter().all(numeric_component_is_valid) {
+        return false;
+    }
+    prerelease.is_none_or(|value| {
+        !value.is_empty()
+            && value.split('.').all(|part| {
+                !part.is_empty()
+                    && part
+                        .bytes()
+                        .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+                    && (!part.bytes().all(|byte| byte.is_ascii_digit())
+                        || numeric_component_is_valid(part))
+            })
+    })
+}
+
+fn release_page_url(version: Option<&str>) -> Result<String, &'static str> {
+    let base = "https://github.com/Savox76/eve-test-indu/releases";
+    let Some(version) = version else {
+        return Ok(base.to_owned());
+    };
+    if !semantic_release_version_is_valid(version) {
+        return Err("release-version-invalid");
+    }
+    Ok(format!("{base}/tag/v{version}"))
+}
+
+fn copy_directory_without_links(source: &Path, destination: &Path) -> Result<(), &'static str> {
+    fs::create_dir(destination).map_err(|_| "program-storage-migration-failed")?;
+    for entry in fs::read_dir(source).map_err(|_| "program-storage-migration-failed")? {
+        let entry = entry.map_err(|_| "program-storage-migration-failed")?;
+        let file_type = entry
+            .file_type()
+            .map_err(|_| "program-storage-migration-failed")?;
+        if file_type.is_symlink() {
+            return Err("program-storage-migration-failed");
+        }
+        let target = destination.join(entry.file_name());
+        if file_type.is_dir() {
+            copy_directory_without_links(&entry.path(), &target)?;
+        } else if file_type.is_file() {
+            copy_file_with_retry(&entry.path(), &target)?;
+        } else {
+            return Err("program-storage-migration-failed");
+        }
+    }
+    Ok(())
+}
+
+fn copy_file_with_retry(source: &Path, destination: &Path) -> Result<(), &'static str> {
+    for attempt in 0..5 {
+        if fs::copy(source, destination).is_ok() {
+            return Ok(());
+        }
+        if attempt < 4 {
+            thread::sleep(Duration::from_millis(100));
+        }
+    }
+    Err("program-storage-migration-failed")
+}
+
+fn copy_essential_program_data(source: &Path, destination: &Path) -> Result<(), &'static str> {
+    fs::create_dir(destination).map_err(|_| "program-storage-migration-failed")?;
+    let database = source.join("foundry.sqlite3");
+    if database.exists() {
+        if database.is_symlink() || !database.is_file() {
+            return Err("program-storage-migration-failed");
+        }
+        copy_file_with_retry(&database, &destination.join("foundry.sqlite3"))?;
+
+        let wal = source.join("foundry.sqlite3-wal");
+        if wal.exists() {
+            if wal.is_symlink() || !wal.is_file() {
+                return Err("program-storage-migration-failed");
+            }
+            copy_file_with_retry(&wal, &destination.join("foundry.sqlite3-wal"))?;
         }
     } else if source.join("foundry.sqlite3-wal").exists() {
         return Err("program-storage-migration-failed");
