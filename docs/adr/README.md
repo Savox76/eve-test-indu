@@ -20,5 +20,6 @@ ADRs halten Entscheidungen fest, die Architektur, Sicherheit, Datenmodell, Betri
 | [014](0014-automatic-asset-refresh-and-type-name-cache.md) | Cache-first Startabgleich und persistente öffentliche Typnamen | Angenommen |
 | [015](0015-automatic-required-sso-scopes.md) | Vollständige benötigte SSO-Pakete automatisch anfordern und Scope-Drift sichtbar machen | Angenommen |
 | [016](0016-evidence-based-industry-job-correlation.md) | Persönliche Industrieaufträge belegbasiert mit Blueprint- und Asset-Snapshots korrelieren | Angenommen |
+| [017](0017-public-release-advisory-and-portable-updates.md) | Öffentlicher Release-Hinweis und sicherer manueller Portable-Updatepfad | Angenommen |
 
 Neue ADRs verwenden vierstellige laufende Nummern und die Abschnitte **Kontext**, **Entscheidung**, **Folgen**, **Verifikation** und **Referenzen**.

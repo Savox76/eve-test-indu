@@ -24,6 +24,42 @@ Keine.
 
 Keine.
 
+## 0.0.5-preview.13 – 11. September 2026
+
+### Neu hinzugefügt
+
+- Paket 30: persistente Fertigungs- und Reaktionsziele mit Charakter, exaktem Rezept, Zielmenge, Priorität und Notiz.
+- Deterministische, zyklensichere Auflösung gemeinsamer Zwischenprodukte in Produktionsschritte, ganzzahlig gerundete Läufe, Überschuss, SDE-Basiszeit und äußeren Bruttomaterialbedarf.
+- Zweisprachiger Produktionsarbeitsbereich mit Suche, Filtern, Sortierung, Seitenteilung und vollständiger Zielverwaltung.
+- Automatischer und manueller Hinweis auf das neueste vollständige GitHub Release im gewählten Kanal samt ausgabespezifischer Updateanleitung.
+
+### Geändert
+
+- Die Industrie-Slotübersicht bezieht Fertigungs- und Reaktionsziele als geplanten, laufenden oder blockierten Arbeitsvorrat ein.
+- Die Desktop-Laufzeit unterscheidet installierte und portable Ausgaben anhand des portablen Paketmarkers.
+- Die sichtbare Versionsnummer lautet `v0.0.5-preview.13`.
+
+### Behobene Fehler
+
+- Gemeinsamer Zwischenproduktbedarf wird vor der Laufberechnung aggregiert und nicht je Elternschritt separat überrundet.
+- Alternative Rezepte werden stabil nach Aktivität und Blueprint-ID gewählt und die Entscheidung bleibt sichtbar.
+- Fehlende oder später veränderte SDE-Rezepte löschen gespeicherte Ziele nicht.
+- Unvollständige Releases ohne beide Pakete und Prüfsummen erzeugen keinen Updatehinweis.
+
+### Bekannte Einschränkungen
+
+- Die offizielle SDE-Bezugs- und Importpipeline ist noch nicht Teil des Endnutzerstarts. Ohne eine bereits importierte Aktivitätsbasis zeigt der Produktionsbereich deshalb den belegbaren Zustand „SDE fehlt“; Kettenberechnung und Zielverwaltung sind mit synthetischen Vertragsdaten automatisiert geprüft.
+- Bruttomaterial und Basiszeit berücksichtigen noch keinen Bestand, keine Reservierungen, kein Blueprint-ME, keine Skills, Anlagen-/Rigboni, Systemkosten, Steuern oder Preise.
+- Der Release-Hinweis lädt und installiert nichts automatisch. Die automatische Ersetzung bleibt bis zu produktiv signierten Paketen, Rollback und bestandenem Windows-Update-Gate gesperrt.
+- Paket 22 wartet weiterhin auf das vollständige Windows-A0-Protokoll.
+
+### Update und Datenbankmigration
+
+- Beim ersten Start migriert die App Schema 8 auf Schema 9 und ergänzt die lokale Tabelle `production_plans` samt Indizes.
+- Vor der Migration wird automatisch eine geprüfte Sicherung angelegt; vorhandene Charaktere, Einstellungen, Credentials, Forschungspläne und Snapshots bleiben erhalten.
+- Für ein portables Update die App schließen, `data` sichern und die neue ZIP in denselben übergeordneten Ordner entpacken. Der konstante Programmordner wird aktualisiert, der nicht ausgelieferte `data`-Ordner bleibt bestehen.
+- Es werden keine zusätzlichen ESI-Scopes benötigt.
+
 ## 0.0.5-preview.12 – 11. September 2026
 
 ### Neu hinzugefügt

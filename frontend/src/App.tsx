@@ -56,10 +56,12 @@ import {
   assetDeltaPageSize,
   assetPageSize,
   cancelEveSso,
+  checkForUpdates,
   createAccountGroup,
   deleteAccountGroup,
   deleteEveCharacter,
   deleteResearchPlan,
+  deleteProductionPlan,
   fontScales,
   industryFacilityPageSize,
   initialRuntimeStatus,
@@ -75,6 +77,8 @@ import {
   loadIndustryFacilities,
   loadIndustryJobs,
   loadIndustrySlots,
+  loadProductionCatalog,
+  loadProductionPlans,
   loadResearchPlans,
   syncAssets,
   syncBlueprints,
@@ -82,6 +86,8 @@ import {
   syncIndustryFacilities,
   syncIndustryJobs,
   renameAccountGroup,
+  openReleaseDownloads,
+  saveProductionPlan,
   saveResearchPlan,
   setDesktopUpdateChannel,
   setDesktopFontScale,
@@ -130,6 +136,16 @@ import {
   type ResearchPlanQuery,
   type ResearchPlanSortField,
   type ResearchPlanState,
+  type ProductionActivity,
+  type ProductionCatalogItem,
+  type ProductionCatalogPage,
+  type ProductionCatalogQuery,
+  type ProductionPlanInput,
+  type ProductionPlanPage,
+  type ProductionPlanQuery,
+  type ProductionPlanSortField,
+  type ProductionPlanState,
+  type PublicReleaseNotice,
   type CharacterUpdate,
   type DesktopRuntimeStatus,
   type EveCharacter,
@@ -145,6 +161,8 @@ import {
   characterSkillPageSize,
   industryJobPageSize,
   industrySlotPageSize,
+  productionCatalogPageSize,
+  productionPlanPageSize,
   researchPlanPageSize,
 } from "./runtime";
 
@@ -275,6 +293,16 @@ const copy = {
       checking: "Testmanifest wird geprüft",
       unavailable: "Updater derzeit nicht verfügbar",
       disabled: "Downloads noch deaktiviert",
+      checkingRelease: "GitHub-Releases werden geprüft …",
+      releaseAvailable: "Version {version} ist verfügbar",
+      releaseCurrent: "Diese Version ist aktuell",
+      releaseUnavailable: "Für diesen Kanal wurde kein vollständiges Release gefunden",
+      releaseError: "Release-Prüfung derzeit nicht möglich",
+      checkNow: "Jetzt prüfen",
+      openRelease: "Release öffnen",
+      portableHint: "Portable: App schließen und die neue ZIP in denselben Elternordner entpacken. Der Ordner data bleibt erhalten.",
+      installedHint: "Installer: Neue Setup-Datei starten; die updatefesten App-Daten bleiben erhalten.",
+      signedBoundary: "Automatische Installation bleibt bis zur produktiv signierten Updatekette gesperrt.",
       saving: "Kanal wird gespeichert …",
       saveError: "Kanal konnte nicht gespeichert werden",
       desktopOnly: "In der Desktop-App wählbar",
@@ -704,7 +732,7 @@ const copy = {
         kicker: "INDUSTRIE-SLOTS",
         title: "Kapazität und Arbeitsvorrat",
         subtitle: "Fertigung, Reaktionen und Wissenschaft je Charakter mit echter Skill-Kapazität und aktueller Jobbelegung.",
-        boundary: "Fehlt ein vollständiger Skill- oder Job-Snapshot, bleibt der betroffene Wert unbekannt. Fertigungs- und Reaktionspläne folgen erst mit der Produktionsplanung.",
+        boundary: "Fehlt ein vollständiger Skill- oder Job-Snapshot, bleibt der betroffene Wert unbekannt. Produktionsziele liefern jetzt den belegbaren Fertigungs- und Reaktionsvorrat.",
         owner: "Charakter",
         allOwners: "Alle Charaktere",
         characters: "Charaktere",
@@ -800,6 +828,66 @@ const copy = {
         resultRange: "{from}–{to} von {total}",
       },
     },
+    productionPlanning: {
+      kicker: "PRODUKTIONSPLANUNG",
+      title: "Fertigungs- und Reaktionsziele",
+      subtitle: "Persistente Ziele werden aus der aktiven Blueprintbasis reproduzierbar in Schritte und Bruttomaterial aufgelöst.",
+      boundary: "Bruttobedarf ohne Bestandsabzug, Reservierungen, Blueprint-ME, Skills, Anlagen-/Rigboni, Steuern oder Preise. Angezeigt werden unveränderte SDE-Basiswerte.",
+      build: "SDE-Build {build}",
+      searchRecipe: "Produkt oder Blueprint suchen",
+      activity: "Aktivität",
+      allActivities: "Fertigung & Reaktion",
+      activityLabels: { manufacturing: "Fertigung", reaction: "Reaktion" },
+      catalog: "Produkt auswählen",
+      allOwners: "Alle Charaktere",
+      output: "{quantity} je Lauf · {materials} Materialarten",
+      select: "Auswählen",
+      selected: "Ausgewählt",
+      owner: "Ausführender Charakter",
+      target: "Zielmenge",
+      priority: "Priorität",
+      note: "Notiz",
+      notePlaceholder: "Optionaler Planungshinweis",
+      create: "Ziel speichern",
+      save: "Änderungen speichern",
+      remove: "Ziel entfernen",
+      saving: "Wird gespeichert …",
+      saved: "Produktionsziel gespeichert.",
+      deleted: "Produktionsziel entfernt.",
+      mutationError: "Das Produktionsziel konnte nicht geändert werden.",
+      plans: "Produktionsziele",
+      searchPlans: "Produkt, Blueprint, Besitzer oder Notiz suchen",
+      state: "Planstatus",
+      allStates: "Alle Status",
+      stateLabels: {
+        ready: "Bereit", "sde-unavailable": "SDE fehlt", "recipe-missing": "Rezept fehlt",
+        cycle: "Zyklus erkannt", "complexity-limit": "Kette zu groß",
+      },
+      sort: "Sortierung",
+      sortLabels: {
+        priority: "Priorität", product: "Produkt", owner: "Charakter",
+        activity: "Aktivität", state: "Status", updated: "Zuletzt geändert",
+      },
+      quantity: "Zielmenge",
+      steps: "Produktionsschritte",
+      step: "Schritt {sequence}",
+      runs: "{runs} Läufe · {produced} produziert · {surplus} Überschuss",
+      baseTime: "SDE-Basiszeit {time}",
+      gross: "Bruttomaterialbedarf",
+      noGross: "Kein äußerer Materialbedarf",
+      alternatives: "Für {type} existieren {count} Rezepte; deterministisch wurde Blueprint #{blueprint} gewählt.",
+      loading: "Produktionsplanung wird geladen …",
+      catalogLoading: "Produktkatalog wird geladen …",
+      noSde: "Noch keine vollständige Blueprint-Aktivitätsbasis importiert. Bis dahin können keine neuen Ziele angelegt werden.",
+      noOwners: "Verbinde und aktiviere zuerst mindestens einen Charakter.",
+      noRecipes: "Keine Produkte entsprechen der Suche.",
+      noPlans: "Noch kein Produktionsziel gespeichert.",
+      noMatches: "Keine Produktionsziele entsprechen der Auswahl.",
+      queryError: "Die lokale Produktionsplanung konnte nicht gelesen werden.",
+      resultRange: "{from}–{to} von {total}",
+      previous: "Vorherige Seite",
+      next: "Nächste Seite",
+    },
     moduleKicker: "MODULVORSCHAU",
     moduleText:
       "Dieser Bereich zeigt bereits die geplante Informationsarchitektur. Fachlogik und echte EVE-Daten werden in den kommenden Releases schrittweise angeschlossen.",
@@ -823,7 +911,7 @@ const copy = {
     },
     planned: "Geplant",
     previewOnly: "Noch ohne Live-Funktion",
-    footerVersion: "v0.0.5-preview.12",
+    footerVersion: "v0.0.5-preview.13",
   },
   en: {
     nav: {
@@ -928,6 +1016,16 @@ const copy = {
       checking: "Checking test manifest",
       unavailable: "Updater is currently unavailable",
       disabled: "Downloads remain disabled",
+      checkingRelease: "Checking GitHub releases …",
+      releaseAvailable: "Version {version} is available",
+      releaseCurrent: "This version is current",
+      releaseUnavailable: "No complete release was found for this channel",
+      releaseError: "Release check is currently unavailable",
+      checkNow: "Check now",
+      openRelease: "Open release",
+      portableHint: "Portable: close the app and extract the new ZIP into the same parent folder. The data folder is retained.",
+      installedHint: "Installer: run the new setup file; update-stable app data is retained.",
+      signedBoundary: "Automatic installation remains blocked until the production-signed update chain is available.",
       saving: "Saving channel …",
       saveError: "Channel could not be saved",
       desktopOnly: "Selectable in the desktop app",
@@ -1357,7 +1455,7 @@ const copy = {
         kicker: "INDUSTRY SLOTS",
         title: "Capacity and work queue",
         subtitle: "Manufacturing, reactions, and science per character with real skill capacity and current job occupancy.",
-        boundary: "If a complete skill or job snapshot is missing, the affected value remains unknown. Manufacturing and reaction plans become available with production planning.",
+        boundary: "If a complete skill or job snapshot is missing, the affected value remains unknown. Production goals now provide the evidenced manufacturing and reaction work queue.",
         owner: "Character",
         allOwners: "All characters",
         characters: "characters",
@@ -1453,6 +1551,66 @@ const copy = {
         resultRange: "{from}–{to} of {total}",
       },
     },
+    productionPlanning: {
+      kicker: "PRODUCTION PLANNING",
+      title: "Manufacturing and reaction goals",
+      subtitle: "Persistent goals are reproducibly expanded from the active blueprint basis into steps and gross materials.",
+      boundary: "Gross demand without inventory deduction, reservations, blueprint ME, skills, facility/rig bonuses, taxes or prices. Values are unchanged SDE base values.",
+      build: "SDE build {build}",
+      searchRecipe: "Search product or blueprint",
+      activity: "Activity",
+      allActivities: "Manufacturing & reaction",
+      activityLabels: { manufacturing: "Manufacturing", reaction: "Reaction" },
+      catalog: "Select product",
+      allOwners: "All characters",
+      output: "{quantity} per run · {materials} material types",
+      select: "Select",
+      selected: "Selected",
+      owner: "Executing character",
+      target: "Target quantity",
+      priority: "Priority",
+      note: "Note",
+      notePlaceholder: "Optional planning note",
+      create: "Save goal",
+      save: "Save changes",
+      remove: "Remove goal",
+      saving: "Saving …",
+      saved: "Production goal saved.",
+      deleted: "Production goal removed.",
+      mutationError: "The production goal could not be changed.",
+      plans: "Production goals",
+      searchPlans: "Search product, blueprint, owner or note",
+      state: "Plan state",
+      allStates: "All states",
+      stateLabels: {
+        ready: "Ready", "sde-unavailable": "SDE missing", "recipe-missing": "Recipe missing",
+        cycle: "Cycle detected", "complexity-limit": "Chain too large",
+      },
+      sort: "Sort",
+      sortLabels: {
+        priority: "Priority", product: "Product", owner: "Character",
+        activity: "Activity", state: "State", updated: "Last changed",
+      },
+      quantity: "Target quantity",
+      steps: "Production steps",
+      step: "Step {sequence}",
+      runs: "{runs} runs · {produced} produced · {surplus} surplus",
+      baseTime: "SDE base time {time}",
+      gross: "Gross material demand",
+      noGross: "No external material demand",
+      alternatives: "{count} recipes exist for {type}; blueprint #{blueprint} was selected deterministically.",
+      loading: "Loading production planning …",
+      catalogLoading: "Loading product catalog …",
+      noSde: "No complete blueprint activity basis has been imported yet. New goals cannot be created until then.",
+      noOwners: "Connect and enable at least one character first.",
+      noRecipes: "No products match the search.",
+      noPlans: "No production goal has been saved yet.",
+      noMatches: "No production goals match the selection.",
+      queryError: "The local production planning data could not be read.",
+      resultRange: "{from}–{to} of {total}",
+      previous: "Previous page",
+      next: "Next page",
+    },
     moduleKicker: "MODULE PREVIEW",
     moduleText:
       "This area already shows the planned information architecture. Domain logic and real EVE data will be connected incrementally in upcoming releases.",
@@ -1476,7 +1634,7 @@ const copy = {
     },
     planned: "Planned",
     previewOnly: "No live function yet",
-    footerVersion: "v0.0.5-preview.12",
+    footerVersion: "v0.0.5-preview.13",
   },
 } as const;
 
@@ -1577,6 +1735,8 @@ function DataStateNotice({
 export function App({
   runtimeLoader = loadDesktopRuntimeStatus,
   updateChannelSetter = setDesktopUpdateChannel,
+  releaseNoticeChecker = checkForUpdates,
+  releaseDownloadsOpener = openReleaseDownloads,
   ssoStarter = startEveSso,
   ssoStatusLoader = loadEveSsoStatus,
   ssoCanceller = cancelEveSso,
@@ -1600,6 +1760,10 @@ export function App({
   industryFacilitiesLoader = loadIndustryFacilities,
   industryFacilitySyncer = syncIndustryFacilities,
   industrySlotsLoader = loadIndustrySlots,
+  productionCatalogLoader = loadProductionCatalog,
+  productionPlansLoader = loadProductionPlans,
+  productionPlanSaver = saveProductionPlan,
+  productionPlanDeleter = deleteProductionPlan,
   researchPlansLoader = loadResearchPlans,
   researchPlanSaver = saveResearchPlan,
   researchPlanDeleter = deleteResearchPlan,
@@ -1607,6 +1771,8 @@ export function App({
 }: {
   runtimeLoader?: () => Promise<DesktopRuntimeStatus>;
   updateChannelSetter?: (channel: UpdateChannel) => Promise<UpdaterStatus>;
+  releaseNoticeChecker?: () => Promise<PublicReleaseNotice>;
+  releaseDownloadsOpener?: (version: string | null) => Promise<void>;
   ssoStarter?: (scopePackages: SsoScopePackage[]) => Promise<SsoLoginStatus>;
   ssoStatusLoader?: () => Promise<SsoLoginStatus>;
   ssoCanceller?: () => Promise<SsoLoginStatus>;
@@ -1632,6 +1798,10 @@ export function App({
   industryFacilitiesLoader?: (query: IndustryFacilityQuery) => Promise<IndustryFacilityPage>;
   industryFacilitySyncer?: () => Promise<IndustryFacilitySyncResult>;
   industrySlotsLoader?: (query: IndustrySlotQuery) => Promise<IndustrySlotPage>;
+  productionCatalogLoader?: (query: ProductionCatalogQuery) => Promise<ProductionCatalogPage>;
+  productionPlansLoader?: (query: ProductionPlanQuery) => Promise<ProductionPlanPage>;
+  productionPlanSaver?: (input: ProductionPlanInput) => Promise<unknown>;
+  productionPlanDeleter?: (planId: number) => Promise<void>;
   researchPlansLoader?: (query: ResearchPlanQuery) => Promise<ResearchPlanPage>;
   researchPlanSaver?: (input: ResearchPlanInput) => Promise<unknown>;
   researchPlanDeleter?: (ownerCharacterId: number, blueprintItemId: number) => Promise<void>;
@@ -1653,6 +1823,8 @@ export function App({
   const [overviewScope, setOverviewScope] = useState<OverviewScopeId>("all");
   const [savingUpdateChannel, setSavingUpdateChannel] = useState(false);
   const [updateChannelError, setUpdateChannelError] = useState(false);
+  const [releaseNotice, setReleaseNotice] = useState<PublicReleaseNotice | null>(null);
+  const [releaseChecking, setReleaseChecking] = useState(false);
   const [ssoStatus, setSsoStatus] = useState(initialSsoStatus);
   const [ssoBusy, setSsoBusy] = useState(false);
   const [ssoCommandError, setSsoCommandError] = useState(false);
@@ -1691,6 +1863,23 @@ export function App({
   }, [runtimeLoader]);
 
   const nativeCoreReady = runtimeStatus.state === "ready" && runtimeStatus.sidecar === "ready";
+
+  const refreshReleaseNotice = useCallback(async () => {
+    if (!nativeCoreReady) return;
+    setReleaseChecking(true);
+    try {
+      setReleaseNotice(await releaseNoticeChecker());
+    } catch {
+      setReleaseNotice(null);
+    } finally {
+      setReleaseChecking(false);
+    }
+  }, [nativeCoreReady, releaseNoticeChecker]);
+
+  useEffect(() => {
+    if (!nativeCoreReady) return;
+    void refreshReleaseNotice();
+  }, [nativeCoreReady, refreshReleaseNotice]);
 
   const runAssetSync = useCallback(async () => {
     const result = await assetSyncer();
@@ -1888,6 +2077,8 @@ export function App({
       setRuntimeStatus((current) => current.state === "ready"
         ? { ...current, updater: nextUpdater }
         : current);
+      setReleaseNotice(null);
+      window.setTimeout(() => void refreshReleaseNotice(), 0);
     } catch {
       setUpdateChannelError(true);
     } finally {
@@ -2011,6 +2202,35 @@ export function App({
                   ? `${t.updates[updater.manifestState]} · ${t.updates.disabled}`
                   : t.updates.desktopOnly}
           </small>
+          <div className="update-channel__notice" role="status">
+            <strong>
+              {releaseChecking
+                ? t.updates.checkingRelease
+                : releaseNotice?.state === "available"
+                  ? t.updates.releaseAvailable.replace("{version}", releaseNotice.latestVersion ?? "")
+                  : releaseNotice?.state === "current"
+                    ? t.updates.releaseCurrent
+                    : releaseNotice?.state === "unavailable"
+                      ? t.updates.releaseUnavailable
+                      : releaseNotice?.state === "error" || (nativeCoreReady && releaseNotice === null)
+                        ? t.updates.releaseError
+                        : t.updates.desktopOnly}
+            </strong>
+            {runtimeStatus.state === "ready" && (
+              <span>{runtimeStatus.distribution === "portable" ? t.updates.portableHint : t.updates.installedHint}</span>
+            )}
+            <span>{t.updates.signedBoundary}</span>
+            <div>
+              <button type="button" onClick={() => void refreshReleaseNotice()} disabled={!nativeCoreReady || releaseChecking}>
+                <RefreshCw className={releaseChecking ? "spin" : ""} size={13} />{t.updates.checkNow}
+              </button>
+              {releaseNotice?.state === "available" && (
+                <button type="button" onClick={() => void releaseDownloadsOpener(releaseNotice.latestVersion)}>
+                  <Download size={13} />{t.updates.openRelease}
+                </button>
+              )}
+            </div>
+          </div>
         </section>
 
         <div className={`local-status local-status--${runtimePresentationState}`} role="status">
@@ -2249,6 +2469,16 @@ export function App({
             saveResearchPlan={researchPlanSaver}
             deleteResearchPlan={researchPlanDeleter}
             researchPlanRevision={researchPlanRevision}
+          />
+        ) : activeModule === "production" ? (
+          <ProductionWorkspace
+            available={nativeCoreReady}
+            locale={locale}
+            t={t}
+            loadCatalog={productionCatalogLoader}
+            loadPlans={productionPlansLoader}
+            savePlan={productionPlanSaver}
+            deletePlan={productionPlanDeleter}
           />
         ) : (
           <ModulePreview activeModule={activeModule} t={t} />
@@ -4331,6 +4561,248 @@ function ResearchPlanningPanel({
           })}</tbody></table></div> : null}
       {page && total > 0 && <div className="asset-pagination"><span>{range}</span><div><button type="button" onClick={() => setOffset(Math.max(0, offset - researchPlanPageSize))} disabled={offset === 0}>{t.blueprints.previous}</button><button type="button" onClick={() => setOffset(offset + researchPlanPageSize)} disabled={offset + researchPlanPageSize >= total}>{t.blueprints.next}</button></div></div>}
     </section>
+  );
+}
+
+function ProductionWorkspace({
+  available, locale, t, loadCatalog, loadPlans, savePlan, deletePlan,
+}: {
+  available: boolean;
+  locale: Locale;
+  t: Translation;
+  loadCatalog: (query: ProductionCatalogQuery) => Promise<ProductionCatalogPage>;
+  loadPlans: (query: ProductionPlanQuery) => Promise<ProductionPlanPage>;
+  savePlan: (input: ProductionPlanInput) => Promise<unknown>;
+  deletePlan: (planId: number) => Promise<void>;
+}) {
+  const [catalogSearch, setCatalogSearch] = useState("");
+  const [appliedCatalogSearch, setAppliedCatalogSearch] = useState("");
+  const [catalogActivity, setCatalogActivity] = useState<ProductionActivity | null>(null);
+  const [catalogOffset, setCatalogOffset] = useState(0);
+  const [catalog, setCatalog] = useState<ProductionCatalogPage | null>(null);
+  const [catalogLoading, setCatalogLoading] = useState(false);
+  const [catalogFailed, setCatalogFailed] = useState(false);
+  const [selected, setSelected] = useState<ProductionCatalogItem | null>(null);
+  const [newOwner, setNewOwner] = useState<number | null>(null);
+  const [newQuantity, setNewQuantity] = useState(1);
+  const [newPriority, setNewPriority] = useState(0);
+  const [newNote, setNewNote] = useState("");
+  const [planSearch, setPlanSearch] = useState("");
+  const [appliedPlanSearch, setAppliedPlanSearch] = useState("");
+  const [planOwner, setPlanOwner] = useState<number | null>(null);
+  const [planActivity, setPlanActivity] = useState<ProductionActivity | null>(null);
+  const [planState, setPlanState] = useState<ProductionPlanState | null>(null);
+  const [sortBy, setSortBy] = useState<ProductionPlanSortField>("priority");
+  const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
+  const [planOffset, setPlanOffset] = useState(0);
+  const [plans, setPlans] = useState<ProductionPlanPage | null>(null);
+  const [plansLoading, setPlansLoading] = useState(false);
+  const [plansFailed, setPlansFailed] = useState(false);
+  const [revision, setRevision] = useState(0);
+  const [busyId, setBusyId] = useState<number | "new" | null>(null);
+  const [mutationState, setMutationState] = useState<"saved" | "deleted" | "error" | null>(null);
+  const [drafts, setDrafts] = useState<Record<number, { owner: number; quantity: number; priority: number; note: string }>>({});
+  const numberFormat = useMemo(() => new Intl.NumberFormat(locale === "de" ? "de-DE" : "en-US"), [locale]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setAppliedCatalogSearch(catalogSearch.trim().replace(/\s+/g, " "));
+      setCatalogOffset(0);
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [catalogSearch]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setAppliedPlanSearch(planSearch.trim().replace(/\s+/g, " "));
+      setPlanOffset(0);
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [planSearch]);
+
+  useEffect(() => {
+    if (!available) return;
+    let active = true;
+    setCatalogLoading(true);
+    setCatalogFailed(false);
+    void loadCatalog({ search: appliedCatalogSearch, activity: catalogActivity,
+      offset: catalogOffset, limit: productionCatalogPageSize })
+      .then((page) => {
+        if (!active) return;
+        if (page.total > 0 && page.offset >= page.total) {
+          setCatalogOffset(Math.floor((page.total - 1) / productionCatalogPageSize) * productionCatalogPageSize);
+          return;
+        }
+        setCatalog(page);
+      })
+      .catch(() => { if (active) setCatalogFailed(true); })
+      .finally(() => { if (active) setCatalogLoading(false); });
+    return () => { active = false; };
+  }, [appliedCatalogSearch, available, catalogActivity, catalogOffset, loadCatalog, revision]);
+
+  useEffect(() => {
+    if (!available) return;
+    let active = true;
+    setPlansLoading(true);
+    setPlansFailed(false);
+    void loadPlans({ search: appliedPlanSearch, ownerCharacterId: planOwner, activity: planActivity,
+      state: planState, offset: planOffset, limit: productionPlanPageSize, sortBy, sortDirection })
+      .then((page) => {
+        if (!active) return;
+        if (page.total > 0 && page.offset >= page.total) {
+          setPlanOffset(Math.floor((page.total - 1) / productionPlanPageSize) * productionPlanPageSize);
+          return;
+        }
+        setPlans(page);
+        setDrafts(Object.fromEntries(page.items.map((item) => [item.planId, {
+          owner: item.ownerCharacterId, quantity: item.targetQuantity,
+          priority: item.priority, note: item.note ?? "",
+        }])));
+        setNewOwner((current) => current ?? page.owners[0]?.characterId ?? null);
+      })
+      .catch(() => { if (active) setPlansFailed(true); })
+      .finally(() => { if (active) setPlansLoading(false); });
+    return () => { active = false; };
+  }, [appliedPlanSearch, available, loadPlans, planActivity, planOffset, planOwner,
+    planState, revision, sortBy, sortDirection]);
+
+  const createGoal = async () => {
+    if (!selected || newOwner === null || busyId !== null) return;
+    setBusyId("new");
+    setMutationState(null);
+    try {
+      await savePlan({ planId: null, ownerCharacterId: newOwner,
+        blueprintTypeId: selected.blueprintTypeId, activity: selected.activity,
+        productTypeId: selected.productTypeId, targetQuantity: newQuantity,
+        priority: newPriority, note: newNote || null });
+      setMutationState("saved");
+      setSelected(null);
+      setNewQuantity(1);
+      setNewPriority(0);
+      setNewNote("");
+      setRevision((value) => value + 1);
+    } catch {
+      setMutationState("error");
+    } finally {
+      setBusyId(null);
+    }
+  };
+  const updateGoal = async (item: ProductionPlanPage["items"][number]) => {
+    const draft = drafts[item.planId];
+    if (!draft || busyId !== null) return;
+    setBusyId(item.planId);
+    setMutationState(null);
+    try {
+      await savePlan({ planId: item.planId, ownerCharacterId: draft.owner,
+        blueprintTypeId: item.blueprintTypeId, activity: item.activity,
+        productTypeId: item.productTypeId, targetQuantity: draft.quantity,
+        priority: draft.priority, note: draft.note || null });
+      setMutationState("saved");
+      setRevision((value) => value + 1);
+    } catch {
+      setMutationState("error");
+    } finally {
+      setBusyId(null);
+    }
+  };
+  const removeGoal = async (planId: number) => {
+    if (busyId !== null) return;
+    setBusyId(planId);
+    setMutationState(null);
+    try {
+      await deletePlan(planId);
+      setMutationState("deleted");
+      setRevision((value) => value + 1);
+    } catch {
+      setMutationState("error");
+    } finally {
+      setBusyId(null);
+    }
+  };
+  const formatDuration = (seconds: number) => {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    return hours > 0 ? `${hours} h ${minutes} min` : `${minutes} min`;
+  };
+  const planTotal = plans?.total ?? 0;
+  const planFrom = planTotal === 0 ? 0 : planOffset + 1;
+  const planTo = Math.min(planOffset + (plans?.items.length ?? 0), planTotal);
+
+  return (
+    <div className="workspace production-workspace">
+      <section className="asset-hero">
+        <div><span className="eyebrow">{t.productionPlanning.kicker}</span><h1>{t.productionPlanning.title}</h1><p>{t.productionPlanning.subtitle}</p></div>
+        <div className="asset-hero__metrics"><span><strong>{numberFormat.format(planTotal)}</strong><small>{t.productionPlanning.plans}</small></span><span><strong>{plans?.buildNumber ?? "—"}</strong><small>SDE</small></span></div>
+      </section>
+      <section className="production-boundary"><ShieldCheck size={18} /><span>{t.productionPlanning.boundary}</span></section>
+
+      <section className="production-builder">
+        <PanelHeader icon={Factory} title={t.productionPlanning.catalog} subtitle={catalog?.buildNumber ? t.productionPlanning.build.replace("{build}", catalog.buildNumber) : t.productionPlanning.noSde} />
+        <div className="asset-toolbar production-toolbar">
+          <label className="asset-search"><span>{t.productionPlanning.searchRecipe}</span><div><Search size={16} /><input value={catalogSearch} maxLength={120} onChange={(event) => setCatalogSearch(event.target.value)} disabled={!available || catalog?.buildNumber === null} /></div></label>
+          <label><span>{t.productionPlanning.activity}</span><select value={catalogActivity ?? ""} onChange={(event) => { setCatalogActivity((event.target.value || null) as ProductionActivity | null); setCatalogOffset(0); }}><option value="">{t.productionPlanning.allActivities}</option><option value="manufacturing">{t.productionPlanning.activityLabels.manufacturing}</option><option value="reaction">{t.productionPlanning.activityLabels.reaction}</option></select></label>
+        </div>
+        {!available ? <div className="asset-empty"><Database size={22} />{t.productionPlanning.queryError}</div>
+          : catalogFailed ? <div className="asset-empty asset-empty--error"><AlertTriangle size={22} />{t.productionPlanning.queryError}</div>
+          : catalogLoading && catalog === null ? <div className="asset-empty"><RefreshCw className="spin" size={22} />{t.productionPlanning.catalogLoading}</div>
+          : catalog?.buildNumber === null ? <div className="asset-empty"><Database size={22} />{t.productionPlanning.noSde}</div>
+          : catalog && catalog.items.length === 0 ? <div className="asset-empty"><Search size={22} />{t.productionPlanning.noRecipes}</div>
+          : catalog ? <div className="production-catalog">{catalog.items.map((item) => {
+              const active = selected?.blueprintTypeId === item.blueprintTypeId && selected.productTypeId === item.productTypeId && selected.activity === item.activity;
+              return <button type="button" className={`production-catalog__item ${active ? "is-selected" : ""}`} key={`${item.blueprintTypeId}:${item.activity}:${item.productTypeId}`} onClick={() => { setSelected(item); setNewQuantity(item.outputQuantity); }}>
+                <span><strong>{item.productName}</strong><small>{item.blueprintName} · #{item.blueprintTypeId}</small></span>
+                <span><em>{t.productionPlanning.activityLabels[item.activity]}</em><small>{t.productionPlanning.output.replace("{quantity}", numberFormat.format(item.outputQuantity)).replace("{materials}", numberFormat.format(item.materialCount))}</small></span>
+                <b>{active ? t.productionPlanning.selected : t.productionPlanning.select}</b>
+              </button>;
+            })}</div> : null}
+        {catalog && catalog.total > productionCatalogPageSize && <div className="asset-pagination"><span>{catalog.offset + 1}–{Math.min(catalog.offset + catalog.items.length, catalog.total)} / {catalog.total}</span><div><button type="button" onClick={() => setCatalogOffset(Math.max(0, catalogOffset - productionCatalogPageSize))} disabled={catalogOffset === 0}>{t.productionPlanning.previous}</button><button type="button" onClick={() => setCatalogOffset(catalogOffset + productionCatalogPageSize)} disabled={catalogOffset + productionCatalogPageSize >= catalog.total}>{t.productionPlanning.next}</button></div></div>}
+        <div className="production-create">
+          <div className="production-create__selection"><Factory size={18} /><span><strong>{selected?.productName ?? t.productionPlanning.catalog}</strong><small>{selected ? `${selected.blueprintName} · ${t.productionPlanning.activityLabels[selected.activity]}` : t.productionPlanning.searchRecipe}</small></span></div>
+          <label><span>{t.productionPlanning.owner}</span><select value={newOwner ?? ""} onChange={(event) => setNewOwner(event.target.value ? Number(event.target.value) : null)}><option value="">—</option>{(plans?.owners ?? []).map((owner) => <option key={owner.characterId} value={owner.characterId}>{owner.name}</option>)}</select></label>
+          <label><span>{t.productionPlanning.target}</span><input type="number" min={1} max={Number.MAX_SAFE_INTEGER} value={newQuantity} onChange={(event) => setNewQuantity(Math.max(1, Number(event.target.value) || 1))} /></label>
+          <label><span>{t.productionPlanning.priority}</span><input type="number" min={0} max={999} value={newPriority} onChange={(event) => setNewPriority(Math.min(999, Math.max(0, Number(event.target.value) || 0)))} /></label>
+          <label className="production-create__note"><span>{t.productionPlanning.note}</span><input value={newNote} maxLength={240} placeholder={t.productionPlanning.notePlaceholder} onChange={(event) => setNewNote(event.target.value)} /></label>
+          <button type="button" className="primary-button" onClick={() => void createGoal()} disabled={!selected || newOwner === null || busyId !== null}>{busyId === "new" ? <RefreshCw className="spin" size={15} /> : <Plus size={15} />}{busyId === "new" ? t.productionPlanning.saving : t.productionPlanning.create}</button>
+        </div>
+        {plans && plans.owners.length === 0 && <div className="asset-export-status asset-export-status--error">{t.productionPlanning.noOwners}</div>}
+        {mutationState && <div className={`asset-export-status ${mutationState === "error" ? "asset-export-status--error" : ""}`} role="status">{mutationState === "saved" ? t.productionPlanning.saved : mutationState === "deleted" ? t.productionPlanning.deleted : t.productionPlanning.mutationError}</div>}
+      </section>
+
+      <section className="production-plans" aria-busy={plansLoading}>
+        <PanelHeader icon={Boxes} title={t.productionPlanning.plans} subtitle={t.productionPlanning.subtitle} />
+        <div className="asset-toolbar production-toolbar">
+          <label className="asset-search"><span>{t.productionPlanning.searchPlans}</span><div><Search size={16} /><input value={planSearch} maxLength={120} onChange={(event) => setPlanSearch(event.target.value)} /></div></label>
+          <label><span>{t.productionPlanning.owner}</span><select value={planOwner ?? ""} onChange={(event) => { setPlanOwner(event.target.value ? Number(event.target.value) : null); setPlanOffset(0); }}><option value="">{t.productionPlanning.allOwners}</option>{(plans?.owners ?? []).map((owner) => <option key={owner.characterId} value={owner.characterId}>{owner.name}</option>)}</select></label>
+          <label><span>{t.productionPlanning.activity}</span><select value={planActivity ?? ""} onChange={(event) => { setPlanActivity((event.target.value || null) as ProductionActivity | null); setPlanOffset(0); }}><option value="">{t.productionPlanning.allActivities}</option><option value="manufacturing">{t.productionPlanning.activityLabels.manufacturing}</option><option value="reaction">{t.productionPlanning.activityLabels.reaction}</option></select></label>
+          <label><span>{t.productionPlanning.state}</span><select value={planState ?? ""} onChange={(event) => { setPlanState((event.target.value || null) as ProductionPlanState | null); setPlanOffset(0); }}><option value="">{t.productionPlanning.allStates}</option>{(plans?.states ?? []).map((state) => <option key={state} value={state}>{t.productionPlanning.stateLabels[state]}</option>)}</select></label>
+          <label><span>{t.productionPlanning.sort}</span><select value={sortBy} onChange={(event) => { setSortBy(event.target.value as ProductionPlanSortField); setPlanOffset(0); }}>{(["priority", "product", "owner", "activity", "state", "updated"] as const).map((field) => <option key={field} value={field}>{t.productionPlanning.sortLabels[field]}</option>)}</select></label>
+          <button type="button" className="secondary-button" onClick={() => setSortDirection((value) => value === "asc" ? "desc" : "asc")}><ChevronDown className={sortDirection === "asc" ? "asset-sort__asc" : ""} size={15} />{sortDirection.toUpperCase()}</button>
+        </div>
+        {!available ? <div className="asset-empty"><Database size={22} />{t.productionPlanning.queryError}</div>
+          : plansFailed ? <div className="asset-empty asset-empty--error"><AlertTriangle size={22} />{t.productionPlanning.queryError}</div>
+          : plansLoading && plans === null ? <div className="asset-empty"><RefreshCw className="spin" size={22} />{t.productionPlanning.loading}</div>
+          : plans && plans.items.length === 0 ? <div className="asset-empty"><Factory size={22} />{planSearch || planOwner || planActivity || planState ? t.productionPlanning.noMatches : t.productionPlanning.noPlans}</div>
+          : plans ? <div className="production-plan-list">{plans.items.map((item) => {
+              const draft = drafts[item.planId] ?? { owner: item.ownerCharacterId, quantity: item.targetQuantity, priority: item.priority, note: item.note ?? "" };
+              return <article className="production-plan-card" key={item.planId}>
+                <header><div><span className={`status-pill status-pill--${item.state === "ready" ? "good" : "warn"}`}>{t.productionPlanning.stateLabels[item.state]}</span><h2>{item.productName}</h2><p>{item.blueprintName} · {t.productionPlanning.activityLabels[item.activity]} · #{item.blueprintTypeId}</p></div><strong>{numberFormat.format(item.targetQuantity)}</strong></header>
+                <div className="production-plan-editor">
+                  <label><span>{t.productionPlanning.owner}</span><select value={draft.owner} onChange={(event) => setDrafts((current) => ({ ...current, [item.planId]: { ...draft, owner: Number(event.target.value) } }))}>{!plans.owners.some((owner) => owner.characterId === draft.owner) && <option value={draft.owner}>{item.ownerName}</option>}{plans.owners.map((owner) => <option key={owner.characterId} value={owner.characterId}>{owner.name}</option>)}</select></label>
+                  <label><span>{t.productionPlanning.quantity}</span><input type="number" min={1} value={draft.quantity} onChange={(event) => setDrafts((current) => ({ ...current, [item.planId]: { ...draft, quantity: Math.max(1, Number(event.target.value) || 1) } }))} /></label>
+                  <label><span>{t.productionPlanning.priority}</span><input type="number" min={0} max={999} value={draft.priority} onChange={(event) => setDrafts((current) => ({ ...current, [item.planId]: { ...draft, priority: Math.min(999, Math.max(0, Number(event.target.value) || 0)) } }))} /></label>
+                  <label><span>{t.productionPlanning.note}</span><input maxLength={240} value={draft.note} onChange={(event) => setDrafts((current) => ({ ...current, [item.planId]: { ...draft, note: event.target.value } }))} /></label>
+                  <button type="button" onClick={() => void updateGoal(item)} disabled={busyId !== null}>{busyId === item.planId ? <RefreshCw className="spin" size={14} /> : <Check size={14} />}{t.productionPlanning.save}</button>
+                  <button type="button" className="danger-button" onClick={() => void removeGoal(item.planId)} disabled={busyId !== null}><X size={14} />{t.productionPlanning.remove}</button>
+                </div>
+                {item.warnings.map((warning) => <div className="production-warning" key={`${warning.typeId}:${warning.selectedBlueprintTypeId}`}><AlertTriangle size={14} />{t.productionPlanning.alternatives.replace("{type}", warning.typeName).replace("{count}", String(warning.candidateCount)).replace("{blueprint}", String(warning.selectedBlueprintTypeId))}</div>)}
+                {item.state === "ready" && <div className="production-resolution">
+                  <details open><summary>{t.productionPlanning.steps} · {item.steps.length}</summary><ol>{item.steps.map((step) => <li key={`${step.sequence}:${step.productTypeId}`}><div><strong>{t.productionPlanning.step.replace("{sequence}", String(step.sequence))}: {step.productName}</strong><span>{step.blueprintName} · {t.productionPlanning.activityLabels[step.activity]}</span></div><div><strong>{t.productionPlanning.runs.replace("{runs}", numberFormat.format(step.runs)).replace("{produced}", numberFormat.format(step.producedQuantity)).replace("{surplus}", numberFormat.format(step.surplusQuantity))}</strong><span>{t.productionPlanning.baseTime.replace("{time}", formatDuration(step.totalBaseTimeSeconds))}</span></div></li>)}</ol></details>
+                  <details open><summary>{t.productionPlanning.gross} · {item.grossMaterials.length}</summary>{item.grossMaterials.length === 0 ? <p>{t.productionPlanning.noGross}</p> : <ul>{item.grossMaterials.map((material) => <li key={material.typeId}><span>{material.typeName}<small>Type #{material.typeId}</small></span><strong>{numberFormat.format(material.quantity)}</strong></li>)}</ul>}</details>
+                </div>}
+              </article>;
+            })}</div> : null}
+        {plans && planTotal > 0 && <div className="asset-pagination"><span>{t.productionPlanning.resultRange.replace("{from}", numberFormat.format(planFrom)).replace("{to}", numberFormat.format(planTo)).replace("{total}", numberFormat.format(planTotal))}</span><div><button type="button" onClick={() => setPlanOffset(Math.max(0, planOffset - productionPlanPageSize))} disabled={planOffset === 0}>{t.productionPlanning.previous}</button><button type="button" onClick={() => setPlanOffset(planOffset + productionPlanPageSize)} disabled={planOffset + productionPlanPageSize >= planTotal}>{t.productionPlanning.next}</button></div></div>}
+      </section>
+    </div>
   );
 }
 

@@ -12,7 +12,9 @@ Eine Version wird nur bewusst, reproduzierbar und nach vollständig grünen Pfli
 
 ## Lokale Updatekanäle
 
-Seit `v0.0.4-preview.1` kann die Desktop-App die spätere Kanalpräferenz `stable`, `beta` oder `preview` lokal speichern. Diese Auswahl ist noch kein öffentlicher Update-Dienst: Das gebündelte Ed25519-signierte Testmanifest verweist ausschließlich auf `updates.invalid`, der Laufzeitstatus erzwingt `publicDistribution: false`, und es findet weder ein Netzwerkabruf noch ein Download oder eine Installation statt. Versionen werden weiterhin bewusst von der GitHub-Release-Seite bezogen.
+Seit `v0.0.4-preview.1` kann die Desktop-App die Kanalpräferenz `stable`, `beta` oder `preview` lokal speichern. Das gebündelte Ed25519-signierte Testmanifest verweist weiterhin ausschließlich auf `updates.invalid`, und der Laufzeitstatus erzwingt `publicDistribution: false`.
+
+Seit `v0.0.5-preview.13` prüft ein davon getrennter Hinweisweg beim Start und auf Nutzerwunsch die öffentliche Release-Liste des festen GitHub-Repositorys. Berücksichtigt werden nur zum Kanal passende Releases mit Installer, portabler ZIP und beiden exakt benannten SHA-256-Dateien. Die App öffnet ausschließlich die aus der validierten Version selbst gebildete GitHub-Release-URL. Sie lädt, entpackt und installiert kein Paket automatisch.
 
 Eine spätere Aktivierung benötigt ein eigenes geprüftes Arbeitspaket mit Produktionsendpunkt, getrennt verwaltetem privatem Produktionsschlüssel, Signierung der tatsächlichen Updatepakete, Rollback-Regeln und bestandenem Windows-Update-Gate. Ein privater Schlüssel darf niemals in Repository, Anwendung, portable ZIP oder GitHub-Actions-Log gelangen. Der öffentliche Prüfschlüssel darf in der Anwendung liegen.
 
@@ -67,11 +69,13 @@ Jedes Windows-Release enthält mindestens:
 - die portable ZIP `New.Eden.Foundry_<VERSION>_x64-portable.zip`,
 - für beide Pakete jeweils eine gleichnamige `.sha256`-Datei.
 
-Die portable ZIP enthält einen versionsbezogenen Ordner mit `New Eden Foundry.exe`, `foundry-sidecar.exe` und den deutsch-englischen Nutzungshinweisen. Der Workflow öffnet das erzeugte Archiv und prüft diese Einträge, bevor eine Version freigegeben wird. Die ZIP muss vollständig in einen beschreibbaren Ordner entpackt werden; ein Start direkt aus der Archivvorschau wird nicht unterstützt.
+Die portable ZIP enthält den konstanten Hauptordner `New Eden Foundry Portable` mit `New Eden Foundry.exe`, `foundry-sidecar.exe` und den deutsch-englischen Nutzungshinweisen. Der Workflow öffnet das erzeugte Archiv und prüft diese Einträge, bevor eine Version freigegeben wird. Die ZIP muss vollständig in einen beschreibbaren Ordner entpackt werden; ein Start direkt aus der Archivvorschau wird nicht unterstützt.
 
 „Portable“ bedeutet hier, dass die Anwendung ohne Installation und ohne Administratorrechte gestartet werden kann. Die Fachdatenbank und ihre Backups liegen im Unterordner `data` des Programmordners und werden beim Kopieren dieses vollständigen Ordners mitgeführt. Vor Kopie oder Sicherung muss die App geschlossen sein. Geheimnisse wie spätere EVE-Refresh-Tokens bleiben dagegen im Windows-Anmeldespeicher und sind deshalb nicht Bestandteil eines portablen Ordnertransfers.
 
 Der portable Archivinhalt verwendet dauerhaft den Hauptordner `New Eden Foundry Portable`, damit spätere Versionen in denselben übergeordneten Ordner entpackt werden können, ohne `data` zu ersetzen. Installierte Ausgaben verwenden dagegen den stabilen benutzerspezifischen Tauri-App-Datenordner; ein vorhandener Altbestand neben der EXE wird beim ersten Start sicher übernommen.
+
+Für ein portables Update wird die Anwendung vollständig geschlossen. Danach wird `data` zusätzlich gesichert und die neue ZIP in denselben übergeordneten Ordner entpackt; bei einer Ersetzungsabfrage werden nur die ausgelieferten Programmdateien ersetzt. Da das Release-Archiv keinen `data`-Ordner enthält, bleibt der bestehende lokale Datenstand erhalten. Anschließend werden Versionsanzeige, Datenbankmigration und vorhandene Charaktere beziehungsweise Pläne geprüft. Der automatische Release-Hinweis zeigt genau diesen Ablauf.
 
 Der Installer arbeitet im Modus `currentUser`. Ein Update ersetzt nur ausgelieferte Programmdateien und lässt den nicht gebündelten Ordner `data` stehen. Auch eine Deinstallation lässt diesen Datenordner bewusst zurück; für eine vollständige Löschung muss er anschließend manuell entfernt werden, bis eine bestätigungspflichtige Löschfunktion existiert.
 

@@ -12,6 +12,8 @@ import type {
   IndustryFacilityPage,
   IndustryJobPage,
   IndustrySlotPage,
+  ProductionCatalogPage,
+  ProductionPlanPage,
   ResearchPlanPage,
   SsoLoginStatus,
 } from "./runtime";
@@ -28,13 +30,14 @@ const idleSso: SsoLoginStatus = {
 const nativeRuntime = (overrides: Partial<Extract<DesktopRuntimeStatus, { state: "ready" }>> = {}) =>
   Promise.resolve<DesktopRuntimeStatus>({
     state: "ready",
-    version: "0.0.5-preview.12",
+    version: "0.0.5-preview.13",
     desktopShell: true,
     singleInstance: true,
+    distribution: "installed",
     sidecar: "ready",
     database: "ready",
     databaseLocation: "data/foundry.sqlite3",
-    schemaVersion: 8,
+    schemaVersion: 9,
     errorCode: null,
     data: {
       state: "empty",
@@ -214,15 +217,15 @@ const industrySlotPage: IndustrySlotPage = {
       utilizationState: "available", activeJobs: 1, pausedJobs: 0, readyJobs: 1,
       nextJobEndDate: "2026-09-11T12:00:00Z", primarySkillId: 3387,
       primarySkillLevel: 4, advancedSkillId: 24625, advancedSkillLevel: 2,
-      queuedPlans: null, blockedPlans: null, runningPlans: null, completePlans: null,
-      planningAvailable: false,
+      queuedPlans: 1, blockedPlans: 0, runningPlans: 1, completePlans: 0,
+      planningAvailable: true,
     }, {
       activity: "reactions", capacity: 5, occupied: 1, available: 4,
       utilizationState: "available", activeJobs: 1, pausedJobs: 0, readyJobs: 0,
       nextJobEndDate: "2026-09-11T13:00:00Z", primarySkillId: 45748,
       primarySkillLevel: 3, advancedSkillId: 45749, advancedSkillLevel: 1,
-      queuedPlans: null, blockedPlans: null, runningPlans: null, completePlans: null,
-      planningAvailable: false,
+      queuedPlans: 0, blockedPlans: 1, runningPlans: 1, completePlans: 0,
+      planningAvailable: true,
     }, {
       activity: "science", capacity: 6, occupied: 2, available: 4,
       utilizationState: "available", activeJobs: 2, pausedJobs: 0, readyJobs: 0,
@@ -271,6 +274,39 @@ const researchPlanPage: ResearchPlanPage = {
   summary: { unplanned: 0, ready: 1, queued: 0, running: 0, complete: 0,
     unverified: 0, missing: 0 },
   observedAt: "2026-09-11T12:01:00Z", ageSeconds: 60, estimatesAvailable: false,
+};
+
+const productionCatalogPage: ProductionCatalogPage = {
+  items: [{ blueprintTypeId: 100, blueprintName: "Synthetic Hull Blueprint",
+    activity: "manufacturing", baseTimeSeconds: 100, productTypeId: 101,
+    productName: "Synthetic Hull", outputQuantity: 2, materialCount: 1 }],
+  total: 1, offset: 0, limit: 50,
+  activities: ["manufacturing", "reaction"], buildNumber: "synthetic-production-1",
+};
+
+const productionPlanPage: ProductionPlanPage = {
+  items: [{ planId: 1, ownerCharacterId: 90_888_001, ownerName: "Builder",
+    blueprintTypeId: 100, blueprintName: "Synthetic Hull Blueprint",
+    activity: "manufacturing", productTypeId: 101, productName: "Synthetic Hull",
+    targetQuantity: 3, priority: 50, note: "Doctrine", state: "ready",
+    buildNumber: "synthetic-production-1", steps: [{ sequence: 1,
+      blueprintTypeId: 100, blueprintName: "Synthetic Hull Blueprint",
+      activity: "manufacturing", productTypeId: 101, productName: "Synthetic Hull",
+      requiredQuantity: 3, outputQuantityPerRun: 2, runs: 2,
+      producedQuantity: 4, surplusQuantity: 1, baseTimeSecondsPerRun: 100,
+      totalBaseTimeSeconds: 200, recipeAlternatives: 1,
+      materials: [{ typeId: 900, typeName: "Synthetic Mineral", quantityPerRun: 5,
+        grossQuantity: 10, producedByPlan: false }] }],
+    grossMaterials: [{ typeId: 900, typeName: "Synthetic Mineral", quantity: 10 }],
+    warnings: [], cycleTypeIds: [], totalBaseTimeSeconds: 200,
+    createdAt: "2026-09-11T12:00:00Z", updatedAt: "2026-09-11T12:00:00Z" }],
+  total: 1, offset: 0, limit: 50,
+  owners: [{ characterId: 90_888_001, name: "Builder" }],
+  activities: ["manufacturing", "reaction"],
+  states: ["ready", "sde-unavailable", "recipe-missing", "cycle", "complexity-limit"],
+  summary: { ready: 1, "sde-unavailable": 0, "recipe-missing": 0, cycle: 0,
+    "complexity-limit": 0 }, buildNumber: "synthetic-production-1",
+  inventoryApplied: false, modifiersApplied: false,
 };
 
 describe("New Eden Foundry design preview", () => {
@@ -535,7 +571,7 @@ describe("New Eden Foundry design preview", () => {
   it("credits Savoxmedia as the app creator next to the version", () => {
     render(<App />);
 
-    expect(screen.getByText("v0.0.5-preview.12")).toBeInTheDocument();
+    expect(screen.getByText("v0.0.5-preview.13")).toBeInTheDocument();
     expect(screen.getByText("Savoxmedia")).toBeInTheDocument();
     expect(screen.getByText("Erstellt von", { exact: false })).toBeInTheDocument();
     expect(screen.queryByText("Lokaler Betreiber")).not.toBeInTheDocument();
@@ -629,6 +665,53 @@ describe("New Eden Foundry design preview", () => {
     await waitFor(() => expect(updateChannelSetter).toHaveBeenCalledWith("beta"));
     expect(await screen.findByText(/Signiertes Testmanifest geprüft · Downloads noch deaktiviert/))
       .toBeInTheDocument();
+  });
+
+  it("shows the portable release notice and opens only its validated version", async () => {
+    const releaseDownloadsOpener = vi.fn().mockResolvedValue(undefined);
+    render(
+      <App
+        runtimeLoader={() => nativeRuntime({ distribution: "portable" })}
+        releaseNoticeChecker={() => Promise.resolve({
+          state: "available", channel: "preview", currentVersion: "0.0.5-preview.13",
+          latestVersion: "0.0.5-preview.14",
+          releaseUrl: "https://github.com/Savox76/eve-test-indu/releases/tag/v0.0.5-preview.14",
+          publishedAt: "2026-09-11T12:00:00Z", automaticInstall: false, errorCode: null,
+        })}
+        releaseDownloadsOpener={releaseDownloadsOpener}
+      />,
+    );
+
+    expect(await screen.findByText("Version 0.0.5-preview.14 ist verfügbar")).toBeInTheDocument();
+    expect(screen.getByText(/Portable: App schließen/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Release öffnen" }));
+    expect(releaseDownloadsOpener).toHaveBeenCalledWith("0.0.5-preview.14");
+  });
+
+  it("renders and creates a deterministic production goal", async () => {
+    const productionCatalogLoader = vi.fn().mockResolvedValue(productionCatalogPage);
+    const productionPlansLoader = vi.fn().mockResolvedValue(productionPlanPage);
+    const productionPlanSaver = vi.fn().mockResolvedValue({ saved: true, planId: 2 });
+    render(
+      <App
+        runtimeLoader={() => nativeRuntime()}
+        productionCatalogLoader={productionCatalogLoader}
+        productionPlansLoader={productionPlansLoader}
+        productionPlanSaver={productionPlanSaver}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Produktion" }));
+
+    expect(await screen.findByText("Synthetic Mineral")).toBeInTheDocument();
+    expect(screen.getByText(/Bruttobedarf ohne Bestandsabzug/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Synthetic Hull.*Auswählen$/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Ziel speichern" }));
+
+    await waitFor(() => expect(productionPlanSaver).toHaveBeenCalledWith({
+      planId: null, ownerCharacterId: 90_888_001, blueprintTypeId: 100,
+      activity: "manufacturing", productTypeId: 101, targetQuantity: 2,
+      priority: 0, note: null,
+    }));
   });
 
   it("starts and cancels one-character-at-a-time PKCE login with selected scopes", async () => {
