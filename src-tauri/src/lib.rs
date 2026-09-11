@@ -2217,7 +2217,13 @@ fn production_catalog_response_is_valid(response: &ProductionCatalogResponse) ->
     let keys = response
         .items
         .iter()
-        .map(|item| (item.blueprint_type_id, item.activity.as_str(), item.product_type_id))
+        .map(|item| {
+            (
+                item.blueprint_type_id,
+                item.activity.as_str(),
+                item.product_type_id,
+            )
+        })
         .collect::<HashSet<_>>();
     response.limit > 0
         && response.limit <= 100
@@ -2266,7 +2272,8 @@ fn production_plan_record_is_valid(item: &ProductionPlanRecord) -> bool {
             && production_id_is_valid(step.total_base_time_seconds)
             && production_id_is_valid(step.recipe_alternatives)
             && step.output_quantity_per_run.checked_mul(step.runs) == Some(step.produced_quantity)
-            && step.produced_quantity.checked_sub(step.required_quantity) == Some(step.surplus_quantity)
+            && step.produced_quantity.checked_sub(step.required_quantity)
+                == Some(step.surplus_quantity)
             && step.base_time_seconds_per_run.checked_mul(step.runs)
                 == Some(step.total_base_time_seconds)
             && step.materials.iter().all(|material| {
@@ -2336,7 +2343,9 @@ fn production_plan_record_is_valid(item: &ProductionPlanRecord) -> bool {
             .cycle_type_ids
             .iter()
             .all(|value| production_id_is_valid(*value))
-        && item.total_base_time_seconds.is_none_or(production_id_is_valid)
+        && item
+            .total_base_time_seconds
+            .is_none_or(production_id_is_valid)
         && asset_text_is_valid(&item.created_at, 64)
         && asset_text_is_valid(&item.updated_at, 64)
         && steps_valid
@@ -2375,11 +2384,21 @@ fn production_plan_query_response_is_valid(response: &ProductionPlanQueryRespons
         && response.owners.iter().all(|owner| {
             production_id_is_valid(owner.character_id) && asset_text_is_valid(&owner.name, 100)
         })
-        && response.activities.iter().map(String::as_str).collect::<Vec<_>>()
+        && response
+            .activities
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>()
             == PRODUCTION_ACTIVITIES
-        && response.states.iter().map(String::as_str).collect::<Vec<_>>()
+        && response
+            .states
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>()
             == PRODUCTION_PLAN_STATES
-        && summary.into_iter().all(|value| value <= JAVASCRIPT_MAX_SAFE_INTEGER)
+        && summary
+            .into_iter()
+            .all(|value| value <= JAVASCRIPT_MAX_SAFE_INTEGER)
         && response
             .build_number
             .as_ref()
@@ -2404,7 +2423,10 @@ fn production_plan_mutation_is_valid(item: &ProductionPlanMutationResponse) -> b
 }
 
 fn public_release_notice_is_valid(notice: &PublicReleaseNotice) -> bool {
-    let state_valid = matches!(notice.state.as_str(), "available" | "current" | "unavailable" | "error");
+    let state_valid = matches!(
+        notice.state.as_str(),
+        "available" | "current" | "unavailable" | "error"
+    );
     let version_fields = notice.latest_version.is_some()
         && notice.release_url.is_some()
         && notice.published_at.is_some();
@@ -2990,7 +3012,9 @@ fn semantic_release_version_is_valid(value: &str) -> bool {
         !value.is_empty()
             && value.split('.').all(|part| {
                 !part.is_empty()
-                    && part.bytes().all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+                    && part
+                        .bytes()
+                        .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
                     && (!part.bytes().all(|byte| byte.is_ascii_digit())
                         || numeric_component_is_valid(part))
             })
@@ -3826,7 +3850,8 @@ fn query_production_catalog(
     };
     let page: ProductionCatalogResponse =
         serde_json::from_str(&response).map_err(|_| "sidecar-response-invalid".to_owned())?;
-    if !production_catalog_response_is_valid(&page) || page.offset != offset || page.limit != limit {
+    if !production_catalog_response_is_valid(&page) || page.offset != offset || page.limit != limit
+    {
         return Err("sidecar-response-invalid".to_owned());
     }
     serde_json::to_string(&page).map_err(|_| "status-serialization-failed".to_owned())
@@ -3887,7 +3912,10 @@ fn query_production_plans(
     };
     let page: ProductionPlanQueryResponse =
         serde_json::from_str(&response).map_err(|_| "sidecar-response-invalid".to_owned())?;
-    if !production_plan_query_response_is_valid(&page) || page.offset != offset || page.limit != limit {
+    if !production_plan_query_response_is_valid(&page)
+        || page.offset != offset
+        || page.limit != limit
+    {
         return Err("sidecar-response-invalid".to_owned());
     }
     serde_json::to_string(&page).map_err(|_| "status-serialization-failed".to_owned())
@@ -4759,14 +4787,13 @@ mod tests {
         eve_character_record_is_valid, industry_job_query_response_is_valid,
         industry_job_sync_response_is_valid, industry_slot_query_response_is_valid,
         release_page_url, research_plan_query_response_is_valid, sso_login_status_is_valid,
-        AccountGroupRecord,
-        AssetDeltaCorrelation, AssetDeltaQueryResponse, AssetDeltaRecord, AssetDeltaSummary,
-        AssetExportResponse, AssetLocationNode, AssetOwner, AssetQueryResponse, AssetRecord,
-        CharacterSkillQueryResponse, CharacterSkillRecord, CharacterSkillSyncCharacterResponse,
-        CharacterSkillSyncResponse, EveCharacterRecord, IndustryAssetCorrelation,
-        IndustryBlueprintCorrelation, IndustryJobQueryResponse, IndustryJobRecord,
-        IndustryJobSyncCharacterResponse, IndustryJobSyncResponse, IndustrySlotActivity,
-        IndustrySlotQueryResponse, IndustrySlotRecord, ResearchPlanOwner,
+        AccountGroupRecord, AssetDeltaCorrelation, AssetDeltaQueryResponse, AssetDeltaRecord,
+        AssetDeltaSummary, AssetExportResponse, AssetLocationNode, AssetOwner, AssetQueryResponse,
+        AssetRecord, CharacterSkillQueryResponse, CharacterSkillRecord,
+        CharacterSkillSyncCharacterResponse, CharacterSkillSyncResponse, EveCharacterRecord,
+        IndustryAssetCorrelation, IndustryBlueprintCorrelation, IndustryJobQueryResponse,
+        IndustryJobRecord, IndustryJobSyncCharacterResponse, IndustryJobSyncResponse,
+        IndustrySlotActivity, IndustrySlotQueryResponse, IndustrySlotRecord, ResearchPlanOwner,
         ResearchPlanQueryResponse, ResearchPlanRecord, ResearchPlanSummary, ScopePackageStatus,
         SsoCharacterIdentity, SsoLoginStatus,
     };
@@ -4804,7 +4831,10 @@ mod tests {
     fn accepts_only_semantic_versions_for_the_fixed_release_page() {
         assert_eq!(
             release_page_url(Some("0.0.5-preview.13")),
-            Ok("https://github.com/Savox76/eve-test-indu/releases/tag/v0.0.5-preview.13".to_owned())
+            Ok(
+                "https://github.com/Savox76/eve-test-indu/releases/tag/v0.0.5-preview.13"
+                    .to_owned()
+            )
         );
         assert!(release_page_url(Some("01.0.0")).is_err());
         assert!(release_page_url(Some("0.0.5-preview.01")).is_err());
