@@ -20,6 +20,11 @@ from .industry_job_evidence import (
     load_latest_job_snapshots,
     parse_timestamp,
 )
+from .industry_facility_view import (
+    IndustryFacilityViewError,
+    JOB_COST_ACTIVITIES,
+    industry_facility_index,
+)
 from .industry_job_sync import ACTIVITY_IDS, JOB_STATUSES
 
 
@@ -290,6 +295,10 @@ def query_industry_jobs(
         job_snapshots = load_latest_job_snapshots(connection)
     except IndustryJobEvidenceError as error:
         raise IndustryJobViewError("industry_job_snapshot_invalid") from error
+    try:
+        facilities = industry_facility_index(connection)
+    except IndustryFacilityViewError as error:
+        raise IndustryJobViewError("industry_facility_snapshot_invalid") from error
     blueprint_available, blueprints = _blueprint_evidence(connection)
     asset_available, assets = _asset_evidence(connection)
     tokens = query["search"].casefold().split()
@@ -332,6 +341,11 @@ def query_industry_jobs(
             correlation_state = _overall_correlation(
                 str(job["status"]), blueprint_correlation, asset_correlation
             )
+            facility = facilities.get(int(job["facility_id"]), {})
+            cost_indices = facility.get("costIndices", {})
+            if not isinstance(cost_indices, Mapping):
+                raise IndustryJobViewError("industry_facility_snapshot_invalid")
+            facility_activity = JOB_COST_ACTIVITIES[activity_id]
             if query["correlation"] is not None and query["correlation"] != correlation_state:
                 continue
             row: dict[str, object] = {
@@ -353,6 +367,12 @@ def query_industry_jobs(
                 "cost": job["cost"],
                 "durationSeconds": int(job["duration"]),
                 "facilityId": int(job["facility_id"]),
+                "facilityName": facility.get("facilityName"),
+                "facilityKind": facility.get("kind", "unknown"),
+                "facilityAccess": facility.get("access", "unknown"),
+                "solarSystemId": facility.get("solarSystemId"),
+                "solarSystemName": facility.get("solarSystemName"),
+                "systemCostIndex": cost_indices.get(facility_activity),
                 "stationId": int(job["station_id"]),
                 "blueprintLocationId": int(job["blueprint_location_id"]),
                 "outputLocationId": int(job["output_location_id"]),
@@ -380,6 +400,8 @@ def query_industry_jobs(
                         str(row["blueprintItemId"]),
                         str(row["activityKey"]),
                         str(row["status"]),
+                        str(row["facilityName"] or ""),
+                        str(row["solarSystemName"] or ""),
                         correlation_state,
                         " ".join(str(value) for value in asset_correlation["eventIds"]),
                     )

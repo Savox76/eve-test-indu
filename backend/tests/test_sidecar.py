@@ -232,6 +232,23 @@ class SidecarProtocolTests(unittest.TestCase):
                     """,
                     (sync.lastrowid, "2026-09-09T12:01:00Z"),
                 )
+                facility_sync = connection.execute(
+                    """
+                    INSERT INTO sync_runs (
+                        source, status, started_at, completed_at
+                    ) VALUES ('industry_facilities', 'completed', ?, ?)
+                    """,
+                    ("2026-09-09T12:00:00Z", "2026-09-09T12:01:00Z"),
+                )
+                connection.execute(
+                    """
+                    INSERT INTO cached_snapshots (
+                        sync_run_id, resource, payload_json, observed_at
+                    ) VALUES (?, 'industry_facilities', '{}', ?)
+                    """,
+                    (facility_sync.lastrowid, "2026-09-09T12:01:00Z"),
+                )
+                connection.commit()
             vault = RefreshTokenVault(MemoryCredentialStore())
             vault.replace(character_id, "synthetic-refresh-token")
 
@@ -544,6 +561,27 @@ class SidecarIntegrationTests(unittest.TestCase):
                 "characters": [], "completed": 0, "failed": 0, "jobs": 0,
                 "active": 0, "completedJobs": 0,
             })
+
+            industry_facility_query_request = urllib.request.Request(
+                f"{base_url}/industry-facilities/query",
+                data=json.dumps({
+                    "search": "", "kind": None, "access": None,
+                    "activity": "manufacturing", "usedOnly": False,
+                    "offset": 0, "limit": 100, "sortBy": "facility",
+                    "sortDirection": "asc",
+                }).encode(),
+                method="POST",
+                headers={
+                    "Authorization": f"Bearer {SYNTHETIC_SESSION_TOKEN}",
+                    "Content-Type": "application/json",
+                },
+            )
+            with opener.open(industry_facility_query_request, timeout=3) as response:
+                industry_facility_page = json.loads(response.read())
+            self.assertEqual(industry_facility_page["items"], [])
+            self.assertEqual(industry_facility_page["total"], 0)
+            self.assertEqual(industry_facility_page["activity"], "manufacturing")
+            self.assertEqual(industry_facility_page["limit"], 100)
 
             character_skill_query_request = urllib.request.Request(
                 f"{base_url}/skills/query",

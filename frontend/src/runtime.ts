@@ -314,6 +314,12 @@ export interface IndustryJobRecord {
   cost: number | null;
   durationSeconds: number;
   facilityId: number;
+  facilityName: string | null;
+  facilityKind: IndustryFacilityKind;
+  facilityAccess: IndustryFacilityAccess;
+  solarSystemId: number | null;
+  solarSystemName: string | null;
+  systemCostIndex: number | null;
   stationId: number;
   blueprintLocationId: number;
   outputLocationId: number;
@@ -380,6 +386,81 @@ export interface IndustryJobSyncResult {
   jobs: number;
   active: number;
   completedJobs: number;
+}
+
+export type IndustryFacilityKind = "station" | "structure" | "unknown";
+export type IndustryFacilityAccess = "public" | "available" | "restricted" | "scope-missing" | "unknown";
+export type IndustryCostActivity = "manufacturing" | "reaction" | "copying" | "invention" | "researching_material_efficiency" | "researching_time_efficiency";
+export type IndustryFacilitySortField = "facility" | "system" | "type" | "cost" | "jobs" | "access" | "age";
+export const industryFacilityKinds: readonly IndustryFacilityKind[] = ["station", "structure", "unknown"];
+export const industryFacilityAccessStates: readonly IndustryFacilityAccess[] = ["public", "available", "restricted", "scope-missing", "unknown"];
+export const industryCostActivities: readonly IndustryCostActivity[] = ["manufacturing", "reaction", "copying", "invention", "researching_material_efficiency", "researching_time_efficiency"];
+export const industryFacilitySortFields: readonly IndustryFacilitySortField[] = ["facility", "system", "type", "cost", "jobs", "access", "age"];
+export const industryFacilityPageSize = 100;
+
+export interface IndustryFacilityRecord {
+  facilityId: number;
+  facilityName: string | null;
+  kind: IndustryFacilityKind;
+  access: IndustryFacilityAccess;
+  typeId: number | null;
+  typeName: string | null;
+  ownerId: number | null;
+  ownerName: string | null;
+  regionId: number | null;
+  regionName: string | null;
+  solarSystemId: number | null;
+  solarSystemName: string | null;
+  tax: number | null;
+  activityCostIndex: number | null;
+  usedByCharacterIds: number[];
+  observedActivityIds: IndustryActivityId[];
+  jobCount: number;
+  activeJobs: number;
+  errorCode: string | null;
+  snapshotId: number;
+  syncRunId: number;
+  observedAt: string;
+  ageSeconds: number;
+}
+
+export interface IndustryFacilityQuery {
+  search: string;
+  kind: IndustryFacilityKind | null;
+  access: IndustryFacilityAccess | null;
+  activity: IndustryCostActivity;
+  usedOnly: boolean;
+  offset: number;
+  limit: number;
+  sortBy: IndustryFacilitySortField;
+  sortDirection: SortDirection;
+}
+
+export interface IndustryFacilityPage {
+  items: IndustryFacilityRecord[];
+  total: number;
+  npcFacilities: number;
+  observedFacilities: number;
+  restrictedStructures: number;
+  systems: number;
+  offset: number;
+  limit: number;
+  activity: IndustryCostActivity;
+  activities: IndustryCostActivity[];
+  kinds: IndustryFacilityKind[];
+  accessStates: IndustryFacilityAccess[];
+  observedAt: string | null;
+  ageSeconds: number | null;
+}
+
+export interface IndustryFacilitySyncResult {
+  syncRunId: number;
+  facilities: number;
+  npcFacilities: number;
+  observedFacilities: number;
+  restrictedStructures: number;
+  systems: number;
+  resolvedNames: number;
 }
 
 export type CharacterSkillActiveState = "normal" | "limited" | "boosted";
@@ -1512,6 +1593,14 @@ function parseIndustryJobRecord(candidate: unknown): IndustryJobRecord {
     !(candidate.cost === null ||
       (typeof candidate.cost === "number" && Number.isFinite(candidate.cost) && candidate.cost >= 0 && Number.isSafeInteger(Math.trunc(candidate.cost)))) ||
     !isNonNegativeSafeInteger(candidate.durationSeconds) ||
+    !(candidate.facilityName === null || isBoundedText(candidate.facilityName, 200)) ||
+    !industryFacilityKinds.includes(candidate.facilityKind as IndustryFacilityKind) ||
+    !industryFacilityAccessStates.includes(candidate.facilityAccess as IndustryFacilityAccess) ||
+    !((candidate.solarSystemId === null && candidate.solarSystemName === null) ||
+      (isPositiveSafeInteger(candidate.solarSystemId) && isBoundedText(candidate.solarSystemName, 200))) ||
+    !(candidate.systemCostIndex === null ||
+      (typeof candidate.systemCostIndex === "number" && Number.isFinite(candidate.systemCostIndex) &&
+        candidate.systemCostIndex >= 0 && candidate.systemCostIndex <= 1)) ||
     ![candidate.facilityId, candidate.stationId, candidate.blueprintLocationId, candidate.outputLocationId,
       candidate.jobSnapshotId, candidate.jobSyncRunId].every(isPositiveSafeInteger) ||
     !isBoundedText(candidate.startDate, 64) ||
@@ -1670,6 +1759,162 @@ export async function syncIndustryJobs(
     throw new Error("The native runtime returned an inconsistent industry-job sync result.");
   }
   return { ...candidate, characters } as unknown as IndustryJobSyncResult;
+}
+
+function validateIndustryFacilityQuery(query: IndustryFacilityQuery): IndustryFacilityQuery {
+  const search = query.search.trim().replace(/\s+/g, " ");
+  if (
+    search.length > 120 ||
+    !(query.kind === null || industryFacilityKinds.includes(query.kind)) ||
+    !(query.access === null || industryFacilityAccessStates.includes(query.access)) ||
+    !industryCostActivities.includes(query.activity) ||
+    typeof query.usedOnly !== "boolean" ||
+    !isNonNegativeSafeInteger(query.offset) ||
+    !Number.isSafeInteger(query.limit) || query.limit < 1 || query.limit > 200 ||
+    !industryFacilitySortFields.includes(query.sortBy) ||
+    !["asc", "desc"].includes(query.sortDirection)
+  ) {
+    throw new Error("The industry-facility query is invalid.");
+  }
+  return { ...query, search };
+}
+
+function nullableIdAndName(candidate: Record<string, unknown>, id: string, name: string): boolean {
+  return (candidate[id] === null && candidate[name] === null) ||
+    (isPositiveSafeInteger(candidate[id]) && isBoundedText(candidate[name], 200));
+}
+
+function parseIndustryFacilityRecord(candidate: unknown): IndustryFacilityRecord {
+  if (
+    !isRecord(candidate) || !isPositiveSafeInteger(candidate.facilityId) ||
+    !(candidate.facilityName === null || isBoundedText(candidate.facilityName, 200)) ||
+    !industryFacilityKinds.includes(candidate.kind as IndustryFacilityKind) ||
+    !industryFacilityAccessStates.includes(candidate.access as IndustryFacilityAccess) ||
+    !nullableIdAndName(candidate, "typeId", "typeName") ||
+    !nullableIdAndName(candidate, "ownerId", "ownerName") ||
+    !nullableIdAndName(candidate, "regionId", "regionName") ||
+    !nullableIdAndName(candidate, "solarSystemId", "solarSystemName") ||
+    !(candidate.tax === null || (typeof candidate.tax === "number" && Number.isFinite(candidate.tax) &&
+      candidate.tax >= 0 && candidate.tax <= 1)) ||
+    !(candidate.activityCostIndex === null ||
+      (typeof candidate.activityCostIndex === "number" && Number.isFinite(candidate.activityCostIndex) &&
+        candidate.activityCostIndex >= 0 && candidate.activityCostIndex <= 1)) ||
+    !Array.isArray(candidate.usedByCharacterIds) ||
+    !candidate.usedByCharacterIds.every(isPositiveSafeInteger) ||
+    new Set(candidate.usedByCharacterIds).size !== candidate.usedByCharacterIds.length ||
+    !Array.isArray(candidate.observedActivityIds) ||
+    !candidate.observedActivityIds.every((value) => industryActivityIds.includes(value as IndustryActivityId)) ||
+    new Set(candidate.observedActivityIds).size !== candidate.observedActivityIds.length ||
+    !isNonNegativeSafeInteger(candidate.jobCount) || !isNonNegativeSafeInteger(candidate.activeJobs) ||
+    Number(candidate.activeJobs) > Number(candidate.jobCount) ||
+    !(candidate.errorCode === null || isBoundedText(candidate.errorCode, 120)) ||
+    !isPositiveSafeInteger(candidate.snapshotId) || !isPositiveSafeInteger(candidate.syncRunId) ||
+    !isBoundedText(candidate.observedAt, 64) || !isNonNegativeSafeInteger(candidate.ageSeconds)
+  ) {
+    throw new Error("The native runtime returned invalid industry-facility records.");
+  }
+  if (
+    (candidate.access === "public" &&
+      (candidate.kind !== "station" || candidate.facilityName === null || candidate.typeId === null ||
+        candidate.ownerId === null || candidate.regionId === null || candidate.solarSystemId === null ||
+        candidate.errorCode !== null)) ||
+    (candidate.access === "available" &&
+      (candidate.kind !== "structure" || candidate.facilityName === null || candidate.ownerId === null ||
+        candidate.solarSystemId === null || candidate.regionId !== null || candidate.tax !== null ||
+        candidate.errorCode !== null)) ||
+    (["restricted", "scope-missing", "unknown"].includes(String(candidate.access)) &&
+      (candidate.facilityName !== null || candidate.typeId !== null || candidate.ownerId !== null ||
+        candidate.regionId !== null || candidate.solarSystemId !== null || candidate.tax !== null ||
+        candidate.errorCode === null))
+  ) {
+    throw new Error("The native runtime returned inconsistent industry-facility records.");
+  }
+  return candidate as unknown as IndustryFacilityRecord;
+}
+
+function parseIndustryFacilityPage(candidate: unknown): IndustryFacilityPage {
+  if (
+    !isRecord(candidate) || !Array.isArray(candidate.items) ||
+    ![candidate.total, candidate.npcFacilities, candidate.observedFacilities,
+      candidate.restrictedStructures, candidate.systems, candidate.offset].every(isNonNegativeSafeInteger) ||
+    !Number.isSafeInteger(candidate.limit) || Number(candidate.limit) < 1 || Number(candidate.limit) > 200 ||
+    Number(candidate.restrictedStructures) > Number(candidate.observedFacilities) ||
+    !industryCostActivities.includes(candidate.activity as IndustryCostActivity) ||
+    !Array.isArray(candidate.activities) || candidate.activities.length !== industryCostActivities.length ||
+    !industryCostActivities.every((value, index) => (candidate.activities as unknown[])[index] === value) ||
+    !Array.isArray(candidate.kinds) || candidate.kinds.length !== industryFacilityKinds.length ||
+    !industryFacilityKinds.every((value, index) => (candidate.kinds as unknown[])[index] === value) ||
+    !Array.isArray(candidate.accessStates) || candidate.accessStates.length !== industryFacilityAccessStates.length ||
+    !industryFacilityAccessStates.every((value, index) => (candidate.accessStates as unknown[])[index] === value) ||
+    !(candidate.observedAt === null || isBoundedText(candidate.observedAt, 64)) ||
+    !(candidate.ageSeconds === null || isNonNegativeSafeInteger(candidate.ageSeconds)) ||
+    (candidate.observedAt === null) !== (candidate.ageSeconds === null)
+  ) {
+    throw new Error("The native runtime returned invalid industry-facility data.");
+  }
+  const items = candidate.items.map(parseIndustryFacilityRecord);
+  if (
+    items.length > Number(candidate.limit) || items.length > Number(candidate.total) ||
+    new Set(items.map(({ facilityId }) => facilityId)).size !== items.length ||
+    items.some((item) => item.observedAt !== candidate.observedAt || item.ageSeconds !== candidate.ageSeconds) ||
+    (candidate.observedAt === null &&
+      (items.length > 0 || candidate.npcFacilities !== 0 || candidate.observedFacilities !== 0 ||
+        candidate.restrictedStructures !== 0 || candidate.systems !== 0))
+  ) {
+    throw new Error("The native runtime returned inconsistent industry-facility data.");
+  }
+  return { ...candidate, items } as unknown as IndustryFacilityPage;
+}
+
+export async function loadIndustryFacilities(
+  query: IndustryFacilityQuery,
+  adapter: RuntimeAdapter = tauriAdapter,
+): Promise<IndustryFacilityPage> {
+  const validated = validateIndustryFacilityQuery(query);
+  if (!adapter.isAvailable()) return {
+    items: [], total: 0, npcFacilities: 0, observedFacilities: 0, restrictedStructures: 0,
+    systems: 0, offset: validated.offset, limit: validated.limit, activity: validated.activity,
+    activities: [...industryCostActivities], kinds: [...industryFacilityKinds],
+    accessStates: [...industryFacilityAccessStates], observedAt: null, ageSeconds: null,
+  };
+  const page = parseIndustryFacilityPage(JSON.parse(await adapter.invoke("query_industry_facilities", {
+    search: validated.search,
+    kind: validated.kind,
+    access: validated.access,
+    activity: validated.activity,
+    usedOnly: validated.usedOnly,
+    offset: validated.offset,
+    limit: validated.limit,
+    sortBy: validated.sortBy,
+    sortDirection: validated.sortDirection,
+  })));
+  if (page.offset !== validated.offset || page.limit !== validated.limit ||
+      page.activity !== validated.activity) {
+    throw new Error("The native runtime returned a different industry-facility window.");
+  }
+  return page;
+}
+
+export async function syncIndustryFacilities(
+  adapter: RuntimeAdapter = tauriAdapter,
+): Promise<IndustryFacilitySyncResult> {
+  if (!adapter.isAvailable()) {
+    throw new Error("Industry-facility sync is available only in the desktop application.");
+  }
+  const candidate: unknown = JSON.parse(await adapter.invoke("sync_industry_facilities"));
+  if (
+    !isRecord(candidate) || !isPositiveSafeInteger(candidate.syncRunId) ||
+    ![candidate.facilities, candidate.npcFacilities, candidate.observedFacilities,
+      candidate.restrictedStructures, candidate.systems, candidate.resolvedNames]
+      .every(isNonNegativeSafeInteger) ||
+    Number(candidate.facilities) !== Number(candidate.npcFacilities) + Number(candidate.observedFacilities) ||
+    Number(candidate.restrictedStructures) > Number(candidate.observedFacilities) ||
+    Number(candidate.npcFacilities) === 0 || Number(candidate.systems) === 0 ||
+    Number(candidate.resolvedNames) === 0
+  ) {
+    throw new Error("The native runtime returned an invalid industry-facility sync result.");
+  }
+  return candidate as unknown as IndustryFacilitySyncResult;
 }
 
 function validateCharacterSkillQuery(query: CharacterSkillQuery): CharacterSkillQuery {

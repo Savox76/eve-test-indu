@@ -56,6 +56,12 @@ from .industry_job_view import (
     query_industry_jobs,
     validate_industry_job_query,
 )
+from .industry_facility_sync import IndustryFacilitySyncError, sync_industry_facilities
+from .industry_facility_view import (
+    IndustryFacilityViewError,
+    query_industry_facilities,
+    validate_industry_facility_query,
+)
 from .location_resolution import (
     LocationResolutionError,
     resolve_latest_character_asset_locations,
@@ -260,6 +266,12 @@ def delete_character_completely(
             if exists is None:
                 connection.execute("ROLLBACK")
                 return False
+            # Global facility snapshots may contain structures observed through a
+            # character's personal jobs. Rebuild them after deletion instead of
+            # retaining location evidence without its owner context.
+            connection.execute(
+                "DELETE FROM sync_runs WHERE source = 'industry_facilities'"
+            )
             connection.execute(
                 "DELETE FROM characters WHERE character_id = ?",
                 (character_id,),
@@ -709,6 +721,56 @@ def create_application(
                 "skills": sum(int(result["skills"]) for result in results),
                 "totalSp": sum(int(result["totalSp"]) for result in results),
                 "unallocatedSp": sum(int(result["unallocatedSp"]) for result in results),
+            }
+        )
+
+    @app.post("/industry-facilities/query")
+    async def post_industry_facility_query(request: Request) -> JSONResponse:
+        try:
+            payload = await request.json()
+        except Exception:
+            return JSONResponse(
+                status_code=422,
+                content={"detail": "industry_facility_query_invalid"},
+            )
+        try:
+            validate_industry_facility_query(payload)
+            with closing(connect_database(storage.database_path)) as connection:
+                result = query_industry_facilities(connection, payload)
+        except IndustryFacilityViewError as error:
+            code = str(error)
+            return JSONResponse(
+                status_code=422 if code == "industry_facility_query_invalid" else 500,
+                content={"detail": code},
+            )
+        except Exception:
+            return JSONResponse(
+                status_code=500,
+                content={"detail": "industry_facility_query_failed"},
+            )
+        return JSONResponse(content=result)
+
+    @app.post("/industry-facilities/sync")
+    async def post_industry_facility_sync() -> JSONResponse:
+        if esi_client is None:
+            return JSONResponse(status_code=503, content={"detail": "esi_client_unavailable"})
+        try:
+            with closing(connect_database(storage.database_path)) as connection:
+                synced = sync_industry_facilities(connection, esi_client)
+        except (IndustryFacilitySyncError, EsiClientError) as error:
+            return JSONResponse(
+                status_code=503,
+                content={"detail": getattr(error, "code", str(error))[:120]},
+            )
+        return JSONResponse(
+            content={
+                "syncRunId": synced.sync_run_id,
+                "facilities": synced.facilities,
+                "npcFacilities": synced.npc_facilities,
+                "observedFacilities": synced.observed_facilities,
+                "restrictedStructures": synced.restricted_structures,
+                "systems": synced.systems,
+                "resolvedNames": synced.resolved_names,
             }
         )
 

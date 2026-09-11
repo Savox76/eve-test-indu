@@ -15,6 +15,7 @@ import {
   loadEveCharacters,
   loadEveSsoStatus,
   loadIndustryJobs,
+  loadIndustryFacilities,
   renameAccountGroup,
   setDesktopFontScale,
   setDesktopUpdateChannel,
@@ -24,6 +25,7 @@ import {
   syncBlueprints,
   syncCharacterSkills,
   syncIndustryJobs,
+  syncIndustryFacilities,
   updateEveCharacter,
   type RuntimeAdapter,
 } from "./runtime";
@@ -64,7 +66,7 @@ function managedCharacter(overrides: Record<string, unknown> = {}) {
 function nativeStatus(overrides: Record<string, unknown> = {}) {
   return JSON.stringify({
     state: "ready",
-    version: "0.0.5-preview.8",
+    version: "0.0.5-preview.9",
     desktopShell: true,
     singleInstance: true,
     sidecar: "ready",
@@ -100,7 +102,7 @@ describe("desktop runtime status", () => {
       loadDesktopRuntimeStatus({ isAvailable: () => true, invoke }),
     ).resolves.toEqual({
       state: "ready",
-      version: "0.0.5-preview.8",
+      version: "0.0.5-preview.9",
       desktopShell: true,
       singleInstance: true,
       sidecar: "ready",
@@ -691,6 +693,8 @@ describe("desktop runtime status", () => {
         blueprintTypeId: 681, blueprintName: "Bantam Blueprint", productTypeId: 582,
         productName: "Bantam", runs: 2, successfulRuns: 2, licensedRuns: 0,
         probability: 1, cost: 1234.5, durationSeconds: 3600, facilityId: 60_003_760,
+        facilityName: "Jita IV - Moon 4", facilityKind: "station", facilityAccess: "public",
+        solarSystemId: 30_000_142, solarSystemName: "Jita", systemCostIndex: 0.0125,
         stationId: 60_003_760, blueprintLocationId: 60_003_760,
         outputLocationId: 60_003_760, startDate: "2026-09-10T10:00:00Z",
         endDate: "2026-09-10T11:00:00Z", completedDate: "2026-09-10T11:00:00Z",
@@ -718,6 +722,41 @@ describe("desktop runtime status", () => {
     invoke.mockResolvedValueOnce(JSON.stringify(result));
     await expect(syncIndustryJobs({ isAvailable: () => true, invoke })).resolves.toEqual(result);
     expect(invoke).toHaveBeenLastCalledWith("sync_industry_jobs");
+  });
+
+  it("validates facility pages, cost context, and sync summaries", async () => {
+    const page = {
+      items: [{
+        facilityId: 60_003_760, facilityName: "Jita IV - Moon 4", kind: "station",
+        access: "public", typeId: 1_928, typeName: "Amarr Station", ownerId: 1_000_001,
+        ownerName: "Caldari Navy", regionId: 10_000_002, regionName: "The Forge",
+        solarSystemId: 30_000_142, solarSystemName: "Jita", tax: null,
+        activityCostIndex: 0.0125, usedByCharacterIds: [7], observedActivityIds: [1],
+        jobCount: 1, activeJobs: 0, errorCode: null, snapshotId: 10, syncRunId: 11,
+        observedAt: "2026-09-11T00:00:00Z", ageSeconds: 60,
+      }],
+      total: 1, npcFacilities: 1, observedFacilities: 0, restrictedStructures: 0,
+      systems: 1, offset: 0, limit: 100, activity: "manufacturing",
+      activities: ["manufacturing", "reaction", "copying", "invention",
+        "researching_material_efficiency", "researching_time_efficiency"],
+      kinds: ["station", "structure", "unknown"],
+      accessStates: ["public", "available", "restricted", "scope-missing", "unknown"],
+      observedAt: "2026-09-11T00:00:00Z", ageSeconds: 60,
+    };
+    const invoke = vi.fn<RuntimeAdapter["invoke"]>().mockResolvedValueOnce(JSON.stringify(page));
+    const query = { search: "Jita", kind: null, access: null, activity: "manufacturing",
+      usedOnly: true, offset: 0, limit: 100, sortBy: "cost", sortDirection: "asc" } as const;
+    await expect(loadIndustryFacilities(query, { isAvailable: () => true, invoke }))
+      .resolves.toEqual(page);
+    expect(invoke).toHaveBeenCalledWith("query_industry_facilities", expect.objectContaining({
+      activity: "manufacturing", usedOnly: true,
+    }));
+
+    const result = { syncRunId: 12, facilities: 2, npcFacilities: 1,
+      observedFacilities: 1, restrictedStructures: 1, systems: 1, resolvedNames: 7 };
+    invoke.mockResolvedValueOnce(JSON.stringify(result));
+    await expect(syncIndustryFacilities({ isAvailable: () => true, invoke })).resolves.toEqual(result);
+    expect(invoke).toHaveBeenLastCalledWith("sync_industry_facilities");
   });
 
   it("validates bounded character-skill pages and sync summaries", async () => {

@@ -12,7 +12,7 @@ Die zweisprachige Ansicht unter **Blueprints & Jobs** zeigt:
 - Charakter, Aktivität und ESI-Status,
 - Läufe, erfolgreiche Läufe und Kosten,
 - Start, geplantes Ende und Abschluss,
-- Anlage, Ausgabelocation und Datenalter,
+- Anlage, Ausgabelocation und Datenalter; seit Paket 26 außerdem den belegten Anlagen-/Systemnamen und den zur Aktivität passenden Systemkostenindex,
 - die getrennten Blueprint-, Asset- und Quellnachweise.
 
 Suche, Besitzer-, Status-, Aktivitäts- und Korrelationsfilter sowie die Sortierung werden vor der Seitenteilung im lokalen Sidecar angewendet. Pro Anfrage werden höchstens 200 und in der Oberfläche standardmäßig 100 Jobs übertragen. Die angezeigte Aktiv-Zahl bezieht sich auf das gesamte gefilterte Ergebnis, nicht nur auf die sichtbare Seite.
@@ -32,3 +32,5 @@ Die Anwendung unterscheidet die Belege ausdrücklich:
 Die Asset-Historie zeigt dieselbe Zuordnung in Gegenrichtung und nennt die passende Job-ID. Die gespeicherten Delta-Fingerabdrücke und Quellwerte werden dadurch nicht verändert; die Korrelation wird beim Lesen aus den geprüften Snapshots abgeleitet. Eine Übereinstimmung ist ein nachvollziehbarer technischer Beleg, aber kein stärkerer Kausalitätsnachweis als die von ESI gelieferten IDs, Zeiten und Orte erlauben.
 
 ESI bestimmt, welche abgeschlossenen persönlichen Jobs noch zurückgegeben werden. Deshalb ist die lokale Historie ab dem ersten erfolgreichen Lauf vollständig für die jeweils erhaltenen Antworten, kann aber keine bereits vor der ersten Synchronisierung von ESI entfernten Jobs rekonstruieren.
+
+Die in Jobzeilen ergänzten Anlagenwerte stammen ausschließlich aus dem letzten vollständigen [Anlagen-Snapshot](industry-facilities.md). Fehlt dieser Beleg oder ist eine Spielerstruktur nicht auflösbar, bleiben Name und Kostenindex unbekannt; die Jobdaten selbst werden nicht verworfen und es wird kein Wert geschätzt.
