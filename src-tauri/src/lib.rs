@@ -15,6 +15,8 @@ const SIDECAR_PROTOCOL_VERSION: u8 = 1;
 const DATABASE_LOCATION: &str = "data/foundry.sqlite3";
 const SIDECAR_READY_TIMEOUT: Duration = Duration::from_secs(25);
 const SIDECAR_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(4);
+const SIDECAR_RESTART_RETRY_DELAY: Duration = Duration::from_millis(750);
+const SIDECAR_RESTART_RETRY_COUNT: u8 = 3;
 const SIDECAR_REQUEST_TIMEOUT: Duration = Duration::from_secs(3);
 const ASSET_SYNC_TIMEOUT: Duration = Duration::from_secs(120);
 const UPDATE_NOTICE_TIMEOUT: Duration = Duration::from_secs(8);
@@ -3227,6 +3229,18 @@ fn sidecar_startup_error_code(value: &serde_json::Value) -> Option<&'static str>
     }
 }
 
+fn sidecar_startup_error_is_retryable(error_code: &str) -> bool {
+    matches!(
+        error_code,
+        "database-startup-failed"
+            | "sidecar-spawn-failed"
+            | "sidecar-startup-write-failed"
+            | "sidecar-ready-read-failed"
+            | "sidecar-ready-invalid"
+            | "sidecar-loopback-unavailable"
+    )
+}
+
 fn launch_sidecar(
     app: &AppHandle,
 ) -> Result<
@@ -3347,25 +3361,41 @@ fn start_sidecar(app: AppHandle) {
         return;
     }
 
-    match launch_sidecar(&app) {
-        Ok((mut process, schema_version, data, updater, appearance)) => {
-            if state.shutting_down.load(Ordering::Acquire) {
-                terminate_child(&mut process.child);
+    let mut last_error = "sidecar-startup-failed";
+    for attempt in 0..SIDECAR_RESTART_RETRY_COUNT {
+        match launch_sidecar(&app) {
+            Ok((mut process, schema_version, data, updater, appearance)) => {
+                if state.shutting_down.load(Ordering::Acquire) {
+                    terminate_child(&mut process.child);
+                    return;
+                }
+                *state
+                    .sidecar
+                    .lock()
+                    .unwrap_or_else(|error| error.into_inner()) = Some(process);
+                state.set_snapshot(RuntimeSnapshot::ready(
+                    schema_version,
+                    data,
+                    updater,
+                    appearance,
+                ));
                 return;
             }
-            *state
-                .sidecar
-                .lock()
-                .unwrap_or_else(|error| error.into_inner()) = Some(process);
-            state.set_snapshot(RuntimeSnapshot::ready(
-                schema_version,
-                data,
-                updater,
-                appearance,
-            ));
+            Err(error_code) => last_error = error_code,
         }
-        Err(error_code) => state.set_snapshot(RuntimeSnapshot::failed(error_code)),
+
+        if attempt + 1 < SIDECAR_RESTART_RETRY_COUNT
+            && sidecar_startup_error_is_retryable(last_error)
+        {
+            thread::sleep(SIDECAR_RESTART_RETRY_DELAY);
+            if state.shutting_down.load(Ordering::Acquire) {
+                return;
+            }
+        } else {
+            break;
+        }
     }
+    state.set_snapshot(RuntimeSnapshot::failed(last_error));
 }
 
 fn stop_sidecar(app: &AppHandle) {
@@ -3380,7 +3410,7 @@ fn stop_sidecar(app: &AppHandle) {
         .unwrap_or_else(|error| error.into_inner())
         .take();
     if let Some(process) = process.as_mut() {
-        if let Some(stdin) = process.child.stdin.as_mut() {
+        if let Some(mut stdin) = process.child.stdin.take() {
             let _ = stdin.write_all(b"{\"command\":\"shutdown\"}\n");
             let _ = stdin.flush();
         }
@@ -4959,9 +4989,9 @@ mod tests {
         industry_job_sync_response_is_valid, industry_slot_query_response_is_valid,
         migrate_to_program_directory_storage, release_page_url,
         research_plan_query_response_is_valid, sidecar_startup_error_code,
-        sso_login_status_is_valid, AccountGroupRecord, AssetDeltaCorrelation,
-        AssetDeltaQueryResponse, AssetDeltaRecord, AssetDeltaSummary, AssetExportResponse,
-        AssetLocationNode, AssetOwner, AssetQueryResponse, AssetRecord,
+        sidecar_startup_error_is_retryable, sso_login_status_is_valid, AccountGroupRecord,
+        AssetDeltaCorrelation, AssetDeltaQueryResponse, AssetDeltaRecord, AssetDeltaSummary,
+        AssetExportResponse, AssetLocationNode, AssetOwner, AssetQueryResponse, AssetRecord,
         CharacterSkillQueryResponse, CharacterSkillRecord, CharacterSkillSyncCharacterResponse,
         CharacterSkillSyncResponse, EveCharacterRecord, IndustryAssetCorrelation,
         IndustryBlueprintCorrelation, IndustryJobQueryResponse, IndustryJobRecord,
@@ -5124,6 +5154,18 @@ mod tests {
             Some("database-startup-failed")
         );
         assert_eq!(sidecar_startup_error_code(&ready), None);
+    }
+
+    #[test]
+    fn retries_only_transient_sidecar_startup_errors() {
+        assert!(sidecar_startup_error_is_retryable(
+            "database-startup-failed"
+        ));
+        assert!(sidecar_startup_error_is_retryable("sidecar-ready-invalid"));
+        assert!(!sidecar_startup_error_is_retryable(
+            "program-storage-unavailable"
+        ));
+        assert!(!sidecar_startup_error_is_retryable("sidecar-not-found"));
     }
 
     fn valid_authorization_url() -> String {

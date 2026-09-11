@@ -24,6 +24,35 @@ Keine.
 
 Keine.
 
+## 0.0.5-preview.17 – 11. September 2026
+
+### Neu hinzugefügt
+
+- Der verpflichtende Windows-Pakettest schließt die installierte Anwendung über ihr Hauptfenster, wartet auf das vollständige Prozessende und startet denselben Datenstand ein zweites Mal.
+- Bei einem Startfehler zeigt die Oberfläche zusätzlich den bereinigten technischen Fehlercode an.
+
+### Geändert
+
+- Beim normalen Beenden wird die Sidecar-Steuerleitung nach dem Shutdown-Befehl geschlossen, damit der lokale Dienst auch bei einem verzögerten Befehlsleser sicher ein Ende-Signal erhält.
+- Kurzzeitige Sidecar-, Datenbank- und Loopback-Startfehler werden begrenzt erneut versucht; dauerhafte Speicher-, Migrations- und Paketfehler schlagen weiterhin sofort und sichtbar fehl.
+- Die sichtbare Versionsnummer lautet `v0.0.5-preview.17`.
+
+### Behobene Fehler
+
+- Ein unmittelbar nach einem normalen Schließen erneut gestarteter Installer-Build kann nicht mehr durch einen noch auslaufenden lokalen Dienst beziehungsweise eine kurzzeitig belegte SQLite-Datei dauerhaft im Zustand „Lokaler Kern gestört“ bleiben.
+- Der bisherige Windows-Test konnte einen funktionierenden ersten Start bestätigen, ohne das saubere Beenden und Wiederöffnen desselben installierten Datenordners zu prüfen.
+
+### Bekannte Einschränkungen
+
+- EVE-Refresh-Tokens bleiben im Windows-Anmeldespeicher und müssen auf einem anderen Rechner erneut autorisiert werden.
+- Vollautomatische Installation bleibt bis zu einer produktiv signierten Update- und Rollback-Kette deaktiviert.
+- Paket 22 benötigt weiterhin das vollständige Windows-A0-Protokoll auf dem Zielgerät.
+
+### Update und Datenbankmigration
+
+- Das Datenbankschema bleibt bei Version 9; es gibt keine neue fachliche Datenmigration.
+- `.16` vollständig schließen und `.17` installieren. Die Installer-Option zum Löschen der Anwendungsdaten muss abgewählt bleiben; der vorhandene `data`-Ordner wird direkt weiterverwendet.
+
 ## 0.0.5-preview.16 – 11. September 2026
 
 ### Neu hinzugefügt

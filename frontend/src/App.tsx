@@ -245,6 +245,7 @@ const copy = {
       loopback: "Lokale Verbindung zu 127.0.0.1 konnte nicht geöffnet werden",
       fallback: "Sidecar oder Programmordner nicht verfügbar",
     },
+    runtimeErrorCodeLabel: "Fehlercode",
     dataStatus: {
       loading: {
         title: "Lokaler Datenstand wird geladen",
@@ -918,7 +919,7 @@ const copy = {
     },
     planned: "Geplant",
     previewOnly: "Noch ohne Live-Funktion",
-    footerVersion: "v0.0.5-preview.16",
+    footerVersion: "v0.0.5-preview.17",
   },
   en: {
     nav: {
@@ -975,6 +976,7 @@ const copy = {
       loopback: "The local 127.0.0.1 connection could not be opened",
       fallback: "Sidecar or program folder is unavailable",
     },
+    runtimeErrorCodeLabel: "Error code",
     dataStatus: {
       loading: {
         title: "Loading local data",
@@ -1648,7 +1650,7 @@ const copy = {
     },
     planned: "Planned",
     previewOnly: "No live function yet",
-    footerVersion: "v0.0.5-preview.16",
+    footerVersion: "v0.0.5-preview.17",
   },
 } as const;
 
@@ -2112,6 +2114,7 @@ export function App({
       default:
         runtimeDetail = t.runtimeErrors.fallback;
     }
+    runtimeDetail = `${runtimeDetail} · ${t.runtimeErrorCodeLabel}: ${runtimeStatus.errorCode}`;
   }
 
   const searchResults = useMemo(() => {
