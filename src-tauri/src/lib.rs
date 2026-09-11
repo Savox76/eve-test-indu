@@ -1170,9 +1170,14 @@ fn character_skill_query_response_is_valid(response: &CharacterSkillQueryRespons
         .collect::<HashSet<_>>();
     response.limit > 0
         && response.limit <= MAX_ASSET_PAGE_SIZE
-        && [response.total, response.total_sp, response.unallocated_sp, response.offset]
-            .into_iter()
-            .all(|value| value <= JAVASCRIPT_MAX_SAFE_INTEGER)
+        && [
+            response.total,
+            response.total_sp,
+            response.unallocated_sp,
+            response.offset,
+        ]
+        .into_iter()
+        .all(|value| value <= JAVASCRIPT_MAX_SAFE_INTEGER)
         && response.items.len() as u64 <= response.limit
         && response.items.len() as u64 <= response.total
         && response.levels == [0, 1, 2, 3, 4, 5]
@@ -2193,14 +2198,8 @@ fn sync_character_skills(state: State<'_, RuntimeState>) -> Result<String, Strin
         let process = sidecar
             .as_ref()
             .ok_or_else(|| "sidecar-unavailable".to_owned())?;
-        sidecar_json_request_with_timeout(
-            process,
-            "POST",
-            "/skills/sync",
-            "{}",
-            ASSET_SYNC_TIMEOUT,
-        )
-        .map_err(str::to_owned)?
+        sidecar_json_request_with_timeout(process, "POST", "/skills/sync", "{}", ASSET_SYNC_TIMEOUT)
+            .map_err(str::to_owned)?
     };
     let result: CharacterSkillSyncResponse =
         serde_json::from_str(&response).map_err(|_| "sidecar-response-invalid".to_owned())?;
@@ -2880,9 +2879,10 @@ mod tests {
         AssetDeltaCorrelation, AssetDeltaQueryResponse, AssetDeltaRecord, AssetDeltaSummary,
         AssetExportResponse, AssetLocationNode, AssetOwner, AssetQueryResponse, AssetRecord,
         CharacterSkillQueryResponse, CharacterSkillRecord, CharacterSkillSyncCharacterResponse,
-        CharacterSkillSyncResponse, EveCharacterRecord, IndustryAssetCorrelation, IndustryBlueprintCorrelation,
-        IndustryJobQueryResponse, IndustryJobRecord, IndustryJobSyncCharacterResponse,
-        IndustryJobSyncResponse, ScopePackageStatus, SsoCharacterIdentity, SsoLoginStatus,
+        CharacterSkillSyncResponse, EveCharacterRecord, IndustryAssetCorrelation,
+        IndustryBlueprintCorrelation, IndustryJobQueryResponse, IndustryJobRecord,
+        IndustryJobSyncCharacterResponse, IndustryJobSyncResponse, ScopePackageStatus,
+        SsoCharacterIdentity, SsoLoginStatus,
     };
 
     fn valid_authorization_url() -> String {
@@ -3260,9 +3260,7 @@ mod tests {
                 name: "Builder".to_owned(),
             }],
             levels: vec![0, 1, 2, 3, 4, 5],
-            active_states: ["normal", "limited", "boosted"]
-                .map(str::to_owned)
-                .to_vec(),
+            active_states: ["normal", "limited", "boosted"].map(str::to_owned).to_vec(),
             observed_at: Some("2026-09-11T00:00:00Z".to_owned()),
             age_seconds: Some(60),
         };
