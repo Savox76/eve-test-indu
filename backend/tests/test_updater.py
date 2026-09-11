@@ -7,15 +7,37 @@ from pathlib import Path
 
 from new_eden_foundry_backend.database import connect_database, initialize_database
 from new_eden_foundry_backend.updater import (
+    PUBLIC_RELEASES_URL,
+    PublicReleaseCheckError,
     TEST_MANIFEST_PATH,
     TEST_MANIFEST_SIGNATURE_PATH,
     UpdateChannel,
     UpdateManifestError,
+    check_public_releases,
     read_update_channel,
     set_update_channel,
     verify_bundled_test_manifest,
     verify_test_update_manifest,
 )
+
+
+def release(version: str, *, prerelease: bool = True, complete: bool = True) -> dict:
+    names = [
+        f"New.Eden.Foundry_{version}_x64-setup.exe",
+        f"New.Eden.Foundry_{version}_x64-setup.exe.sha256",
+        f"New.Eden.Foundry_{version}_x64-portable.zip",
+        f"New.Eden.Foundry_{version}_x64-portable.zip.sha256",
+    ]
+    if not complete:
+        names.pop()
+    return {
+        "tag_name": f"v{version}",
+        "html_url": f"https://github.com/Savox76/eve-test-indu/releases/tag/v{version}",
+        "draft": False,
+        "prerelease": prerelease,
+        "published_at": "2026-09-11T12:00:00Z",
+        "assets": [{"name": name, "state": "uploaded"} for name in names],
+    }
 
 
 class UpdatePreferencesTests(unittest.TestCase):
@@ -104,6 +126,59 @@ class SignedTestManifestTests(unittest.TestCase):
     def test_malformed_signature_is_rejected(self) -> None:
         with self.assertRaisesRegex(UpdateManifestError, "base64"):
             verify_test_update_manifest(self.manifest, "not-a-signature")
+
+
+class PublicReleaseNoticeTests(unittest.TestCase):
+    @staticmethod
+    def transport(releases: list[dict]):
+        def load(url: str) -> bytes:
+            if url != PUBLIC_RELEASES_URL:
+                raise AssertionError("unexpected URL")
+            return json.dumps(releases).encode()
+
+        return load
+
+    def test_preview_channel_reports_newest_complete_release(self) -> None:
+        notice = check_public_releases(
+            "preview",
+            "0.0.5-preview.12",
+            transport=self.transport([
+                release("0.0.5-preview.12"),
+                release("0.0.5-preview.13"),
+                release("0.0.5-preview.14", complete=False),
+            ]),
+        )
+        self.assertEqual(notice["state"], "available")
+        self.assertEqual(notice["latestVersion"], "0.0.5-preview.13")
+        self.assertFalse(notice["automaticInstall"])
+
+    def test_stable_channel_ignores_prereleases(self) -> None:
+        notice = check_public_releases(
+            "stable",
+            "0.0.4",
+            transport=self.transport([
+                release("0.0.5-preview.13"),
+                release("0.0.4", prerelease=False),
+            ]),
+        )
+        self.assertEqual(notice["state"], "current")
+        self.assertEqual(notice["latestVersion"], "0.0.4")
+
+    def test_untrusted_release_url_and_invalid_payload_are_ignored_or_rejected(self) -> None:
+        wrong = release("0.0.5-preview.13")
+        wrong["html_url"] = "https://example.invalid/release"
+        notice = check_public_releases(
+            "preview",
+            "0.0.5-preview.12",
+            transport=self.transport([wrong]),
+        )
+        self.assertEqual(notice["state"], "unavailable")
+        with self.assertRaisesRegex(PublicReleaseCheckError, "response_invalid"):
+            check_public_releases(
+                "preview",
+                "0.0.5-preview.12",
+                transport=lambda _url: b"{}",
+            )
 
 
 if __name__ == "__main__":

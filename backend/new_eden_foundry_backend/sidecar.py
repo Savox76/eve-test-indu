@@ -71,6 +71,17 @@ from .location_resolution import (
     LocationResolutionError,
     resolve_latest_character_asset_locations,
 )
+from .production_planning import (
+    ProductionPlanningError,
+    delete_production_plan,
+    query_production_catalog,
+    query_production_plans,
+    save_production_plan,
+    validate_production_catalog_query,
+    validate_production_plan_delete,
+    validate_production_plan_input,
+    validate_production_plan_query,
+)
 from .research_planning import (
     ResearchPlanningError,
     delete_research_plan,
@@ -101,8 +112,10 @@ from .token_vault import (
 )
 from .type_names import TypeNameResolutionError, resolve_type_names
 from .updater import (
+    PublicReleaseCheckError,
     UpdateChannel,
     UpdateManifestError,
+    check_public_releases,
     read_update_channel,
     set_update_channel,
     verify_bundled_test_manifest,
@@ -414,6 +427,24 @@ def create_application(
                 "publicDistribution": False,
             }
         )
+
+    @app.get("/updates/check")
+    def get_public_release_notice() -> dict[str, object]:
+        with closing(connect_database(storage.database_path)) as connection:
+            selected_channel = read_update_channel(connection)
+        try:
+            return check_public_releases(selected_channel, project_version())
+        except PublicReleaseCheckError as error:
+            return {
+                "state": "error",
+                "channel": selected_channel.value,
+                "currentVersion": project_version(),
+                "latestVersion": None,
+                "releaseUrl": None,
+                "publishedAt": None,
+                "automaticInstall": False,
+                "errorCode": str(error),
+            }
 
     @app.get("/settings/appearance")
     async def get_appearance_settings() -> dict[str, str]:
@@ -839,6 +870,83 @@ def create_application(
                 status_code=500,
                 content={"detail": "sde_blueprint_activity_query_failed"},
             )
+        return JSONResponse(content=result)
+
+    @app.post("/production-plans/catalog")
+    async def post_production_catalog_query(request: Request) -> JSONResponse:
+        try:
+            payload = await request.json()
+        except Exception:
+            return JSONResponse(status_code=422, content={"detail": "production_catalog_query_invalid"})
+        try:
+            validate_production_catalog_query(payload)
+            with closing(connect_database(storage.database_path)) as connection:
+                result = query_production_catalog(connection, payload)
+        except ProductionPlanningError as error:
+            return JSONResponse(status_code=422, content={"detail": str(error)})
+        except Exception:
+            return JSONResponse(status_code=500, content={"detail": "production_catalog_query_failed"})
+        return JSONResponse(content=result)
+
+    @app.post("/production-plans/query")
+    async def post_production_plan_query(request: Request) -> JSONResponse:
+        try:
+            payload = await request.json()
+        except Exception:
+            return JSONResponse(status_code=422, content={"detail": "production_plan_query_invalid"})
+        try:
+            validate_production_plan_query(payload)
+            with closing(connect_database(storage.database_path)) as connection:
+                result = query_production_plans(connection, payload)
+        except ProductionPlanningError as error:
+            code = str(error)
+            return JSONResponse(
+                status_code=422 if code == "production_plan_query_invalid" else 500,
+                content={"detail": code},
+            )
+        except Exception:
+            return JSONResponse(status_code=500, content={"detail": "production_plan_query_failed"})
+        return JSONResponse(content=result)
+
+    @app.post("/production-plans/save")
+    async def post_production_plan_save(request: Request) -> JSONResponse:
+        try:
+            payload = await request.json()
+        except Exception:
+            return JSONResponse(status_code=422, content={"detail": "production_plan_input_invalid"})
+        try:
+            validate_production_plan_input(payload)
+            with closing(connect_database(storage.database_path)) as connection:
+                result = save_production_plan(connection, payload)
+        except ProductionPlanningError as error:
+            code = str(error)
+            status = 404 if code in {"production_owner_missing", "production_plan_missing"} else 409 if code in {
+                "production_sde_unavailable", "production_recipe_missing",
+                "production_plan_cycle", "production_plan_complexity-limit",
+            } else 422
+            return JSONResponse(status_code=status, content={"detail": code})
+        except Exception:
+            return JSONResponse(status_code=500, content={"detail": "production_plan_save_failed"})
+        return JSONResponse(content=result)
+
+    @app.post("/production-plans/delete")
+    async def post_production_plan_delete(request: Request) -> JSONResponse:
+        try:
+            payload = await request.json()
+        except Exception:
+            return JSONResponse(status_code=422, content={"detail": "production_plan_delete_invalid"})
+        try:
+            validate_production_plan_delete(payload)
+            with closing(connect_database(storage.database_path)) as connection:
+                result = delete_production_plan(connection, payload)
+        except ProductionPlanningError as error:
+            code = str(error)
+            return JSONResponse(
+                status_code=404 if code == "production_plan_missing" else 422,
+                content={"detail": code},
+            )
+        except Exception:
+            return JSONResponse(status_code=500, content={"detail": "production_plan_delete_failed"})
         return JSONResponse(content=result)
 
     @app.post("/research-plans/query")

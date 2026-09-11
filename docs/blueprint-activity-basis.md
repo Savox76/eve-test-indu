@@ -40,7 +40,7 @@ Ohne vollständig importierten Aktivitätsstand ist `buildNumber` `null` und die
 
 ## Fachliche Grenze
 
-Die Werte sind eine reproduzierbare Datenbasis, noch keine Produktionsprognose. Paket 29 wendet weder Blueprint-ME, Runs, Materialrundung, Charakter-Skills, Anlagen-/Rigboni noch Systemkosten, Steuern oder Preise an. Dadurch werden Basiswerte nicht mit späteren Berechnungsergebnissen vermischt. Die Produktionsplanung folgt in Paket 30.
+Die Werte sind eine reproduzierbare Datenbasis, noch keine Produktionsprognose. Paket 29 wendet weder Blueprint-ME, Runs, Materialrundung, Charakter-Skills, Anlagen-/Rigboni noch Systemkosten, Steuern oder Preise an. Paket 30 verwendet diese unveränderten Werte für deterministische Produktionsschritte und Bruttomaterial, weist die weiterhin fehlenden Modifikatoren aber ausdrücklich aus.
 
 ## Quelle und Aktualisierung
 

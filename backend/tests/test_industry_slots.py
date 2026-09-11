@@ -12,7 +12,9 @@ from new_eden_foundry_backend.industry_slots import (
     IndustrySlotError,
     query_industry_slots,
 )
+from new_eden_foundry_backend.production_planning import save_production_plan
 from new_eden_foundry_backend.research_planning import save_research_plan
+from new_eden_foundry_backend.sde import import_industry_sde
 
 
 CHARACTER_ID = 90_000_201
@@ -161,6 +163,47 @@ class IndustrySlotTests(unittest.TestCase):
 
     def test_combines_real_capacity_occupancy_and_research_queue(self):
         self.sync_sources()
+        import_industry_sde(
+            self.db,
+            build_number="synthetic-slot-production-1",
+            groups=[{"group_id": 1, "name": "Synthetic industry"}],
+            types=[
+                {"type_id": 6_001, "group_id": 1, "name": "Synthetic Blueprint"},
+                {"type_id": 6_002, "group_id": 1, "name": "Synthetic Product"},
+                {"type_id": 6_003, "group_id": 1, "name": "Synthetic Material"},
+            ],
+            locations=[
+                {
+                    "location_id": 30_000_142,
+                    "name": "Synthetic System",
+                    "kind": "solar_system",
+                }
+            ],
+            blueprint_activities=[
+                {
+                    "blueprint_type_id": 6_001,
+                    "activity": activity,
+                    "time_seconds": 60,
+                    "products": [{"type_id": 6_002, "quantity": 1}],
+                    "materials": [{"type_id": 6_003, "quantity": 2}],
+                }
+                for activity in ("manufacturing", "reaction")
+            ],
+        )
+        for activity in ("manufacturing", "reaction"):
+            save_production_plan(
+                self.db,
+                {
+                    "planId": None,
+                    "ownerCharacterId": CHARACTER_ID,
+                    "blueprintTypeId": 6_001,
+                    "activity": activity,
+                    "productTypeId": 6_002,
+                    "targetQuantity": 1,
+                    "priority": 50,
+                    "note": None,
+                },
+            )
         page = query_industry_slots(
             self.db,
             query(ownerCharacterId=CHARACTER_ID),
@@ -192,6 +235,8 @@ class IndustrySlotTests(unittest.TestCase):
             (1, 1, 1),
         )
         self.assertEqual(activities["manufacturing"]["readyJobs"], 1)
+        self.assertEqual(activities["manufacturing"]["runningPlans"], 1)
+        self.assertEqual(activities["reactions"]["runningPlans"], 1)
         self.assertEqual(
             activities["manufacturing"]["nextJobEndDate"],
             "2026-09-11T12:00:00Z",

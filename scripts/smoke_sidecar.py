@@ -230,7 +230,7 @@ def main() -> int:
             database = health.get("database")
             if not isinstance(database, dict) or database.get("location") != "data/foundry.sqlite3":
                 raise RuntimeError("The sidecar reported an unexpected database location.")
-            if database.get("schemaVersion") != 8 or database.get("integrity") != "ok":
+            if database.get("schemaVersion") != 9 or database.get("integrity") != "ok":
                 raise RuntimeError("The sidecar database health is invalid.")
             if health.get("esiClient", {}).get("compatibilityDate") != "2026-09-09":
                 raise RuntimeError("The health response omitted the ESI compatibility date.")
@@ -308,6 +308,49 @@ def main() -> int:
             }:
                 raise RuntimeError("The packaged industry-job sync is invalid.")
 
+            production_catalog_request = urllib.request.Request(
+                f"http://127.0.0.1:{int(ready['port'])}/production-plans/catalog",
+                data=json.dumps({
+                    "search": "", "activity": None, "offset": 0, "limit": 50,
+                }).encode("utf-8"),
+                method="POST",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": "application/json",
+                },
+            )
+            with opener.open(production_catalog_request, timeout=3) as response:
+                production_catalog = json.loads(response.read())
+            if (
+                production_catalog.get("items") != []
+                or production_catalog.get("total") != 0
+                or production_catalog.get("buildNumber") is not None
+            ):
+                raise RuntimeError("The packaged production catalog is invalid.")
+
+            production_plan_request = urllib.request.Request(
+                f"http://127.0.0.1:{int(ready['port'])}/production-plans/query",
+                data=json.dumps({
+                    "search": "", "ownerCharacterId": None, "activity": None,
+                    "state": None, "offset": 0, "limit": 50,
+                    "sortBy": "priority", "sortDirection": "desc",
+                }).encode("utf-8"),
+                method="POST",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": "application/json",
+                },
+            )
+            with opener.open(production_plan_request, timeout=3) as response:
+                production_plans = json.loads(response.read())
+            if (
+                production_plans.get("items") != []
+                or production_plans.get("total") != 0
+                or production_plans.get("inventoryApplied") is not False
+                or production_plans.get("modifiersApplied") is not False
+            ):
+                raise RuntimeError("The packaged production-plan query is invalid.")
+
             sso_login_url = f"http://127.0.0.1:{int(ready['port'])}/sso/login"
             sso_status_request = urllib.request.Request(
                 sso_login_url,
@@ -360,7 +403,7 @@ def main() -> int:
                 raise RuntimeError("The packaged PKCE login could not be cancelled.")
             backup_name = database.get("lastMigrationBackup")
             if not isinstance(backup_name, str) or not backup_name.startswith(
-                "foundry-schema-v0005-to-v0008-"
+                "foundry-schema-v0005-to-v0009-"
             ):
                 raise RuntimeError("The packaged migration did not report its backup.")
 
@@ -401,8 +444,8 @@ def main() -> int:
             with contextlib.closing(sqlite3.connect(database_path)) as connection:
                 if connection.execute("PRAGMA quick_check").fetchone()[0] != "ok":
                     raise RuntimeError("The created SQLite database failed quick_check.")
-                if connection.execute("PRAGMA user_version").fetchone()[0] != 8:
-                    raise RuntimeError("The packaged sidecar did not migrate to schema 8.")
+                if connection.execute("PRAGMA user_version").fetchone()[0] != 9:
+                    raise RuntimeError("The packaged sidecar did not migrate to schema 9.")
                 marker = connection.execute(
                     "SELECT value FROM app_metadata WHERE key = 'smoke-marker'"
                 ).fetchone()[0]
@@ -463,7 +506,7 @@ def main() -> int:
 
     print(
         "Frozen sidecar handshake, signed updater skeleton, PKCE start/cancel, character "
-        "roster, industry-job endpoints, ESI policy, font scale, migration backup, database "
+        "roster, industry-job and production endpoints, ESI policy, font scale, migration backup, database "
         "location and shutdown verified."
     )
     return 0

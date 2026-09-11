@@ -2,10 +2,12 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   cancelEveSso,
+  checkForUpdates,
   createAccountGroup,
   deleteAccountGroup,
   deleteEveCharacter,
   deleteResearchPlan,
+  deleteProductionPlan,
   exportAssetsCsv,
   loadAccountGroups,
   loadAssetDeltas,
@@ -18,8 +20,12 @@ import {
   loadIndustryJobs,
   loadIndustryFacilities,
   loadIndustrySlots,
+  loadProductionCatalog,
+  loadProductionPlans,
   loadResearchPlans,
   renameAccountGroup,
+  openReleaseDownloads,
+  saveProductionPlan,
   saveResearchPlan,
   setDesktopFontScale,
   setDesktopUpdateChannel,
@@ -70,13 +76,14 @@ function managedCharacter(overrides: Record<string, unknown> = {}) {
 function nativeStatus(overrides: Record<string, unknown> = {}) {
   return JSON.stringify({
     state: "ready",
-    version: "0.0.5-preview.12",
+    version: "0.0.5-preview.13",
     desktopShell: true,
     singleInstance: true,
+    distribution: "installed",
     sidecar: "ready",
     database: "ready",
     databaseLocation: "data/foundry.sqlite3",
-    schemaVersion: 8,
+    schemaVersion: 9,
     errorCode: null,
     data: emptyData,
     updater: {
@@ -106,13 +113,14 @@ describe("desktop runtime status", () => {
       loadDesktopRuntimeStatus({ isAvailable: () => true, invoke }),
     ).resolves.toEqual({
       state: "ready",
-      version: "0.0.5-preview.12",
+      version: "0.0.5-preview.13",
       desktopShell: true,
       singleInstance: true,
+      distribution: "installed",
       sidecar: "ready",
       database: "ready",
       databaseLocation: "data/foundry.sqlite3",
-      schemaVersion: 8,
+      schemaVersion: 9,
       errorCode: null,
       data: emptyData,
       updater: {
@@ -769,15 +777,15 @@ describe("desktop runtime status", () => {
       utilizationState: "available", activeJobs: 1, pausedJobs: 0, readyJobs: 1,
       nextJobEndDate: "2026-09-11T12:00:00Z", primarySkillId: 3387,
       primarySkillLevel: 4, advancedSkillId: 24625, advancedSkillLevel: 2,
-      queuedPlans: null, blockedPlans: null, runningPlans: null, completePlans: null,
-      planningAvailable: false,
+      queuedPlans: 2, blockedPlans: 0, runningPlans: 1, completePlans: 0,
+      planningAvailable: true,
     }, {
       activity: "reactions", capacity: 5, occupied: 1, available: 4,
       utilizationState: "available", activeJobs: 1, pausedJobs: 0, readyJobs: 0,
       nextJobEndDate: "2026-09-11T13:00:00Z", primarySkillId: 45748,
       primarySkillLevel: 3, advancedSkillId: 45749, advancedSkillLevel: 1,
-      queuedPlans: null, blockedPlans: null, runningPlans: null, completePlans: null,
-      planningAvailable: false,
+      queuedPlans: 1, blockedPlans: 1, runningPlans: 0, completePlans: 0,
+      planningAvailable: true,
     }, {
       activity: "science", capacity: 6, occupied: 2, available: 4,
       utilizationState: "available", activeJobs: 2, pausedJobs: 0, readyJobs: 0,
@@ -813,6 +821,74 @@ describe("desktop runtime status", () => {
     invoke.mockResolvedValueOnce(JSON.stringify(malformed));
     await expect(loadIndustrySlots(query, { isAvailable: () => true, invoke }))
       .rejects.toThrow("inconsistent industry-slot capacity");
+  });
+
+  it("validates production catalogs, deterministic plans, and mutations", async () => {
+    const catalog = {
+      items: [{ blueprintTypeId: 100, blueprintName: "Synthetic Hull Blueprint",
+        activity: "manufacturing", baseTimeSeconds: 100, productTypeId: 101,
+        productName: "Synthetic Hull", outputQuantity: 2, materialCount: 1 }],
+      total: 1, offset: 0, limit: 50, activities: ["manufacturing", "reaction"],
+      buildNumber: "synthetic-production-1",
+    };
+    const invoke = vi.fn<RuntimeAdapter["invoke"]>().mockResolvedValueOnce(JSON.stringify(catalog));
+    const catalogQuery = { search: "Hull", activity: null, offset: 0, limit: 50 } as const;
+    await expect(loadProductionCatalog(catalogQuery, { isAvailable: () => true, invoke }))
+      .resolves.toEqual(catalog);
+    expect(invoke).toHaveBeenCalledWith("query_production_catalog", catalogQuery);
+
+    const plan = {
+      planId: 1, ownerCharacterId: 7, ownerName: "Pilot", blueprintTypeId: 100,
+      blueprintName: "Synthetic Hull Blueprint", activity: "manufacturing",
+      productTypeId: 101, productName: "Synthetic Hull", targetQuantity: 3,
+      priority: 12, note: "main goal", state: "ready", buildNumber: "synthetic-production-1",
+      steps: [{ sequence: 1, blueprintTypeId: 100, blueprintName: "Synthetic Hull Blueprint",
+        activity: "manufacturing", productTypeId: 101, productName: "Synthetic Hull",
+        requiredQuantity: 3, outputQuantityPerRun: 2, runs: 2, producedQuantity: 4,
+        surplusQuantity: 1, baseTimeSecondsPerRun: 100, totalBaseTimeSeconds: 200,
+        recipeAlternatives: 1, materials: [{ typeId: 900, typeName: "Synthetic Mineral",
+          quantityPerRun: 5, grossQuantity: 10, producedByPlan: false }] }],
+      grossMaterials: [{ typeId: 900, typeName: "Synthetic Mineral", quantity: 10 }],
+      warnings: [], cycleTypeIds: [], totalBaseTimeSeconds: 200,
+      createdAt: "2026-09-11T12:00:00Z", updatedAt: "2026-09-11T12:00:00Z",
+    };
+    const page = { items: [plan], total: 1, offset: 0, limit: 50,
+      owners: [{ characterId: 7, name: "Pilot" }], activities: ["manufacturing", "reaction"],
+      states: ["ready", "sde-unavailable", "recipe-missing", "cycle", "complexity-limit"],
+      summary: { ready: 1, "sde-unavailable": 0, "recipe-missing": 0, cycle: 0,
+        "complexity-limit": 0 }, buildNumber: "synthetic-production-1",
+      inventoryApplied: false, modifiersApplied: false };
+    invoke.mockResolvedValueOnce(JSON.stringify(page));
+    const query = { search: "", ownerCharacterId: null, activity: null, state: null,
+      offset: 0, limit: 50, sortBy: "priority", sortDirection: "desc" } as const;
+    await expect(loadProductionPlans(query, { isAvailable: () => true, invoke })).resolves.toEqual(page);
+    expect(invoke).toHaveBeenLastCalledWith("query_production_plans", expect.objectContaining({
+      planState: null, sortBy: "priority",
+    }));
+
+    const input = { planId: null, ownerCharacterId: 7, blueprintTypeId: 100,
+      activity: "manufacturing", productTypeId: 101, targetQuantity: 3,
+      priority: 12, note: "main goal" } as const;
+    const saved = { ...input, planId: 1, saved: true };
+    invoke.mockResolvedValueOnce(JSON.stringify(saved));
+    await expect(saveProductionPlan(input, { isAvailable: () => true, invoke })).resolves.toEqual(saved);
+    invoke.mockResolvedValueOnce(JSON.stringify({ deleted: true, planId: 1 }));
+    await expect(deleteProductionPlan(1, { isAvailable: () => true, invoke })).resolves.toBeUndefined();
+  });
+
+  it("validates advisory update notices and opens only a release version", async () => {
+    const notice = { state: "available", channel: "preview", currentVersion: "0.0.5-preview.12",
+      latestVersion: "0.0.5-preview.13",
+      releaseUrl: "https://github.com/Savox76/eve-test-indu/releases/tag/v0.0.5-preview.13",
+      publishedAt: "2026-09-11T12:00:00Z", automaticInstall: false, errorCode: null };
+    const invoke = vi.fn<RuntimeAdapter["invoke"]>().mockResolvedValueOnce(JSON.stringify(notice));
+    await expect(checkForUpdates({ isAvailable: () => true, invoke })).resolves.toEqual(notice);
+    invoke.mockResolvedValueOnce(JSON.stringify({ opened: true, url: notice.releaseUrl }));
+    await expect(openReleaseDownloads(notice.latestVersion, { isAvailable: () => true, invoke }))
+      .resolves.toBeUndefined();
+    expect(invoke).toHaveBeenLastCalledWith("open_release_downloads", {
+      version: "0.0.5-preview.13",
+    });
   });
 
   it("validates research plans and persistent plan mutations", async () => {

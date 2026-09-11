@@ -32,7 +32,14 @@ Die aktuelle Jobbelegung zeigt je Bereich aktive, pausierte und abholbereite Arb
 - **blockiert:** das BPO oder der vollständige Skillstand fehlt,
 - **fertig:** beide gespeicherten ME-/TE-Ziele sind erreicht.
 
-Persistente Fertigungs- und Reaktionspläne existieren noch nicht. Die Oberfläche kennzeichnet diese Grenze ausdrücklich, statt aus Jobhistorie oder Bestand einen zukünftigen Arbeitsvorrat zu erfinden. Die vollständige SDE-Blueprint-Aktivitätsbasis steht seit Paket 29 bereit; Ziele, Produktionsschritte und Bruttomaterialbedarf folgen mit der Produktionsplanung in Paket 30.
+Paket 30 ergänzt denselben Arbeitsvorrat für persistente Fertigungs- und Reaktionsziele:
+
+- **geplant:** die Rezeptkette ist auflösbar und kein passender laufender Job belegt das Ziel,
+- **laufend:** derselbe Charakter besitzt einen aktiven, pausierten oder abholbereiten Job mit passender Aktivität und Blueprint-Typ-ID,
+- **blockiert:** SDE-Basis oder Rezept fehlt beziehungsweise die Kette ist zyklisch oder zu groß,
+- **fertig:** bleibt null, solange kein eigener Bestands- und Reservierungsvertrag den Zielabschluss belegen kann.
+
+Damit wird Arbeitsvorrat sichtbar, ohne aus Jobhistorie oder vorhandenem Bestand einen zukünftigen oder fertigen Zustand zu erfinden.
 
 ## Quellen und Vertrauensgrenzen
 

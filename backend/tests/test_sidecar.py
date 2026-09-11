@@ -398,7 +398,7 @@ class SidecarIntegrationTests(unittest.TestCase):
             with opener.open(valid_request, timeout=3) as response:
                 health = json.loads(response.read())
             self.assertEqual(health["state"], "ready")
-            self.assertEqual(health["database"]["schemaVersion"], 8)
+            self.assertEqual(health["database"]["schemaVersion"], 9)
             self.assertEqual(health["database"]["location"], "data/foundry.sqlite3")
             self.assertIsNone(health["database"]["lastMigrationBackup"])
             self.assertEqual(health["data"]["state"], "empty")
@@ -625,6 +625,43 @@ class SidecarIntegrationTests(unittest.TestCase):
             self.assertEqual(
                 sde_activity_page["activities"], ["manufacturing", "reaction"]
             )
+
+            production_catalog_request = urllib.request.Request(
+                f"{base_url}/production-plans/catalog",
+                data=json.dumps({
+                    "search": "", "activity": None, "offset": 0, "limit": 50,
+                }).encode(),
+                method="POST",
+                headers={
+                    "Authorization": f"Bearer {SYNTHETIC_SESSION_TOKEN}",
+                    "Content-Type": "application/json",
+                },
+            )
+            with opener.open(production_catalog_request, timeout=3) as response:
+                production_catalog = json.loads(response.read())
+            self.assertEqual(production_catalog["items"], [])
+            self.assertEqual(production_catalog["total"], 0)
+            self.assertIsNone(production_catalog["buildNumber"])
+
+            production_plan_request = urllib.request.Request(
+                f"{base_url}/production-plans/query",
+                data=json.dumps({
+                    "search": "", "ownerCharacterId": None, "activity": None,
+                    "state": None, "offset": 0, "limit": 50,
+                    "sortBy": "priority", "sortDirection": "desc",
+                }).encode(),
+                method="POST",
+                headers={
+                    "Authorization": f"Bearer {SYNTHETIC_SESSION_TOKEN}",
+                    "Content-Type": "application/json",
+                },
+            )
+            with opener.open(production_plan_request, timeout=3) as response:
+                production_plans = json.loads(response.read())
+            self.assertEqual(production_plans["items"], [])
+            self.assertEqual(production_plans["total"], 0)
+            self.assertFalse(production_plans["inventoryApplied"])
+            self.assertFalse(production_plans["modifiersApplied"])
 
             research_query_request = urllib.request.Request(
                 f"{base_url}/research-plans/query",

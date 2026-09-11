@@ -17,7 +17,7 @@ from .recovery import (
 
 
 BUSY_TIMEOUT_MILLISECONDS: Final = 5_000
-SCHEMA_VERSION: Final = 8
+SCHEMA_VERSION: Final = 9
 
 MIGRATIONS: Final = (
     (
@@ -262,6 +262,45 @@ MIGRATIONS: Final = (
             """
             CREATE INDEX idx_research_plans_priority
                 ON research_plans(priority DESC, updated_at DESC)
+            """,
+        ),
+    ),
+    (
+        9,
+        "production_plans",
+        (
+            """
+            CREATE TABLE production_plans (
+                id INTEGER PRIMARY KEY,
+                owner_character_id INTEGER NOT NULL
+                    REFERENCES characters(character_id) ON DELETE CASCADE,
+                blueprint_type_id INTEGER NOT NULL CHECK(blueprint_type_id > 0),
+                activity TEXT NOT NULL CHECK(
+                    activity IN ('manufacturing', 'reaction')
+                ),
+                product_type_id INTEGER NOT NULL CHECK(product_type_id > 0),
+                target_quantity INTEGER NOT NULL CHECK(target_quantity > 0),
+                priority INTEGER NOT NULL DEFAULT 0 CHECK(
+                    priority BETWEEN 0 AND 999
+                ),
+                note TEXT CHECK(
+                    note IS NULL OR length(trim(note)) BETWEEN 1 AND 240
+                ),
+                created_at TEXT NOT NULL DEFAULT (
+                    strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                ),
+                updated_at TEXT NOT NULL DEFAULT (
+                    strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                )
+            )
+            """,
+            """
+            CREATE INDEX idx_production_plans_owner_activity
+                ON production_plans(owner_character_id, activity, priority DESC)
+            """,
+            """
+            CREATE INDEX idx_production_plans_priority
+                ON production_plans(priority DESC, updated_at DESC, id)
             """,
         ),
     ),

@@ -11,8 +11,9 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
-from typing import Final
+from typing import Callable, Final
 from urllib.parse import urlsplit
+from urllib.request import Request, urlopen
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
@@ -28,6 +29,13 @@ SHA256_HEX: Final = re.compile(r"^[0-9a-f]{64}$")
 RESOURCE_DIRECTORY: Final = Path(__file__).resolve().parent / "resources"
 TEST_MANIFEST_PATH: Final = RESOURCE_DIRECTORY / "update-test-manifest.json"
 TEST_MANIFEST_SIGNATURE_PATH: Final = RESOURCE_DIRECTORY / "update-test-manifest.sig"
+PUBLIC_RELEASES_URL: Final = (
+    "https://api.github.com/repos/Savox76/eve-test-indu/releases?per_page=30"
+)
+PUBLIC_RELEASE_PAGE_PREFIX: Final = (
+    "https://github.com/Savox76/eve-test-indu/releases/tag/v"
+)
+PUBLIC_RELEASE_MAX_BYTES: Final = 512_000
 
 
 class UpdateChannel(StrEnum):
@@ -38,6 +46,10 @@ class UpdateChannel(StrEnum):
 
 class UpdateManifestError(ValueError):
     """Raised when the bundled updater test manifest is invalid or untrusted."""
+
+
+class PublicReleaseCheckError(ValueError):
+    """Raised when the advisory public release feed is unavailable or invalid."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -227,3 +239,136 @@ def verify_bundled_test_manifest() -> VerifiedUpdateManifest:
     except (OSError, UnicodeError) as error:
         raise UpdateManifestError("The bundled updater test manifest is missing.") from error
     return verify_test_update_manifest(manifest_bytes, signature)
+
+
+def _version_key(value: str) -> tuple[int, int, int, int, tuple[tuple[int, int | str], ...]]:
+    if SEMANTIC_VERSION.fullmatch(value) is None:
+        raise PublicReleaseCheckError("public_release_version_invalid")
+    core, separator, prerelease = value.partition("-")
+    major, minor, patch = (int(part) for part in core.split("."))
+    if not separator:
+        return major, minor, patch, 1, ()
+    identifiers: list[tuple[int, int | str]] = []
+    for identifier in prerelease.split("."):
+        identifiers.append(
+            (0, int(identifier)) if identifier.isdigit() else (1, identifier.casefold())
+        )
+    return major, minor, patch, 0, tuple(identifiers)
+
+
+def _download_public_release_feed(url: str) -> bytes:
+    if url != PUBLIC_RELEASES_URL:
+        raise PublicReleaseCheckError("public_release_url_invalid")
+    request = Request(
+        url,
+        headers={
+            "Accept": "application/vnd.github+json",
+            "User-Agent": "New-Eden-Foundry-Update-Notice",
+            "X-GitHub-Api-Version": "2022-11-28",
+        },
+        method="GET",
+    )
+    try:
+        with urlopen(request, timeout=5) as response:  # noqa: S310 - fixed HTTPS origin
+            content_type = response.headers.get_content_type()
+            if response.status != 200 or content_type != "application/json":
+                raise PublicReleaseCheckError("public_release_response_invalid")
+            payload = response.read(PUBLIC_RELEASE_MAX_BYTES + 1)
+    except PublicReleaseCheckError:
+        raise
+    except Exception as error:
+        raise PublicReleaseCheckError("public_release_unavailable") from error
+    if not payload or len(payload) > PUBLIC_RELEASE_MAX_BYTES:
+        raise PublicReleaseCheckError("public_release_response_invalid")
+    return payload
+
+
+def _release_assets_are_complete(release: Mapping[str, object], version: str) -> bool:
+    assets = release.get("assets")
+    if not isinstance(assets, list) or len(assets) > 20:
+        return False
+    names = {
+        asset.get("name")
+        for asset in assets
+        if isinstance(asset, dict)
+        and asset.get("state") == "uploaded"
+        and isinstance(asset.get("name"), str)
+    }
+    installer = f"New.Eden.Foundry_{version}_x64-setup.exe"
+    portable = f"New.Eden.Foundry_{version}_x64-portable.zip"
+    return {installer, f"{installer}.sha256", portable, f"{portable}.sha256"} <= names
+
+
+def check_public_releases(
+    channel: UpdateChannel | str,
+    current_version: str,
+    *,
+    transport: Callable[[str], bytes] | None = None,
+) -> dict[str, object]:
+    """Read-only release notice; it never downloads or applies application packages."""
+
+    try:
+        selected_channel = channel if isinstance(channel, UpdateChannel) else UpdateChannel(channel)
+    except ValueError as error:
+        raise PublicReleaseCheckError("public_release_channel_invalid") from error
+    current_key = _version_key(current_version)
+    try:
+        payload = json.loads((transport or _download_public_release_feed)(PUBLIC_RELEASES_URL))
+    except PublicReleaseCheckError:
+        raise
+    except (UnicodeDecodeError, json.JSONDecodeError, TypeError) as error:
+        raise PublicReleaseCheckError("public_release_response_invalid") from error
+    if not isinstance(payload, list) or len(payload) > 30:
+        raise PublicReleaseCheckError("public_release_response_invalid")
+    candidates: list[tuple[tuple[int, int, int, int, tuple[tuple[int, int | str], ...]], str, str, str]] = []
+    for release in payload:
+        if not isinstance(release, dict) or release.get("draft") is not False:
+            continue
+        tag = release.get("tag_name")
+        prerelease = release.get("prerelease")
+        published_at = release.get("published_at")
+        if (
+            not isinstance(tag, str)
+            or not tag.startswith("v")
+            or not isinstance(prerelease, bool)
+            or not isinstance(published_at, str)
+        ):
+            continue
+        version = tag[1:]
+        try:
+            version_key = _version_key(version)
+            _parse_timestamp(published_at)
+        except (PublicReleaseCheckError, UpdateManifestError):
+            continue
+        expected_page = f"{PUBLIC_RELEASE_PAGE_PREFIX}{version}"
+        if release.get("html_url") != expected_page or not _release_assets_are_complete(release, version):
+            continue
+        allowed = (
+            selected_channel == UpdateChannel.PREVIEW
+            or selected_channel == UpdateChannel.STABLE
+            and not prerelease
+            or selected_channel == UpdateChannel.BETA
+            and (not prerelease or "-beta" in version)
+        )
+        if allowed:
+            candidates.append((version_key, version, expected_page, published_at))
+    if not candidates:
+        return {
+            "state": "unavailable",
+            "channel": selected_channel.value,
+            "currentVersion": current_version,
+            "latestVersion": None,
+            "releaseUrl": None,
+            "publishedAt": None,
+            "automaticInstall": False,
+        }
+    latest_key, latest_version, release_url, published_at = max(candidates, key=lambda item: item[0])
+    return {
+        "state": "available" if latest_key > current_key else "current",
+        "channel": selected_channel.value,
+        "currentVersion": current_version,
+        "latestVersion": latest_version,
+        "releaseUrl": release_url,
+        "publishedAt": published_at,
+        "automaticInstall": False,
+    }

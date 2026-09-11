@@ -112,6 +112,7 @@ class DatabaseFoundationTests(unittest.TestCase):
                 "migration_backups",
                 "app_settings",
                 "research_plans",
+                "production_plans",
             }
             <= tables
         )

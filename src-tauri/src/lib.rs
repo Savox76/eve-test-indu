@@ -17,6 +17,7 @@ const SIDECAR_READY_TIMEOUT: Duration = Duration::from_secs(25);
 const SIDECAR_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(4);
 const SIDECAR_REQUEST_TIMEOUT: Duration = Duration::from_secs(3);
 const ASSET_SYNC_TIMEOUT: Duration = Duration::from_secs(120);
+const UPDATE_NOTICE_TIMEOUT: Duration = Duration::from_secs(8);
 const PORTABLE_MARKER: &str = "PORTABLE-README-DE-EN.txt";
 const SIDECAR_MAX_RESPONSE_BYTES: u64 = 4_194_304;
 const WINDOWS_CREATE_NO_WINDOW: u32 = 0x0800_0000;
@@ -98,6 +99,17 @@ const RESEARCH_PLAN_STATES: [&str; 7] = [
 const RESEARCH_PLAN_ACTIVITIES: [&str; 2] = ["material", "time"];
 const RESEARCH_ACTIVE_JOB_STATUSES: [&str; 3] = ["active", "paused", "ready"];
 const RESEARCH_FACILITY_EVIDENCE: [&str; 3] = ["none", "active-job", "last-owner-job"];
+const PRODUCTION_ACTIVITIES: [&str; 2] = ["manufacturing", "reaction"];
+const PRODUCTION_PLAN_STATES: [&str; 5] = [
+    "ready",
+    "sde-unavailable",
+    "recipe-missing",
+    "cycle",
+    "complexity-limit",
+];
+const PRODUCTION_PLAN_SORT_FIELDS: [&str; 6] = [
+    "priority", "product", "owner", "activity", "state", "updated",
+];
 const SORT_DIRECTIONS: [&str; 2] = ["asc", "desc"];
 const MAX_ASSET_PAGE_SIZE: u64 = 200;
 const MAX_ASSET_SEARCH_CHARACTERS: usize = 120;
@@ -110,6 +122,7 @@ struct RuntimeSnapshot {
     version: &'static str,
     desktop_shell: bool,
     single_instance: bool,
+    distribution: &'static str,
     sidecar: &'static str,
     database: &'static str,
     database_location: &'static str,
@@ -712,6 +725,165 @@ struct ResearchPlanDeleteResponse {
 
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
+struct ProductionCatalogItem {
+    blueprint_type_id: u64,
+    blueprint_name: String,
+    activity: String,
+    base_time_seconds: u64,
+    product_type_id: u64,
+    product_name: String,
+    output_quantity: u64,
+    material_count: u64,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ProductionCatalogResponse {
+    items: Vec<ProductionCatalogItem>,
+    total: u64,
+    offset: u64,
+    limit: u64,
+    activities: Vec<String>,
+    build_number: Option<String>,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ProductionStepMaterial {
+    type_id: u64,
+    type_name: String,
+    quantity_per_run: u64,
+    gross_quantity: u64,
+    produced_by_plan: bool,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ProductionStep {
+    sequence: u64,
+    blueprint_type_id: u64,
+    blueprint_name: String,
+    activity: String,
+    product_type_id: u64,
+    product_name: String,
+    required_quantity: u64,
+    output_quantity_per_run: u64,
+    runs: u64,
+    produced_quantity: u64,
+    surplus_quantity: u64,
+    base_time_seconds_per_run: u64,
+    total_base_time_seconds: u64,
+    recipe_alternatives: u64,
+    materials: Vec<ProductionStepMaterial>,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ProductionGrossMaterial {
+    type_id: u64,
+    type_name: String,
+    quantity: u64,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ProductionWarning {
+    code: String,
+    type_id: u64,
+    type_name: String,
+    selected_blueprint_type_id: u64,
+    candidate_count: u64,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ProductionPlanRecord {
+    plan_id: u64,
+    owner_character_id: u64,
+    owner_name: String,
+    blueprint_type_id: u64,
+    blueprint_name: String,
+    activity: String,
+    product_type_id: u64,
+    product_name: String,
+    target_quantity: u64,
+    priority: u16,
+    note: Option<String>,
+    state: String,
+    build_number: Option<String>,
+    steps: Vec<ProductionStep>,
+    gross_materials: Vec<ProductionGrossMaterial>,
+    warnings: Vec<ProductionWarning>,
+    cycle_type_ids: Vec<u64>,
+    total_base_time_seconds: Option<u64>,
+    created_at: String,
+    updated_at: String,
+}
+
+#[derive(Deserialize, Serialize)]
+struct ProductionPlanSummary {
+    ready: u64,
+    #[serde(rename = "sde-unavailable")]
+    sde_unavailable: u64,
+    #[serde(rename = "recipe-missing")]
+    recipe_missing: u64,
+    cycle: u64,
+    #[serde(rename = "complexity-limit")]
+    complexity_limit: u64,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ProductionPlanQueryResponse {
+    items: Vec<ProductionPlanRecord>,
+    total: u64,
+    offset: u64,
+    limit: u64,
+    owners: Vec<AssetOwner>,
+    activities: Vec<String>,
+    states: Vec<String>,
+    summary: ProductionPlanSummary,
+    build_number: Option<String>,
+    inventory_applied: bool,
+    modifiers_applied: bool,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ProductionPlanMutationResponse {
+    saved: bool,
+    plan_id: u64,
+    owner_character_id: u64,
+    blueprint_type_id: u64,
+    activity: String,
+    product_type_id: u64,
+    target_quantity: u64,
+    priority: u16,
+    note: Option<String>,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ProductionPlanDeleteResponse {
+    deleted: bool,
+    plan_id: u64,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PublicReleaseNotice {
+    state: String,
+    channel: String,
+    current_version: String,
+    latest_version: Option<String>,
+    release_url: Option<String>,
+    published_at: Option<String>,
+    automatic_install: bool,
+    error_code: Option<String>,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct CharacterSkillRecord {
     skill_id: u64,
     skill_name: String,
@@ -860,6 +1032,7 @@ impl RuntimeSnapshot {
             version: env!("CARGO_PKG_VERSION"),
             desktop_shell: true,
             single_instance: true,
+            distribution: runtime_distribution(),
             sidecar: "starting",
             database: "starting",
             database_location: DATABASE_LOCATION,
@@ -898,6 +1071,15 @@ impl RuntimeSnapshot {
             ..Self::starting()
         }
     }
+}
+
+fn runtime_distribution() -> &'static str {
+    std::env::current_exe()
+        .ok()
+        .and_then(|path| path.parent().map(Path::to_path_buf))
+        .is_some_and(|directory| directory.join(PORTABLE_MARKER).is_file())
+        .then_some("portable")
+        .unwrap_or("installed")
 }
 
 struct SidecarProcess {
@@ -1680,11 +1862,7 @@ fn industry_slot_activity_is_valid(item: &IndustrySlotActivity, index: usize) ->
         .into_iter()
         .flatten()
         .all(|value| value <= JAVASCRIPT_MAX_SAFE_INTEGER);
-    let planning = if item.activity == "science" {
-        item.planning_available && plan_values.into_iter().all(|value| value.is_some())
-    } else {
-        !item.planning_available && plan_values.into_iter().all(|value| value.is_none())
-    };
+    let planning = item.planning_available && plan_values.into_iter().all(|value| value.is_some());
     utilization && plans_are_bounded && planning
 }
 
@@ -2029,6 +2207,239 @@ fn research_plan_mutation_response_is_valid(response: &ResearchPlanMutationRespo
             .as_ref()
             .is_none_or(|value| asset_text_is_valid(value, 240))
         && response.saved
+}
+
+fn production_id_is_valid(value: u64) -> bool {
+    value > 0 && value <= JAVASCRIPT_MAX_SAFE_INTEGER
+}
+
+fn production_catalog_response_is_valid(response: &ProductionCatalogResponse) -> bool {
+    let keys = response
+        .items
+        .iter()
+        .map(|item| (item.blueprint_type_id, item.activity.as_str(), item.product_type_id))
+        .collect::<HashSet<_>>();
+    response.limit > 0
+        && response.limit <= 100
+        && response.offset <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && response.total <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && response.items.len() as u64 <= response.limit
+        && response.items.len() as u64 <= response.total
+        && keys.len() == response.items.len()
+        && response
+            .activities
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>()
+            == PRODUCTION_ACTIVITIES
+        && response
+            .build_number
+            .as_ref()
+            .is_none_or(|value| asset_text_is_valid(value, 80))
+        && (response.build_number.is_some() || (response.total == 0 && response.items.is_empty()))
+        && response.items.iter().all(|item| {
+            production_id_is_valid(item.blueprint_type_id)
+                && production_id_is_valid(item.product_type_id)
+                && asset_text_is_valid(&item.blueprint_name, 200)
+                && asset_text_is_valid(&item.product_name, 200)
+                && PRODUCTION_ACTIVITIES.contains(&item.activity.as_str())
+                && production_id_is_valid(item.base_time_seconds)
+                && production_id_is_valid(item.output_quantity)
+                && production_id_is_valid(item.material_count)
+        })
+}
+
+fn production_plan_record_is_valid(item: &ProductionPlanRecord) -> bool {
+    let steps_valid = item.steps.iter().enumerate().all(|(index, step)| {
+        step.sequence == index as u64 + 1
+            && production_id_is_valid(step.blueprint_type_id)
+            && production_id_is_valid(step.product_type_id)
+            && asset_text_is_valid(&step.blueprint_name, 200)
+            && asset_text_is_valid(&step.product_name, 200)
+            && PRODUCTION_ACTIVITIES.contains(&step.activity.as_str())
+            && production_id_is_valid(step.required_quantity)
+            && production_id_is_valid(step.output_quantity_per_run)
+            && production_id_is_valid(step.runs)
+            && production_id_is_valid(step.produced_quantity)
+            && step.surplus_quantity <= JAVASCRIPT_MAX_SAFE_INTEGER
+            && production_id_is_valid(step.base_time_seconds_per_run)
+            && production_id_is_valid(step.total_base_time_seconds)
+            && production_id_is_valid(step.recipe_alternatives)
+            && step.output_quantity_per_run.checked_mul(step.runs) == Some(step.produced_quantity)
+            && step.produced_quantity.checked_sub(step.required_quantity) == Some(step.surplus_quantity)
+            && step.base_time_seconds_per_run.checked_mul(step.runs)
+                == Some(step.total_base_time_seconds)
+            && step.materials.iter().all(|material| {
+                production_id_is_valid(material.type_id)
+                    && asset_text_is_valid(&material.type_name, 200)
+                    && production_id_is_valid(material.quantity_per_run)
+                    && production_id_is_valid(material.gross_quantity)
+                    && material.quantity_per_run.checked_mul(step.runs)
+                        == Some(material.gross_quantity)
+            })
+    });
+    let gross_valid = item.gross_materials.iter().all(|material| {
+        production_id_is_valid(material.type_id)
+            && asset_text_is_valid(&material.type_name, 200)
+            && production_id_is_valid(material.quantity)
+    });
+    let warnings_valid = item.warnings.iter().all(|warning| {
+        warning.code == "alternative-recipe"
+            && production_id_is_valid(warning.type_id)
+            && asset_text_is_valid(&warning.type_name, 200)
+            && production_id_is_valid(warning.selected_blueprint_type_id)
+            && warning.candidate_count >= 2
+            && warning.candidate_count <= JAVASCRIPT_MAX_SAFE_INTEGER
+    });
+    let ready = item.state == "ready";
+    let resolution_shape = if ready {
+        item.build_number.is_some()
+            && !item.steps.is_empty()
+            && item.cycle_type_ids.is_empty()
+            && item.total_base_time_seconds.is_some()
+            && item.steps.first().is_some_and(|step| {
+                step.blueprint_type_id == item.blueprint_type_id
+                    && step.product_type_id == item.product_type_id
+                    && step.activity == item.activity
+                    && step.required_quantity == item.target_quantity
+            })
+            && item.steps.iter().try_fold(0_u64, |total, step| {
+                total.checked_add(step.total_base_time_seconds)
+            }) == item.total_base_time_seconds
+    } else {
+        item.steps.is_empty()
+            && item.gross_materials.is_empty()
+            && item.total_base_time_seconds.is_none()
+            && ((item.state == "cycle" && !item.cycle_type_ids.is_empty())
+                || (item.state != "cycle" && item.cycle_type_ids.is_empty()))
+    };
+    production_id_is_valid(item.plan_id)
+        && production_id_is_valid(item.owner_character_id)
+        && asset_text_is_valid(&item.owner_name, 100)
+        && production_id_is_valid(item.blueprint_type_id)
+        && asset_text_is_valid(&item.blueprint_name, 200)
+        && PRODUCTION_ACTIVITIES.contains(&item.activity.as_str())
+        && production_id_is_valid(item.product_type_id)
+        && asset_text_is_valid(&item.product_name, 200)
+        && production_id_is_valid(item.target_quantity)
+        && item.priority <= 999
+        && item
+            .note
+            .as_ref()
+            .is_none_or(|value| asset_text_is_valid(value, 240))
+        && PRODUCTION_PLAN_STATES.contains(&item.state.as_str())
+        && item
+            .build_number
+            .as_ref()
+            .is_none_or(|value| asset_text_is_valid(value, 80))
+        && item
+            .cycle_type_ids
+            .iter()
+            .all(|value| production_id_is_valid(*value))
+        && item.total_base_time_seconds.is_none_or(production_id_is_valid)
+        && asset_text_is_valid(&item.created_at, 64)
+        && asset_text_is_valid(&item.updated_at, 64)
+        && steps_valid
+        && gross_valid
+        && warnings_valid
+        && resolution_shape
+}
+
+fn production_plan_query_response_is_valid(response: &ProductionPlanQueryResponse) -> bool {
+    let ids = response
+        .items
+        .iter()
+        .map(|item| item.plan_id)
+        .collect::<HashSet<_>>();
+    let owner_ids = response
+        .owners
+        .iter()
+        .map(|owner| owner.character_id)
+        .collect::<HashSet<_>>();
+    let summary = [
+        response.summary.ready,
+        response.summary.sde_unavailable,
+        response.summary.recipe_missing,
+        response.summary.cycle,
+        response.summary.complexity_limit,
+    ];
+    response.limit > 0
+        && response.limit <= 100
+        && response.offset <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && response.total <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && response.items.len() as u64 <= response.limit
+        && response.items.len() as u64 <= response.total
+        && ids.len() == response.items.len()
+        && owner_ids.len() == response.owners.len()
+        && response.items.iter().all(production_plan_record_is_valid)
+        && response.owners.iter().all(|owner| {
+            production_id_is_valid(owner.character_id) && asset_text_is_valid(&owner.name, 100)
+        })
+        && response.activities.iter().map(String::as_str).collect::<Vec<_>>()
+            == PRODUCTION_ACTIVITIES
+        && response.states.iter().map(String::as_str).collect::<Vec<_>>()
+            == PRODUCTION_PLAN_STATES
+        && summary.into_iter().all(|value| value <= JAVASCRIPT_MAX_SAFE_INTEGER)
+        && response
+            .build_number
+            .as_ref()
+            .is_none_or(|value| asset_text_is_valid(value, 80))
+        && !response.inventory_applied
+        && !response.modifiers_applied
+}
+
+fn production_plan_mutation_is_valid(item: &ProductionPlanMutationResponse) -> bool {
+    item.saved
+        && production_id_is_valid(item.plan_id)
+        && production_id_is_valid(item.owner_character_id)
+        && production_id_is_valid(item.blueprint_type_id)
+        && PRODUCTION_ACTIVITIES.contains(&item.activity.as_str())
+        && production_id_is_valid(item.product_type_id)
+        && production_id_is_valid(item.target_quantity)
+        && item.priority <= 999
+        && item
+            .note
+            .as_ref()
+            .is_none_or(|value| asset_text_is_valid(value, 240))
+}
+
+fn public_release_notice_is_valid(notice: &PublicReleaseNotice) -> bool {
+    let state_valid = matches!(notice.state.as_str(), "available" | "current" | "unavailable" | "error");
+    let version_fields = notice.latest_version.is_some()
+        && notice.release_url.is_some()
+        && notice.published_at.is_some();
+    let empty_fields = notice.latest_version.is_none()
+        && notice.release_url.is_none()
+        && notice.published_at.is_none();
+    let shape_valid = match notice.state.as_str() {
+        "available" | "current" => version_fields && notice.error_code.is_none(),
+        "unavailable" => empty_fields && notice.error_code.is_none(),
+        "error" => empty_fields && notice.error_code.is_some(),
+        _ => false,
+    };
+    state_valid
+        && matches!(notice.channel.as_str(), "stable" | "beta" | "preview")
+        && asset_text_is_valid(&notice.current_version, 80)
+        && notice
+            .latest_version
+            .as_ref()
+            .is_none_or(|value| asset_text_is_valid(value, 80))
+        && notice.release_url.as_ref().is_none_or(|url| {
+            url == &format!(
+                "https://github.com/Savox76/eve-test-indu/releases/tag/v{}",
+                notice.latest_version.as_deref().unwrap_or_default()
+            )
+        })
+        && notice
+            .published_at
+            .as_ref()
+            .is_none_or(|value| asset_text_is_valid(value, 64))
+        && notice
+            .error_code
+            .as_ref()
+            .is_none_or(|value| asset_text_is_valid(value, 120))
+        && !notice.automatic_install
+        && shape_valid
 }
 
 fn character_skill_query_response_is_valid(response: &CharacterSkillQueryResponse) -> bool {
@@ -2528,11 +2939,7 @@ fn authorization_url_is_valid(value: &str) -> bool {
         })
 }
 
-fn open_system_browser(url: &str) -> Result<(), &'static str> {
-    if !authorization_url_is_valid(url) {
-        return Err("sso-authorization-url-invalid");
-    }
-
+fn launch_system_browser(url: &str) -> Result<(), &'static str> {
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
@@ -2554,6 +2961,51 @@ fn open_system_browser(url: &str) -> Result<(), &'static str> {
         .spawn()
         .map_err(|_| "system-browser-unavailable")?;
     Ok(())
+}
+
+fn open_system_browser(url: &str) -> Result<(), &'static str> {
+    if !authorization_url_is_valid(url) {
+        return Err("sso-authorization-url-invalid");
+    }
+    launch_system_browser(url)
+}
+
+fn semantic_release_version_is_valid(value: &str) -> bool {
+    if value.is_empty() || value.len() > 80 || value.contains('+') {
+        return false;
+    }
+    let (core, prerelease) = value
+        .split_once('-')
+        .map_or((value, None), |(core, prerelease)| (core, Some(prerelease)));
+    let core_parts = core.split('.').collect::<Vec<_>>();
+    let numeric_component_is_valid = |part: &str| {
+        !part.is_empty()
+            && part.bytes().all(|byte| byte.is_ascii_digit())
+            && (part == "0" || !part.starts_with('0'))
+    };
+    if core_parts.len() != 3 || !core_parts.into_iter().all(numeric_component_is_valid) {
+        return false;
+    }
+    prerelease.is_none_or(|value| {
+        !value.is_empty()
+            && value.split('.').all(|part| {
+                !part.is_empty()
+                    && part.bytes().all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+                    && (!part.bytes().all(|byte| byte.is_ascii_digit())
+                        || numeric_component_is_valid(part))
+            })
+    })
+}
+
+fn release_page_url(version: Option<&str>) -> Result<String, &'static str> {
+    let base = "https://github.com/Savox76/eve-test-indu/releases";
+    let Some(version) = version else {
+        return Ok(base.to_owned());
+    };
+    if !semantic_release_version_is_valid(version) {
+        return Err("release-version-invalid");
+    }
+    Ok(format!("{base}/tag/v{version}"))
 }
 
 fn copy_directory_without_links(source: &Path, destination: &Path) -> Result<(), &'static str> {
@@ -3335,6 +3787,251 @@ fn query_industry_slots(
 }
 
 #[tauri::command]
+fn query_production_catalog(
+    search: String,
+    activity: Option<String>,
+    offset: u64,
+    limit: u64,
+    state: State<'_, RuntimeState>,
+) -> Result<String, String> {
+    if search.chars().count() > MAX_ASSET_SEARCH_CHARACTERS
+        || search.trim() != search
+        || activity
+            .as_deref()
+            .is_some_and(|value| !PRODUCTION_ACTIVITIES.contains(&value))
+        || offset > JAVASCRIPT_MAX_SAFE_INTEGER
+        || limit == 0
+        || limit > 100
+    {
+        return Err("production-catalog-query-invalid".to_owned());
+    }
+    refresh_sidecar_status(&state);
+    let body = serde_json::json!({
+        "search": search,
+        "activity": activity,
+        "offset": offset,
+        "limit": limit,
+    })
+    .to_string();
+    let response = {
+        let sidecar = state
+            .sidecar
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let process = sidecar
+            .as_ref()
+            .ok_or_else(|| "sidecar-unavailable".to_owned())?;
+        sidecar_json_request(process, "POST", "/production-plans/catalog", &body)
+            .map_err(str::to_owned)?
+    };
+    let page: ProductionCatalogResponse =
+        serde_json::from_str(&response).map_err(|_| "sidecar-response-invalid".to_owned())?;
+    if !production_catalog_response_is_valid(&page) || page.offset != offset || page.limit != limit {
+        return Err("sidecar-response-invalid".to_owned());
+    }
+    serde_json::to_string(&page).map_err(|_| "status-serialization-failed".to_owned())
+}
+
+#[tauri::command]
+fn query_production_plans(
+    search: String,
+    owner_character_id: Option<u64>,
+    activity: Option<String>,
+    plan_state: Option<String>,
+    offset: u64,
+    limit: u64,
+    sort_by: String,
+    sort_direction: String,
+    state: State<'_, RuntimeState>,
+) -> Result<String, String> {
+    if search.chars().count() > MAX_ASSET_SEARCH_CHARACTERS
+        || search.trim() != search
+        || owner_character_id == Some(0)
+        || owner_character_id.is_some_and(|value| value > JAVASCRIPT_MAX_SAFE_INTEGER)
+        || activity
+            .as_deref()
+            .is_some_and(|value| !PRODUCTION_ACTIVITIES.contains(&value))
+        || plan_state
+            .as_deref()
+            .is_some_and(|value| !PRODUCTION_PLAN_STATES.contains(&value))
+        || offset > JAVASCRIPT_MAX_SAFE_INTEGER
+        || limit == 0
+        || limit > 100
+        || !PRODUCTION_PLAN_SORT_FIELDS.contains(&sort_by.as_str())
+        || !SORT_DIRECTIONS.contains(&sort_direction.as_str())
+    {
+        return Err("production-plan-query-invalid".to_owned());
+    }
+    refresh_sidecar_status(&state);
+    let body = serde_json::json!({
+        "search": search,
+        "ownerCharacterId": owner_character_id,
+        "activity": activity,
+        "state": plan_state,
+        "offset": offset,
+        "limit": limit,
+        "sortBy": sort_by,
+        "sortDirection": sort_direction,
+    })
+    .to_string();
+    let response = {
+        let sidecar = state
+            .sidecar
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let process = sidecar
+            .as_ref()
+            .ok_or_else(|| "sidecar-unavailable".to_owned())?;
+        sidecar_json_request(process, "POST", "/production-plans/query", &body)
+            .map_err(str::to_owned)?
+    };
+    let page: ProductionPlanQueryResponse =
+        serde_json::from_str(&response).map_err(|_| "sidecar-response-invalid".to_owned())?;
+    if !production_plan_query_response_is_valid(&page) || page.offset != offset || page.limit != limit {
+        return Err("sidecar-response-invalid".to_owned());
+    }
+    serde_json::to_string(&page).map_err(|_| "status-serialization-failed".to_owned())
+}
+
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+fn save_production_plan(
+    plan_id: Option<u64>,
+    owner_character_id: u64,
+    blueprint_type_id: u64,
+    activity: String,
+    product_type_id: u64,
+    target_quantity: u64,
+    priority: u16,
+    note: Option<String>,
+    state: State<'_, RuntimeState>,
+) -> Result<String, String> {
+    if plan_id == Some(0)
+        || plan_id.is_some_and(|value| value > JAVASCRIPT_MAX_SAFE_INTEGER)
+        || !production_id_is_valid(owner_character_id)
+        || !production_id_is_valid(blueprint_type_id)
+        || !PRODUCTION_ACTIVITIES.contains(&activity.as_str())
+        || !production_id_is_valid(product_type_id)
+        || !production_id_is_valid(target_quantity)
+        || priority > 999
+        || note
+            .as_ref()
+            .is_some_and(|value| !asset_text_is_valid(value, 240))
+    {
+        return Err("production-plan-input-invalid".to_owned());
+    }
+    refresh_sidecar_status(&state);
+    let body = serde_json::json!({
+        "planId": plan_id,
+        "ownerCharacterId": owner_character_id,
+        "blueprintTypeId": blueprint_type_id,
+        "activity": activity,
+        "productTypeId": product_type_id,
+        "targetQuantity": target_quantity,
+        "priority": priority,
+        "note": note,
+    })
+    .to_string();
+    let response = {
+        let sidecar = state
+            .sidecar
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let process = sidecar
+            .as_ref()
+            .ok_or_else(|| "sidecar-unavailable".to_owned())?;
+        sidecar_json_request(process, "POST", "/production-plans/save", &body)
+            .map_err(str::to_owned)?
+    };
+    let saved: ProductionPlanMutationResponse =
+        serde_json::from_str(&response).map_err(|_| "sidecar-response-invalid".to_owned())?;
+    if !production_plan_mutation_is_valid(&saved)
+        || saved.plan_id != plan_id.unwrap_or(saved.plan_id)
+        || saved.owner_character_id != owner_character_id
+        || saved.blueprint_type_id != blueprint_type_id
+        || saved.activity != activity
+        || saved.product_type_id != product_type_id
+        || saved.target_quantity != target_quantity
+        || saved.priority != priority
+        || saved.note != note
+    {
+        return Err("sidecar-response-invalid".to_owned());
+    }
+    serde_json::to_string(&saved).map_err(|_| "status-serialization-failed".to_owned())
+}
+
+#[tauri::command]
+fn delete_production_plan(plan_id: u64, state: State<'_, RuntimeState>) -> Result<String, String> {
+    if !production_id_is_valid(plan_id) {
+        return Err("production-plan-delete-invalid".to_owned());
+    }
+    refresh_sidecar_status(&state);
+    let body = serde_json::json!({"planId": plan_id}).to_string();
+    let response = {
+        let sidecar = state
+            .sidecar
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let process = sidecar
+            .as_ref()
+            .ok_or_else(|| "sidecar-unavailable".to_owned())?;
+        sidecar_json_request(process, "POST", "/production-plans/delete", &body)
+            .map_err(str::to_owned)?
+    };
+    let deleted: ProductionPlanDeleteResponse =
+        serde_json::from_str(&response).map_err(|_| "sidecar-response-invalid".to_owned())?;
+    if !deleted.deleted || deleted.plan_id != plan_id {
+        return Err("sidecar-response-invalid".to_owned());
+    }
+    serde_json::to_string(&deleted).map_err(|_| "status-serialization-failed".to_owned())
+}
+
+#[tauri::command]
+fn check_for_updates(state: State<'_, RuntimeState>) -> Result<String, String> {
+    refresh_sidecar_status(&state);
+    let expected_channel = state
+        .snapshot
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .updater
+        .channel
+        .clone();
+    let response = {
+        let sidecar = state
+            .sidecar
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let process = sidecar
+            .as_ref()
+            .ok_or_else(|| "sidecar-unavailable".to_owned())?;
+        sidecar_json_request_with_timeout(
+            process,
+            "GET",
+            "/updates/check",
+            "",
+            UPDATE_NOTICE_TIMEOUT,
+        )
+        .map_err(str::to_owned)?
+    };
+    let notice: PublicReleaseNotice =
+        serde_json::from_str(&response).map_err(|_| "sidecar-response-invalid".to_owned())?;
+    if !public_release_notice_is_valid(&notice)
+        || notice.channel != expected_channel
+        || notice.current_version != env!("CARGO_PKG_VERSION")
+    {
+        return Err("sidecar-response-invalid".to_owned());
+    }
+    serde_json::to_string(&notice).map_err(|_| "status-serialization-failed".to_owned())
+}
+
+#[tauri::command]
+fn open_release_downloads(version: Option<String>) -> Result<String, String> {
+    let url = release_page_url(version.as_deref()).map_err(str::to_owned)?;
+    launch_system_browser(&url).map_err(str::to_owned)?;
+    Ok(serde_json::json!({"opened": true, "url": url}).to_string())
+}
+
+#[tauri::command]
 fn query_research_plans(
     search: String,
     owner_character_id: Option<u64>,
@@ -3982,7 +4679,7 @@ fn desktop_runtime_status(state: State<'_, RuntimeState>) -> String {
             .unwrap_or_else(|error| error.into_inner()),
     )
     .unwrap_or_else(|_| {
-        r#"{"state":"ready","version":"unknown","desktopShell":true,"singleInstance":true,"sidecar":"error","database":"error","databaseLocation":"data/foundry.sqlite3","schemaVersion":null,"errorCode":"status-serialization-failed","data":{"state":"error","hasCachedData":false,"observedAt":null,"expiresAt":null,"ageSeconds":null,"lastSyncStatus":"never","errorCode":"status-serialization-failed"},"updater":{"channel":"stable","manifestState":"unavailable","publicDistribution":false},"appearance":{"fontScale":"normal"}}"#.to_owned()
+        r#"{"state":"ready","version":"unknown","desktopShell":true,"singleInstance":true,"distribution":"installed","sidecar":"error","database":"error","databaseLocation":"data/foundry.sqlite3","schemaVersion":null,"errorCode":"status-serialization-failed","data":{"state":"error","hasCachedData":false,"observedAt":null,"expiresAt":null,"ageSeconds":null,"lastSyncStatus":"never","errorCode":"status-serialization-failed"},"updater":{"channel":"stable","manifestState":"unavailable","publicDistribution":false},"appearance":{"fontScale":"normal"}}"#.to_owned()
     })
 }
 
@@ -4021,6 +4718,12 @@ pub fn run() {
             sync_industry_facilities,
             query_industry_facilities,
             query_industry_slots,
+            query_production_catalog,
+            query_production_plans,
+            save_production_plan,
+            delete_production_plan,
+            check_for_updates,
+            open_release_downloads,
             query_research_plans,
             save_research_plan,
             delete_research_plan,
@@ -4055,7 +4758,8 @@ mod tests {
         character_skill_query_response_is_valid, character_skill_sync_response_is_valid,
         eve_character_record_is_valid, industry_job_query_response_is_valid,
         industry_job_sync_response_is_valid, industry_slot_query_response_is_valid,
-        research_plan_query_response_is_valid, sso_login_status_is_valid, AccountGroupRecord,
+        release_page_url, research_plan_query_response_is_valid, sso_login_status_is_valid,
+        AccountGroupRecord,
         AssetDeltaCorrelation, AssetDeltaQueryResponse, AssetDeltaRecord, AssetDeltaSummary,
         AssetExportResponse, AssetLocationNode, AssetOwner, AssetQueryResponse, AssetRecord,
         CharacterSkillQueryResponse, CharacterSkillRecord, CharacterSkillSyncCharacterResponse,
@@ -4094,6 +4798,17 @@ mod tests {
             "{}&state=duplicate",
             valid_authorization_url()
         )));
+    }
+
+    #[test]
+    fn accepts_only_semantic_versions_for_the_fixed_release_page() {
+        assert_eq!(
+            release_page_url(Some("0.0.5-preview.13")),
+            Ok("https://github.com/Savox76/eve-test-indu/releases/tag/v0.0.5-preview.13".to_owned())
+        );
+        assert!(release_page_url(Some("01.0.0")).is_err());
+        assert!(release_page_url(Some("0.0.5-preview.01")).is_err());
+        assert!(release_page_url(Some("0.0.5/elsewhere")).is_err());
     }
 
     #[test]
@@ -4494,11 +5209,11 @@ mod tests {
                 primary_skill_level: Some(4),
                 advanced_skill_id: 24625,
                 advanced_skill_level: Some(2),
-                queued_plans: None,
-                blocked_plans: None,
-                running_plans: None,
-                complete_plans: None,
-                planning_available: false,
+                queued_plans: Some(2),
+                blocked_plans: Some(0),
+                running_plans: Some(1),
+                complete_plans: Some(0),
+                planning_available: true,
             },
             IndustrySlotActivity {
                 activity: "reactions".to_owned(),
@@ -4514,11 +5229,11 @@ mod tests {
                 primary_skill_level: Some(3),
                 advanced_skill_id: 45749,
                 advanced_skill_level: Some(1),
-                queued_plans: None,
-                blocked_plans: None,
-                running_plans: None,
-                complete_plans: None,
-                planning_available: false,
+                queued_plans: Some(1),
+                blocked_plans: Some(1),
+                running_plans: Some(0),
+                complete_plans: Some(0),
+                planning_available: true,
             },
             IndustrySlotActivity {
                 activity: "science".to_owned(),

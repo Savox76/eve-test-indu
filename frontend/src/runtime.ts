@@ -13,6 +13,8 @@ export type LastSyncStatus = "never" | "running" | "completed" | "failed" | "can
 export type UpdateChannel = "stable" | "beta" | "preview";
 export type FontScale = "very-small" | "small" | "normal" | "large" | "very-large";
 export type ManifestState = "checking" | "verified" | "invalid" | "unavailable";
+export type DesktopDistribution = "installed" | "portable";
+export type PublicReleaseNoticeState = "available" | "current" | "unavailable" | "error";
 export type SsoLoginState =
   | "idle"
   | "waiting"
@@ -42,6 +44,17 @@ export interface UpdaterStatus {
   channel: UpdateChannel;
   manifestState: ManifestState;
   publicDistribution: false;
+}
+
+export interface PublicReleaseNotice {
+  state: PublicReleaseNoticeState;
+  channel: UpdateChannel;
+  currentVersion: string;
+  latestVersion: string | null;
+  releaseUrl: string | null;
+  publishedAt: string | null;
+  automaticInstall: false;
+  errorCode: string | null;
 }
 
 export interface AppearanceStatus {
@@ -522,6 +535,150 @@ export interface IndustrySlotPage {
   ageSeconds: number | null;
 }
 
+export type ProductionActivity = "manufacturing" | "reaction";
+export type ProductionPlanState = "ready" | "sde-unavailable" | "recipe-missing" | "cycle" | "complexity-limit";
+export type ProductionPlanSortField = "priority" | "product" | "owner" | "activity" | "state" | "updated";
+export const productionActivities: readonly ProductionActivity[] = ["manufacturing", "reaction"];
+export const productionPlanStates: readonly ProductionPlanState[] = [
+  "ready", "sde-unavailable", "recipe-missing", "cycle", "complexity-limit",
+];
+export const productionPlanSortFields: readonly ProductionPlanSortField[] = [
+  "priority", "product", "owner", "activity", "state", "updated",
+];
+export const productionPlanPageSize = 50;
+export const productionCatalogPageSize = 50;
+
+export interface ProductionCatalogItem {
+  blueprintTypeId: number;
+  blueprintName: string;
+  activity: ProductionActivity;
+  baseTimeSeconds: number;
+  productTypeId: number;
+  productName: string;
+  outputQuantity: number;
+  materialCount: number;
+}
+
+export interface ProductionCatalogQuery {
+  search: string;
+  activity: ProductionActivity | null;
+  offset: number;
+  limit: number;
+}
+
+export interface ProductionCatalogPage {
+  items: ProductionCatalogItem[];
+  total: number;
+  offset: number;
+  limit: number;
+  activities: ProductionActivity[];
+  buildNumber: string | null;
+}
+
+export interface ProductionStepMaterial {
+  typeId: number;
+  typeName: string;
+  quantityPerRun: number;
+  grossQuantity: number;
+  producedByPlan: boolean;
+}
+
+export interface ProductionStep {
+  sequence: number;
+  blueprintTypeId: number;
+  blueprintName: string;
+  activity: ProductionActivity;
+  productTypeId: number;
+  productName: string;
+  requiredQuantity: number;
+  outputQuantityPerRun: number;
+  runs: number;
+  producedQuantity: number;
+  surplusQuantity: number;
+  baseTimeSecondsPerRun: number;
+  totalBaseTimeSeconds: number;
+  recipeAlternatives: number;
+  materials: ProductionStepMaterial[];
+}
+
+export interface ProductionGrossMaterial {
+  typeId: number;
+  typeName: string;
+  quantity: number;
+}
+
+export interface ProductionWarning {
+  code: "alternative-recipe";
+  typeId: number;
+  typeName: string;
+  selectedBlueprintTypeId: number;
+  candidateCount: number;
+}
+
+export interface ProductionPlanRecord {
+  planId: number;
+  ownerCharacterId: number;
+  ownerName: string;
+  blueprintTypeId: number;
+  blueprintName: string;
+  activity: ProductionActivity;
+  productTypeId: number;
+  productName: string;
+  targetQuantity: number;
+  priority: number;
+  note: string | null;
+  state: ProductionPlanState;
+  buildNumber: string | null;
+  steps: ProductionStep[];
+  grossMaterials: ProductionGrossMaterial[];
+  warnings: ProductionWarning[];
+  cycleTypeIds: number[];
+  totalBaseTimeSeconds: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProductionPlanQuery {
+  search: string;
+  ownerCharacterId: number | null;
+  activity: ProductionActivity | null;
+  state: ProductionPlanState | null;
+  offset: number;
+  limit: number;
+  sortBy: ProductionPlanSortField;
+  sortDirection: SortDirection;
+}
+
+export interface ProductionPlanPage {
+  items: ProductionPlanRecord[];
+  total: number;
+  offset: number;
+  limit: number;
+  owners: AssetOwner[];
+  activities: ProductionActivity[];
+  states: ProductionPlanState[];
+  summary: Record<ProductionPlanState, number>;
+  buildNumber: string | null;
+  inventoryApplied: false;
+  modifiersApplied: false;
+}
+
+export interface ProductionPlanInput {
+  planId: number | null;
+  ownerCharacterId: number;
+  blueprintTypeId: number;
+  activity: ProductionActivity;
+  productTypeId: number;
+  targetQuantity: number;
+  priority: number;
+  note: string | null;
+}
+
+export interface ProductionPlanMutation extends ProductionPlanInput {
+  planId: number;
+  saved: true;
+}
+
 export type ResearchPlanActivity = "material" | "time";
 export type ResearchPlanState = "unplanned" | "ready" | "queued" | "running" | "complete" | "unverified" | "missing";
 export type ResearchPlanSortField = "priority" | "blueprint" | "owner" | "state" | "me" | "te" | "age";
@@ -716,6 +873,7 @@ export type DesktopRuntimeStatus =
       version: string;
       desktopShell: true;
       singleInstance: true;
+      distribution: DesktopDistribution;
       sidecar: "starting" | "ready" | "error";
       database: "starting" | "ready" | "error";
       databaseLocation: "data/foundry.sqlite3";
@@ -1354,6 +1512,7 @@ function parseReadyStatus(rawStatus: string): DesktopRuntimeStatus {
     candidate.version.trim().length === 0 ||
     candidate.desktopShell !== true ||
     candidate.singleInstance !== true ||
+    !["installed", "portable"].includes(String(candidate.distribution)) ||
     !["starting", "ready", "error"].includes(String(candidate.sidecar)) ||
     !["starting", "ready", "error"].includes(String(candidate.database)) ||
     candidate.databaseLocation !== "data/foundry.sqlite3" ||
@@ -1398,6 +1557,7 @@ function parseReadyStatus(rawStatus: string): DesktopRuntimeStatus {
     version: candidate.version,
     desktopShell: true,
     singleInstance: true,
+    distribution: candidate.distribution as DesktopDistribution,
     sidecar,
     database,
     databaseLocation: "data/foundry.sqlite3",
@@ -1437,6 +1597,59 @@ export async function setDesktopUpdateChannel(
     throw new Error("The desktop updater returned a different channel.");
   }
   return status;
+}
+
+function parsePublicReleaseNotice(candidate: unknown): PublicReleaseNotice {
+  if (
+    !isRecord(candidate) ||
+    !["available", "current", "unavailable", "error"].includes(String(candidate.state)) ||
+    !updateChannels.includes(candidate.channel as UpdateChannel) ||
+    !isBoundedText(candidate.currentVersion, 80) ||
+    !(candidate.latestVersion === null || isBoundedText(candidate.latestVersion, 80)) ||
+    !(candidate.releaseUrl === null || isBoundedText(candidate.releaseUrl, 300)) ||
+    !(candidate.publishedAt === null || isBoundedText(candidate.publishedAt, 64)) ||
+    candidate.automaticInstall !== false ||
+    !isNullableText(candidate.errorCode)
+  ) {
+    throw new Error("The native runtime returned an invalid release notice.");
+  }
+  const notice = candidate as unknown as PublicReleaseNotice;
+  const hasRelease = notice.latestVersion !== null && notice.releaseUrl !== null && notice.publishedAt !== null;
+  if (
+    (["available", "current"].includes(notice.state) !== hasRelease) ||
+    (notice.state === "error") !== (notice.errorCode !== null) ||
+    (notice.state !== "error" && notice.errorCode !== null) ||
+    (hasRelease && notice.releaseUrl !==
+      `https://github.com/Savox76/eve-test-indu/releases/tag/v${notice.latestVersion}`)
+  ) {
+    throw new Error("The native runtime returned an inconsistent release notice.");
+  }
+  return notice;
+}
+
+export async function checkForUpdates(
+  adapter: RuntimeAdapter = tauriAdapter,
+): Promise<PublicReleaseNotice> {
+  if (!adapter.isAvailable()) {
+    throw new Error("Update notices are available only in the desktop application.");
+  }
+  return parsePublicReleaseNotice(JSON.parse(await adapter.invoke("check_for_updates")));
+}
+
+export async function openReleaseDownloads(
+  version: string | null,
+  adapter: RuntimeAdapter = tauriAdapter,
+): Promise<void> {
+  if (!adapter.isAvailable()) {
+    throw new Error("Release downloads are available only in the desktop application.");
+  }
+  if (version !== null && (!isBoundedText(version, 80) || !/^[0-9][0-9A-Za-z.+-]*$/.test(version))) {
+    throw new Error("The release version is invalid.");
+  }
+  const candidate: unknown = JSON.parse(await adapter.invoke("open_release_downloads", { version }));
+  if (!isRecord(candidate) || candidate.opened !== true || !isBoundedText(candidate.url, 300)) {
+    throw new Error("The native runtime did not open the release page.");
+  }
 }
 
 export async function setDesktopFontScale(
@@ -2149,10 +2362,7 @@ function parseIndustrySlotActivity(candidate: unknown): IndustrySlotActivity {
     candidate.runningPlans, candidate.completePlans];
   if (
     candidate.available !== expectedAvailable || candidate.utilizationState !== expectedState ||
-    (activity === "science" &&
-      (!candidate.planningAvailable || !planFields.every(isNonNegativeSafeInteger))) ||
-    (activity !== "science" &&
-      (candidate.planningAvailable || !planFields.every((value) => value === null)))
+    (!candidate.planningAvailable || !planFields.every(isNonNegativeSafeInteger))
   ) {
     throw new Error("The native runtime returned inconsistent industry-slot capacity data.");
   }
@@ -2252,6 +2462,270 @@ export async function loadIndustrySlots(
     throw new Error("The native runtime returned a different industry-slot window.");
   }
   return page;
+}
+
+function validateProductionCatalogQuery(query: ProductionCatalogQuery): ProductionCatalogQuery {
+  const search = query.search.trim().replace(/\s+/g, " ");
+  if (
+    search.length > 120 ||
+    !(query.activity === null || productionActivities.includes(query.activity)) ||
+    !isNonNegativeSafeInteger(query.offset) ||
+    !Number.isSafeInteger(query.limit) || query.limit < 1 || query.limit > 100
+  ) {
+    throw new Error("The production catalog query is invalid.");
+  }
+  return { ...query, search };
+}
+
+function parseProductionCatalogPage(candidate: unknown): ProductionCatalogPage {
+  if (
+    !isRecord(candidate) || !Array.isArray(candidate.items) ||
+    !isNonNegativeSafeInteger(candidate.total) || !isNonNegativeSafeInteger(candidate.offset) ||
+    !Number.isSafeInteger(candidate.limit) || Number(candidate.limit) < 1 || Number(candidate.limit) > 100 ||
+    !Array.isArray(candidate.activities) || candidate.activities.length !== productionActivities.length ||
+    !productionActivities.every((value, index) => (candidate.activities as unknown[])[index] === value) ||
+    !(candidate.buildNumber === null || isBoundedText(candidate.buildNumber, 80))
+  ) {
+    throw new Error("The native runtime returned an invalid production catalog.");
+  }
+  const items = candidate.items.map((item): ProductionCatalogItem => {
+    if (
+      !isRecord(item) || !isPositiveSafeInteger(item.blueprintTypeId) ||
+      !isBoundedText(item.blueprintName, 200) ||
+      !productionActivities.includes(item.activity as ProductionActivity) ||
+      !isPositiveSafeInteger(item.baseTimeSeconds) || !isPositiveSafeInteger(item.productTypeId) ||
+      !isBoundedText(item.productName, 200) || !isPositiveSafeInteger(item.outputQuantity) ||
+      !isPositiveSafeInteger(item.materialCount)
+    ) {
+      throw new Error("The native runtime returned invalid production catalog entries.");
+    }
+    return item as unknown as ProductionCatalogItem;
+  });
+  if (
+    items.length > Number(candidate.limit) || items.length > Number(candidate.total) ||
+    new Set(items.map((item) => `${item.blueprintTypeId}:${item.activity}:${item.productTypeId}`)).size !== items.length ||
+    (candidate.buildNumber === null && (candidate.total !== 0 || items.length !== 0))
+  ) {
+    throw new Error("The native runtime returned inconsistent production catalog metadata.");
+  }
+  return { ...candidate, items } as unknown as ProductionCatalogPage;
+}
+
+export async function loadProductionCatalog(
+  query: ProductionCatalogQuery,
+  adapter: RuntimeAdapter = tauriAdapter,
+): Promise<ProductionCatalogPage> {
+  const validated = validateProductionCatalogQuery(query);
+  if (!adapter.isAvailable()) return {
+    items: [], total: 0, offset: validated.offset, limit: validated.limit,
+    activities: [...productionActivities], buildNumber: null,
+  };
+  const page = parseProductionCatalogPage(JSON.parse(await adapter.invoke("query_production_catalog", {
+    search: validated.search, activity: validated.activity, offset: validated.offset, limit: validated.limit,
+  })));
+  if (page.offset !== validated.offset || page.limit !== validated.limit) {
+    throw new Error("The native runtime returned a different production catalog window.");
+  }
+  return page;
+}
+
+function parseProductionStep(candidate: unknown, index: number): ProductionStep {
+  if (
+    !isRecord(candidate) || candidate.sequence !== index + 1 ||
+    !isPositiveSafeInteger(candidate.blueprintTypeId) || !isBoundedText(candidate.blueprintName, 200) ||
+    !productionActivities.includes(candidate.activity as ProductionActivity) ||
+    !isPositiveSafeInteger(candidate.productTypeId) || !isBoundedText(candidate.productName, 200) ||
+    ![candidate.requiredQuantity, candidate.outputQuantityPerRun, candidate.runs,
+      candidate.producedQuantity, candidate.baseTimeSecondsPerRun, candidate.totalBaseTimeSeconds,
+      candidate.recipeAlternatives].every(isPositiveSafeInteger) ||
+    !isNonNegativeSafeInteger(candidate.surplusQuantity) || !Array.isArray(candidate.materials) ||
+    Number(candidate.outputQuantityPerRun) * Number(candidate.runs) !== Number(candidate.producedQuantity) ||
+    Number(candidate.producedQuantity) - Number(candidate.requiredQuantity) !== Number(candidate.surplusQuantity) ||
+    Number(candidate.baseTimeSecondsPerRun) * Number(candidate.runs) !== Number(candidate.totalBaseTimeSeconds)
+  ) {
+    throw new Error("The native runtime returned invalid production steps.");
+  }
+  const materials = candidate.materials.map((material): ProductionStepMaterial => {
+    if (
+      !isRecord(material) || !isPositiveSafeInteger(material.typeId) ||
+      !isBoundedText(material.typeName, 200) || !isPositiveSafeInteger(material.quantityPerRun) ||
+      !isPositiveSafeInteger(material.grossQuantity) || typeof material.producedByPlan !== "boolean" ||
+      Number(material.quantityPerRun) * Number(candidate.runs) !== Number(material.grossQuantity)
+    ) {
+      throw new Error("The native runtime returned invalid production-step materials.");
+    }
+    return material as unknown as ProductionStepMaterial;
+  });
+  return { ...candidate, materials } as unknown as ProductionStep;
+}
+
+function parseProductionPlanRecord(candidate: unknown): ProductionPlanRecord {
+  if (
+    !isRecord(candidate) || !isPositiveSafeInteger(candidate.planId) ||
+    !isPositiveSafeInteger(candidate.ownerCharacterId) || !isBoundedText(candidate.ownerName, 100) ||
+    !isPositiveSafeInteger(candidate.blueprintTypeId) || !isBoundedText(candidate.blueprintName, 200) ||
+    !productionActivities.includes(candidate.activity as ProductionActivity) ||
+    !isPositiveSafeInteger(candidate.productTypeId) || !isBoundedText(candidate.productName, 200) ||
+    !isPositiveSafeInteger(candidate.targetQuantity) || !isNonNegativeSafeInteger(candidate.priority) ||
+    Number(candidate.priority) > 999 || !(candidate.note === null || isBoundedText(candidate.note, 240)) ||
+    !productionPlanStates.includes(candidate.state as ProductionPlanState) ||
+    !(candidate.buildNumber === null || isBoundedText(candidate.buildNumber, 80)) ||
+    !Array.isArray(candidate.steps) || !Array.isArray(candidate.grossMaterials) ||
+    !Array.isArray(candidate.warnings) || !Array.isArray(candidate.cycleTypeIds) ||
+    !(candidate.totalBaseTimeSeconds === null || isPositiveSafeInteger(candidate.totalBaseTimeSeconds)) ||
+    !isBoundedText(candidate.createdAt, 64) || !isBoundedText(candidate.updatedAt, 64)
+  ) {
+    throw new Error("The native runtime returned invalid production plans.");
+  }
+  const steps = candidate.steps.map(parseProductionStep);
+  const grossMaterials = candidate.grossMaterials.map((material): ProductionGrossMaterial => {
+    if (!isRecord(material) || !isPositiveSafeInteger(material.typeId) ||
+      !isBoundedText(material.typeName, 200) || !isPositiveSafeInteger(material.quantity)) {
+      throw new Error("The native runtime returned invalid gross materials.");
+    }
+    return material as unknown as ProductionGrossMaterial;
+  });
+  const warnings = candidate.warnings.map((warning): ProductionWarning => {
+    if (!isRecord(warning) || warning.code !== "alternative-recipe" ||
+      !isPositiveSafeInteger(warning.typeId) || !isBoundedText(warning.typeName, 200) ||
+      !isPositiveSafeInteger(warning.selectedBlueprintTypeId) ||
+      !Number.isSafeInteger(warning.candidateCount) || Number(warning.candidateCount) < 2) {
+      throw new Error("The native runtime returned invalid production warnings.");
+    }
+    return warning as unknown as ProductionWarning;
+  });
+  if (!candidate.cycleTypeIds.every(isPositiveSafeInteger)) {
+    throw new Error("The native runtime returned invalid production cycles.");
+  }
+  const ready = candidate.state === "ready";
+  if (
+    ready !== (steps.length > 0 && candidate.totalBaseTimeSeconds !== null) ||
+    (ready && (candidate.buildNumber === null || candidate.cycleTypeIds.length !== 0 ||
+      steps[0].blueprintTypeId !== candidate.blueprintTypeId ||
+      steps[0].productTypeId !== candidate.productTypeId ||
+      steps[0].activity !== candidate.activity || steps[0].requiredQuantity !== candidate.targetQuantity ||
+      steps.reduce((total, step) => total + step.totalBaseTimeSeconds, 0) !== candidate.totalBaseTimeSeconds)) ||
+    (!ready && (grossMaterials.length !== 0 || candidate.totalBaseTimeSeconds !== null)) ||
+    ((candidate.state === "cycle") !== (candidate.cycleTypeIds.length > 0))
+  ) {
+    throw new Error("The native runtime returned inconsistent production-plan data.");
+  }
+  return { ...candidate, steps, grossMaterials, warnings } as unknown as ProductionPlanRecord;
+}
+
+function validateProductionPlanQuery(query: ProductionPlanQuery): ProductionPlanQuery {
+  const search = query.search.trim().replace(/\s+/g, " ");
+  if (
+    search.length > 120 || !(query.ownerCharacterId === null || isPositiveSafeInteger(query.ownerCharacterId)) ||
+    !(query.activity === null || productionActivities.includes(query.activity)) ||
+    !(query.state === null || productionPlanStates.includes(query.state)) ||
+    !isNonNegativeSafeInteger(query.offset) || !Number.isSafeInteger(query.limit) ||
+    query.limit < 1 || query.limit > 100 || !productionPlanSortFields.includes(query.sortBy) ||
+    !["asc", "desc"].includes(query.sortDirection)
+  ) throw new Error("The production-plan query is invalid.");
+  return { ...query, search };
+}
+
+function emptyProductionSummary(): Record<ProductionPlanState, number> {
+  return Object.fromEntries(productionPlanStates.map((state) => [state, 0])) as Record<ProductionPlanState, number>;
+}
+
+function parseProductionPlanPage(candidate: unknown): ProductionPlanPage {
+  if (
+    !isRecord(candidate) || !Array.isArray(candidate.items) || !Array.isArray(candidate.owners) ||
+    !Array.isArray(candidate.activities) || !Array.isArray(candidate.states) || !isRecord(candidate.summary) ||
+    !isNonNegativeSafeInteger(candidate.total) || !isNonNegativeSafeInteger(candidate.offset) ||
+    !Number.isSafeInteger(candidate.limit) || Number(candidate.limit) < 1 || Number(candidate.limit) > 100 ||
+    candidate.activities.length !== productionActivities.length ||
+    !productionActivities.every((value, index) => (candidate.activities as unknown[])[index] === value) ||
+    candidate.states.length !== productionPlanStates.length ||
+    !productionPlanStates.every((value, index) => (candidate.states as unknown[])[index] === value) ||
+    !productionPlanStates.every((state) => isNonNegativeSafeInteger(
+      (candidate.summary as Record<string, unknown>)[state])) ||
+    !(candidate.buildNumber === null || isBoundedText(candidate.buildNumber, 80)) ||
+    candidate.inventoryApplied !== false || candidate.modifiersApplied !== false
+  ) throw new Error("The native runtime returned invalid production-plan data.");
+  const items = candidate.items.map(parseProductionPlanRecord);
+  const owners = candidate.owners.map((owner): AssetOwner => {
+    if (!isRecord(owner) || !isPositiveSafeInteger(owner.characterId) || !isBoundedText(owner.name, 100)) {
+      throw new Error("The native runtime returned invalid production-plan owners.");
+    }
+    return owner as unknown as AssetOwner;
+  });
+  if (items.length > Number(candidate.limit) || items.length > Number(candidate.total) ||
+    new Set(items.map((item) => item.planId)).size !== items.length ||
+    new Set(owners.map((owner) => owner.characterId)).size !== owners.length) {
+    throw new Error("The native runtime returned inconsistent production-plan metadata.");
+  }
+  return { ...candidate, items, owners } as unknown as ProductionPlanPage;
+}
+
+export async function loadProductionPlans(
+  query: ProductionPlanQuery,
+  adapter: RuntimeAdapter = tauriAdapter,
+): Promise<ProductionPlanPage> {
+  const validated = validateProductionPlanQuery(query);
+  if (!adapter.isAvailable()) return {
+    items: [], total: 0, offset: validated.offset, limit: validated.limit, owners: [],
+    activities: [...productionActivities], states: [...productionPlanStates],
+    summary: emptyProductionSummary(), buildNumber: null, inventoryApplied: false, modifiersApplied: false,
+  };
+  const page = parseProductionPlanPage(JSON.parse(await adapter.invoke("query_production_plans", {
+    search: validated.search, ownerCharacterId: validated.ownerCharacterId,
+    activity: validated.activity, planState: validated.state, offset: validated.offset,
+    limit: validated.limit, sortBy: validated.sortBy, sortDirection: validated.sortDirection,
+  })));
+  if (page.offset !== validated.offset || page.limit !== validated.limit) {
+    throw new Error("The native runtime returned a different production-plan window.");
+  }
+  return page;
+}
+
+function validateProductionPlanInput(input: ProductionPlanInput): ProductionPlanInput {
+  const note = input.note === null ? null : input.note.trim().replace(/\s+/g, " ") || null;
+  if (
+    !(input.planId === null || isPositiveSafeInteger(input.planId)) ||
+    !isPositiveSafeInteger(input.ownerCharacterId) || !isPositiveSafeInteger(input.blueprintTypeId) ||
+    !productionActivities.includes(input.activity) || !isPositiveSafeInteger(input.productTypeId) ||
+    !isPositiveSafeInteger(input.targetQuantity) || !isNonNegativeSafeInteger(input.priority) ||
+    input.priority > 999 || !(note === null || note.length <= 240)
+  ) throw new Error("The production plan is invalid.");
+  return { ...input, note };
+}
+
+export async function saveProductionPlan(
+  input: ProductionPlanInput,
+  adapter: RuntimeAdapter = tauriAdapter,
+): Promise<ProductionPlanMutation> {
+  if (!adapter.isAvailable()) throw new Error("Production planning is available only in the desktop application.");
+  const validated = validateProductionPlanInput(input);
+  const candidate: unknown = JSON.parse(await adapter.invoke("save_production_plan", {
+    planId: validated.planId, ownerCharacterId: validated.ownerCharacterId,
+    blueprintTypeId: validated.blueprintTypeId, activity: validated.activity,
+    productTypeId: validated.productTypeId, targetQuantity: validated.targetQuantity,
+    priority: validated.priority, note: validated.note,
+  }));
+  if (!isRecord(candidate) || candidate.saved !== true || !isPositiveSafeInteger(candidate.planId) ||
+    (validated.planId !== null && candidate.planId !== validated.planId) ||
+    candidate.ownerCharacterId !== validated.ownerCharacterId ||
+    candidate.blueprintTypeId !== validated.blueprintTypeId || candidate.activity !== validated.activity ||
+    candidate.productTypeId !== validated.productTypeId || candidate.targetQuantity !== validated.targetQuantity ||
+    candidate.priority !== validated.priority || candidate.note !== validated.note) {
+    throw new Error("The native runtime returned an invalid production-plan update.");
+  }
+  return candidate as unknown as ProductionPlanMutation;
+}
+
+export async function deleteProductionPlan(
+  planId: number,
+  adapter: RuntimeAdapter = tauriAdapter,
+): Promise<void> {
+  if (!adapter.isAvailable()) throw new Error("Production planning is available only in the desktop application.");
+  if (!isPositiveSafeInteger(planId)) throw new Error("The production-plan identity is invalid.");
+  const candidate: unknown = JSON.parse(await adapter.invoke("delete_production_plan", { planId }));
+  if (!isRecord(candidate) || candidate.deleted !== true || candidate.planId !== planId) {
+    throw new Error("The native runtime returned an invalid production-plan deletion.");
+  }
 }
 
 function validateResearchPlanQuery(query: ResearchPlanQuery): ResearchPlanQuery {

@@ -16,6 +16,7 @@ from .research_planning import (
     _latest_blueprints,
     _latest_skills,
 )
+from .production_planning import production_work_queues
 
 
 MAX_SAFE_INTEGER = 9_007_199_254_740_991
@@ -115,7 +116,7 @@ def _activity_record(
     activity: str,
     skill: Mapping[str, Any] | None,
     job_snapshot: Mapping[str, Any] | None,
-    research_queue: Mapping[str, int],
+    plan_queue: Mapping[str, int],
 ) -> dict[str, object]:
     primary_skill_id, advanced_skill_id = SLOT_SKILLS[activity]
     if skill is None:
@@ -154,7 +155,7 @@ def _activity_record(
         available = max(0, capacity - occupied)
         state = "overbooked" if occupied > capacity else "full" if occupied == capacity else "available"
 
-    science = activity == "science"
+    planning_available = activity in {"manufacturing", "reactions", "science"}
     return {
         "activity": activity,
         "capacity": capacity,
@@ -169,11 +170,11 @@ def _activity_record(
         "primarySkillLevel": primary_level,
         "advancedSkillId": advanced_skill_id,
         "advancedSkillLevel": advanced_level,
-        "queuedPlans": research_queue.get("queued", 0) if science else None,
-        "blockedPlans": research_queue.get("blocked", 0) if science else None,
-        "runningPlans": research_queue.get("running", 0) if science else None,
-        "completePlans": research_queue.get("complete", 0) if science else None,
-        "planningAvailable": science,
+        "queuedPlans": plan_queue.get("queued", 0) if planning_available else None,
+        "blockedPlans": plan_queue.get("blocked", 0) if planning_available else None,
+        "runningPlans": plan_queue.get("running", 0) if planning_available else None,
+        "completePlans": plan_queue.get("complete", 0) if planning_available else None,
+        "planningAvailable": planning_available,
     }
 
 
@@ -200,6 +201,7 @@ def query_industry_slots(
     except ResearchPlanningError as error:
         raise IndustrySlotError("industry_slot_blueprint_snapshot_invalid") from error
     research_queues = _research_work_queue(connection, blueprints, skills, jobs)
+    production_queues = production_work_queues(connection, jobs)
 
     owners = [
         {
@@ -233,7 +235,11 @@ def query_industry_slots(
                         activity,
                         skill,
                         job_snapshot,
-                        research_queues.get(character_id, {}),
+                        (
+                            research_queues.get(character_id, {})
+                            if activity == "science"
+                            else production_queues.get(character_id, {}).get(activity, {})
+                        ),
                     )
                     for activity in SLOT_ACTIVITIES
                 ],
