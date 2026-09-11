@@ -4957,10 +4957,11 @@ mod tests {
         character_skill_query_response_is_valid, character_skill_sync_response_is_valid,
         eve_character_record_is_valid, industry_job_query_response_is_valid,
         industry_job_sync_response_is_valid, industry_slot_query_response_is_valid,
-        migrate_to_program_directory_storage, release_page_url, sidecar_startup_error_code,
-        research_plan_query_response_is_valid, sso_login_status_is_valid, AccountGroupRecord,
-        AssetDeltaCorrelation, AssetDeltaQueryResponse, AssetDeltaRecord, AssetDeltaSummary,
-        AssetExportResponse, AssetLocationNode, AssetOwner, AssetQueryResponse, AssetRecord,
+        migrate_to_program_directory_storage, release_page_url,
+        research_plan_query_response_is_valid, sidecar_startup_error_code,
+        sso_login_status_is_valid, AccountGroupRecord, AssetDeltaCorrelation,
+        AssetDeltaQueryResponse, AssetDeltaRecord, AssetDeltaSummary, AssetExportResponse,
+        AssetLocationNode, AssetOwner, AssetQueryResponse, AssetRecord,
         CharacterSkillQueryResponse, CharacterSkillRecord, CharacterSkillSyncCharacterResponse,
         CharacterSkillSyncResponse, EveCharacterRecord, IndustryAssetCorrelation,
         IndustryBlueprintCorrelation, IndustryJobQueryResponse, IndustryJobRecord,
@@ -5076,10 +5077,16 @@ mod tests {
         fs::create_dir(&executable_dir).expect("program directory must be created");
         fs::create_dir_all(previous_root.join("data"))
             .expect("previous data directory must be created");
-        fs::write(previous_root.join("data/foundry.sqlite3"), b"current-database")
-            .expect("previous database must be written");
-        fs::write(previous_root.join("data/backups"), b"invalid-directory-shape")
-            .expect("invalid auxiliary path must be written");
+        fs::write(
+            previous_root.join("data/foundry.sqlite3"),
+            b"current-database",
+        )
+        .expect("previous database must be written");
+        fs::write(
+            previous_root.join("data/backups"),
+            b"invalid-directory-shape",
+        )
+        .expect("invalid auxiliary path must be written");
 
         migrate_to_program_directory_storage(&executable_dir, &previous_root)
             .expect("essential database recovery must succeed");
