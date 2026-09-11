@@ -60,6 +60,7 @@ import {
   deleteAccountGroup,
   deleteEveCharacter,
   fontScales,
+  industryFacilityPageSize,
   initialRuntimeStatus,
   exportAssetsCsv,
   loadAccountGroups,
@@ -70,10 +71,12 @@ import {
   loadAssetDeltas,
   loadBlueprints,
   loadCharacterSkills,
+  loadIndustryFacilities,
   loadIndustryJobs,
   syncAssets,
   syncBlueprints,
   syncCharacterSkills,
+  syncIndustryFacilities,
   syncIndustryJobs,
   renameAccountGroup,
   setDesktopUpdateChannel,
@@ -103,6 +106,13 @@ import {
   type CharacterSkillSyncResult,
   type IndustryActivityId,
   type IndustryCorrelationState,
+  type IndustryCostActivity,
+  type IndustryFacilityAccess,
+  type IndustryFacilityKind,
+  type IndustryFacilityPage,
+  type IndustryFacilityQuery,
+  type IndustryFacilitySortField,
+  type IndustryFacilitySyncResult,
   type IndustryJobPage,
   type IndustryJobQuery,
   type IndustryJobSortField,
@@ -632,6 +642,50 @@ const copy = {
         noMatches: "Keine Skills entsprechen der Auswahl.",
         queryError: "Die lokalen Charakter-Skills konnten nicht gelesen werden.",
       },
+      facilities: {
+        kicker: "ANLAGEN & SYSTEMKOSTEN",
+        title: "Industrieanlagen",
+        subtitle: "Offizieller ESI-Anlagenkatalog mit Systemkostenindizes und den aus persönlichen Jobs beobachteten Spielerstrukturen.",
+        boundary: "ESI liefert keine Struktur- oder Rigboni; unbekannte Werte werden nicht geschätzt.",
+        search: "Anlage, System, Region, Besitzer, Typ oder ID suchen",
+        kind: "Anlagenart",
+        allKinds: "Alle Anlagenarten",
+        kindLabels: { station: "NPC-Station", structure: "Spielerstruktur", unknown: "Unbekannt" },
+        access: "Zugriff",
+        allAccess: "Alle Zugriffszustände",
+        accessLabels: {
+          public: "Öffentlich", available: "Verfügbar", restricted: "ACL eingeschränkt",
+          "scope-missing": "Neuanmeldung nötig", unknown: "Unbekannt",
+        },
+        activity: "Kostenaktivität",
+        activityLabels: {
+          manufacturing: "Produktion", reaction: "Reaktion", copying: "Kopieren",
+          invention: "Erfindung", researching_material_efficiency: "Materialforschung",
+          researching_time_efficiency: "Zeitforschung",
+        },
+        usedOnly: "Nur in Jobs verwendet",
+        facility: "Anlage / Typ",
+        system: "System / Region",
+        owner: "Besitzer",
+        cost: "Systemkostenindex",
+        jobs: "Beobachtete Jobs",
+        source: "Quellnachweis",
+        count: "Anlagen",
+        systems: "Systeme",
+        restricted: "eingeschränkt",
+        active: "aktiv",
+        noJobs: "noch nicht in Jobs beobachtet",
+        taxUnknown: "Anlagensteuer unbekannt",
+        age: "Datenalter",
+        sync: "Anlagen aktualisieren",
+        syncing: "Anlagen werden aktualisiert …",
+        syncComplete: "{facilities} Anlagen und {systems} Systemkostenstände aktualisiert.",
+        syncError: "Anlagen-Sync konnte nicht abgeschlossen werden.",
+        loading: "Industrieanlagen werden geladen …",
+        noData: "Noch kein vollständiger Anlagen-Snapshot vorhanden.",
+        noMatches: "Keine Anlagen entsprechen der Auswahl.",
+        queryError: "Der lokale Anlagenkatalog konnte nicht gelesen werden.",
+      },
     },
     moduleKicker: "MODULVORSCHAU",
     moduleText:
@@ -656,7 +710,7 @@ const copy = {
     },
     planned: "Geplant",
     previewOnly: "Noch ohne Live-Funktion",
-    footerVersion: "v0.0.5-preview.8",
+    footerVersion: "v0.0.5-preview.9",
   },
   en: {
     nav: {
@@ -1142,6 +1196,50 @@ const copy = {
         noMatches: "No skills match the selection.",
         queryError: "The local character skills could not be read.",
       },
+      facilities: {
+        kicker: "FACILITIES & SYSTEM COSTS",
+        title: "Industry facilities",
+        subtitle: "Official ESI facility catalog with system cost indices and player structures observed in personal jobs.",
+        boundary: "ESI does not provide structure or rig bonuses; unknown values are never estimated.",
+        search: "Search facility, system, region, owner, type, or ID",
+        kind: "Facility kind",
+        allKinds: "All facility kinds",
+        kindLabels: { station: "NPC station", structure: "Player structure", unknown: "Unknown" },
+        access: "Access",
+        allAccess: "All access states",
+        accessLabels: {
+          public: "Public", available: "Available", restricted: "ACL restricted",
+          "scope-missing": "Sign-in required", unknown: "Unknown",
+        },
+        activity: "Cost activity",
+        activityLabels: {
+          manufacturing: "Manufacturing", reaction: "Reaction", copying: "Copying",
+          invention: "Invention", researching_material_efficiency: "Material research",
+          researching_time_efficiency: "Time research",
+        },
+        usedOnly: "Used in jobs only",
+        facility: "Facility / type",
+        system: "System / region",
+        owner: "Owner",
+        cost: "System cost index",
+        jobs: "Observed jobs",
+        source: "Source evidence",
+        count: "facilities",
+        systems: "systems",
+        restricted: "restricted",
+        active: "active",
+        noJobs: "not observed in jobs yet",
+        taxUnknown: "facility tax unknown",
+        age: "Data age",
+        sync: "Refresh facilities",
+        syncing: "Refreshing facilities …",
+        syncComplete: "Updated {facilities} facilities and {systems} system cost records.",
+        syncError: "Facility sync could not be completed.",
+        loading: "Loading industry facilities …",
+        noData: "No complete facility snapshot is available yet.",
+        noMatches: "No facilities match the selection.",
+        queryError: "The local facility catalog could not be read.",
+      },
     },
     moduleKicker: "MODULE PREVIEW",
     moduleText:
@@ -1166,7 +1264,7 @@ const copy = {
     },
     planned: "Planned",
     previewOnly: "No live function yet",
-    footerVersion: "v0.0.5-preview.8",
+    footerVersion: "v0.0.5-preview.9",
   },
 } as const;
 
@@ -1287,6 +1385,8 @@ export function App({
   industryJobSyncer = syncIndustryJobs,
   characterSkillsLoader = loadCharacterSkills,
   characterSkillSyncer = syncCharacterSkills,
+  industryFacilitiesLoader = loadIndustryFacilities,
+  industryFacilitySyncer = syncIndustryFacilities,
   fontScaleSetter = setDesktopFontScale,
 }: {
   runtimeLoader?: () => Promise<DesktopRuntimeStatus>;
@@ -1313,6 +1413,8 @@ export function App({
   industryJobSyncer?: () => Promise<IndustryJobSyncResult>;
   characterSkillsLoader?: (query: CharacterSkillQuery) => Promise<CharacterSkillPage>;
   characterSkillSyncer?: () => Promise<CharacterSkillSyncResult>;
+  industryFacilitiesLoader?: (query: IndustryFacilityQuery) => Promise<IndustryFacilityPage>;
+  industryFacilitySyncer?: () => Promise<IndustryFacilitySyncResult>;
   fontScaleSetter?: (fontScale: FontScale) => Promise<AppearanceStatus>;
 }) {
   const [locale, setLocale] = useState<Locale>("de");
@@ -1324,6 +1426,7 @@ export function App({
   const [blueprintRevision, setBlueprintRevision] = useState(0);
   const [industryJobRevision, setIndustryJobRevision] = useState(0);
   const [characterSkillRevision, setCharacterSkillRevision] = useState(0);
+  const [industryFacilityRevision, setIndustryFacilityRevision] = useState(0);
   const initialAssetSyncStarted = useRef(false);
   const [runtimeStatus, setRuntimeStatus] = useState(initialRuntimeStatus);
   const [overviewScope, setOverviewScope] = useState<OverviewScopeId>("all");
@@ -1392,6 +1495,13 @@ export function App({
     return result;
   }, [characterSkillSyncer]);
 
+  const runIndustryFacilitySync = useCallback(async () => {
+    const result = await industryFacilitySyncer();
+    setIndustryFacilityRevision((revision) => revision + 1);
+    setIndustryJobRevision((revision) => revision + 1);
+    return result;
+  }, [industryFacilitySyncer]);
+
   const runAllSyncs = useCallback(async () => {
     setSyncing(true);
     try {
@@ -1399,7 +1509,8 @@ export function App({
         runAssetSync(), runBlueprintSync(), runCharacterSkillSync(),
       ]);
       const jobs = await Promise.allSettled([runIndustryJobSync()]);
-      const failed = [...sources, ...jobs].find((result) => result.status === "rejected");
+      const facilities = await Promise.allSettled([runIndustryFacilitySync()]);
+      const failed = [...sources, ...jobs, ...facilities].find((result) => result.status === "rejected");
       if (failed?.status === "rejected") throw failed.reason;
       const assetResult = sources[0];
       if (assetResult.status === "rejected") throw assetResult.reason;
@@ -1407,7 +1518,7 @@ export function App({
     } finally {
       setSyncing(false);
     }
-  }, [runAssetSync, runBlueprintSync, runCharacterSkillSync, runIndustryJobSync]);
+  }, [runAssetSync, runBlueprintSync, runCharacterSkillSync, runIndustryFacilitySync, runIndustryJobSync]);
 
   useEffect(() => {
     if (!nativeCoreReady) return;
@@ -1904,6 +2015,9 @@ export function App({
             loadCharacterSkills={characterSkillsLoader}
             syncCharacterSkills={runCharacterSkillSync}
             characterSkillRevision={characterSkillRevision}
+            loadIndustryFacilities={industryFacilitiesLoader}
+            syncIndustryFacilities={runIndustryFacilitySync}
+            industryFacilityRevision={industryFacilityRevision}
           />
         ) : (
           <ModulePreview activeModule={activeModule} t={t} />
@@ -3082,6 +3196,8 @@ function BlueprintWorkspace({
   available, locale, t, loadBlueprints: loadPage, syncBlueprints: runSync, refreshRevision,
   loadIndustryJobs: loadJobs, syncIndustryJobs: runJobSync, industryJobRevision,
   loadCharacterSkills: loadSkills, syncCharacterSkills: runSkillSync, characterSkillRevision,
+  loadIndustryFacilities: loadFacilities, syncIndustryFacilities: runFacilitySync,
+  industryFacilityRevision,
 }: {
   available: boolean;
   locale: Locale;
@@ -3095,6 +3211,9 @@ function BlueprintWorkspace({
   loadCharacterSkills: (query: CharacterSkillQuery) => Promise<CharacterSkillPage>;
   syncCharacterSkills: () => Promise<CharacterSkillSyncResult>;
   characterSkillRevision: number;
+  loadIndustryFacilities: (query: IndustryFacilityQuery) => Promise<IndustryFacilityPage>;
+  syncIndustryFacilities: () => Promise<IndustryFacilitySyncResult>;
+  industryFacilityRevision: number;
 }) {
   const [search, setSearch] = useState("");
   const [appliedSearch, setAppliedSearch] = useState("");
@@ -3208,6 +3327,14 @@ function BlueprintWorkspace({
         loadSkills={loadSkills}
         syncSkills={runSkillSync}
         refreshRevision={characterSkillRevision}
+      />
+      <IndustryFacilitiesPanel
+        available={available}
+        locale={locale}
+        t={t}
+        loadFacilities={loadFacilities}
+        syncFacilities={runFacilitySync}
+        refreshRevision={industryFacilityRevision}
       />
     </div>
   );
@@ -3365,7 +3492,7 @@ function IndustryJobsPanel({
             <td><span className={`status-pill status-pill--${item.status === "delivered" ? "good" : item.status === "cancelled" || item.status === "reverted" ? "warn" : "info"}`}>{t.blueprints.jobs.statusLabels[item.status]}</span></td>
             <td className="asset-table__number"><strong>{numberFormat.format(item.runs)}</strong><small>{item.successfulRuns == null ? "" : `${numberFormat.format(item.successfulRuns)} ${t.blueprints.jobs.successful}`}{item.cost == null ? "" : ` · ${iskFormat.format(item.cost)} ISK`}</small></td>
             <td><strong>{dateFormat.format(new Date(item.endDate))}</strong><small>{dateFormat.format(new Date(item.startDate))} → {item.completedDate ? dateFormat.format(new Date(item.completedDate)) : "—"}</small></td>
-            <td><strong>#{item.facilityId}</strong><small>Output #{item.outputLocationId}</small></td>
+            <td><strong>{item.facilityName ?? `#${item.facilityId}`}</strong><small>{item.solarSystemName ?? t.blueprints.facilities.accessLabels[item.facilityAccess]}{item.systemCostIndex == null ? "" : ` · ${(item.systemCostIndex * 100).toLocaleString(locale === "de" ? "de-DE" : "en-US", { maximumFractionDigits: 4 })} %`}</small><small>Output #{item.outputLocationId}</small></td>
             <td><span className={`status-pill status-pill--${item.correlationState === "linked" ? "good" : item.correlationState === "ambiguous" || item.correlationState === "partial" ? "warn" : "info"}`}>{t.blueprints.jobs.correlationLabels[item.correlationState]}</span><small>{blueprintEvidence(item.blueprintCorrelation.state)} · {assetEvidence(item.assetCorrelation.state)}</small><small>Run {item.jobSyncRunId}{item.assetCorrelation.eventIds[0] ? ` · ${item.assetCorrelation.eventIds[0].slice(0, 10)}` : ""}</small></td>
           </tr>)}</tbody></table></div> : null}
       {page && total > 0 && <div className="asset-pagination"><span>{range}</span><div><button type="button" onClick={() => setOffset(Math.max(0, offset - industryJobPageSize))} disabled={offset === 0}>{t.blueprints.previous}</button><button type="button" onClick={() => setOffset(offset + industryJobPageSize)} disabled={offset + industryJobPageSize >= total}>{t.blueprints.next}</button></div></div>}
@@ -3508,6 +3635,148 @@ function CharacterSkillsPanel({
             <td>{formatDataAge(item.ageSeconds, locale)}</td>
           </tr>)}</tbody></table></div> : null}
       {page && total > 0 && <div className="asset-pagination"><span>{range}</span><div><button type="button" onClick={() => setOffset(Math.max(0, offset - characterSkillPageSize))} disabled={offset === 0}>{t.blueprints.previous}</button><button type="button" onClick={() => setOffset(offset + characterSkillPageSize)} disabled={offset + characterSkillPageSize >= total}>{t.blueprints.next}</button></div></div>}
+    </section>
+  );
+}
+
+function IndustryFacilitiesPanel({
+  available, locale, t, loadFacilities, syncFacilities, refreshRevision,
+}: {
+  available: boolean;
+  locale: Locale;
+  t: Translation;
+  loadFacilities: (query: IndustryFacilityQuery) => Promise<IndustryFacilityPage>;
+  syncFacilities: () => Promise<IndustryFacilitySyncResult>;
+  refreshRevision: number;
+}) {
+  const [search, setSearch] = useState("");
+  const [appliedSearch, setAppliedSearch] = useState("");
+  const [kind, setKind] = useState<IndustryFacilityKind | null>(null);
+  const [access, setAccess] = useState<IndustryFacilityAccess | null>(null);
+  const [activity, setActivity] = useState<IndustryCostActivity>("manufacturing");
+  const [usedOnly, setUsedOnly] = useState(false);
+  const [sortBy, setSortBy] = useState<IndustryFacilitySortField>("facility");
+  const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
+  const [offset, setOffset] = useState(0);
+  const [page, setPage] = useState<IndustryFacilityPage | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const [syncingFacilities, setSyncingFacilities] = useState(false);
+  const [syncResult, setSyncResult] = useState<IndustryFacilitySyncResult | null>(null);
+  const [syncFailed, setSyncFailed] = useState(false);
+  const numberFormat = useMemo(
+    () => new Intl.NumberFormat(locale === "de" ? "de-DE" : "en-US"),
+    [locale],
+  );
+  const percentFormat = useMemo(
+    () => new Intl.NumberFormat(locale === "de" ? "de-DE" : "en-US", {
+      style: "percent", maximumFractionDigits: 4,
+    }),
+    [locale],
+  );
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setAppliedSearch(search.trim().replace(/\s+/g, " "));
+      setOffset(0);
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [search]);
+
+  useEffect(() => {
+    if (!available) return;
+    let activeRequest = true;
+    setLoading(true);
+    setFailed(false);
+    void loadFacilities({
+      search: appliedSearch, kind, access, activity, usedOnly,
+      offset, limit: industryFacilityPageSize, sortBy, sortDirection,
+    }).then((result) => {
+      if (!activeRequest) return;
+      if (result.total > 0 && result.offset >= result.total) {
+        setOffset(Math.floor((result.total - 1) / industryFacilityPageSize) * industryFacilityPageSize);
+        return;
+      }
+      setPage(result);
+    }).catch(() => {
+      if (activeRequest) setFailed(true);
+    }).finally(() => {
+      if (activeRequest) setLoading(false);
+    });
+    return () => { activeRequest = false; };
+  }, [access, activity, appliedSearch, available, kind, loadFacilities, offset, refreshRevision, sortBy, sortDirection, usedOnly]);
+
+  const refresh = async () => {
+    if (!available || syncingFacilities) return;
+    setSyncingFacilities(true);
+    setSyncFailed(false);
+    setSyncResult(null);
+    try {
+      setSyncResult(await syncFacilities());
+      setOffset(0);
+    } catch {
+      setSyncFailed(true);
+    } finally {
+      setSyncingFacilities(false);
+    }
+  };
+  const changeSort = (field: IndustryFacilitySortField) => {
+    if (sortBy === field) setSortDirection((value) => value === "asc" ? "desc" : "asc");
+    else { setSortBy(field); setSortDirection("asc"); }
+    setOffset(0);
+  };
+  const header = (field: IndustryFacilitySortField, label: string) => (
+    <button type="button" className="asset-sort" onClick={() => changeSort(field)}>
+      {label}{sortBy === field && <ChevronDown className={sortDirection === "asc" ? "asset-sort__asc" : ""} size={14} />}
+    </button>
+  );
+  const total = page?.total ?? 0;
+  const range = t.blueprints.resultRange
+    .replace("{from}", numberFormat.format(total === 0 ? 0 : offset + 1))
+    .replace("{to}", numberFormat.format(Math.min(offset + (page?.items.length ?? 0), total)))
+    .replace("{total}", numberFormat.format(total));
+
+  return (
+    <section className="asset-browser industry-facilities" aria-busy={loading}>
+      <header className="asset-deltas__header industry-jobs__header">
+        <div>
+          <span className="eyebrow">{t.blueprints.facilities.kicker}</span>
+          <h2>{t.blueprints.facilities.title}</h2>
+          <p>{t.blueprints.facilities.subtitle}</p>
+        </div>
+        <div className="asset-hero__metrics">
+          <span><strong>{numberFormat.format(total)}</strong><small>{t.blueprints.facilities.count}</small></span>
+          <span><strong>{numberFormat.format(page?.systems ?? 0)}</strong><small>{t.blueprints.facilities.systems}</small></span>
+          <span><strong>{numberFormat.format(page?.restrictedStructures ?? 0)}</strong><small>{t.blueprints.facilities.restricted}</small></span>
+          <span><strong>{page?.ageSeconds == null ? "—" : formatDataAge(page.ageSeconds, locale)}</strong><small>{t.blueprints.facilities.age}</small></span>
+        </div>
+      </header>
+      <div className="asset-toolbar industry-facility-toolbar">
+        <label className="asset-search"><span>{t.blueprints.facilities.search}</span><div><Search size={16} /><input value={search} maxLength={120} onChange={(event) => setSearch(event.target.value)} placeholder={t.blueprints.facilities.search} disabled={!available} /></div></label>
+        <label><span>{t.blueprints.facilities.kind}</span><select value={kind ?? ""} onChange={(event) => { setKind((event.target.value || null) as IndustryFacilityKind | null); setOffset(0); }}><option value="">{t.blueprints.facilities.allKinds}</option>{(page?.kinds ?? []).map((value) => <option key={value} value={value}>{t.blueprints.facilities.kindLabels[value]}</option>)}</select></label>
+        <label><span>{t.blueprints.facilities.access}</span><select value={access ?? ""} onChange={(event) => { setAccess((event.target.value || null) as IndustryFacilityAccess | null); setOffset(0); }}><option value="">{t.blueprints.facilities.allAccess}</option>{(page?.accessStates ?? []).map((value) => <option key={value} value={value}>{t.blueprints.facilities.accessLabels[value]}</option>)}</select></label>
+        <label><span>{t.blueprints.facilities.activity}</span><select value={activity} onChange={(event) => { setActivity(event.target.value as IndustryCostActivity); setOffset(0); }}>{(page?.activities ?? []).map((value) => <option key={value} value={value}>{t.blueprints.facilities.activityLabels[value]}</option>)}</select></label>
+        <button className={`secondary-button facility-used-toggle ${usedOnly ? "is-active" : ""}`} type="button" aria-pressed={usedOnly} onClick={() => { setUsedOnly((value) => !value); setOffset(0); }}>{t.blueprints.facilities.usedOnly}</button>
+        <button className="secondary-button asset-export" type="button" onClick={() => void refresh()} disabled={!available || syncingFacilities}><RefreshCw className={syncingFacilities ? "spin" : ""} size={15} />{syncingFacilities ? t.blueprints.facilities.syncing : t.blueprints.facilities.sync}</button>
+      </div>
+      <div className="asset-export-status facility-boundary">{t.blueprints.facilities.boundary}</div>
+      {(syncResult || syncFailed) && <div className={`asset-export-status ${syncFailed ? "asset-export-status--error" : ""}`} role="status">{syncFailed ? t.blueprints.facilities.syncError : t.blueprints.facilities.syncComplete.replace("{facilities}", numberFormat.format(syncResult?.facilities ?? 0)).replace("{systems}", numberFormat.format(syncResult?.systems ?? 0))}</div>}
+      {!available ? <div className="asset-empty"><Database size={22} />{t.blueprints.unavailable}</div>
+        : failed ? <div className="asset-empty asset-empty--error"><AlertTriangle size={22} />{t.blueprints.facilities.queryError}</div>
+        : loading && page === null ? <div className="asset-empty"><RefreshCw className="spin" size={22} />{t.blueprints.facilities.loading}</div>
+        : page && page.items.length === 0 ? <div className="asset-empty"><Factory size={22} />{page.observedAt === null ? t.blueprints.facilities.noData : t.blueprints.facilities.noMatches}</div>
+        : page ? <div className="asset-table-wrap"><table className="asset-table industry-facility-table"><thead><tr>
+            <th>{header("facility", t.blueprints.facilities.facility)}</th><th>{header("system", t.blueprints.facilities.system)}</th><th>{t.blueprints.facilities.owner}</th><th>{header("cost", t.blueprints.facilities.cost)}</th><th>{header("jobs", t.blueprints.facilities.jobs)}</th><th>{header("access", t.blueprints.facilities.access)}</th><th>{header("age", t.blueprints.facilities.source)}</th>
+          </tr></thead><tbody>{page.items.map((item) => <tr key={item.facilityId}>
+            <td><strong>{item.facilityName ?? `#${item.facilityId}`}</strong><small>{item.typeName ?? t.blueprints.facilities.kindLabels[item.kind]}{item.typeId == null ? "" : ` · Type #${item.typeId}`}</small></td>
+            <td><strong>{item.solarSystemName ?? "—"}</strong><small>{item.regionName ?? (item.solarSystemId == null ? "—" : `#${item.solarSystemId}`)}</small></td>
+            <td><strong>{item.ownerName ?? "—"}</strong><small>{item.ownerId == null ? "—" : `#${item.ownerId}`}</small></td>
+            <td className="asset-table__number"><strong>{item.activityCostIndex == null ? "—" : percentFormat.format(item.activityCostIndex)}</strong><small>{item.tax == null ? t.blueprints.facilities.taxUnknown : percentFormat.format(item.tax)}</small></td>
+            <td className="asset-table__number"><strong>{numberFormat.format(item.jobCount)}</strong><small>{item.jobCount === 0 ? t.blueprints.facilities.noJobs : `${numberFormat.format(item.activeJobs)} ${t.blueprints.facilities.active}`}</small></td>
+            <td><span className={`status-pill status-pill--${item.access === "public" || item.access === "available" ? "good" : item.access === "unknown" ? "info" : "warn"}`}>{t.blueprints.facilities.accessLabels[item.access]}</span><small>{t.blueprints.facilities.kindLabels[item.kind]}</small></td>
+            <td><strong>Snapshot #{item.snapshotId}</strong><small>Run #{item.syncRunId} · {formatDataAge(item.ageSeconds, locale)}</small></td>
+          </tr>)}</tbody></table></div> : null}
+      {page && total > 0 && <div className="asset-pagination"><span>{range}</span><div><button type="button" onClick={() => setOffset(Math.max(0, offset - industryFacilityPageSize))} disabled={offset === 0}>{t.blueprints.previous}</button><button type="button" onClick={() => setOffset(offset + industryFacilityPageSize)} disabled={offset + industryFacilityPageSize >= total}>{t.blueprints.next}</button></div></div>}
     </section>
   );
 }

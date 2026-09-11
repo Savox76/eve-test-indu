@@ -59,6 +59,25 @@ const INDUSTRY_JOB_STATUSES: [&str; 6] = [
 const INDUSTRY_JOB_CORRELATIONS: [&str; 5] =
     ["linked", "partial", "ambiguous", "unmatched", "pending"];
 const INDUSTRY_JOB_ACTIVITY_IDS: [u8; 8] = [1, 3, 4, 5, 7, 8, 9, 11];
+const INDUSTRY_FACILITY_SORT_FIELDS: [&str; 7] = [
+    "facility", "system", "type", "cost", "jobs", "access", "age",
+];
+const INDUSTRY_FACILITY_KINDS: [&str; 3] = ["station", "structure", "unknown"];
+const INDUSTRY_FACILITY_ACCESS_STATES: [&str; 5] = [
+    "public",
+    "available",
+    "restricted",
+    "scope-missing",
+    "unknown",
+];
+const INDUSTRY_COST_ACTIVITIES: [&str; 6] = [
+    "manufacturing",
+    "reaction",
+    "copying",
+    "invention",
+    "researching_material_efficiency",
+    "researching_time_efficiency",
+];
 const CHARACTER_SKILL_SORT_FIELDS: [&str; 6] =
     ["skill", "owner", "trained", "active", "skillpoints", "age"];
 const CHARACTER_SKILL_ACTIVE_STATES: [&str; 3] = ["normal", "limited", "boosted"];
@@ -389,6 +408,12 @@ struct IndustryJobRecord {
     cost: Option<f64>,
     duration_seconds: u64,
     facility_id: u64,
+    facility_name: Option<String>,
+    facility_kind: String,
+    facility_access: String,
+    solar_system_id: Option<u64>,
+    solar_system_name: Option<String>,
+    system_cost_index: Option<f64>,
     station_id: u64,
     blueprint_location_id: u64,
     output_location_id: u64,
@@ -441,6 +466,65 @@ struct IndustryJobSyncResponse {
     jobs: u64,
     active: u64,
     completed_jobs: u64,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct IndustryFacilityRecord {
+    facility_id: u64,
+    facility_name: Option<String>,
+    kind: String,
+    access: String,
+    type_id: Option<u64>,
+    type_name: Option<String>,
+    owner_id: Option<u64>,
+    owner_name: Option<String>,
+    region_id: Option<u64>,
+    region_name: Option<String>,
+    solar_system_id: Option<u64>,
+    solar_system_name: Option<String>,
+    tax: Option<f64>,
+    activity_cost_index: Option<f64>,
+    used_by_character_ids: Vec<u64>,
+    observed_activity_ids: Vec<u8>,
+    job_count: u64,
+    active_jobs: u64,
+    error_code: Option<String>,
+    snapshot_id: u64,
+    sync_run_id: u64,
+    observed_at: String,
+    age_seconds: u64,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct IndustryFacilityQueryResponse {
+    items: Vec<IndustryFacilityRecord>,
+    total: u64,
+    npc_facilities: u64,
+    observed_facilities: u64,
+    restricted_structures: u64,
+    systems: u64,
+    offset: u64,
+    limit: u64,
+    activity: String,
+    activities: Vec<String>,
+    kinds: Vec<String>,
+    access_states: Vec<String>,
+    observed_at: Option<String>,
+    age_seconds: Option<u64>,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct IndustryFacilitySyncResponse {
+    sync_run_id: u64,
+    facilities: u64,
+    npc_facilities: u64,
+    observed_facilities: u64,
+    restricted_structures: u64,
+    systems: u64,
+    resolved_names: u64,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -1095,6 +1179,23 @@ fn industry_job_query_response_is_valid(response: &IndustryJobQueryResponse) -> 
                     value.is_finite() && (0.0..=JAVASCRIPT_MAX_SAFE_INTEGER as f64).contains(&value)
                 })
                 && job.duration_seconds <= JAVASCRIPT_MAX_SAFE_INTEGER
+                && job
+                    .facility_name
+                    .as_ref()
+                    .is_none_or(|value| asset_text_is_valid(value, 200))
+                && INDUSTRY_FACILITY_KINDS.contains(&job.facility_kind.as_str())
+                && INDUSTRY_FACILITY_ACCESS_STATES.contains(&job.facility_access.as_str())
+                && job.solar_system_id.is_some() == job.solar_system_name.is_some()
+                && job
+                    .solar_system_id
+                    .is_none_or(|value| value > 0 && value <= JAVASCRIPT_MAX_SAFE_INTEGER)
+                && job
+                    .solar_system_name
+                    .as_ref()
+                    .is_none_or(|value| asset_text_is_valid(value, 200))
+                && job
+                    .system_cost_index
+                    .is_none_or(|value| value.is_finite() && (0.0..=1.0).contains(&value))
                 && [
                     job.facility_id,
                     job.station_id,
@@ -1155,6 +1256,160 @@ fn industry_job_sync_response_is_valid(response: &IndustryJobSyncResponse) -> bo
                             .as_ref()
                             .is_some_and(|code| asset_text_is_valid(code, 120))))
         })
+}
+
+fn optional_id_name_is_valid(id: Option<u64>, name: &Option<String>) -> bool {
+    id.is_some() == name.is_some()
+        && id.is_none_or(|value| value > 0 && value <= JAVASCRIPT_MAX_SAFE_INTEGER)
+        && name
+            .as_ref()
+            .is_none_or(|value| asset_text_is_valid(value, 200))
+}
+
+fn industry_facility_record_is_valid(item: &IndustryFacilityRecord) -> bool {
+    let character_ids = item.used_by_character_ids.iter().collect::<HashSet<_>>();
+    let activity_ids = item.observed_activity_ids.iter().collect::<HashSet<_>>();
+    let common = item.facility_id > 0
+        && item.facility_id <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && item
+            .facility_name
+            .as_ref()
+            .is_none_or(|value| asset_text_is_valid(value, 200))
+        && INDUSTRY_FACILITY_KINDS.contains(&item.kind.as_str())
+        && INDUSTRY_FACILITY_ACCESS_STATES.contains(&item.access.as_str())
+        && optional_id_name_is_valid(item.type_id, &item.type_name)
+        && optional_id_name_is_valid(item.owner_id, &item.owner_name)
+        && optional_id_name_is_valid(item.region_id, &item.region_name)
+        && optional_id_name_is_valid(item.solar_system_id, &item.solar_system_name)
+        && item
+            .tax
+            .is_none_or(|value| value.is_finite() && (0.0..=1.0).contains(&value))
+        && item
+            .activity_cost_index
+            .is_none_or(|value| value.is_finite() && (0.0..=1.0).contains(&value))
+        && character_ids.len() == item.used_by_character_ids.len()
+        && item
+            .used_by_character_ids
+            .iter()
+            .all(|value| *value > 0 && *value <= JAVASCRIPT_MAX_SAFE_INTEGER)
+        && activity_ids.len() == item.observed_activity_ids.len()
+        && item
+            .observed_activity_ids
+            .iter()
+            .all(|value| INDUSTRY_JOB_ACTIVITY_IDS.contains(value))
+        && item.job_count <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && item.active_jobs <= item.job_count
+        && item
+            .error_code
+            .as_ref()
+            .is_none_or(|value| asset_text_is_valid(value, 120))
+        && item.snapshot_id > 0
+        && item.snapshot_id <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && item.sync_run_id > 0
+        && item.sync_run_id <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && asset_text_is_valid(&item.observed_at, 64)
+        && item.age_seconds <= JAVASCRIPT_MAX_SAFE_INTEGER;
+    let state = match item.access.as_str() {
+        "public" => {
+            item.kind == "station"
+                && item.facility_name.is_some()
+                && item.type_id.is_some()
+                && item.owner_id.is_some()
+                && item.region_id.is_some()
+                && item.solar_system_id.is_some()
+                && item.error_code.is_none()
+        }
+        "available" => {
+            item.kind == "structure"
+                && item.facility_name.is_some()
+                && item.owner_id.is_some()
+                && item.region_id.is_none()
+                && item.solar_system_id.is_some()
+                && item.tax.is_none()
+                && item.error_code.is_none()
+        }
+        "restricted" | "scope-missing" | "unknown" => {
+            item.facility_name.is_none()
+                && item.type_id.is_none()
+                && item.owner_id.is_none()
+                && item.region_id.is_none()
+                && item.solar_system_id.is_none()
+                && item.tax.is_none()
+                && item.error_code.is_some()
+        }
+        _ => false,
+    };
+    common && state
+}
+
+fn industry_facility_query_response_is_valid(response: &IndustryFacilityQueryResponse) -> bool {
+    let facility_ids = response
+        .items
+        .iter()
+        .map(|item| item.facility_id)
+        .collect::<HashSet<_>>();
+    response.limit > 0
+        && response.limit <= MAX_ASSET_PAGE_SIZE
+        && response.total <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && response.offset <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && response.npc_facilities <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && response.observed_facilities <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && response.restricted_structures <= response.observed_facilities
+        && response.systems <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && response.items.len() as u64 <= response.limit
+        && response.items.len() as u64 <= response.total
+        && INDUSTRY_COST_ACTIVITIES.contains(&response.activity.as_str())
+        && response
+            .activities
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>()
+            == INDUSTRY_COST_ACTIVITIES
+        && response
+            .kinds
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>()
+            == INDUSTRY_FACILITY_KINDS
+        && response
+            .access_states
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>()
+            == INDUSTRY_FACILITY_ACCESS_STATES
+        && response.observed_at.is_some() == response.age_seconds.is_some()
+        && response
+            .observed_at
+            .as_ref()
+            .is_none_or(|value| asset_text_is_valid(value, 64))
+        && facility_ids.len() == response.items.len()
+        && response.items.iter().all(|item| {
+            industry_facility_record_is_valid(item)
+                && response.observed_at.as_ref() == Some(&item.observed_at)
+                && response.age_seconds == Some(item.age_seconds)
+        })
+        && (response.observed_at.is_some()
+            || (response.items.is_empty()
+                && response.npc_facilities == 0
+                && response.observed_facilities == 0
+                && response.restricted_structures == 0
+                && response.systems == 0))
+}
+
+fn industry_facility_sync_response_is_valid(response: &IndustryFacilitySyncResponse) -> bool {
+    response.sync_run_id > 0
+        && response.sync_run_id <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && response
+            .npc_facilities
+            .checked_add(response.observed_facilities)
+            == Some(response.facilities)
+        && response.facilities <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && response.npc_facilities > 0
+        && response.restricted_structures <= response.observed_facilities
+        && response.systems > 0
+        && response.systems <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && response.resolved_names > 0
+        && response.resolved_names <= JAVASCRIPT_MAX_SAFE_INTEGER
 }
 
 fn character_skill_query_response_is_valid(response: &CharacterSkillQueryResponse) -> bool {
@@ -2188,6 +2443,34 @@ fn sync_industry_jobs(state: State<'_, RuntimeState>) -> Result<String, String> 
 }
 
 #[tauri::command]
+fn sync_industry_facilities(state: State<'_, RuntimeState>) -> Result<String, String> {
+    refresh_sidecar_status(&state);
+    let response = {
+        let sidecar = state
+            .sidecar
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let process = sidecar
+            .as_ref()
+            .ok_or_else(|| "sidecar-unavailable".to_owned())?;
+        sidecar_json_request_with_timeout(
+            process,
+            "POST",
+            "/industry-facilities/sync",
+            "{}",
+            ASSET_SYNC_TIMEOUT,
+        )
+        .map_err(str::to_owned)?
+    };
+    let result: IndustryFacilitySyncResponse =
+        serde_json::from_str(&response).map_err(|_| "sidecar-response-invalid".to_owned())?;
+    if !industry_facility_sync_response_is_valid(&result) {
+        return Err("sidecar-response-invalid".to_owned());
+    }
+    serde_json::to_string(&result).map_err(|_| "status-serialization-failed".to_owned())
+}
+
+#[tauri::command]
 fn sync_character_skills(state: State<'_, RuntimeState>) -> Result<String, String> {
     refresh_sidecar_status(&state);
     let response = {
@@ -2318,6 +2601,72 @@ fn query_industry_jobs(
     let page: IndustryJobQueryResponse =
         serde_json::from_str(&response).map_err(|_| "sidecar-response-invalid".to_owned())?;
     if !industry_job_query_response_is_valid(&page) || page.offset != offset || page.limit != limit
+    {
+        return Err("sidecar-response-invalid".to_owned());
+    }
+    serde_json::to_string(&page).map_err(|_| "status-serialization-failed".to_owned())
+}
+
+#[tauri::command]
+fn query_industry_facilities(
+    search: String,
+    kind: Option<String>,
+    access: Option<String>,
+    activity: String,
+    used_only: bool,
+    offset: u64,
+    limit: u64,
+    sort_by: String,
+    sort_direction: String,
+    state: State<'_, RuntimeState>,
+) -> Result<String, String> {
+    if search.chars().count() > MAX_ASSET_SEARCH_CHARACTERS
+        || search.trim() != search
+        || kind
+            .as_deref()
+            .is_some_and(|value| !INDUSTRY_FACILITY_KINDS.contains(&value))
+        || access
+            .as_deref()
+            .is_some_and(|value| !INDUSTRY_FACILITY_ACCESS_STATES.contains(&value))
+        || !INDUSTRY_COST_ACTIVITIES.contains(&activity.as_str())
+        || limit == 0
+        || limit > MAX_ASSET_PAGE_SIZE
+        || offset > JAVASCRIPT_MAX_SAFE_INTEGER
+        || !INDUSTRY_FACILITY_SORT_FIELDS.contains(&sort_by.as_str())
+        || !SORT_DIRECTIONS.contains(&sort_direction.as_str())
+    {
+        return Err("industry-facility-query-invalid".to_owned());
+    }
+    refresh_sidecar_status(&state);
+    let body = serde_json::json!({
+        "search": search,
+        "kind": kind,
+        "access": access,
+        "activity": activity,
+        "usedOnly": used_only,
+        "offset": offset,
+        "limit": limit,
+        "sortBy": sort_by,
+        "sortDirection": sort_direction,
+    })
+    .to_string();
+    let response = {
+        let sidecar = state
+            .sidecar
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let process = sidecar
+            .as_ref()
+            .ok_or_else(|| "sidecar-unavailable".to_owned())?;
+        sidecar_json_request(process, "POST", "/industry-facilities/query", &body)
+            .map_err(str::to_owned)?
+    };
+    let page: IndustryFacilityQueryResponse =
+        serde_json::from_str(&response).map_err(|_| "sidecar-response-invalid".to_owned())?;
+    if !industry_facility_query_response_is_valid(&page)
+        || page.offset != offset
+        || page.limit != limit
+        || page.activity != activity
     {
         return Err("sidecar-response-invalid".to_owned());
     }
@@ -2845,6 +3194,8 @@ pub fn run() {
             query_blueprints,
             sync_industry_jobs,
             query_industry_jobs,
+            sync_industry_facilities,
+            query_industry_facilities,
             sync_character_skills,
             query_character_skills,
             export_assets_csv,
@@ -3163,6 +3514,12 @@ mod tests {
                 cost: Some(1_234.5),
                 duration_seconds: 3_600,
                 facility_id: 60_000_001,
+                facility_name: Some("Synthetic Station".to_owned()),
+                facility_kind: "station".to_owned(),
+                facility_access: "public".to_owned(),
+                solar_system_id: Some(30_000_001),
+                solar_system_name: Some("Synthetic System".to_owned()),
+                system_cost_index: Some(0.0125),
                 station_id: 60_000_001,
                 blueprint_location_id: 60_000_001,
                 output_location_id: 60_000_001,
@@ -3231,6 +3588,62 @@ mod tests {
             completed_jobs: 1,
         };
         assert!(industry_job_sync_response_is_valid(&sync));
+    }
+
+    #[test]
+    fn validates_industry_facility_pages_and_sync_totals() {
+        let page = IndustryFacilityQueryResponse {
+            items: vec![IndustryFacilityRecord {
+                facility_id: 60_000_001,
+                facility_name: Some("Synthetic Station".to_owned()),
+                kind: "station".to_owned(),
+                access: "public".to_owned(),
+                type_id: Some(1_928),
+                type_name: Some("Synthetic Station Type".to_owned()),
+                owner_id: Some(1_000_001),
+                owner_name: Some("Synthetic Corporation".to_owned()),
+                region_id: Some(10_000_001),
+                region_name: Some("Synthetic Region".to_owned()),
+                solar_system_id: Some(30_000_001),
+                solar_system_name: Some("Synthetic System".to_owned()),
+                tax: None,
+                activity_cost_index: Some(0.0125),
+                used_by_character_ids: vec![90_888_001],
+                observed_activity_ids: vec![1],
+                job_count: 1,
+                active_jobs: 0,
+                error_code: None,
+                snapshot_id: 10,
+                sync_run_id: 11,
+                observed_at: "2026-09-11T00:00:00Z".to_owned(),
+                age_seconds: 60,
+            }],
+            total: 1,
+            npc_facilities: 1,
+            observed_facilities: 0,
+            restricted_structures: 0,
+            systems: 1,
+            offset: 0,
+            limit: 100,
+            activity: "manufacturing".to_owned(),
+            activities: INDUSTRY_COST_ACTIVITIES.map(str::to_owned).to_vec(),
+            kinds: INDUSTRY_FACILITY_KINDS.map(str::to_owned).to_vec(),
+            access_states: INDUSTRY_FACILITY_ACCESS_STATES.map(str::to_owned).to_vec(),
+            observed_at: Some("2026-09-11T00:00:00Z".to_owned()),
+            age_seconds: Some(60),
+        };
+        assert!(industry_facility_query_response_is_valid(&page));
+
+        let sync = IndustryFacilitySyncResponse {
+            sync_run_id: 12,
+            facilities: 2,
+            npc_facilities: 1,
+            observed_facilities: 1,
+            restricted_structures: 1,
+            systems: 1,
+            resolved_names: 7,
+        };
+        assert!(industry_facility_sync_response_is_valid(&sync));
     }
 
     #[test]

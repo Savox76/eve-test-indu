@@ -9,6 +9,7 @@ import type {
   CharacterSkillPage,
   DesktopRuntimeStatus,
   EveCharacter,
+  IndustryFacilityPage,
   IndustryJobPage,
   SsoLoginStatus,
 } from "./runtime";
@@ -25,7 +26,7 @@ const idleSso: SsoLoginStatus = {
 const nativeRuntime = (overrides: Partial<Extract<DesktopRuntimeStatus, { state: "ready" }>> = {}) =>
   Promise.resolve<DesktopRuntimeStatus>({
     state: "ready",
-    version: "0.0.5-preview.8",
+    version: "0.0.5-preview.9",
     desktopShell: true,
     singleInstance: true,
     sidecar: "ready",
@@ -151,7 +152,9 @@ const industryJobPage: IndustryJobPage = {
     blueprintItemId: 7_001, blueprintTypeId: 681, blueprintName: "Bantam Blueprint",
     productTypeId: 582, productName: "Bantam", runs: 2, successfulRuns: 2,
     licensedRuns: 0, probability: 1, cost: 1234.5, durationSeconds: 3600,
-    facilityId: 60_003_760, stationId: 60_003_760,
+    facilityId: 60_003_760, facilityName: "Jita IV - Moon 4", facilityKind: "station",
+    facilityAccess: "public", solarSystemId: 30_000_142, solarSystemName: "Jita",
+    systemCostIndex: 0.0125, stationId: 60_003_760,
     blueprintLocationId: 60_003_760, outputLocationId: 60_003_760,
     startDate: "2026-09-10T10:00:00Z", endDate: "2026-09-10T11:00:00Z",
     completedDate: "2026-09-10T11:00:00Z", pauseDate: null,
@@ -179,6 +182,25 @@ const characterSkillPage: CharacterSkillPage = {
   total: 1, totalSp: 512_000, unallocatedSp: 12_500, offset: 0, limit: 100,
   owners: [{ characterId: 90_888_001, name: "Builder" }],
   levels: [0, 1, 2, 3, 4, 5], activeStates: ["normal", "limited", "boosted"],
+  observedAt: "2026-09-11T00:00:00Z", ageSeconds: 60,
+};
+
+const industryFacilityPage: IndustryFacilityPage = {
+  items: [{
+    facilityId: 60_003_760, facilityName: "Jita IV - Moon 4", kind: "station",
+    access: "public", typeId: 1_928, typeName: "Caldari Station",
+    ownerId: 1_000_001, ownerName: "Caldari Navy", regionId: 10_000_002,
+    regionName: "The Forge", solarSystemId: 30_000_142, solarSystemName: "Jita",
+    tax: null, activityCostIndex: 0.0125, usedByCharacterIds: [90_888_001],
+    observedActivityIds: [1], jobCount: 1, activeJobs: 0, errorCode: null,
+    snapshotId: 10, syncRunId: 11, observedAt: "2026-09-11T00:00:00Z", ageSeconds: 60,
+  }],
+  total: 1, npcFacilities: 1, observedFacilities: 0, restrictedStructures: 0,
+  systems: 1, offset: 0, limit: 100, activity: "manufacturing",
+  activities: ["manufacturing", "reaction", "copying", "invention",
+    "researching_material_efficiency", "researching_time_efficiency"],
+  kinds: ["station", "structure", "unknown"],
+  accessStates: ["public", "available", "restricted", "scope-missing", "unknown"],
   observedAt: "2026-09-11T00:00:00Z", ageSeconds: 60,
 };
 
@@ -444,7 +466,7 @@ describe("New Eden Foundry design preview", () => {
   it("credits Savoxmedia as the app creator next to the version", () => {
     render(<App />);
 
-    expect(screen.getByText("v0.0.5-preview.8")).toBeInTheDocument();
+    expect(screen.getByText("v0.0.5-preview.9")).toBeInTheDocument();
     expect(screen.getByText("Savoxmedia")).toBeInTheDocument();
     expect(screen.getByText("Erstellt von", { exact: false })).toBeInTheDocument();
     expect(screen.queryByText("Lokaler Betreiber")).not.toBeInTheDocument();
@@ -614,6 +636,13 @@ describe("New Eden Foundry design preview", () => {
     const characterSkillSyncer = vi.fn().mockResolvedValue({
       characters: [], completed: 0, failed: 0, skills: 0, totalSp: 0, unallocatedSp: 0,
     });
+    const industryJobSyncer = vi.fn().mockResolvedValue({
+      characters: [], completed: 0, failed: 0, jobs: 0, active: 0, completedJobs: 0,
+    });
+    const industryFacilitySyncer = vi.fn().mockResolvedValue({
+      syncRunId: 1, facilities: 1, npcFacilities: 1, observedFacilities: 0,
+      restrictedStructures: 0, systems: 1, resolvedNames: 5,
+    });
     render(
       <App
         runtimeLoader={() => nativeRuntime()}
@@ -622,6 +651,8 @@ describe("New Eden Foundry design preview", () => {
         assetSyncer={assetSyncer}
         blueprintSyncer={blueprintSyncer}
         characterSkillSyncer={characterSkillSyncer}
+        industryJobSyncer={industryJobSyncer}
+        industryFacilitySyncer={industryFacilitySyncer}
       />,
     );
 
@@ -632,6 +663,8 @@ describe("New Eden Foundry design preview", () => {
     await waitFor(() => expect(assetSyncer).toHaveBeenCalledTimes(1));
     expect(blueprintSyncer).toHaveBeenCalledTimes(1);
     expect(characterSkillSyncer).toHaveBeenCalledTimes(1);
+    expect(industryJobSyncer).toHaveBeenCalledTimes(1);
+    expect(industryFacilitySyncer).toHaveBeenCalledTimes(1);
   });
 
   it("edits aliases, groups, activity, and exposes guarded full deletion", async () => {
@@ -756,5 +789,35 @@ describe("New Eden Foundry design preview", () => {
     fireEvent.click(screen.getByRole("button", { name: "Skills aktualisieren" }));
     await waitFor(() => expect(characterSkillSyncer).toHaveBeenCalledTimes(1));
     expect(await screen.findByText(/1 Skills von 1 Charakter/)).toBeInTheDocument();
+  });
+
+  it("shows, filters, sorts, and refreshes facilities with cost provenance", async () => {
+    const industryFacilitiesLoader = vi.fn().mockResolvedValue(industryFacilityPage);
+    const industryFacilitySyncer = vi.fn().mockResolvedValue({
+      syncRunId: 12, facilities: 1, npcFacilities: 1, observedFacilities: 0,
+      restrictedStructures: 0, systems: 1, resolvedNames: 5,
+    });
+    render(<App runtimeLoader={() => nativeRuntime()} ssoStatusLoader={() => Promise.resolve(idleSso)}
+      industryFacilitiesLoader={industryFacilitiesLoader}
+      industryFacilitySyncer={industryFacilitySyncer} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Blueprints & Jobs" }));
+    expect(await screen.findByText("Jita IV - Moon 4")).toBeInTheDocument();
+    expect(screen.getByText(/keine Struktur- oder Rigboni/)).toBeInTheDocument();
+    expect(screen.getByText(/1,25.*%/)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Anlagenart"), { target: { value: "station" } });
+    await waitFor(() => expect(industryFacilitiesLoader).toHaveBeenLastCalledWith(
+      expect.objectContaining({ kind: "station" }),
+    ));
+    fireEvent.click(screen.getByRole("button", { name: "Systemkostenindex" }));
+    await waitFor(() => expect(industryFacilitiesLoader).toHaveBeenLastCalledWith(
+      expect.objectContaining({ sortBy: "cost", sortDirection: "asc" }),
+    ));
+    fireEvent.click(screen.getByRole("button", { name: "Nur in Jobs verwendet" }));
+    await waitFor(() => expect(industryFacilitiesLoader).toHaveBeenLastCalledWith(
+      expect.objectContaining({ usedOnly: true }),
+    ));
+    fireEvent.click(screen.getByRole("button", { name: "Anlagen aktualisieren" }));
+    await waitFor(() => expect(industryFacilitySyncer).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText(/1 Anlagen und 1 Systemkostenstände/)).toBeInTheDocument();
   });
 });
