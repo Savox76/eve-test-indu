@@ -11,6 +11,7 @@ import type {
   EveCharacter,
   IndustryFacilityPage,
   IndustryJobPage,
+  IndustrySlotPage,
   ResearchPlanPage,
   SsoLoginStatus,
 } from "./runtime";
@@ -27,7 +28,7 @@ const idleSso: SsoLoginStatus = {
 const nativeRuntime = (overrides: Partial<Extract<DesktopRuntimeStatus, { state: "ready" }>> = {}) =>
   Promise.resolve<DesktopRuntimeStatus>({
     state: "ready",
-    version: "0.0.5-preview.10",
+    version: "0.0.5-preview.11",
     desktopShell: true,
     singleInstance: true,
     sidecar: "ready",
@@ -203,6 +204,43 @@ const industryFacilityPage: IndustryFacilityPage = {
   kinds: ["station", "structure", "unknown"],
   accessStates: ["public", "available", "restricted", "scope-missing", "unknown"],
   observedAt: "2026-09-11T00:00:00Z", ageSeconds: 60,
+};
+
+const industrySlotPage: IndustrySlotPage = {
+  items: [{
+    characterId: 90_888_001, name: "Builder",
+    activities: [{
+      activity: "manufacturing", capacity: 7, occupied: 2, available: 5,
+      utilizationState: "available", activeJobs: 1, pausedJobs: 0, readyJobs: 1,
+      nextJobEndDate: "2026-09-11T12:00:00Z", primarySkillId: 3387,
+      primarySkillLevel: 4, advancedSkillId: 24625, advancedSkillLevel: 2,
+      queuedPlans: null, blockedPlans: null, runningPlans: null, completePlans: null,
+      planningAvailable: false,
+    }, {
+      activity: "reactions", capacity: 5, occupied: 1, available: 4,
+      utilizationState: "available", activeJobs: 1, pausedJobs: 0, readyJobs: 0,
+      nextJobEndDate: "2026-09-11T13:00:00Z", primarySkillId: 45748,
+      primarySkillLevel: 3, advancedSkillId: 45749, advancedSkillLevel: 1,
+      queuedPlans: null, blockedPlans: null, runningPlans: null, completePlans: null,
+      planningAvailable: false,
+    }, {
+      activity: "science", capacity: 6, occupied: 2, available: 4,
+      utilizationState: "available", activeJobs: 2, pausedJobs: 0, readyJobs: 0,
+      nextJobEndDate: "2026-09-11T14:00:00Z", primarySkillId: 3406,
+      primarySkillLevel: 3, advancedSkillId: 24624, advancedSkillLevel: 2,
+      queuedPlans: 1, blockedPlans: 1, runningPlans: 1, completePlans: 0,
+      planningAvailable: true,
+    }],
+    skillSnapshotId: 2, skillSyncRunId: 3,
+    skillObservedAt: "2026-09-11T11:00:00Z",
+    jobSnapshotId: 4, jobSyncRunId: 5,
+    jobObservedAt: "2026-09-11T11:01:00Z",
+    observedAt: "2026-09-11T11:00:00Z", ageSeconds: 60,
+  }],
+  total: 1, offset: 0, limit: 50,
+  owners: [{ characterId: 90_888_001, name: "Builder" }],
+  activities: ["manufacturing", "reactions", "science"],
+  observedAt: "2026-09-11T11:00:00Z", ageSeconds: 60,
 };
 
 const researchPlanPage: ResearchPlanPage = {
@@ -497,7 +535,7 @@ describe("New Eden Foundry design preview", () => {
   it("credits Savoxmedia as the app creator next to the version", () => {
     render(<App />);
 
-    expect(screen.getByText("v0.0.5-preview.10")).toBeInTheDocument();
+    expect(screen.getByText("v0.0.5-preview.11")).toBeInTheDocument();
     expect(screen.getByText("Savoxmedia")).toBeInTheDocument();
     expect(screen.getByText("Erstellt von", { exact: false })).toBeInTheDocument();
     expect(screen.queryByText("Lokaler Betreiber")).not.toBeInTheDocument();
@@ -795,6 +833,24 @@ describe("New Eden Foundry design preview", () => {
     fireEvent.click(screen.getByRole("button", { name: "Jobs aktualisieren" }));
     await waitFor(() => expect(industryJobSyncer).toHaveBeenCalledTimes(1));
     expect(await screen.findByText(/1 Jobs von 1 Charakter/)).toBeInTheDocument();
+  });
+
+  it("shows character-separated industry capacity and research work queues", async () => {
+    const industrySlotsLoader = vi.fn().mockResolvedValue(industrySlotPage);
+    render(<App runtimeLoader={() => nativeRuntime()} ssoStatusLoader={() => Promise.resolve(idleSso)}
+      industrySlotsLoader={industrySlotsLoader} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Blueprints & Jobs" }));
+
+    expect(await screen.findByText("Kapazität und Arbeitsvorrat")).toBeInTheDocument();
+    expect(screen.getByText("5 frei · 2/7 belegt")).toBeInTheDocument();
+    expect(screen.getByText("1 geplant · 1 laufend · 1 blockiert · 0 fertig")).toBeInTheDocument();
+    expect(screen.getByText("Skills #2 / Lauf #3 · Jobs #4 / Lauf #5")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Charakter", { selector: ".industry-slots select" }), {
+      target: { value: "90888001" },
+    });
+    await waitFor(() => expect(industrySlotsLoader).toHaveBeenLastCalledWith({
+      ownerCharacterId: 90_888_001, offset: 0, limit: 50,
+    }));
   });
 
   it("shows, filters, sorts, and refreshes character skills", async () => {

@@ -50,17 +50,22 @@ from .identity import (
     update_character,
     upsert_character,
 )
+from .industry_facility_sync import IndustryFacilitySyncError, sync_industry_facilities
+from .industry_facility_view import (
+    IndustryFacilityViewError,
+    query_industry_facilities,
+    validate_industry_facility_query,
+)
 from .industry_job_sync import IndustryJobSyncError, sync_character_industry_jobs
 from .industry_job_view import (
     IndustryJobViewError,
     query_industry_jobs,
     validate_industry_job_query,
 )
-from .industry_facility_sync import IndustryFacilitySyncError, sync_industry_facilities
-from .industry_facility_view import (
-    IndustryFacilityViewError,
-    query_industry_facilities,
-    validate_industry_facility_query,
+from .industry_slots import (
+    IndustrySlotError,
+    query_industry_slots,
+    validate_industry_slot_query,
 )
 from .location_resolution import (
     LocationResolutionError,
@@ -782,6 +787,26 @@ def create_application(
                 "resolvedNames": synced.resolved_names,
             }
         )
+
+    @app.post("/industry-slots/query")
+    async def post_industry_slot_query(request: Request) -> JSONResponse:
+        try:
+            payload = await request.json()
+        except Exception:
+            return JSONResponse(status_code=422, content={"detail": "industry_slot_query_invalid"})
+        try:
+            validate_industry_slot_query(payload)
+            with closing(connect_database(storage.database_path)) as connection:
+                result = query_industry_slots(connection, payload)
+        except IndustrySlotError as error:
+            code = str(error)
+            return JSONResponse(
+                status_code=422 if code == "industry_slot_query_invalid" else 500,
+                content={"detail": code},
+            )
+        except Exception:
+            return JSONResponse(status_code=500, content={"detail": "industry_slot_query_failed"})
+        return JSONResponse(content=result)
 
     @app.post("/research-plans/query")
     async def post_research_plan_query(request: Request) -> JSONResponse:

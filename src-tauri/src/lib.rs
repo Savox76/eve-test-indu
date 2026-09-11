@@ -78,6 +78,9 @@ const INDUSTRY_COST_ACTIVITIES: [&str; 6] = [
     "researching_material_efficiency",
     "researching_time_efficiency",
 ];
+const INDUSTRY_SLOT_ACTIVITIES: [&str; 3] = ["manufacturing", "reactions", "science"];
+const INDUSTRY_SLOT_UTILIZATION_STATES: [&str; 4] = ["unknown", "available", "full", "overbooked"];
+const INDUSTRY_SLOT_SKILL_IDS: [(u64, u64); 3] = [(3387, 24625), (45748, 45749), (3406, 24624)];
 const CHARACTER_SKILL_SORT_FIELDS: [&str; 6] =
     ["skill", "owner", "trained", "active", "skillpoints", "age"];
 const CHARACTER_SKILL_ACTIVE_STATES: [&str; 3] = ["normal", "limited", "boosted"];
@@ -539,6 +542,58 @@ struct IndustryFacilitySyncResponse {
     restricted_structures: u64,
     systems: u64,
     resolved_names: u64,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct IndustrySlotActivity {
+    activity: String,
+    capacity: Option<u8>,
+    occupied: Option<u64>,
+    available: Option<u8>,
+    utilization_state: String,
+    active_jobs: Option<u64>,
+    paused_jobs: Option<u64>,
+    ready_jobs: Option<u64>,
+    next_job_end_date: Option<String>,
+    primary_skill_id: u64,
+    primary_skill_level: Option<u8>,
+    advanced_skill_id: u64,
+    advanced_skill_level: Option<u8>,
+    queued_plans: Option<u64>,
+    blocked_plans: Option<u64>,
+    running_plans: Option<u64>,
+    complete_plans: Option<u64>,
+    planning_available: bool,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct IndustrySlotRecord {
+    character_id: u64,
+    name: String,
+    activities: Vec<IndustrySlotActivity>,
+    skill_snapshot_id: Option<u64>,
+    skill_sync_run_id: Option<u64>,
+    skill_observed_at: Option<String>,
+    job_snapshot_id: Option<u64>,
+    job_sync_run_id: Option<u64>,
+    job_observed_at: Option<String>,
+    observed_at: Option<String>,
+    age_seconds: Option<u64>,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct IndustrySlotQueryResponse {
+    items: Vec<IndustrySlotRecord>,
+    total: u64,
+    offset: u64,
+    limit: u64,
+    owners: Vec<AssetOwner>,
+    activities: Vec<String>,
+    observed_at: Option<String>,
+    age_seconds: Option<u64>,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -1538,6 +1593,194 @@ fn industry_facility_sync_response_is_valid(response: &IndustryFacilitySyncRespo
         && response.systems <= JAVASCRIPT_MAX_SAFE_INTEGER
         && response.resolved_names > 0
         && response.resolved_names <= JAVASCRIPT_MAX_SAFE_INTEGER
+}
+
+fn industry_slot_activity_is_valid(item: &IndustrySlotActivity, index: usize) -> bool {
+    if index >= INDUSTRY_SLOT_ACTIVITIES.len()
+        || item.activity != INDUSTRY_SLOT_ACTIVITIES[index]
+        || !INDUSTRY_SLOT_UTILIZATION_STATES.contains(&item.utilization_state.as_str())
+        || (item.primary_skill_id, item.advanced_skill_id) != INDUSTRY_SLOT_SKILL_IDS[index]
+    {
+        return false;
+    }
+    let skill_values_are_known = item.primary_skill_level.is_some()
+        && item.advanced_skill_level.is_some()
+        && item.capacity.is_some();
+    let skill_values_are_unknown = item.primary_skill_level.is_none()
+        && item.advanced_skill_level.is_none()
+        && item.capacity.is_none();
+    if !(skill_values_are_known || skill_values_are_unknown)
+        || item.primary_skill_level.is_some_and(|value| value > 5)
+        || item.advanced_skill_level.is_some_and(|value| value > 5)
+        || item
+            .capacity
+            .is_some_and(|value| !(1..=11).contains(&value))
+        || (skill_values_are_known
+            && item.capacity
+                != Some(
+                    1 + item.primary_skill_level.unwrap_or(0)
+                        + item.advanced_skill_level.unwrap_or(0),
+                ))
+    {
+        return false;
+    }
+    let job_values_are_known = item.occupied.is_some()
+        && item.active_jobs.is_some()
+        && item.paused_jobs.is_some()
+        && item.ready_jobs.is_some();
+    let job_values_are_unknown = item.occupied.is_none()
+        && item.active_jobs.is_none()
+        && item.paused_jobs.is_none()
+        && item.ready_jobs.is_none();
+    if !(job_values_are_known || job_values_are_unknown)
+        || [
+            item.occupied,
+            item.active_jobs,
+            item.paused_jobs,
+            item.ready_jobs,
+        ]
+        .into_iter()
+        .flatten()
+        .any(|value| value > JAVASCRIPT_MAX_SAFE_INTEGER)
+        || (job_values_are_known
+            && item
+                .active_jobs
+                .and_then(|active| active.checked_add(item.paused_jobs.unwrap_or(0)))
+                .and_then(|sum| sum.checked_add(item.ready_jobs.unwrap_or(0)))
+                != item.occupied)
+        || item
+            .next_job_end_date
+            .as_ref()
+            .is_some_and(|value| !asset_text_is_valid(value, 64))
+        || (item.next_job_end_date.is_some() && item.active_jobs == Some(0))
+    {
+        return false;
+    }
+    let utilization = match (item.capacity, item.occupied) {
+        (Some(capacity), Some(occupied)) => {
+            let expected_available = u64::from(capacity).saturating_sub(occupied) as u8;
+            let expected_state = if occupied > u64::from(capacity) {
+                "overbooked"
+            } else if occupied == u64::from(capacity) {
+                "full"
+            } else {
+                "available"
+            };
+            item.available == Some(expected_available) && item.utilization_state == expected_state
+        }
+        _ => item.available.is_none() && item.utilization_state == "unknown",
+    };
+    let plan_values = [
+        item.queued_plans,
+        item.blocked_plans,
+        item.running_plans,
+        item.complete_plans,
+    ];
+    let plans_are_bounded = plan_values
+        .into_iter()
+        .flatten()
+        .all(|value| value <= JAVASCRIPT_MAX_SAFE_INTEGER);
+    let planning = if item.activity == "science" {
+        item.planning_available && plan_values.into_iter().all(|value| value.is_some())
+    } else {
+        !item.planning_available && plan_values.into_iter().all(|value| value.is_none())
+    };
+    utilization && plans_are_bounded && planning
+}
+
+fn optional_industry_slot_source_is_valid(
+    snapshot_id: Option<u64>,
+    sync_run_id: Option<u64>,
+    observed_at: &Option<String>,
+) -> bool {
+    snapshot_id.is_some() == sync_run_id.is_some()
+        && snapshot_id.is_some() == observed_at.is_some()
+        && snapshot_id.is_none_or(|value| value > 0 && value <= JAVASCRIPT_MAX_SAFE_INTEGER)
+        && sync_run_id.is_none_or(|value| value > 0 && value <= JAVASCRIPT_MAX_SAFE_INTEGER)
+        && observed_at
+            .as_ref()
+            .is_none_or(|value| asset_text_is_valid(value, 64))
+}
+
+fn industry_slot_record_is_valid(item: &IndustrySlotRecord) -> bool {
+    let any_source = item.skill_snapshot_id.is_some() || item.job_snapshot_id.is_some();
+    item.character_id > 0
+        && item.character_id <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && asset_text_is_valid(&item.name, 100)
+        && item.activities.len() == INDUSTRY_SLOT_ACTIVITIES.len()
+        && item
+            .activities
+            .iter()
+            .enumerate()
+            .all(|(index, activity)| industry_slot_activity_is_valid(activity, index))
+        && optional_industry_slot_source_is_valid(
+            item.skill_snapshot_id,
+            item.skill_sync_run_id,
+            &item.skill_observed_at,
+        )
+        && optional_industry_slot_source_is_valid(
+            item.job_snapshot_id,
+            item.job_sync_run_id,
+            &item.job_observed_at,
+        )
+        && item.observed_at.is_some() == item.age_seconds.is_some()
+        && item.observed_at.is_some() == any_source
+        && item
+            .observed_at
+            .as_ref()
+            .is_none_or(|value| asset_text_is_valid(value, 64))
+        && item
+            .age_seconds
+            .is_none_or(|value| value <= JAVASCRIPT_MAX_SAFE_INTEGER)
+}
+
+fn industry_slot_query_response_is_valid(response: &IndustrySlotQueryResponse) -> bool {
+    let character_ids = response
+        .items
+        .iter()
+        .map(|item| item.character_id)
+        .collect::<HashSet<_>>();
+    let owner_ids = response
+        .owners
+        .iter()
+        .map(|owner| owner.character_id)
+        .collect::<HashSet<_>>();
+    response.limit > 0
+        && response.limit <= MAX_ASSET_PAGE_SIZE
+        && response.total <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && response.offset <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && response.items.len() as u64 <= response.limit
+        && response.items.len() as u64 <= response.total
+        && response
+            .activities
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>()
+            == INDUSTRY_SLOT_ACTIVITIES
+        && response.observed_at.is_some() == response.age_seconds.is_some()
+        && response
+            .observed_at
+            .as_ref()
+            .is_none_or(|value| asset_text_is_valid(value, 64))
+        && response
+            .age_seconds
+            .is_none_or(|value| value <= JAVASCRIPT_MAX_SAFE_INTEGER)
+        && character_ids.len() == response.items.len()
+        && owner_ids.len() == response.owners.len()
+        && response.items.iter().all(|item| {
+            industry_slot_record_is_valid(item)
+                && response
+                    .owners
+                    .iter()
+                    .any(|owner| owner.character_id == item.character_id && owner.name == item.name)
+        })
+        && response.owners.iter().all(|owner| {
+            owner.character_id > 0
+                && owner.character_id <= JAVASCRIPT_MAX_SAFE_INTEGER
+                && asset_text_is_valid(&owner.name, 100)
+        })
+        && (response.observed_at.is_some()
+            || response.items.iter().all(|item| item.observed_at.is_none()))
 }
 
 fn optional_source_pair_is_valid(first: Option<u64>, second: Option<u64>) -> bool {
@@ -3050,6 +3293,48 @@ fn query_industry_facilities(
 }
 
 #[tauri::command]
+fn query_industry_slots(
+    owner_character_id: Option<u64>,
+    offset: u64,
+    limit: u64,
+    state: State<'_, RuntimeState>,
+) -> Result<String, String> {
+    if owner_character_id == Some(0)
+        || owner_character_id.is_some_and(|value| value > JAVASCRIPT_MAX_SAFE_INTEGER)
+        || limit == 0
+        || limit > MAX_ASSET_PAGE_SIZE
+        || offset > JAVASCRIPT_MAX_SAFE_INTEGER
+    {
+        return Err("industry-slot-query-invalid".to_owned());
+    }
+    refresh_sidecar_status(&state);
+    let body = serde_json::json!({
+        "ownerCharacterId": owner_character_id,
+        "offset": offset,
+        "limit": limit,
+    })
+    .to_string();
+    let response = {
+        let sidecar = state
+            .sidecar
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let process = sidecar
+            .as_ref()
+            .ok_or_else(|| "sidecar-unavailable".to_owned())?;
+        sidecar_json_request(process, "POST", "/industry-slots/query", &body)
+            .map_err(str::to_owned)?
+    };
+    let page: IndustrySlotQueryResponse =
+        serde_json::from_str(&response).map_err(|_| "sidecar-response-invalid".to_owned())?;
+    if !industry_slot_query_response_is_valid(&page) || page.offset != offset || page.limit != limit
+    {
+        return Err("sidecar-response-invalid".to_owned());
+    }
+    serde_json::to_string(&page).map_err(|_| "status-serialization-failed".to_owned())
+}
+
+#[tauri::command]
 fn query_research_plans(
     search: String,
     owner_character_id: Option<u64>,
@@ -3735,6 +4020,7 @@ pub fn run() {
             query_industry_jobs,
             sync_industry_facilities,
             query_industry_facilities,
+            query_industry_slots,
             query_research_plans,
             save_research_plan,
             delete_research_plan,
@@ -3768,14 +4054,15 @@ mod tests {
         asset_export_response_is_valid, asset_query_response_is_valid, authorization_url_is_valid,
         character_skill_query_response_is_valid, character_skill_sync_response_is_valid,
         eve_character_record_is_valid, industry_job_query_response_is_valid,
-        industry_job_sync_response_is_valid, research_plan_query_response_is_valid,
-        sso_login_status_is_valid, AccountGroupRecord, AssetDeltaCorrelation,
-        AssetDeltaQueryResponse, AssetDeltaRecord, AssetDeltaSummary, AssetExportResponse,
-        AssetLocationNode, AssetOwner, AssetQueryResponse, AssetRecord,
+        industry_job_sync_response_is_valid, industry_slot_query_response_is_valid,
+        research_plan_query_response_is_valid, sso_login_status_is_valid, AccountGroupRecord,
+        AssetDeltaCorrelation, AssetDeltaQueryResponse, AssetDeltaRecord, AssetDeltaSummary,
+        AssetExportResponse, AssetLocationNode, AssetOwner, AssetQueryResponse, AssetRecord,
         CharacterSkillQueryResponse, CharacterSkillRecord, CharacterSkillSyncCharacterResponse,
         CharacterSkillSyncResponse, EveCharacterRecord, IndustryAssetCorrelation,
         IndustryBlueprintCorrelation, IndustryJobQueryResponse, IndustryJobRecord,
-        IndustryJobSyncCharacterResponse, IndustryJobSyncResponse, ResearchPlanOwner,
+        IndustryJobSyncCharacterResponse, IndustryJobSyncResponse, IndustrySlotActivity,
+        IndustrySlotQueryResponse, IndustrySlotRecord, ResearchPlanOwner,
         ResearchPlanQueryResponse, ResearchPlanRecord, ResearchPlanSummary, ScopePackageStatus,
         SsoCharacterIdentity, SsoLoginStatus,
     };
@@ -4188,6 +4475,98 @@ mod tests {
             resolved_names: 7,
         };
         assert!(industry_facility_sync_response_is_valid(&sync));
+    }
+
+    #[test]
+    fn validates_character_separated_industry_slot_evidence() {
+        let activities = vec![
+            IndustrySlotActivity {
+                activity: "manufacturing".to_owned(),
+                capacity: Some(7),
+                occupied: Some(2),
+                available: Some(5),
+                utilization_state: "available".to_owned(),
+                active_jobs: Some(1),
+                paused_jobs: Some(0),
+                ready_jobs: Some(1),
+                next_job_end_date: Some("2026-09-11T12:00:00Z".to_owned()),
+                primary_skill_id: 3387,
+                primary_skill_level: Some(4),
+                advanced_skill_id: 24625,
+                advanced_skill_level: Some(2),
+                queued_plans: None,
+                blocked_plans: None,
+                running_plans: None,
+                complete_plans: None,
+                planning_available: false,
+            },
+            IndustrySlotActivity {
+                activity: "reactions".to_owned(),
+                capacity: Some(5),
+                occupied: Some(1),
+                available: Some(4),
+                utilization_state: "available".to_owned(),
+                active_jobs: Some(1),
+                paused_jobs: Some(0),
+                ready_jobs: Some(0),
+                next_job_end_date: Some("2026-09-11T13:00:00Z".to_owned()),
+                primary_skill_id: 45748,
+                primary_skill_level: Some(3),
+                advanced_skill_id: 45749,
+                advanced_skill_level: Some(1),
+                queued_plans: None,
+                blocked_plans: None,
+                running_plans: None,
+                complete_plans: None,
+                planning_available: false,
+            },
+            IndustrySlotActivity {
+                activity: "science".to_owned(),
+                capacity: Some(6),
+                occupied: Some(2),
+                available: Some(4),
+                utilization_state: "available".to_owned(),
+                active_jobs: Some(2),
+                paused_jobs: Some(0),
+                ready_jobs: Some(0),
+                next_job_end_date: Some("2026-09-11T14:00:00Z".to_owned()),
+                primary_skill_id: 3406,
+                primary_skill_level: Some(3),
+                advanced_skill_id: 24624,
+                advanced_skill_level: Some(2),
+                queued_plans: Some(1),
+                blocked_plans: Some(1),
+                running_plans: Some(1),
+                complete_plans: Some(0),
+                planning_available: true,
+            },
+        ];
+        let page = IndustrySlotQueryResponse {
+            items: vec![IndustrySlotRecord {
+                character_id: 90_888_001,
+                name: "Builder".to_owned(),
+                activities,
+                skill_snapshot_id: Some(2),
+                skill_sync_run_id: Some(3),
+                skill_observed_at: Some("2026-09-11T11:00:00Z".to_owned()),
+                job_snapshot_id: Some(4),
+                job_sync_run_id: Some(5),
+                job_observed_at: Some("2026-09-11T11:01:00Z".to_owned()),
+                observed_at: Some("2026-09-11T11:00:00Z".to_owned()),
+                age_seconds: Some(60),
+            }],
+            total: 1,
+            offset: 0,
+            limit: 50,
+            owners: vec![AssetOwner {
+                character_id: 90_888_001,
+                name: "Builder".to_owned(),
+            }],
+            activities: INDUSTRY_SLOT_ACTIVITIES.map(str::to_owned).to_vec(),
+            observed_at: Some("2026-09-11T11:00:00Z".to_owned()),
+            age_seconds: Some(60),
+        };
+        assert!(industry_slot_query_response_is_valid(&page));
     }
 
     #[test]

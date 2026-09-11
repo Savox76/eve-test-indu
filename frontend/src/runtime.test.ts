@@ -17,6 +17,7 @@ import {
   loadEveSsoStatus,
   loadIndustryJobs,
   loadIndustryFacilities,
+  loadIndustrySlots,
   loadResearchPlans,
   renameAccountGroup,
   saveResearchPlan,
@@ -69,7 +70,7 @@ function managedCharacter(overrides: Record<string, unknown> = {}) {
 function nativeStatus(overrides: Record<string, unknown> = {}) {
   return JSON.stringify({
     state: "ready",
-    version: "0.0.5-preview.10",
+    version: "0.0.5-preview.11",
     desktopShell: true,
     singleInstance: true,
     sidecar: "ready",
@@ -105,7 +106,7 @@ describe("desktop runtime status", () => {
       loadDesktopRuntimeStatus({ isAvailable: () => true, invoke }),
     ).resolves.toEqual({
       state: "ready",
-      version: "0.0.5-preview.10",
+      version: "0.0.5-preview.11",
       desktopShell: true,
       singleInstance: true,
       sidecar: "ready",
@@ -760,6 +761,58 @@ describe("desktop runtime status", () => {
     invoke.mockResolvedValueOnce(JSON.stringify(result));
     await expect(syncIndustryFacilities({ isAvailable: () => true, invoke })).resolves.toEqual(result);
     expect(invoke).toHaveBeenLastCalledWith("sync_industry_facilities");
+  });
+
+  it("validates character-separated industry-slot capacity and work queues", async () => {
+    const activities = [{
+      activity: "manufacturing", capacity: 7, occupied: 2, available: 5,
+      utilizationState: "available", activeJobs: 1, pausedJobs: 0, readyJobs: 1,
+      nextJobEndDate: "2026-09-11T12:00:00Z", primarySkillId: 3387,
+      primarySkillLevel: 4, advancedSkillId: 24625, advancedSkillLevel: 2,
+      queuedPlans: null, blockedPlans: null, runningPlans: null, completePlans: null,
+      planningAvailable: false,
+    }, {
+      activity: "reactions", capacity: 5, occupied: 1, available: 4,
+      utilizationState: "available", activeJobs: 1, pausedJobs: 0, readyJobs: 0,
+      nextJobEndDate: "2026-09-11T13:00:00Z", primarySkillId: 45748,
+      primarySkillLevel: 3, advancedSkillId: 45749, advancedSkillLevel: 1,
+      queuedPlans: null, blockedPlans: null, runningPlans: null, completePlans: null,
+      planningAvailable: false,
+    }, {
+      activity: "science", capacity: 6, occupied: 2, available: 4,
+      utilizationState: "available", activeJobs: 2, pausedJobs: 0, readyJobs: 0,
+      nextJobEndDate: "2026-09-11T14:00:00Z", primarySkillId: 3406,
+      primarySkillLevel: 3, advancedSkillId: 24624, advancedSkillLevel: 2,
+      queuedPlans: 1, blockedPlans: 1, runningPlans: 1, completePlans: 0,
+      planningAvailable: true,
+    }] as const;
+    const page = {
+      items: [{ characterId: 7, name: "Pilot", activities,
+        skillSnapshotId: 2, skillSyncRunId: 3,
+        skillObservedAt: "2026-09-11T11:00:00Z",
+        jobSnapshotId: 4, jobSyncRunId: 5,
+        jobObservedAt: "2026-09-11T11:01:00Z",
+        observedAt: "2026-09-11T11:00:00Z", ageSeconds: 60 }],
+      total: 1, offset: 0, limit: 50, owners: [{ characterId: 7, name: "Pilot" }],
+      activities: ["manufacturing", "reactions", "science"],
+      observedAt: "2026-09-11T11:00:00Z", ageSeconds: 60,
+    };
+    const invoke = vi.fn<RuntimeAdapter["invoke"]>().mockResolvedValue(JSON.stringify(page));
+    const query = { ownerCharacterId: null, offset: 0, limit: 50 } as const;
+
+    await expect(loadIndustrySlots(query, { isAvailable: () => true, invoke }))
+      .resolves.toEqual(page);
+    expect(invoke).toHaveBeenCalledWith("query_industry_slots", {
+      ownerCharacterId: null, offset: 0, limit: 50,
+    });
+
+    const malformed = JSON.parse(JSON.stringify(page)) as {
+      items: Array<{ activities: Array<{ available: number | null }> }>;
+    };
+    malformed.items[0].activities[0].available = 6;
+    invoke.mockResolvedValueOnce(JSON.stringify(malformed));
+    await expect(loadIndustrySlots(query, { isAvailable: () => true, invoke }))
+      .rejects.toThrow("inconsistent industry-slot capacity");
   });
 
   it("validates research plans and persistent plan mutations", async () => {

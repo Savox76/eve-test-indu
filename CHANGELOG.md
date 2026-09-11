@@ -24,6 +24,37 @@ Keine.
 
 Keine.
 
+## 0.0.5-preview.11 – 11. September 2026
+
+### Neu hinzugefügt
+
+- Paket 28: gemeinsame, charaktergetrennte Übersicht der Fertigungs-, Reaktions- und Wissenschaftsslots.
+- Belegbare Kapazität aus aktuell wirksamen Slot-Skills sowie reale Belegung durch aktive, pausierte und abholbereite persönliche Industrieaufträge.
+- Wissenschafts-Arbeitsvorrat aus persistenten Forschungsplänen mit geplanten, laufenden, blockierten und abgeschlossenen Einträgen.
+- Zweisprachige Kartenansicht mit Slotstatus, Jobaufschlüsselung, nächstem aktiven Jobende, Datenalter und stabilen Skill-/Job-Snapshot- und Sync-Run-IDs.
+
+### Geändert
+
+- Änderungen an Blueprint-, Job-, Skill- oder Forschungsdaten laden die abgeleitete Slotübersicht neu.
+- Die sichtbare Versionsnummer lautet `v0.0.5-preview.11`.
+
+### Behobene Fehler
+
+- Fehlende Skill- oder Job-Snapshots erscheinen nicht als Kapazität null, leere Belegung oder freie Slots.
+- Fertigungs-, Reaktions- und Wissenschaftsjobs werden über feste ESI-Aktivitätsgruppen getrennt gezählt; pausierte und abholbereite Jobs bleiben korrekt belegt.
+- Kapazität und Belegung bleiben charakterbezogen und werden nicht zwischen verbundenen Charakteren verrechnet.
+
+### Bekannte Einschränkungen
+
+- Persistente Fertigungs- und Reaktionspläne folgen erst mit der Produktionsplanung; in diesen Bereichen besteht der belegbare Arbeitsvorrat derzeit aus aktuellen Jobs.
+- Ein pausierter oder abholbereiter Job belegt einen Slot, liefert aber keinen prognostizierten Endzeitpunkt.
+- Paket 22 wartet weiterhin auf das vollständige Windows-A0-Protokoll.
+
+### Update und Datenbankmigration
+
+- Keine Schemaänderung. Bestehende Charaktere, Aliasse, Gruppen, Credentials, Forschungspläne und vollständige Snapshots bleiben erhalten.
+- Es werden keine zusätzlichen ESI-Scopes benötigt und keine vorhandenen Charaktere müssen wegen Paket 28 erneut angemeldet werden.
+
 ## 0.0.5-preview.10 – 11. September 2026
 
 ### Neu hinzugefügt

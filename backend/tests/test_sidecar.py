@@ -583,6 +583,27 @@ class SidecarIntegrationTests(unittest.TestCase):
             self.assertEqual(industry_facility_page["activity"], "manufacturing")
             self.assertEqual(industry_facility_page["limit"], 100)
 
+            industry_slot_query_request = urllib.request.Request(
+                f"{base_url}/industry-slots/query",
+                data=json.dumps({
+                    "ownerCharacterId": None, "offset": 0, "limit": 100,
+                }).encode(),
+                method="POST",
+                headers={
+                    "Authorization": f"Bearer {SYNTHETIC_SESSION_TOKEN}",
+                    "Content-Type": "application/json",
+                },
+            )
+            with opener.open(industry_slot_query_request, timeout=3) as response:
+                industry_slot_page = json.loads(response.read())
+            self.assertEqual(industry_slot_page["items"], [])
+            self.assertEqual(industry_slot_page["total"], 0)
+            self.assertEqual(industry_slot_page["limit"], 100)
+            self.assertEqual(
+                industry_slot_page["activities"],
+                ["manufacturing", "reactions", "science"],
+            )
+
             research_query_request = urllib.request.Request(
                 f"{base_url}/research-plans/query",
                 data=json.dumps({
