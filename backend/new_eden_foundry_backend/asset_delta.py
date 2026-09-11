@@ -378,6 +378,7 @@ def _delta_snapshots(connection: sqlite3.Connection) -> Iterable[sqlite3.Row]:
         JOIN sync_runs ON sync_runs.id = cached_snapshots.sync_run_id
         JOIN characters ON characters.character_id = sync_runs.character_id
         WHERE cached_snapshots.resource = 'asset_deltas:' || characters.character_id
+          AND characters.enabled = 1
           AND sync_runs.source = 'character_assets'
           AND sync_runs.status = 'completed'
         ORDER BY cached_snapshots.observed_at DESC, cached_snapshots.id DESC

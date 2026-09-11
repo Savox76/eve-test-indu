@@ -52,6 +52,23 @@ def _type_names(connection: sqlite3.Connection) -> dict[int, str]:
     return names
 
 
+def _enabled_owners(connection: sqlite3.Connection) -> list[dict[str, object]]:
+    return [
+        {
+            "characterId": int(row["character_id"]),
+            "name": str(row["alias"] or row["name"]),
+        }
+        for row in connection.execute(
+            """
+            SELECT character_id, name, alias
+            FROM characters
+            WHERE enabled = 1
+            ORDER BY COALESCE(alias, name) COLLATE NOCASE, character_id
+            """
+        )
+    ]
+
+
 def query_blueprints(
     connection: sqlite3.Connection,
     raw_query: Any,
@@ -62,7 +79,7 @@ def query_blueprints(
     current = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
     names = _type_names(connection)
     rows: list[dict[str, object]] = []
-    owners: list[dict[str, object]] = []
+    owners = _enabled_owners(connection)
     observed_values: list[str] = []
     snapshots = connection.execute(
         """
@@ -71,7 +88,8 @@ def query_blueprints(
         FROM characters JOIN cached_snapshots
           ON cached_snapshots.resource='character_blueprints:' || characters.character_id
         JOIN sync_runs ON sync_runs.id=cached_snapshots.sync_run_id
-        WHERE sync_runs.status='completed' AND cached_snapshots.id=(
+        WHERE characters.enabled=1
+          AND sync_runs.status='completed' AND cached_snapshots.id=(
           SELECT candidate.id FROM cached_snapshots AS candidate
           JOIN sync_runs AS candidate_run ON candidate_run.id=candidate.sync_run_id
           WHERE candidate.resource='character_blueprints:' || characters.character_id
@@ -84,7 +102,6 @@ def query_blueprints(
     for snapshot in snapshots:
         character_id = int(snapshot["character_id"])
         owner_name = str(snapshot["alias"] or snapshot["name"])
-        owners.append({"characterId": character_id, "name": owner_name})
         if query["ownerCharacterId"] is not None and query["ownerCharacterId"] != character_id:
             continue
         try:
@@ -138,7 +155,6 @@ def query_blueprints(
         "age": lambda row: int(row["ageSeconds"]),
     }
     rows.sort(key=lambda row: (getters[query["sortBy"]](row), int(row["itemId"])), reverse=query["sortDirection"] == "desc")
-    owners.sort(key=lambda owner: (str(owner["name"]).casefold(), int(owner["characterId"])))
     total = len(rows)
     page = rows[query["offset"]:query["offset"] + query["limit"]]
     oldest = min(observed_values) if observed_values else None

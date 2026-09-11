@@ -300,7 +300,7 @@ const copy = {
       releaseError: "Release-Prüfung derzeit nicht möglich",
       checkNow: "Jetzt prüfen",
       openRelease: "Release öffnen",
-      portableHint: "Portable: App schließen und die neue ZIP in denselben Elternordner entpacken. Der Ordner data bleibt erhalten.",
+      portableHint: "Portable: App schließen und die neue ZIP vollständig in denselben Elternordner entpacken. Portable bedeutet entpackbarer App-Ordner, nicht Start im ZIP oder einzelne EXE. Der Ordner data bleibt erhalten.",
       installedHint: "Installer: Neue Setup-Datei starten; die updatefesten App-Daten bleiben erhalten.",
       signedBoundary: "Automatische Installation bleibt bis zur produktiv signierten Updatekette gesperrt.",
       saving: "Kanal wird gespeichert …",
@@ -515,7 +515,8 @@ const copy = {
       sync: "Assets aktualisieren",
       syncing: "Assets werden aktualisiert …",
       syncComplete: "{assets} Positionen von {characters} Charakter(en) aktualisiert.",
-      syncPartial: "{completed} aktualisiert, {failed} fehlgeschlagen. Berechtigungen und Verbindung prüfen.",
+      syncPartial: "{completed} vollständig, {partial} mit Teilfehler, {failed} fehlgeschlagen.",
+      syncDetail: "{character}: {reason}",
       syncEmpty: "Kein aktivierter Charakter für den Asset-Sync vorhanden.",
       syncError: "Asset-Sync konnte nicht gestartet werden.",
       exporting: "CSV wird erstellt …",
@@ -581,6 +582,7 @@ const copy = {
       syncing: "Blueprints werden aktualisiert …",
       syncComplete: "{blueprints} Blueprints von {characters} Charakter(en) aktualisiert.",
       syncPartial: "{completed} aktualisiert, {failed} fehlgeschlagen. Anmeldung oder Verbindung prüfen.",
+      syncDetail: "{character}: {reason}",
       syncEmpty: "Kein aktivierter Charakter für den Blueprint-Sync vorhanden.",
       syncError: "Blueprint-Sync konnte nicht gestartet werden.",
       loading: "Blueprint-Bestand wird geladen …",
@@ -642,6 +644,7 @@ const copy = {
         syncing: "Jobs werden aktualisiert …",
         syncComplete: "{jobs} Jobs von {characters} Charakter(en) aktualisiert.",
         syncPartial: "{completed} aktualisiert, {failed} fehlgeschlagen. Anmeldung oder Verbindung prüfen.",
+        syncDetail: "{character}: {reason}",
         syncEmpty: "Kein aktivierter Charakter für den Job-Sync vorhanden.",
         syncError: "Job-Sync konnte nicht gestartet werden.",
         loading: "Industrieaufträge werden geladen …",
@@ -777,7 +780,7 @@ const copy = {
         kicker: "FORSCHUNGSPLANUNG",
         title: "ME-/TE-Forschungsplan",
         subtitle: "Updatefeste Ziele für eigene BPOs mit echten Skill-Slots, laufenden Jobs und beobachteten Anlagen.",
-        boundary: "Zeiten und Gesamtkosten werden vor dem Einbau nicht geschätzt: ESI liefert weder Jobangebote noch Struktur- und Rigboni. Laufende Jobs zeigen ihre belegten Werte.",
+        boundary: "Der Plan ist ausschließlich eine lokale Arbeitsliste und sendet oder startet nichts in EVE. Zeiten und Gesamtkosten werden vor dem Einbau nicht geschätzt; laufende EVE-Jobs werden nur abgeglichen.",
         search: "Blueprint, Besitzer, Notiz, Anlage oder ID suchen",
         state: "Planstatus",
         allStates: "Alle Status",
@@ -911,7 +914,7 @@ const copy = {
     },
     planned: "Geplant",
     previewOnly: "Noch ohne Live-Funktion",
-    footerVersion: "v0.0.5-preview.13",
+    footerVersion: "v0.0.5-preview.14",
   },
   en: {
     nav: {
@@ -1023,7 +1026,7 @@ const copy = {
       releaseError: "Release check is currently unavailable",
       checkNow: "Check now",
       openRelease: "Open release",
-      portableHint: "Portable: close the app and extract the new ZIP into the same parent folder. The data folder is retained.",
+      portableHint: "Portable: close the app and fully extract the new ZIP into the same parent folder. Portable means an extractable app folder, not running inside the ZIP or a single EXE. The data folder is retained.",
       installedHint: "Installer: run the new setup file; update-stable app data is retained.",
       signedBoundary: "Automatic installation remains blocked until the production-signed update chain is available.",
       saving: "Saving channel …",
@@ -1238,7 +1241,8 @@ const copy = {
       sync: "Refresh assets",
       syncing: "Refreshing assets …",
       syncComplete: "Updated {assets} positions from {characters} character(s).",
-      syncPartial: "{completed} updated, {failed} failed. Check permissions and connection.",
+      syncPartial: "{completed} complete, {partial} partial, {failed} failed.",
+      syncDetail: "{character}: {reason}",
       syncEmpty: "No enabled character is available for asset sync.",
       syncError: "Asset sync could not be started.",
       exporting: "Creating CSV …",
@@ -1304,6 +1308,7 @@ const copy = {
       syncing: "Refreshing blueprints …",
       syncComplete: "Updated {blueprints} blueprints from {characters} character(s).",
       syncPartial: "{completed} updated, {failed} failed. Check sign-in or connection.",
+      syncDetail: "{character}: {reason}",
       syncEmpty: "No enabled character is available for blueprint sync.",
       syncError: "Blueprint sync could not be started.",
       loading: "Loading blueprint inventory …",
@@ -1365,6 +1370,7 @@ const copy = {
         syncing: "Refreshing jobs …",
         syncComplete: "Updated {jobs} jobs from {characters} character(s).",
         syncPartial: "{completed} updated, {failed} failed. Check sign-in or connection.",
+        syncDetail: "{character}: {reason}",
         syncEmpty: "No enabled character is available for job sync.",
         syncError: "Industry-job sync could not be started.",
         loading: "Loading industry jobs …",
@@ -1500,7 +1506,7 @@ const copy = {
         kicker: "RESEARCH PLANNING",
         title: "ME / TE research plan",
         subtitle: "Update-safe goals for owned BPOs using real skill slots, running jobs, and observed facilities.",
-        boundary: "Times and total costs are not estimated before installation: ESI provides neither job quotes nor structure and rig bonuses. Running jobs show their evidenced values.",
+        boundary: "The plan is a local work list only and never sends or starts anything in EVE. Times and total costs are not estimated before installation; running EVE jobs are matched read-only.",
         search: "Search blueprint, owner, note, facility, or ID",
         state: "Plan state",
         allStates: "All states",
@@ -1634,7 +1640,7 @@ const copy = {
     },
     planned: "Planned",
     previewOnly: "No live function yet",
-    footerVersion: "v0.0.5-preview.13",
+    footerVersion: "v0.0.5-preview.14",
   },
 } as const;
 
@@ -1686,6 +1692,37 @@ function formatDataAge(seconds: number, locale: Locale): string {
   if (hours < 48) return locale === "de" ? `${hours} Std.` : `${hours} hr`;
   const days = Math.floor(hours / 24);
   return locale === "de" ? `${days} Tage` : `${days} days`;
+}
+
+function describeAssetSyncError(
+  errorCode: string | null,
+  locale: Locale,
+  defaultPhase?: string,
+): string {
+  if (!errorCode) return locale === "de" ? "Unbekannter Teilfehler" : "Unknown partial failure";
+  const details = errorCode.split(";").map((entry) => {
+    const [phase, codeCandidate] = entry.includes("/") ? entry.split("/", 2) : ["assets", entry];
+    const code = codeCandidate || entry;
+    const phaseLabel = ({
+      assets: defaultPhase ?? (locale === "de" ? "Asset-Abruf" : "Asset fetch"),
+      "type-names": locale === "de" ? "Typnamen" : "Type names",
+      locations: locale === "de" ? "Standorte" : "Locations",
+    } as Record<string, string>)[phase] ?? phase;
+    const reason = ({
+      "credential-missing": locale === "de" ? "Anmeldung fehlt" : "Sign-in missing",
+      "jwt-scopes-missing": locale === "de" ? "Berechtigung fehlt" : "Permission missing",
+      "esi-access-token-unavailable": locale === "de" ? "Anmeldung konnte nicht erneuert werden" : "Sign-in could not be renewed",
+      "esi-network-unavailable": locale === "de" ? "EVE-Verbindung nicht erreichbar" : "EVE connection unavailable",
+      "esi-retry-exhausted": locale === "de" ? "EVE antwortet nach Wiederholungen nicht" : "EVE did not respond after retries",
+      "esi-request-rejected": locale === "de" ? "EVE hat die Anfrage abgelehnt" : "EVE rejected the request",
+      "esi-request-rejected-401": locale === "de" ? "Anmeldung ist abgelaufen" : "Sign-in expired",
+      "esi-request-rejected-403": locale === "de" ? "EVE-Berechtigung fehlt" : "EVE permission missing",
+      "esi-request-rejected-404": locale === "de" ? "EVE-Datensatz nicht gefunden" : "EVE record not found",
+      "type_name_payload_invalid": locale === "de" ? "Typnamen-Antwort unvollständig" : "Type-name response incomplete",
+    } as Record<string, string>)[code] ?? (locale === "de" ? "Technischer Fehler" : "Technical failure");
+    return `${phaseLabel}: ${reason} (${code})`;
+  });
+  return details.join(" · ");
 }
 
 function DataStateNotice({
@@ -2681,6 +2718,7 @@ function AssetWorkspace({
       )}
     </button>
   );
+  const syncIssues = syncResult?.characters.filter((character) => character.status !== "completed") ?? [];
 
   return (
     <div className="workspace asset-workspace">
@@ -2781,18 +2819,32 @@ function AssetWorkspace({
         </div>
 
         {(syncResult || syncFailed) && (
-          <div className={`asset-export-status ${syncFailed || (syncResult?.failed ?? 0) > 0 ? "asset-export-status--error" : ""}`} role="status">
-            {syncFailed
-              ? t.assets.syncError
-              : syncResult?.characters.length === 0
-                ? t.assets.syncEmpty
-                : (syncResult?.failed ?? 0) > 0
-                  ? t.assets.syncPartial
-                      .replace("{completed}", numberFormat.format(syncResult?.completed ?? 0))
-                      .replace("{failed}", numberFormat.format(syncResult?.failed ?? 0))
-                  : t.assets.syncComplete
-                      .replace("{assets}", numberFormat.format(syncResult?.assets ?? 0))
-                      .replace("{characters}", numberFormat.format(syncResult?.completed ?? 0))}
+          <div className={`asset-export-status asset-sync-status ${syncFailed || syncIssues.length > 0 ? "asset-export-status--error" : ""}`} role="status">
+            <span>
+              {syncFailed
+                ? t.assets.syncError
+                : syncResult?.characters.length === 0
+                  ? t.assets.syncEmpty
+                  : syncIssues.length > 0
+                    ? t.assets.syncPartial
+                        .replace("{completed}", numberFormat.format(syncResult?.completed ?? 0))
+                        .replace("{partial}", numberFormat.format(syncResult?.partial ?? 0))
+                        .replace("{failed}", numberFormat.format(syncResult?.failed ?? 0))
+                    : t.assets.syncComplete
+                        .replace("{assets}", numberFormat.format(syncResult?.assets ?? 0))
+                        .replace("{characters}", numberFormat.format(syncResult?.completed ?? 0))}
+            </span>
+            {syncIssues.map((character) => {
+              const owner = page?.owners.find((candidate) => candidate.characterId === character.characterId);
+              const label = owner?.name ?? `EVE ID ${character.characterId}`;
+              return (
+                <small key={character.characterId}>
+                  {t.assets.syncDetail
+                    .replace("{character}", label)
+                    .replace("{reason}", describeAssetSyncError(character.errorCode, locale))}
+                </small>
+              );
+            })}
           </div>
         )}
 
@@ -3756,6 +3808,7 @@ function BlueprintWorkspace({
   const to = Math.min(offset + (page?.items.length ?? 0), total);
   const range = t.blueprints.resultRange.replace("{from}", numberFormat.format(from))
     .replace("{to}", numberFormat.format(to)).replace("{total}", numberFormat.format(total));
+  const syncIssues = syncResult?.characters.filter((character) => character.status === "failed") ?? [];
 
   return (
     <div className="workspace asset-workspace blueprint-workspace">
@@ -3770,7 +3823,10 @@ function BlueprintWorkspace({
           <label><span>{t.blueprints.kind}</span><select value={kind ?? ""} onChange={(event) => { setKind((event.target.value || null) as BlueprintKind | null); setOffset(0); }}><option value="">{t.blueprints.allKinds}</option><option value="original">{t.blueprints.original}</option><option value="copy">{t.blueprints.copy}</option></select></label>
           <button className="secondary-button asset-export" type="button" onClick={() => void refresh()} disabled={!available || syncingBlueprints}><RefreshCw className={syncingBlueprints ? "spin" : ""} size={15} />{syncingBlueprints ? t.blueprints.syncing : t.blueprints.sync}</button>
         </div>
-        {(syncResult || syncFailed) && <div className={`asset-export-status ${syncFailed || (syncResult?.failed ?? 0) > 0 ? "asset-export-status--error" : ""}`} role="status">{syncFailed ? t.blueprints.syncError : syncResult?.characters.length === 0 ? t.blueprints.syncEmpty : (syncResult?.failed ?? 0) > 0 ? t.blueprints.syncPartial.replace("{completed}", String(syncResult?.completed ?? 0)).replace("{failed}", String(syncResult?.failed ?? 0)) : t.blueprints.syncComplete.replace("{blueprints}", numberFormat.format(syncResult?.blueprints ?? 0)).replace("{characters}", String(syncResult?.completed ?? 0))}</div>}
+        {(syncResult || syncFailed) && <div className={`asset-export-status asset-sync-status ${syncFailed || syncIssues.length > 0 ? "asset-export-status--error" : ""}`} role="status">
+          <span>{syncFailed ? t.blueprints.syncError : syncResult?.characters.length === 0 ? t.blueprints.syncEmpty : syncIssues.length > 0 ? t.blueprints.syncPartial.replace("{completed}", String(syncResult?.completed ?? 0)).replace("{failed}", String(syncResult?.failed ?? 0)) : t.blueprints.syncComplete.replace("{blueprints}", numberFormat.format(syncResult?.blueprints ?? 0)).replace("{characters}", String(syncResult?.completed ?? 0))}</span>
+          {syncIssues.map((character) => <small key={character.characterId}>{t.blueprints.syncDetail.replace("{character}", page?.owners.find((owner) => owner.characterId === character.characterId)?.name ?? `EVE ID ${character.characterId}`).replace("{reason}", describeAssetSyncError(character.errorCode, locale, locale === "de" ? "Blueprint-Abruf" : "Blueprint fetch"))}</small>)}
+        </div>}
         {!available ? <div className="asset-empty"><Database size={22} />{t.blueprints.unavailable}</div>
           : failed ? <div className="asset-empty asset-empty--error"><AlertTriangle size={22} />{t.blueprints.queryError}</div>
           : loading && page === null ? <div className="asset-empty"><RefreshCw className="spin" size={22} />{t.blueprints.loading}</div>
@@ -4043,6 +4099,7 @@ function IndustryJobsPanel({
     .replace("{from}", numberFormat.format(total === 0 ? 0 : offset + 1))
     .replace("{to}", numberFormat.format(Math.min(offset + (page?.items.length ?? 0), total)))
     .replace("{total}", numberFormat.format(total));
+  const syncIssues = syncResult?.characters.filter((character) => character.status === "failed") ?? [];
 
   return (
     <section className="asset-browser industry-jobs" aria-busy={loading}>
@@ -4066,7 +4123,10 @@ function IndustryJobsPanel({
         <label><span>{t.blueprints.jobs.correlation}</span><select value={correlation ?? ""} onChange={(event) => { setCorrelation((event.target.value || null) as IndustryCorrelationState | null); setOffset(0); }}><option value="">{t.blueprints.jobs.allCorrelations}</option>{(page?.correlations ?? []).map((value) => <option key={value} value={value}>{t.blueprints.jobs.correlationLabels[value]}</option>)}</select></label>
         <button className="secondary-button asset-export" type="button" onClick={() => void refresh()} disabled={!available || syncingJobs}><RefreshCw className={syncingJobs ? "spin" : ""} size={15} />{syncingJobs ? t.blueprints.jobs.syncing : t.blueprints.jobs.sync}</button>
       </div>
-      {(syncResult || syncFailed) && <div className={`asset-export-status ${syncFailed || (syncResult?.failed ?? 0) > 0 ? "asset-export-status--error" : ""}`} role="status">{syncFailed ? t.blueprints.jobs.syncError : syncResult?.characters.length === 0 ? t.blueprints.jobs.syncEmpty : (syncResult?.failed ?? 0) > 0 ? t.blueprints.jobs.syncPartial.replace("{completed}", String(syncResult?.completed ?? 0)).replace("{failed}", String(syncResult?.failed ?? 0)) : t.blueprints.jobs.syncComplete.replace("{jobs}", numberFormat.format(syncResult?.jobs ?? 0)).replace("{characters}", String(syncResult?.completed ?? 0))}</div>}
+      {(syncResult || syncFailed) && <div className={`asset-export-status asset-sync-status ${syncFailed || syncIssues.length > 0 ? "asset-export-status--error" : ""}`} role="status">
+        <span>{syncFailed ? t.blueprints.jobs.syncError : syncResult?.characters.length === 0 ? t.blueprints.jobs.syncEmpty : syncIssues.length > 0 ? t.blueprints.jobs.syncPartial.replace("{completed}", String(syncResult?.completed ?? 0)).replace("{failed}", String(syncResult?.failed ?? 0)) : t.blueprints.jobs.syncComplete.replace("{jobs}", numberFormat.format(syncResult?.jobs ?? 0)).replace("{characters}", String(syncResult?.completed ?? 0))}</span>
+        {syncIssues.map((character) => <small key={character.characterId}>{t.blueprints.jobs.syncDetail.replace("{character}", page?.owners.find((owner) => owner.characterId === character.characterId)?.name ?? `EVE ID ${character.characterId}`).replace("{reason}", describeAssetSyncError(character.errorCode, locale, locale === "de" ? "Job-Abruf" : "Job fetch"))}</small>)}
+      </div>}
       {!available ? <div className="asset-empty"><Database size={22} />{t.blueprints.unavailable}</div>
         : failed ? <div className="asset-empty asset-empty--error"><AlertTriangle size={22} />{t.blueprints.jobs.queryError}</div>
         : loading && page === null ? <div className="asset-empty"><RefreshCw className="spin" size={22} />{t.blueprints.jobs.loading}</div>

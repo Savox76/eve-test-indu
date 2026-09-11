@@ -169,7 +169,7 @@ export interface AssetCsvExport {
 export interface AssetSyncResult {
   characters: Array<{
     characterId: number;
-    status: "completed" | "failed";
+    status: "completed" | "partial" | "failed";
     pages: number;
     assets: number;
     resolved: number;
@@ -179,6 +179,7 @@ export interface AssetSyncResult {
     errorCode: string | null;
   }>;
   completed: number;
+  partial: number;
   failed: number;
   assets: number;
 }
@@ -1796,6 +1797,7 @@ export async function syncAssets(
     !isRecord(candidate) ||
     !Array.isArray(candidate.characters) ||
     !isNonNegativeSafeInteger(candidate.completed) ||
+    !isNonNegativeSafeInteger(candidate.partial) ||
     !isNonNegativeSafeInteger(candidate.failed) ||
     !isNonNegativeSafeInteger(candidate.assets)
   ) {
@@ -1806,7 +1808,7 @@ export async function syncAssets(
       !isRecord(value) ||
       !Number.isSafeInteger(value.characterId) ||
       Number(value.characterId) <= 0 ||
-      !["completed", "failed"].includes(String(value.status)) ||
+      !["completed", "partial", "failed"].includes(String(value.status)) ||
       !["pages", "assets", "resolved", "restricted", "unresolved", "cycles"].every(
         (key) => isNonNegativeSafeInteger(value[key]),
       ) ||
@@ -1814,10 +1816,18 @@ export async function syncAssets(
     ) {
       throw new Error("The native runtime returned an invalid asset-sync result.");
     }
+    if (
+      (value.status === "completed" && value.errorCode !== null) ||
+      (["partial", "failed"].includes(String(value.status)) && typeof value.errorCode !== "string") ||
+      (value.status === "failed" && ["pages", "assets", "resolved", "restricted", "unresolved", "cycles"]
+        .some((key) => value[key] !== 0))
+    ) {
+      throw new Error("The native runtime returned an invalid asset-sync result.");
+    }
     return value as unknown as AssetSyncResult["characters"][number];
   });
   if (
-    candidate.completed + candidate.failed !== characters.length ||
+    candidate.completed + candidate.partial + candidate.failed !== characters.length ||
     candidate.assets !== characters.reduce((total, character) => total + character.assets, 0)
   ) {
     throw new Error("The native runtime returned an inconsistent asset-sync result.");

@@ -30,7 +30,7 @@ const idleSso: SsoLoginStatus = {
 const nativeRuntime = (overrides: Partial<Extract<DesktopRuntimeStatus, { state: "ready" }>> = {}) =>
   Promise.resolve<DesktopRuntimeStatus>({
     state: "ready",
-    version: "0.0.5-preview.13",
+    version: "0.0.5-preview.14",
     desktopShell: true,
     singleInstance: true,
     distribution: "installed",
@@ -452,16 +452,17 @@ describe("New Eden Foundry design preview", () => {
     const assetSyncer = vi.fn().mockResolvedValue({
       characters: [{
         characterId: 90_888_001,
-        status: "completed",
+        status: "partial",
         pages: 1,
         assets: 1,
-        resolved: 1,
+        resolved: 0,
         restricted: 0,
         unresolved: 0,
         cycles: 0,
-        errorCode: null,
+        errorCode: "locations/esi-request-rejected-403",
       }],
-      completed: 1,
+      completed: 0,
+      partial: 1,
       failed: 0,
       assets: 1,
     });
@@ -481,7 +482,8 @@ describe("New Eden Foundry design preview", () => {
     fireEvent.click(screen.getByRole("button", { name: "Assets aktualisieren" }));
 
     await waitFor(() => expect(assetSyncer).toHaveBeenCalledTimes(1));
-    expect(await screen.findByText(/1 Positionen von 1 Charakter/)).toBeInTheDocument();
+    expect(await screen.findByText(/0 vollständig, 1 mit Teilfehler/)).toBeInTheDocument();
+    expect(await screen.findByText(/Builder: Standorte: EVE-Berechtigung fehlt/)).toBeInTheDocument();
     await waitFor(() => expect(assetsLoader.mock.calls.length).toBeGreaterThan(1));
   });
 
@@ -571,7 +573,7 @@ describe("New Eden Foundry design preview", () => {
   it("credits Savoxmedia as the app creator next to the version", () => {
     render(<App />);
 
-    expect(screen.getByText("v0.0.5-preview.13")).toBeInTheDocument();
+    expect(screen.getByText("v0.0.5-preview.14")).toBeInTheDocument();
     expect(screen.getByText("Savoxmedia")).toBeInTheDocument();
     expect(screen.getByText("Erstellt von", { exact: false })).toBeInTheDocument();
     expect(screen.queryByText("Lokaler Betreiber")).not.toBeInTheDocument();
@@ -780,7 +782,7 @@ describe("New Eden Foundry design preview", () => {
       ],
     };
     const assetSyncer = vi.fn().mockResolvedValue({
-      characters: [], completed: 0, failed: 0, assets: 0,
+      characters: [], completed: 0, partial: 0, failed: 0, assets: 0,
     });
     const blueprintSyncer = vi.fn().mockResolvedValue({
       characters: [], completed: 0, failed: 0, blueprints: 0,

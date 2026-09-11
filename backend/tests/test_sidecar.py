@@ -472,7 +472,13 @@ class SidecarIntegrationTests(unittest.TestCase):
                 asset_sync = json.loads(response.read())
             self.assertEqual(
                 asset_sync,
-                {"characters": [], "completed": 0, "failed": 0, "assets": 0},
+                {
+                    "characters": [],
+                    "completed": 0,
+                    "partial": 0,
+                    "failed": 0,
+                    "assets": 0,
+                },
             )
 
             delta_query_request = urllib.request.Request(
@@ -618,10 +624,10 @@ class SidecarIntegrationTests(unittest.TestCase):
             )
             with opener.open(sde_activity_query_request, timeout=3) as response:
                 sde_activity_page = json.loads(response.read())
-            self.assertEqual(sde_activity_page["items"], [])
-            self.assertEqual(sde_activity_page["total"], 0)
+            self.assertEqual(len(sde_activity_page["items"]), 100)
+            self.assertGreater(sde_activity_page["total"], 4_000)
             self.assertEqual(sde_activity_page["limit"], 100)
-            self.assertIsNone(sde_activity_page["buildNumber"])
+            self.assertEqual(sde_activity_page["buildNumber"], "3503375")
             self.assertEqual(
                 sde_activity_page["activities"], ["manufacturing", "reaction"]
             )
@@ -639,9 +645,9 @@ class SidecarIntegrationTests(unittest.TestCase):
             )
             with opener.open(production_catalog_request, timeout=3) as response:
                 production_catalog = json.loads(response.read())
-            self.assertEqual(production_catalog["items"], [])
-            self.assertEqual(production_catalog["total"], 0)
-            self.assertIsNone(production_catalog["buildNumber"])
+            self.assertEqual(len(production_catalog["items"]), 50)
+            self.assertGreater(production_catalog["total"], 4_000)
+            self.assertEqual(production_catalog["buildNumber"], "3503375")
 
             production_plan_request = urllib.request.Request(
                 f"{base_url}/production-plans/query",

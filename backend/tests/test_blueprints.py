@@ -83,6 +83,37 @@ class BlueprintTests(unittest.TestCase):
             sync_character_blueprints(self.db, FakeClient([[blueprint(1), blueprint(1)]]), 90000001)
         self.assertEqual(self.db.execute("SELECT COUNT(*) FROM cached_snapshots").fetchone()[0], 0)
 
+    def test_lists_enabled_character_without_snapshot_and_hides_disabled_cache(self):
+        second_character_id = 90000002
+        self.db.execute(
+            "INSERT INTO characters(character_id,name) VALUES(?,?)",
+            (second_character_id, "Beta"),
+        )
+        sync_character_blueprints(
+            self.db,
+            FakeClient([[blueprint(30)]]),
+            90000001,
+        )
+
+        query = {"search": "", "ownerCharacterId": None, "kind": None, "offset": 0,
+                 "limit": 100, "sortBy": "type", "sortDirection": "asc"}
+        page = query_blueprints(self.db, query)
+        self.assertEqual(
+            page["owners"],
+            [
+                {"characterId": 90000001, "name": "Alpha"},
+                {"characterId": second_character_id, "name": "Beta"},
+            ],
+        )
+
+        self.db.execute("UPDATE characters SET enabled=0 WHERE character_id=90000001")
+        page = query_blueprints(self.db, query)
+        self.assertEqual(page["total"], 0)
+        self.assertEqual(
+            page["owners"],
+            [{"characterId": second_character_id, "name": "Beta"}],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

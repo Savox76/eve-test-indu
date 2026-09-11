@@ -76,7 +76,7 @@ function managedCharacter(overrides: Record<string, unknown> = {}) {
 function nativeStatus(overrides: Record<string, unknown> = {}) {
   return JSON.stringify({
     state: "ready",
-    version: "0.0.5-preview.13",
+    version: "0.0.5-preview.14",
     desktopShell: true,
     singleInstance: true,
     distribution: "installed",
@@ -113,7 +113,7 @@ describe("desktop runtime status", () => {
       loadDesktopRuntimeStatus({ isAvailable: () => true, invoke }),
     ).resolves.toEqual({
       state: "ready",
-      version: "0.0.5-preview.13",
+      version: "0.0.5-preview.14",
       desktopShell: true,
       singleInstance: true,
       distribution: "installed",
@@ -659,16 +659,17 @@ describe("desktop runtime status", () => {
     const result = {
       characters: [{
         characterId: 2_112_345_678,
-        status: "completed",
+        status: "partial",
         pages: 2,
         assets: 120,
-        resolved: 118,
+        resolved: 0,
         restricted: 2,
         unresolved: 0,
         cycles: 0,
-        errorCode: null,
+        errorCode: "locations/esi-request-rejected-403",
       }],
-      completed: 1,
+      completed: 0,
+      partial: 1,
       failed: 0,
       assets: 120,
     };

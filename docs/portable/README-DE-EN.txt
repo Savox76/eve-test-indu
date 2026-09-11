@@ -8,6 +8,10 @@ DEUTSCH
 2. "New Eden Foundry.exe" aus dem entpackten Ordner starten.
 3. Die Anwendung benötigt keine Installation und keine Administratorrechte.
 
+"Portable" bedeutet einen vollständig entpackten, verschiebbaren Programmordner.
+Es bedeutet nicht, dass die App innerhalb des ZIP-Archivs oder als einzelne EXE
+ohne die mitgelieferten Dateien ausgeführt wird.
+
 Wichtig:
 - Die EXE nicht direkt aus der ZIP-Vorschau des Explorers starten.
 - Microsoft Edge WebView2 Runtime wird benötigt. Sie ist in unterstützten,
@@ -54,6 +58,10 @@ ENGLISH
 1. Extract the complete ZIP archive into its own folder.
 2. Run "New Eden Foundry.exe" from the extracted folder.
 3. The application requires no installation and no administrator privileges.
+
+"Portable" means a fully extracted, movable application folder. It does not
+mean running the app inside the ZIP archive or as one EXE without its bundled
+files.
 
 Important:
 - Do not run the executable directly from File Explorer's ZIP preview.

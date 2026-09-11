@@ -45,3 +45,5 @@ Die Werte sind eine reproduzierbare Datenbasis, noch keine Produktionsprognose. 
 ## Quelle und Aktualisierung
 
 Quelle ist der offizielle [EVE Static Data Export](https://developers.eveonline.com/docs/services/static-data/). Der Anbieter veröffentlicht eine aktuelle Buildnummer, buildbezogene Archive und unveränderliche Daten-URLs für automatisierte Abrufe. Der verwendete Build wird deshalb als SDE-Wert gespeichert und nicht aus einem lokalen Zeitstempel abgeleitet.
+
+Seit `v0.0.5-preview.14` enthält das Windows-Paket einen kompakten, aus dem festgelegten offiziellen JSON-Lines-Archiv abgeleiteten Bestand. URL, Buildnummer und SHA-256 des Quellarchivs sind verbindlich hinterlegt. Beim ersten Start beziehungsweise nach einem neueren mitgelieferten Build ersetzt die App ausschließlich die rebuildbaren SDE-Tabellen in einer Transaktion. Ein manueller Import ist für die Produktionssuche nicht mehr erforderlich.

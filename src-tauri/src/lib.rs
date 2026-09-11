@@ -347,6 +347,7 @@ struct AssetSyncCharacterResponse {
 struct AssetSyncResponse {
     characters: Vec<AssetSyncCharacterResponse>,
     completed: u64,
+    partial: u64,
     failed: u64,
     assets: u64,
 }
@@ -3313,7 +3314,11 @@ fn sidecar_json_request_with_timeout(
 }
 
 fn asset_sync_response_is_valid(response: &AssetSyncResponse) -> bool {
-    response.completed.checked_add(response.failed) == Some(response.characters.len() as u64)
+    response
+        .completed
+        .checked_add(response.partial)
+        .and_then(|value| value.checked_add(response.failed))
+        == Some(response.characters.len() as u64)
         && response
             .characters
             .iter()
@@ -3324,12 +3329,27 @@ fn asset_sync_response_is_valid(response: &AssetSyncResponse) -> bool {
         && response.characters.iter().all(|character| {
             character.character_id > 0
                 && character.character_id <= JAVASCRIPT_MAX_SAFE_INTEGER
-                && matches!(character.status.as_str(), "completed" | "failed")
-                && (character.status == "failed") == character.error_code.is_some()
-                && character
-                    .error_code
-                    .as_ref()
-                    .is_none_or(|code| asset_text_is_valid(code, 120))
+                && matches!(
+                    character.status.as_str(),
+                    "completed" | "partial" | "failed"
+                )
+                && ((character.status == "completed" && character.error_code.is_none())
+                    || (character.status == "partial"
+                        && character
+                            .error_code
+                            .as_ref()
+                            .is_some_and(|code| asset_text_is_valid(code, 120)))
+                    || (character.status == "failed"
+                        && character.pages == 0
+                        && character.assets == 0
+                        && character.resolved == 0
+                        && character.restricted == 0
+                        && character.unresolved == 0
+                        && character.cycles == 0
+                        && character
+                            .error_code
+                            .as_ref()
+                            .is_some_and(|code| asset_text_is_valid(code, 120))))
         })
 }
 

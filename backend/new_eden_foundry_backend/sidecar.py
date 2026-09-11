@@ -71,6 +71,7 @@ from .location_resolution import (
     LocationResolutionError,
     resolve_latest_character_asset_locations,
 )
+from .official_sde import install_bundled_industry_sde
 from .production_planning import (
     ProductionPlanningError,
     delete_production_plan,
@@ -132,6 +133,14 @@ MAXIMUM_STARTUP_MESSAGE_LENGTH: Final = 16_384
 
 class StartupProtocolError(ValueError):
     """Raised when the trusted parent sends an invalid startup message."""
+
+
+def public_sync_error_code(error: BaseException) -> str:
+    code = str(getattr(error, "code", str(error)))
+    status = getattr(error, "status", None)
+    if code == "esi-request-rejected" and isinstance(status, int):
+        code = f"{code}-{status}"
+    return code[:120]
 
 
 @dataclass(frozen=True, slots=True)
@@ -526,29 +535,7 @@ def create_application(
             for character_id in character_ids:
                 try:
                     synced = sync_character_assets(connection, esi_client, character_id)
-                    resolve_type_names(connection, esi_client, synced.type_ids)
-                    resolved = resolve_latest_character_asset_locations(
-                        connection, esi_client, character_id
-                    )
-                    results.append(
-                        {
-                            "characterId": character_id,
-                            "status": "completed",
-                            "pages": synced.pages,
-                            "assets": synced.assets,
-                            "resolved": resolved.resolved,
-                            "restricted": resolved.restricted,
-                            "unresolved": resolved.unresolved,
-                            "cycles": resolved.cycles,
-                            "errorCode": None,
-                        }
-                    )
-                except (
-                    AssetSyncError,
-                    LocationResolutionError,
-                    TypeNameResolutionError,
-                    EsiClientError,
-                ) as error:
+                except (AssetSyncError, AssetDeltaError, EsiClientError) as error:
                     results.append(
                         {
                             "characterId": character_id,
@@ -559,15 +546,60 @@ def create_application(
                             "restricted": 0,
                             "unresolved": 0,
                             "cycles": 0,
-                            "errorCode": str(error)[:120],
+                            "errorCode": public_sync_error_code(error),
                         }
                     )
+                    continue
+
+                enrichment_errors: list[str] = []
+                try:
+                    resolve_type_names(connection, esi_client, synced.type_ids)
+                except (TypeNameResolutionError, EsiClientError) as error:
+                    code = public_sync_error_code(error)
+                    enrichment_errors.append(f"type-names/{code}")
+
+                resolved_counts = {
+                    "resolved": 0,
+                    "restricted": 0,
+                    "unresolved": 0,
+                    "cycles": 0,
+                }
+                try:
+                    resolved = resolve_latest_character_asset_locations(
+                        connection, esi_client, character_id
+                    )
+                    resolved_counts = {
+                        "resolved": resolved.resolved,
+                        "restricted": resolved.restricted,
+                        "unresolved": resolved.unresolved,
+                        "cycles": resolved.cycles,
+                    }
+                except (LocationResolutionError, EsiClientError) as error:
+                    code = public_sync_error_code(error)
+                    enrichment_errors.append(f"locations/{code}")
+
+                results.append(
+                    {
+                        "characterId": character_id,
+                        "status": "partial" if enrichment_errors else "completed",
+                        "pages": synced.pages,
+                        "assets": synced.assets,
+                        **resolved_counts,
+                        "errorCode": (
+                            ";".join(enrichment_errors)[:120]
+                            if enrichment_errors
+                            else None
+                        ),
+                    }
+                )
         completed = sum(result["status"] == "completed" for result in results)
+        partial = sum(result["status"] == "partial" for result in results)
         return JSONResponse(
             content={
                 "characters": results,
                 "completed": completed,
-                "failed": len(results) - completed,
+                "partial": partial,
+                "failed": len(results) - completed - partial,
                 "assets": sum(int(result["assets"]) for result in results),
             }
         )
@@ -624,7 +656,7 @@ def create_application(
                             "status": "failed",
                             "pages": 0,
                             "blueprints": 0,
-                            "errorCode": getattr(error, "code", str(error))[:120],
+                            "errorCode": public_sync_error_code(error),
                         }
                     )
         return JSONResponse(
@@ -690,7 +722,7 @@ def create_application(
                             "jobs": 0,
                             "active": 0,
                             "completedJobs": 0,
-                            "errorCode": getattr(error, "code", str(error))[:120],
+                            "errorCode": public_sync_error_code(error),
                         }
                     )
         completed = sum(result["status"] == "completed" for result in results)
@@ -759,7 +791,7 @@ def create_application(
                             "skills": 0,
                             "totalSp": 0,
                             "unallocatedSp": 0,
-                            "errorCode": getattr(error, "code", str(error))[:120],
+                            "errorCode": public_sync_error_code(error),
                         }
                     )
         completed = sum(result["status"] == "completed" for result in results)
@@ -810,7 +842,7 @@ def create_application(
         except (IndustryFacilitySyncError, EsiClientError) as error:
             return JSONResponse(
                 status_code=503,
-                content={"detail": getattr(error, "code", str(error))[:120]},
+                content={"detail": public_sync_error_code(error)},
             )
         return JSONResponse(
             content={
@@ -1352,6 +1384,7 @@ def run_sidecar(input_stream: TextIO = sys.stdin, output_stream: TextIO = sys.st
             backup_directory=storage.backup_directory,
         )
         with closing(connect_database(storage.database_path)) as connection:
+            install_bundled_industry_sde(connection)
             data_state = inspect_startup_data_state(connection)
             update_channel = read_update_channel(connection)
             font_scale = read_font_scale(connection)
