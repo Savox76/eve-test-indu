@@ -2105,7 +2105,7 @@ dependencies = [
 
 [[package]]
 name = "new-eden-foundry"
-version = "0.0.5-preview.7"
+version = "0.0.5-preview.8"
 dependencies = [
  "getrandom 0.3.4",
  "serde",

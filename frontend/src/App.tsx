@@ -69,9 +69,11 @@ import {
   loadAssets,
   loadAssetDeltas,
   loadBlueprints,
+  loadCharacterSkills,
   loadIndustryJobs,
   syncAssets,
   syncBlueprints,
+  syncCharacterSkills,
   syncIndustryJobs,
   renameAccountGroup,
   setDesktopUpdateChannel,
@@ -94,6 +96,11 @@ import {
   type BlueprintQuery,
   type BlueprintSortField,
   type BlueprintSyncResult,
+  type CharacterSkillActiveState,
+  type CharacterSkillPage,
+  type CharacterSkillQuery,
+  type CharacterSkillSortField,
+  type CharacterSkillSyncResult,
   type IndustryActivityId,
   type IndustryCorrelationState,
   type IndustryJobPage,
@@ -113,6 +120,7 @@ import {
   type UpdaterStatus,
   type AppearanceStatus,
   blueprintPageSize,
+  characterSkillPageSize,
   industryJobPageSize,
 } from "./runtime";
 
@@ -589,6 +597,41 @@ const copy = {
         noMatches: "Keine Industrieaufträge entsprechen der Auswahl.",
         queryError: "Die lokalen Industrieaufträge konnten nicht gelesen werden.",
       },
+      skills: {
+        kicker: "CHARAKTER-SKILLS",
+        title: "Skills für Industrie und Planung",
+        subtitle: "Vollständige ESI-Skillstände aller aktivierten Charaktere als Grundlage für spätere Machbarkeits- und Lückenprüfungen.",
+        search: "Skill, Besitzer oder Type-ID suchen",
+        level: "Trainiertes Level",
+        allLevels: "Alle Level",
+        activeState: "Aktiver Zustand",
+        allActiveStates: "Alle Zustände",
+        stateLabels: {
+          normal: "Normal aktiv",
+          limited: "Aktiv eingeschränkt",
+          boosted: "Temporär verstärkt",
+        },
+        skill: "Skill",
+        owner: "Besitzer",
+        trained: "Trainiert",
+        active: "Aktiv",
+        skillpoints: "Skillpunkte",
+        source: "Quelle",
+        count: "Skills",
+        totalSp: "verteilte SP",
+        unallocatedSp: "freie SP",
+        age: "Datenalter",
+        sync: "Skills aktualisieren",
+        syncing: "Skills werden aktualisiert …",
+        syncComplete: "{skills} Skills von {characters} Charakter(en) aktualisiert.",
+        syncPartial: "{completed} aktualisiert, {failed} fehlgeschlagen. Anmeldung oder Verbindung prüfen.",
+        syncEmpty: "Kein aktivierter Charakter für den Skill-Sync vorhanden.",
+        syncError: "Skill-Sync konnte nicht gestartet werden.",
+        loading: "Charakter-Skills werden geladen …",
+        noData: "Noch kein vollständiger Skill-Snapshot vorhanden.",
+        noMatches: "Keine Skills entsprechen der Auswahl.",
+        queryError: "Die lokalen Charakter-Skills konnten nicht gelesen werden.",
+      },
     },
     moduleKicker: "MODULVORSCHAU",
     moduleText:
@@ -613,7 +656,7 @@ const copy = {
     },
     planned: "Geplant",
     previewOnly: "Noch ohne Live-Funktion",
-    footerVersion: "v0.0.5-preview.7",
+    footerVersion: "v0.0.5-preview.8",
   },
   en: {
     nav: {
@@ -1064,6 +1107,41 @@ const copy = {
         noMatches: "No industry jobs match the selection.",
         queryError: "The local industry jobs could not be read.",
       },
+      skills: {
+        kicker: "CHARACTER SKILLS",
+        title: "Skills for industry and planning",
+        subtitle: "Complete ESI skill levels for every enabled character, ready for later feasibility and gap checks.",
+        search: "Search skill, owner, or type ID",
+        level: "Trained level",
+        allLevels: "All levels",
+        activeState: "Active state",
+        allActiveStates: "All states",
+        stateLabels: {
+          normal: "Normally active",
+          limited: "Active level limited",
+          boosted: "Temporarily boosted",
+        },
+        skill: "Skill",
+        owner: "Owner",
+        trained: "Trained",
+        active: "Active",
+        skillpoints: "Skill points",
+        source: "Source",
+        count: "skills",
+        totalSp: "allocated SP",
+        unallocatedSp: "unallocated SP",
+        age: "Data age",
+        sync: "Refresh skills",
+        syncing: "Refreshing skills …",
+        syncComplete: "Updated {skills} skills from {characters} character(s).",
+        syncPartial: "{completed} updated, {failed} failed. Check sign-in or connection.",
+        syncEmpty: "No enabled character is available for skill sync.",
+        syncError: "Character-skill sync could not be started.",
+        loading: "Loading character skills …",
+        noData: "No complete character-skill snapshot is available yet.",
+        noMatches: "No skills match the selection.",
+        queryError: "The local character skills could not be read.",
+      },
     },
     moduleKicker: "MODULE PREVIEW",
     moduleText:
@@ -1088,7 +1166,7 @@ const copy = {
     },
     planned: "Planned",
     previewOnly: "No live function yet",
-    footerVersion: "v0.0.5-preview.7",
+    footerVersion: "v0.0.5-preview.8",
   },
 } as const;
 
@@ -1207,6 +1285,8 @@ export function App({
   blueprintSyncer = syncBlueprints,
   industryJobsLoader = loadIndustryJobs,
   industryJobSyncer = syncIndustryJobs,
+  characterSkillsLoader = loadCharacterSkills,
+  characterSkillSyncer = syncCharacterSkills,
   fontScaleSetter = setDesktopFontScale,
 }: {
   runtimeLoader?: () => Promise<DesktopRuntimeStatus>;
@@ -1231,6 +1311,8 @@ export function App({
   blueprintSyncer?: () => Promise<BlueprintSyncResult>;
   industryJobsLoader?: (query: IndustryJobQuery) => Promise<IndustryJobPage>;
   industryJobSyncer?: () => Promise<IndustryJobSyncResult>;
+  characterSkillsLoader?: (query: CharacterSkillQuery) => Promise<CharacterSkillPage>;
+  characterSkillSyncer?: () => Promise<CharacterSkillSyncResult>;
   fontScaleSetter?: (fontScale: FontScale) => Promise<AppearanceStatus>;
 }) {
   const [locale, setLocale] = useState<Locale>("de");
@@ -1241,6 +1323,7 @@ export function App({
   const [assetRevision, setAssetRevision] = useState(0);
   const [blueprintRevision, setBlueprintRevision] = useState(0);
   const [industryJobRevision, setIndustryJobRevision] = useState(0);
+  const [characterSkillRevision, setCharacterSkillRevision] = useState(0);
   const initialAssetSyncStarted = useRef(false);
   const [runtimeStatus, setRuntimeStatus] = useState(initialRuntimeStatus);
   const [overviewScope, setOverviewScope] = useState<OverviewScopeId>("all");
@@ -1303,10 +1386,18 @@ export function App({
     return result;
   }, [industryJobSyncer]);
 
+  const runCharacterSkillSync = useCallback(async () => {
+    const result = await characterSkillSyncer();
+    setCharacterSkillRevision((revision) => revision + 1);
+    return result;
+  }, [characterSkillSyncer]);
+
   const runAllSyncs = useCallback(async () => {
     setSyncing(true);
     try {
-      const sources = await Promise.allSettled([runAssetSync(), runBlueprintSync()]);
+      const sources = await Promise.allSettled([
+        runAssetSync(), runBlueprintSync(), runCharacterSkillSync(),
+      ]);
       const jobs = await Promise.allSettled([runIndustryJobSync()]);
       const failed = [...sources, ...jobs].find((result) => result.status === "rejected");
       if (failed?.status === "rejected") throw failed.reason;
@@ -1316,7 +1407,7 @@ export function App({
     } finally {
       setSyncing(false);
     }
-  }, [runAssetSync, runBlueprintSync, runIndustryJobSync]);
+  }, [runAssetSync, runBlueprintSync, runCharacterSkillSync, runIndustryJobSync]);
 
   useEffect(() => {
     if (!nativeCoreReady) return;
@@ -1810,6 +1901,9 @@ export function App({
             loadIndustryJobs={industryJobsLoader}
             syncIndustryJobs={runIndustryJobSync}
             industryJobRevision={industryJobRevision}
+            loadCharacterSkills={characterSkillsLoader}
+            syncCharacterSkills={runCharacterSkillSync}
+            characterSkillRevision={characterSkillRevision}
           />
         ) : (
           <ModulePreview activeModule={activeModule} t={t} />
@@ -2987,6 +3081,7 @@ function PanelHeader({
 function BlueprintWorkspace({
   available, locale, t, loadBlueprints: loadPage, syncBlueprints: runSync, refreshRevision,
   loadIndustryJobs: loadJobs, syncIndustryJobs: runJobSync, industryJobRevision,
+  loadCharacterSkills: loadSkills, syncCharacterSkills: runSkillSync, characterSkillRevision,
 }: {
   available: boolean;
   locale: Locale;
@@ -2997,6 +3092,9 @@ function BlueprintWorkspace({
   loadIndustryJobs: (query: IndustryJobQuery) => Promise<IndustryJobPage>;
   syncIndustryJobs: () => Promise<IndustryJobSyncResult>;
   industryJobRevision: number;
+  loadCharacterSkills: (query: CharacterSkillQuery) => Promise<CharacterSkillPage>;
+  syncCharacterSkills: () => Promise<CharacterSkillSyncResult>;
+  characterSkillRevision: number;
 }) {
   const [search, setSearch] = useState("");
   const [appliedSearch, setAppliedSearch] = useState("");
@@ -3102,6 +3200,14 @@ function BlueprintWorkspace({
         loadJobs={loadJobs}
         syncJobs={runJobSync}
         refreshRevision={industryJobRevision}
+      />
+      <CharacterSkillsPanel
+        available={available}
+        locale={locale}
+        t={t}
+        loadSkills={loadSkills}
+        syncSkills={runSkillSync}
+        refreshRevision={characterSkillRevision}
       />
     </div>
   );
@@ -3263,6 +3369,145 @@ function IndustryJobsPanel({
             <td><span className={`status-pill status-pill--${item.correlationState === "linked" ? "good" : item.correlationState === "ambiguous" || item.correlationState === "partial" ? "warn" : "info"}`}>{t.blueprints.jobs.correlationLabels[item.correlationState]}</span><small>{blueprintEvidence(item.blueprintCorrelation.state)} · {assetEvidence(item.assetCorrelation.state)}</small><small>Run {item.jobSyncRunId}{item.assetCorrelation.eventIds[0] ? ` · ${item.assetCorrelation.eventIds[0].slice(0, 10)}` : ""}</small></td>
           </tr>)}</tbody></table></div> : null}
       {page && total > 0 && <div className="asset-pagination"><span>{range}</span><div><button type="button" onClick={() => setOffset(Math.max(0, offset - industryJobPageSize))} disabled={offset === 0}>{t.blueprints.previous}</button><button type="button" onClick={() => setOffset(offset + industryJobPageSize)} disabled={offset + industryJobPageSize >= total}>{t.blueprints.next}</button></div></div>}
+    </section>
+  );
+}
+
+function CharacterSkillsPanel({
+  available, locale, t, loadSkills, syncSkills, refreshRevision,
+}: {
+  available: boolean;
+  locale: Locale;
+  t: Translation;
+  loadSkills: (query: CharacterSkillQuery) => Promise<CharacterSkillPage>;
+  syncSkills: () => Promise<CharacterSkillSyncResult>;
+  refreshRevision: number;
+}) {
+  const [search, setSearch] = useState("");
+  const [appliedSearch, setAppliedSearch] = useState("");
+  const [ownerCharacterId, setOwnerCharacterId] = useState<number | null>(null);
+  const [trainedLevel, setTrainedLevel] = useState<number | null>(null);
+  const [activeState, setActiveState] = useState<CharacterSkillActiveState | null>(null);
+  const [sortBy, setSortBy] = useState<CharacterSkillSortField>("skill");
+  const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
+  const [offset, setOffset] = useState(0);
+  const [page, setPage] = useState<CharacterSkillPage | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const [syncingSkills, setSyncingSkills] = useState(false);
+  const [syncResult, setSyncResult] = useState<CharacterSkillSyncResult | null>(null);
+  const [syncFailed, setSyncFailed] = useState(false);
+  const numberFormat = useMemo(
+    () => new Intl.NumberFormat(locale === "de" ? "de-DE" : "en-US"),
+    [locale],
+  );
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setAppliedSearch(search.trim().replace(/\s+/g, " "));
+      setOffset(0);
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [search]);
+
+  useEffect(() => {
+    if (!available) return;
+    let active = true;
+    setLoading(true);
+    setFailed(false);
+    void loadSkills({
+      search: appliedSearch,
+      ownerCharacterId,
+      trainedLevel,
+      activeState,
+      offset,
+      limit: characterSkillPageSize,
+      sortBy,
+      sortDirection,
+    }).then((result) => {
+      if (!active) return;
+      if (result.total > 0 && result.offset >= result.total) {
+        setOffset(Math.floor((result.total - 1) / characterSkillPageSize) * characterSkillPageSize);
+        return;
+      }
+      setPage(result);
+    }).catch(() => {
+      if (active) setFailed(true);
+    }).finally(() => {
+      if (active) setLoading(false);
+    });
+    return () => { active = false; };
+  }, [activeState, appliedSearch, available, loadSkills, offset, ownerCharacterId, refreshRevision, sortBy, sortDirection, trainedLevel]);
+
+  const refresh = async () => {
+    if (!available || syncingSkills) return;
+    setSyncingSkills(true);
+    setSyncFailed(false);
+    setSyncResult(null);
+    try {
+      setSyncResult(await syncSkills());
+      setOffset(0);
+    } catch {
+      setSyncFailed(true);
+    } finally {
+      setSyncingSkills(false);
+    }
+  };
+  const changeSort = (field: CharacterSkillSortField) => {
+    if (sortBy === field) setSortDirection((value) => value === "asc" ? "desc" : "asc");
+    else { setSortBy(field); setSortDirection("asc"); }
+    setOffset(0);
+  };
+  const header = (field: CharacterSkillSortField, label: string) => (
+    <button type="button" className="asset-sort" onClick={() => changeSort(field)}>
+      {label}{sortBy === field && <ChevronDown className={sortDirection === "asc" ? "asset-sort__asc" : ""} size={14} />}
+    </button>
+  );
+  const total = page?.total ?? 0;
+  const range = t.blueprints.resultRange
+    .replace("{from}", numberFormat.format(total === 0 ? 0 : offset + 1))
+    .replace("{to}", numberFormat.format(Math.min(offset + (page?.items.length ?? 0), total)))
+    .replace("{total}", numberFormat.format(total));
+
+  return (
+    <section className="asset-browser character-skills" aria-busy={loading}>
+      <header className="asset-deltas__header industry-jobs__header">
+        <div>
+          <span className="eyebrow">{t.blueprints.skills.kicker}</span>
+          <h2>{t.blueprints.skills.title}</h2>
+          <p>{t.blueprints.skills.subtitle}</p>
+        </div>
+        <div className="asset-hero__metrics">
+          <span><strong>{numberFormat.format(total)}</strong><small>{t.blueprints.skills.count}</small></span>
+          <span><strong>{numberFormat.format(page?.totalSp ?? 0)}</strong><small>{t.blueprints.skills.totalSp}</small></span>
+          <span><strong>{numberFormat.format(page?.unallocatedSp ?? 0)}</strong><small>{t.blueprints.skills.unallocatedSp}</small></span>
+          <span><strong>{page?.ageSeconds == null ? "—" : formatDataAge(page.ageSeconds, locale)}</strong><small>{t.blueprints.skills.age}</small></span>
+        </div>
+      </header>
+      <div className="asset-toolbar industry-jobs__toolbar">
+        <label className="asset-search"><span>{t.blueprints.skills.search}</span><div><Search size={16} /><input value={search} maxLength={120} onChange={(event) => setSearch(event.target.value)} placeholder={t.blueprints.skills.search} disabled={!available} /></div></label>
+        <label><span>{t.blueprints.owner}</span><select value={ownerCharacterId ?? ""} onChange={(event) => { setOwnerCharacterId(event.target.value ? Number(event.target.value) : null); setOffset(0); }}><option value="">{t.blueprints.allOwners}</option>{(page?.owners ?? []).map((owner) => <option key={owner.characterId} value={owner.characterId}>{owner.name}</option>)}</select></label>
+        <label><span>{t.blueprints.skills.level}</span><select value={trainedLevel ?? ""} onChange={(event) => { setTrainedLevel(event.target.value ? Number(event.target.value) : null); setOffset(0); }}><option value="">{t.blueprints.skills.allLevels}</option>{(page?.levels ?? []).map((level) => <option key={level} value={level}>{level}</option>)}</select></label>
+        <label><span>{t.blueprints.skills.activeState}</span><select value={activeState ?? ""} onChange={(event) => { setActiveState((event.target.value || null) as CharacterSkillActiveState | null); setOffset(0); }}><option value="">{t.blueprints.skills.allActiveStates}</option>{(page?.activeStates ?? []).map((state) => <option key={state} value={state}>{t.blueprints.skills.stateLabels[state]}</option>)}</select></label>
+        <button className="secondary-button asset-export" type="button" onClick={() => void refresh()} disabled={!available || syncingSkills}><RefreshCw className={syncingSkills ? "spin" : ""} size={15} />{syncingSkills ? t.blueprints.skills.syncing : t.blueprints.skills.sync}</button>
+      </div>
+      {(syncResult || syncFailed) && <div className={`asset-export-status ${syncFailed || (syncResult?.failed ?? 0) > 0 ? "asset-export-status--error" : ""}`} role="status">{syncFailed ? t.blueprints.skills.syncError : syncResult?.characters.length === 0 ? t.blueprints.skills.syncEmpty : (syncResult?.failed ?? 0) > 0 ? t.blueprints.skills.syncPartial.replace("{completed}", String(syncResult?.completed ?? 0)).replace("{failed}", String(syncResult?.failed ?? 0)) : t.blueprints.skills.syncComplete.replace("{skills}", numberFormat.format(syncResult?.skills ?? 0)).replace("{characters}", String(syncResult?.completed ?? 0))}</div>}
+      {!available ? <div className="asset-empty"><Database size={22} />{t.blueprints.unavailable}</div>
+        : failed ? <div className="asset-empty asset-empty--error"><AlertTriangle size={22} />{t.blueprints.skills.queryError}</div>
+        : loading && page === null ? <div className="asset-empty"><RefreshCw className="spin" size={22} />{t.blueprints.skills.loading}</div>
+        : page && page.items.length === 0 ? <div className="asset-empty"><Sparkles size={22} />{page.observedAt === null ? t.blueprints.skills.noData : t.blueprints.skills.noMatches}</div>
+        : page ? <div className="asset-table-wrap"><table className="asset-table character-skill-table"><thead><tr>
+            <th>{header("skill", t.blueprints.skills.skill)}</th><th>{header("owner", t.blueprints.skills.owner)}</th><th>{header("trained", t.blueprints.skills.trained)}</th><th>{header("active", t.blueprints.skills.active)}</th><th>{header("skillpoints", t.blueprints.skills.skillpoints)}</th><th>{t.blueprints.skills.source}</th><th>{header("age", t.blueprints.skills.age)}</th>
+          </tr></thead><tbody>{page.items.map((item) => <tr key={`${item.ownerCharacterId}:${item.skillId}`}>
+            <td><strong>{item.skillName}</strong><small>Type #{item.skillId}</small></td>
+            <td>{item.ownerName}</td>
+            <td className="asset-table__number"><strong>{item.trainedLevel}</strong></td>
+            <td><span className={`status-pill status-pill--${item.activeState === "normal" ? "good" : item.activeState === "limited" ? "warn" : "info"}`}>{item.activeLevel}</span><small>{t.blueprints.skills.stateLabels[item.activeState]}</small></td>
+            <td className="asset-table__number">{numberFormat.format(item.skillpoints)}</td>
+            <td><strong>Snapshot #{item.snapshotId}</strong><small>Run #{item.syncRunId}</small></td>
+            <td>{formatDataAge(item.ageSeconds, locale)}</td>
+          </tr>)}</tbody></table></div> : null}
+      {page && total > 0 && <div className="asset-pagination"><span>{range}</span><div><button type="button" onClick={() => setOffset(Math.max(0, offset - characterSkillPageSize))} disabled={offset === 0}>{t.blueprints.previous}</button><button type="button" onClick={() => setOffset(offset + characterSkillPageSize)} disabled={offset + characterSkillPageSize >= total}>{t.blueprints.next}</button></div></div>}
     </section>
   );
 }

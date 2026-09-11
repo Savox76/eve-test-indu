@@ -59,6 +59,9 @@ const INDUSTRY_JOB_STATUSES: [&str; 6] = [
 const INDUSTRY_JOB_CORRELATIONS: [&str; 5] =
     ["linked", "partial", "ambiguous", "unmatched", "pending"];
 const INDUSTRY_JOB_ACTIVITY_IDS: [u8; 8] = [1, 3, 4, 5, 7, 8, 9, 11];
+const CHARACTER_SKILL_SORT_FIELDS: [&str; 6] =
+    ["skill", "owner", "trained", "active", "skillpoints", "age"];
+const CHARACTER_SKILL_ACTIVE_STATES: [&str; 3] = ["normal", "limited", "boosted"];
 const SORT_DIRECTIONS: [&str; 2] = ["asc", "desc"];
 const MAX_ASSET_PAGE_SIZE: u64 = 200;
 const MAX_ASSET_SEARCH_CHARACTERS: usize = 120;
@@ -438,6 +441,61 @@ struct IndustryJobSyncResponse {
     jobs: u64,
     active: u64,
     completed_jobs: u64,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CharacterSkillRecord {
+    skill_id: u64,
+    skill_name: String,
+    owner_character_id: u64,
+    owner_name: String,
+    trained_level: u8,
+    active_level: u8,
+    skillpoints: u64,
+    active_state: String,
+    snapshot_id: u64,
+    sync_run_id: u64,
+    observed_at: String,
+    age_seconds: u64,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CharacterSkillQueryResponse {
+    items: Vec<CharacterSkillRecord>,
+    total: u64,
+    total_sp: u64,
+    unallocated_sp: u64,
+    offset: u64,
+    limit: u64,
+    owners: Vec<AssetOwner>,
+    levels: Vec<u8>,
+    active_states: Vec<String>,
+    observed_at: Option<String>,
+    age_seconds: Option<u64>,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CharacterSkillSyncCharacterResponse {
+    character_id: u64,
+    status: String,
+    skills: u64,
+    total_sp: u64,
+    unallocated_sp: u64,
+    error_code: Option<String>,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CharacterSkillSyncResponse {
+    characters: Vec<CharacterSkillSyncCharacterResponse>,
+    completed: u64,
+    failed: u64,
+    skills: u64,
+    total_sp: u64,
+    unallocated_sp: u64,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -1092,6 +1150,115 @@ fn industry_job_sync_response_is_valid(response: &IndustryJobSyncResponse) -> bo
                         && item.jobs == 0
                         && item.active == 0
                         && item.completed_jobs == 0
+                        && item
+                            .error_code
+                            .as_ref()
+                            .is_some_and(|code| asset_text_is_valid(code, 120))))
+        })
+}
+
+fn character_skill_query_response_is_valid(response: &CharacterSkillQueryResponse) -> bool {
+    let owner_ids = response
+        .owners
+        .iter()
+        .map(|owner| owner.character_id)
+        .collect::<HashSet<_>>();
+    let skill_keys = response
+        .items
+        .iter()
+        .map(|skill| (skill.owner_character_id, skill.skill_id))
+        .collect::<HashSet<_>>();
+    response.limit > 0
+        && response.limit <= MAX_ASSET_PAGE_SIZE
+        && [
+            response.total,
+            response.total_sp,
+            response.unallocated_sp,
+            response.offset,
+        ]
+        .into_iter()
+        .all(|value| value <= JAVASCRIPT_MAX_SAFE_INTEGER)
+        && response.items.len() as u64 <= response.limit
+        && response.items.len() as u64 <= response.total
+        && response.levels == [0, 1, 2, 3, 4, 5]
+        && response
+            .active_states
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>()
+            == CHARACTER_SKILL_ACTIVE_STATES
+        && response.observed_at.is_some() == response.age_seconds.is_some()
+        && response
+            .observed_at
+            .as_ref()
+            .is_none_or(|value| asset_text_is_valid(value, 64))
+        && owner_ids.len() == response.owners.len()
+        && skill_keys.len() == response.items.len()
+        && response.owners.iter().all(|owner| {
+            owner.character_id > 0
+                && owner.character_id <= JAVASCRIPT_MAX_SAFE_INTEGER
+                && asset_text_is_valid(&owner.name, 100)
+        })
+        && response.items.iter().all(|skill| {
+            let expected_state = if skill.active_level < skill.trained_level {
+                "limited"
+            } else if skill.active_level > skill.trained_level {
+                "boosted"
+            } else {
+                "normal"
+            };
+            skill.skill_id > 0
+                && skill.skill_id <= JAVASCRIPT_MAX_SAFE_INTEGER
+                && owner_ids.contains(&skill.owner_character_id)
+                && response.owners.iter().any(|owner| {
+                    owner.character_id == skill.owner_character_id && owner.name == skill.owner_name
+                })
+                && asset_text_is_valid(&skill.skill_name, 220)
+                && asset_text_is_valid(&skill.owner_name, 100)
+                && skill.trained_level <= 5
+                && skill.active_level <= 5
+                && skill.skillpoints <= JAVASCRIPT_MAX_SAFE_INTEGER
+                && skill.active_state == expected_state
+                && skill.snapshot_id > 0
+                && skill.snapshot_id <= JAVASCRIPT_MAX_SAFE_INTEGER
+                && skill.sync_run_id > 0
+                && skill.sync_run_id <= JAVASCRIPT_MAX_SAFE_INTEGER
+                && asset_text_is_valid(&skill.observed_at, 64)
+        })
+}
+
+fn character_skill_sync_response_is_valid(response: &CharacterSkillSyncResponse) -> bool {
+    let skills = response
+        .characters
+        .iter()
+        .try_fold(0_u64, |sum, item| sum.checked_add(item.skills));
+    let total_sp = response
+        .characters
+        .iter()
+        .try_fold(0_u64, |sum, item| sum.checked_add(item.total_sp));
+    let unallocated_sp = response
+        .characters
+        .iter()
+        .try_fold(0_u64, |sum, item| sum.checked_add(item.unallocated_sp));
+    response.completed.checked_add(response.failed) == Some(response.characters.len() as u64)
+        && skills == Some(response.skills)
+        && total_sp == Some(response.total_sp)
+        && unallocated_sp == Some(response.unallocated_sp)
+        && [response.skills, response.total_sp, response.unallocated_sp]
+            .into_iter()
+            .all(|value| value <= JAVASCRIPT_MAX_SAFE_INTEGER)
+        && response.characters.iter().all(|item| {
+            item.character_id > 0
+                && item.character_id <= JAVASCRIPT_MAX_SAFE_INTEGER
+                && matches!(item.status.as_str(), "completed" | "failed")
+                && [item.skills, item.total_sp, item.unallocated_sp]
+                    .into_iter()
+                    .all(|value| value <= JAVASCRIPT_MAX_SAFE_INTEGER)
+                && ((item.status == "completed" && item.error_code.is_none())
+                    || (item.status == "failed"
+                        && item.skills == 0
+                        && item.total_sp == 0
+                        && item.unallocated_sp == 0
                         && item
                             .error_code
                             .as_ref()
@@ -2021,6 +2188,28 @@ fn sync_industry_jobs(state: State<'_, RuntimeState>) -> Result<String, String> 
 }
 
 #[tauri::command]
+fn sync_character_skills(state: State<'_, RuntimeState>) -> Result<String, String> {
+    refresh_sidecar_status(&state);
+    let response = {
+        let sidecar = state
+            .sidecar
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let process = sidecar
+            .as_ref()
+            .ok_or_else(|| "sidecar-unavailable".to_owned())?;
+        sidecar_json_request_with_timeout(process, "POST", "/skills/sync", "{}", ASSET_SYNC_TIMEOUT)
+            .map_err(str::to_owned)?
+    };
+    let result: CharacterSkillSyncResponse =
+        serde_json::from_str(&response).map_err(|_| "sidecar-response-invalid".to_owned())?;
+    if !character_skill_sync_response_is_valid(&result) {
+        return Err("sidecar-response-invalid".to_owned());
+    }
+    serde_json::to_string(&result).map_err(|_| "status-serialization-failed".to_owned())
+}
+
+#[tauri::command]
 fn query_blueprints(
     search: String,
     owner_character_id: Option<u64>,
@@ -2129,6 +2318,67 @@ fn query_industry_jobs(
     let page: IndustryJobQueryResponse =
         serde_json::from_str(&response).map_err(|_| "sidecar-response-invalid".to_owned())?;
     if !industry_job_query_response_is_valid(&page) || page.offset != offset || page.limit != limit
+    {
+        return Err("sidecar-response-invalid".to_owned());
+    }
+    serde_json::to_string(&page).map_err(|_| "status-serialization-failed".to_owned())
+}
+
+#[tauri::command]
+fn query_character_skills(
+    search: String,
+    owner_character_id: Option<u64>,
+    trained_level: Option<u8>,
+    active_state: Option<String>,
+    offset: u64,
+    limit: u64,
+    sort_by: String,
+    sort_direction: String,
+    state: State<'_, RuntimeState>,
+) -> Result<String, String> {
+    if search.chars().count() > MAX_ASSET_SEARCH_CHARACTERS
+        || search.trim() != search
+        || owner_character_id == Some(0)
+        || owner_character_id.is_some_and(|value| value > JAVASCRIPT_MAX_SAFE_INTEGER)
+        || trained_level.is_some_and(|value| value > 5)
+        || active_state
+            .as_deref()
+            .is_some_and(|value| !CHARACTER_SKILL_ACTIVE_STATES.contains(&value))
+        || limit == 0
+        || limit > MAX_ASSET_PAGE_SIZE
+        || offset > JAVASCRIPT_MAX_SAFE_INTEGER
+        || !CHARACTER_SKILL_SORT_FIELDS.contains(&sort_by.as_str())
+        || !SORT_DIRECTIONS.contains(&sort_direction.as_str())
+    {
+        return Err("character-skill-query-invalid".to_owned());
+    }
+    refresh_sidecar_status(&state);
+    let body = serde_json::json!({
+        "search": search,
+        "ownerCharacterId": owner_character_id,
+        "trainedLevel": trained_level,
+        "activeState": active_state,
+        "offset": offset,
+        "limit": limit,
+        "sortBy": sort_by,
+        "sortDirection": sort_direction,
+    })
+    .to_string();
+    let response = {
+        let sidecar = state
+            .sidecar
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let process = sidecar
+            .as_ref()
+            .ok_or_else(|| "sidecar-unavailable".to_owned())?;
+        sidecar_json_request(process, "POST", "/skills/query", &body).map_err(str::to_owned)?
+    };
+    let page: CharacterSkillQueryResponse =
+        serde_json::from_str(&response).map_err(|_| "sidecar-response-invalid".to_owned())?;
+    if !character_skill_query_response_is_valid(&page)
+        || page.offset != offset
+        || page.limit != limit
     {
         return Err("sidecar-response-invalid".to_owned());
     }
@@ -2595,6 +2845,8 @@ pub fn run() {
             query_blueprints,
             sync_industry_jobs,
             query_industry_jobs,
+            sync_character_skills,
+            query_character_skills,
             export_assets_csv,
             query_asset_deltas,
             update_eve_character,
@@ -2621,13 +2873,16 @@ mod tests {
     use super::{
         account_group_record_is_valid, asset_delta_response_is_valid,
         asset_export_response_is_valid, asset_query_response_is_valid, authorization_url_is_valid,
+        character_skill_query_response_is_valid, character_skill_sync_response_is_valid,
         eve_character_record_is_valid, industry_job_query_response_is_valid,
         industry_job_sync_response_is_valid, sso_login_status_is_valid, AccountGroupRecord,
         AssetDeltaCorrelation, AssetDeltaQueryResponse, AssetDeltaRecord, AssetDeltaSummary,
         AssetExportResponse, AssetLocationNode, AssetOwner, AssetQueryResponse, AssetRecord,
-        EveCharacterRecord, IndustryAssetCorrelation, IndustryBlueprintCorrelation,
-        IndustryJobQueryResponse, IndustryJobRecord, IndustryJobSyncCharacterResponse,
-        IndustryJobSyncResponse, ScopePackageStatus, SsoCharacterIdentity, SsoLoginStatus,
+        CharacterSkillQueryResponse, CharacterSkillRecord, CharacterSkillSyncCharacterResponse,
+        CharacterSkillSyncResponse, EveCharacterRecord, IndustryAssetCorrelation,
+        IndustryBlueprintCorrelation, IndustryJobQueryResponse, IndustryJobRecord,
+        IndustryJobSyncCharacterResponse, IndustryJobSyncResponse, ScopePackageStatus,
+        SsoCharacterIdentity, SsoLoginStatus,
     };
 
     fn valid_authorization_url() -> String {
@@ -2976,5 +3231,56 @@ mod tests {
             completed_jobs: 1,
         };
         assert!(industry_job_sync_response_is_valid(&sync));
+    }
+
+    #[test]
+    fn validates_character_skill_pages_and_sync_aggregates() {
+        let page = CharacterSkillQueryResponse {
+            items: vec![CharacterSkillRecord {
+                skill_id: 33_550,
+                skill_name: "Industry".to_owned(),
+                owner_character_id: 90_888_001,
+                owner_name: "Builder".to_owned(),
+                trained_level: 5,
+                active_level: 4,
+                skillpoints: 512_000,
+                active_state: "limited".to_owned(),
+                snapshot_id: 8,
+                sync_run_id: 9,
+                observed_at: "2026-09-11T00:00:00Z".to_owned(),
+                age_seconds: 60,
+            }],
+            total: 1,
+            total_sp: 512_000,
+            unallocated_sp: 12_500,
+            offset: 0,
+            limit: 100,
+            owners: vec![AssetOwner {
+                character_id: 90_888_001,
+                name: "Builder".to_owned(),
+            }],
+            levels: vec![0, 1, 2, 3, 4, 5],
+            active_states: ["normal", "limited", "boosted"].map(str::to_owned).to_vec(),
+            observed_at: Some("2026-09-11T00:00:00Z".to_owned()),
+            age_seconds: Some(60),
+        };
+        assert!(character_skill_query_response_is_valid(&page));
+
+        let sync = CharacterSkillSyncResponse {
+            characters: vec![CharacterSkillSyncCharacterResponse {
+                character_id: 90_888_001,
+                status: "completed".to_owned(),
+                skills: 1,
+                total_sp: 512_000,
+                unallocated_sp: 12_500,
+                error_code: None,
+            }],
+            completed: 1,
+            failed: 0,
+            skills: 1,
+            total_sp: 512_000,
+            unallocated_sp: 12_500,
+        };
+        assert!(character_skill_sync_response_is_valid(&sync));
     }
 }

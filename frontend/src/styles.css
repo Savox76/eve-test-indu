@@ -2648,6 +2648,31 @@ select:focus-visible {
 .industry-job-table th:nth-child(7) { width: 10%; }
 .industry-job-table th:nth-child(8) { width: 14%; }
 
+.character-skills {
+  margin-top: 18px;
+}
+
+.character-skills .asset-hero__metrics {
+  grid-template-columns: repeat(4, minmax(105px, 1fr));
+  min-width: 600px;
+}
+
+.character-skills .industry-jobs__toolbar {
+  grid-template-columns: minmax(260px, 1.5fr) repeat(3, minmax(150px, 0.75fr)) auto;
+}
+
+.character-skill-table {
+  min-width: 1180px;
+}
+
+.character-skill-table th:nth-child(1) { width: 23%; }
+.character-skill-table th:nth-child(2) { width: 15%; }
+.character-skill-table th:nth-child(3),
+.character-skill-table th:nth-child(4) { width: 10%; }
+.character-skill-table th:nth-child(5) { width: 14%; }
+.character-skill-table th:nth-child(6) { width: 17%; }
+.character-skill-table th:nth-child(7) { width: 11%; }
+
 .asset-status {
   display: inline-flex;
   align-items: center;
@@ -2891,6 +2916,14 @@ select:focus-visible {
   }
 
   .industry-jobs__toolbar {
+    grid-template-columns: repeat(2, minmax(220px, 1fr));
+  }
+
+  .character-skills .asset-hero__metrics {
+    min-width: 0;
+  }
+
+  .character-skills .industry-jobs__toolbar {
     grid-template-columns: repeat(2, minmax(220px, 1fr));
   }
 }
@@ -3168,6 +3201,11 @@ select:focus-visible {
   }
 
   .industry-jobs__toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .character-skills .asset-hero__metrics,
+  .character-skills .industry-jobs__toolbar {
     grid-template-columns: 1fr;
   }
 
