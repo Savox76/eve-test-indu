@@ -147,6 +147,12 @@ jobs:
       - name: Build NSIS installer
         run: npm run tauri build -- --bundles nsis
 
+      - name: Smoke-test installed application and migration
+        shell: pwsh
+        run: |
+          $installerPath = "src-tauri/target/release/bundle/nsis/New.Eden.Foundry_${env:RELEASE_VERSION}_x64-setup.exe"
+          ./scripts/smoke_installed_application.ps1 -InstallerPath $installerPath
+
       - name: Build portable ZIP
         shell: pwsh
         run: ./scripts/package_portable.ps1 -Version $env:RELEASE_VERSION -Architecture x64

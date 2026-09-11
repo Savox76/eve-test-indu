@@ -180,6 +180,7 @@ def check_workflows(errors: list[str]) -> None:
             "scripts/prepare_release_files.ps1",
             "scripts/build_sidecar.py",
             "scripts/smoke_sidecar.py",
+            "scripts/smoke_installed_application.ps1",
             "requirements-build.txt",
             "gh release",
         ):

@@ -573,7 +573,7 @@ describe("New Eden Foundry design preview", () => {
   it("credits Savoxmedia as the app creator next to the version", () => {
     render(<App />);
 
-    expect(screen.getByText("v0.0.5-preview.15")).toBeInTheDocument();
+    expect(screen.getByText("v0.0.5-preview.16")).toBeInTheDocument();
     expect(screen.getByText("Savoxmedia")).toBeInTheDocument();
     expect(screen.getByText("Erstellt von", { exact: false })).toBeInTheDocument();
     expect(screen.queryByText("Lokaler Betreiber")).not.toBeInTheDocument();
@@ -645,6 +645,35 @@ describe("New Eden Foundry design preview", () => {
 
     expect(await screen.findByText("Programmordner ist nicht beschreibbar")).toBeInTheDocument();
     expect(screen.queryByText(/Users\\|AppData|tmp/i)).not.toBeInTheDocument();
+  });
+
+  it("distinguishes a failed previous-version migration from a missing sidecar", async () => {
+    render(
+      <App
+        runtimeLoader={() => nativeRuntime({
+          sidecar: "error",
+          database: "error",
+          schemaVersion: null,
+          errorCode: "program-storage-migration-failed",
+          data: {
+            state: "error",
+            hasCachedData: false,
+            observedAt: null,
+            expiresAt: null,
+            ageSeconds: null,
+            lastSyncStatus: "never",
+            errorCode: "program-storage-migration-failed",
+          },
+        })}
+      />,
+    );
+
+    expect(
+      await screen.findByText(
+        "Datenübernahme aus der vorherigen Version konnte nicht abgeschlossen werden",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Lokaler Dienst fehlt im Programmordner")).not.toBeInTheDocument();
   });
 
   it("stores a selected update channel while public downloads remain disabled", async () => {

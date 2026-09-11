@@ -99,6 +99,13 @@ jobs:
       - name: Build ephemeral NSIS package
         run: npm run tauri build -- --bundles nsis
 
+      - name: Smoke-test installed application and migration
+        shell: pwsh
+        run: |
+          $version = node --print "require('./package.json').version"
+          $installerPath = "src-tauri/target/release/bundle/nsis/New.Eden.Foundry_${version}_x64-setup.exe"
+          ./scripts/smoke_installed_application.ps1 -InstallerPath $installerPath
+
       - name: Build ephemeral portable package
         shell: pwsh
         run: |

@@ -1,3 +1,6 @@
+Warning: truncated output (original token count: 52476)
+Total output lines: 5775
+
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -2810,251 +2813,44 @@ fn sso_login_status_is_valid(status: &SsoLoginStatus) -> bool {
             status
                 .attempt_id
                 .as_ref()
-                .is_some_and(|value| !value.is_empty())
-                && packages_are_valid
-                && status
-                    .expires_at
-                    .as_ref()
-                    .is_some_and(|value| !value.is_empty())
-                && status.error_code.is_none()
-                && status.character.is_none()
+                .is_some_and(|…2476 tokens truncated…"foundry.sqlite3-wal"))?;
         }
-        "connected" => {
-            status
-                .attempt_id
-                .as_ref()
-                .is_some_and(|value| !value.is_empty())
-                && packages_are_valid
-                && status
-                    .expires_at
-                    .as_ref()
-                    .is_some_and(|value| !value.is_empty())
-                && status.error_code.is_none()
-                && status
-                    .character
-                    .as_ref()
-                    .is_some_and(sso_character_identity_is_valid)
-        }
-        "timed-out" => {
-            status
-                .attempt_id
-                .as_ref()
-                .is_some_and(|value| !value.is_empty())
-                && packages_are_valid
-                && status
-                    .expires_at
-                    .as_ref()
-                    .is_some_and(|value| !value.is_empty())
-                && status.error_code.as_deref() == Some("login-timeout")
-                && status.character.is_none()
-        }
-        "failed" => {
-            status
-                .attempt_id
-                .as_ref()
-                .is_some_and(|value| !value.is_empty())
-                && packages_are_valid
-                && status
-                    .expires_at
-                    .as_ref()
-                    .is_some_and(|value| !value.is_empty())
-                && status.error_code.as_ref().is_some_and(|code| {
-                    matches!(
-                        code.as_str(),
-                        "authorization-denied"
-                            | "authorization-failed"
-                            | "callback-invalid"
-                            | "pkce-state-missing"
-                            | "sso-metadata-unavailable"
-                            | "sso-metadata-invalid"
-                            | "token-request-invalid"
-                            | "token-exchange-failed"
-                            | "token-response-invalid"
-                            | "jwks-unavailable"
-                            | "jwks-invalid"
-                            | "jwt-malformed"
-                            | "jwt-header-invalid"
-                            | "jwt-key-not-found"
-                            | "jwt-signature-invalid"
-                            | "jwt-claims-invalid"
-                            | "jwt-expired"
-                            | "jwt-identity-invalid"
-                            | "jwt-scopes-missing"
-                            | "character-save-failed"
-                    )
-                })
-                && status.character.is_none()
-        }
-        _ => false,
-    }
-}
-
-fn authorization_url_is_valid(value: &str) -> bool {
-    let Ok(url) = tauri::Url::parse(value) else {
-        return false;
-    };
-    if url.as_str().len() > 8_192
-        || url.scheme() != "https"
-        || url.host_str() != Some("login.eveonline.com")
-        || url.port_or_known_default() != Some(443)
-        || url.path() != "/v2/oauth/authorize"
-        || !url.username().is_empty()
-        || url.password().is_some()
-        || url.fragment().is_some()
-        || !value.starts_with(EVE_SSO_AUTHORIZATION_ENDPOINT)
-    {
-        return false;
+    } else if source.join("foundry.sqlite3-wal").exists() {
+        return Err("program-storage-migration-failed");
     }
 
-    let mut parameters: HashMap<String, String> = HashMap::new();
-    for (key, value) in url.query_pairs() {
-        if parameters
-            .insert(key.into_owned(), value.into_owned())
-            .is_some()
-        {
-            return false;
+    for auxiliary_name in ["backups", "exports"] {
+        let auxiliary_source = source.join(auxiliary_name);
+        if auxiliary_source.is_dir() && !auxiliary_source.is_symlink() {
+            let auxiliary_destination = destination.join(auxiliary_name);
+            if copy_directory_without_links(&auxiliary_source, &auxiliary_destination).is_err() {
+                let _ = fs::remove_dir_all(auxiliary_destination);
+            }
         }
     }
-    let expected_keys: HashSet<&str> = [
-        "response_type",
-        "client_id",
-        "redirect_uri",
-        "scope",
-        "state",
-        "code_challenge",
-        "code_challenge_method",
-    ]
-    .into_iter()
-    .collect();
-    if parameters
-        .keys()
-        .map(String::as_str)
-        .collect::<HashSet<_>>()
-        != expected_keys
-    {
-        return false;
-    }
-    let is_pkce_token = |candidate: &str| {
-        candidate.len() == 43
-            && candidate
-                .bytes()
-                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
-    };
-    parameters.get("response_type").map(String::as_str) == Some("code")
-        && parameters.get("client_id").map(String::as_str) == Some(EVE_SSO_CLIENT_ID)
-        && parameters.get("redirect_uri").map(String::as_str) == Some(EVE_SSO_REDIRECT_URI)
-        && parameters.get("code_challenge_method").map(String::as_str) == Some("S256")
-        && parameters
-            .get("state")
-            .is_some_and(|candidate| is_pkce_token(candidate))
-        && parameters
-            .get("code_challenge")
-            .is_some_and(|candidate| is_pkce_token(candidate))
-        && parameters.get("scope").is_some_and(|scope| {
-            !scope.is_empty()
-                && scope.split(' ').all(|item| {
-                    item.starts_with("esi-")
-                        && item.ends_with(".v1")
-                        && item.bytes().all(|byte| {
-                            byte.is_ascii_lowercase()
-                                || byte.is_ascii_digit()
-                                || matches!(byte, b'-' | b'_' | b'.')
-                        })
-                })
-        })
-}
-
-fn launch_system_browser(url: &str) -> Result<(), &'static str> {
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        Command::new("rundll32.exe")
-            .arg("url.dll,FileProtocolHandler")
-            .arg(url)
-            .creation_flags(WINDOWS_CREATE_NO_WINDOW)
-            .spawn()
-            .map_err(|_| "system-browser-unavailable")?;
-    }
-    #[cfg(target_os = "macos")]
-    Command::new("open")
-        .arg(url)
-        .spawn()
-        .map_err(|_| "system-browser-unavailable")?;
-    #[cfg(all(unix, not(target_os = "macos")))]
-    Command::new("xdg-open")
-        .arg(url)
-        .spawn()
-        .map_err(|_| "system-browser-unavailable")?;
     Ok(())
 }
 
-fn open_system_browser(url: &str) -> Result<(), &'static str> {
-    if !authorization_url_is_valid(url) {
-        return Err("sso-authorization-url-invalid");
-    }
-    launch_system_browser(url)
-}
-
-fn semantic_release_version_is_valid(value: &str) -> bool {
-    if value.is_empty() || value.len() > 80 || value.contains('+') {
+fn staged_program_data_is_usable(staging: &Path) -> bool {
+    let database = staging.join("foundry.sqlite3");
+    if database.exists() && (database.is_symlink() || !database.is_file()) {
         return false;
     }
-    let (core, prerelease) = value
-        .split_once('-')
-        .map_or((value, None), |(core, prerelease)| (core, Some(prerelease)));
-    let core_parts = core.split('.').collect::<Vec<_>>();
-    let numeric_component_is_valid = |part: &str| {
-        !part.is_empty()
-            && part.bytes().all(|byte| byte.is_ascii_digit())
-            && (part == "0" || !part.starts_with('0'))
-    };
-    if core_parts.len() != 3 || !core_parts.into_iter().all(numeric_component_is_valid) {
-        return false;
-    }
-    prerelease.is_none_or(|value| {
-        !value.is_empty()
-            && value.split('.').all(|part| {
-                !part.is_empty()
-                    && part
-                        .bytes()
-                        .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
-                    && (!part.bytes().all(|byte| byte.is_ascii_digit())
-                        || numeric_component_is_valid(part))
-            })
+    ["backups", "exports"].into_iter().all(|name| {
+        let path = staging.join(name);
+        !path.exists() || (!path.is_symlink() && path.is_dir())
     })
 }
 
-fn release_page_url(version: Option<&str>) -> Result<String, &'static str> {
-    let base = "https://github.com/Savox76/eve-test-indu/releases";
-    let Some(version) = version else {
-        return Ok(base.to_owned());
-    };
-    if !semantic_release_version_is_valid(version) {
-        return Err("release-version-invalid");
+fn stage_program_data(source: &Path, staging: &Path) -> Result<&'static str, &'static str> {
+    if copy_directory_without_links(source, staging).is_ok()
+        && staged_program_data_is_usable(staging)
+    {
+        return Ok("complete");
     }
-    Ok(format!("{base}/tag/v{version}"))
-}
-
-fn copy_directory_without_links(source: &Path, destination: &Path) -> Result<(), &'static str> {
-    fs::create_dir(destination).map_err(|_| "program-storage-migration-failed")?;
-    for entry in fs::read_dir(source).map_err(|_| "program-storage-migration-failed")? {
-        let entry = entry.map_err(|_| "program-storage-migration-failed")?;
-        let file_type = entry
-            .file_type()
-            .map_err(|_| "program-storage-migration-failed")?;
-        if file_type.is_symlink() {
-            return Err("program-storage-migration-failed");
-        }
-        let target = destination.join(entry.file_name());
-        if file_type.is_dir() {
-            copy_directory_without_links(&entry.path(), &target)?;
-        } else if file_type.is_file() {
-            fs::copy(entry.path(), target).map_err(|_| "program-storage-migration-failed")?;
-        } else {
-            return Err("program-storage-migration-failed");
-        }
-    }
-    Ok(())
+    let _ = fs::remove_dir_all(staging);
+    copy_essential_program_data(source, staging)?;
+    Ok("essential-recovery")
 }
 
 fn available_program_data_backup(executable_dir: &Path) -> Result<PathBuf, &'static str> {
@@ -3091,9 +2887,13 @@ fn migrate_to_program_directory_storage(
         if staging.exists() {
             fs::remove_dir_all(&staging).map_err(|_| "program-storage-migration-failed")?;
         }
-        if let Err(error) = copy_directory_without_links(&previous_data, &staging).and_then(|_| {
-            fs::write(staging.join(PROGRAM_STORAGE_MARKER), b"program-directory\n")
-                .map_err(|_| "program-storage-migration-failed")
+        let staged = stage_program_data(&previous_data, &staging);
+        if let Err(error) = staged.and_then(|migration_mode| {
+            fs::write(
+                staging.join(PROGRAM_STORAGE_MARKER),
+                format!("program-directory\nmigration={migration_mode}\n"),
+            )
+            .map_err(|_| "program-storage-migration-failed")
         }) {
             let _ = fs::remove_dir_all(&staging);
             return Err(error);
@@ -3142,6 +2942,19 @@ fn select_storage_root(app: &AppHandle, executable_dir: &Path) -> Result<PathBuf
         .map_err(|_| "program-storage-unavailable")?;
     migrate_to_program_directory_storage(executable_dir, &previous_storage_root)?;
     Ok(executable_dir.to_path_buf())
+}
+
+fn sidecar_startup_error_code(value: &serde_json::Value) -> Option<&'static str> {
+    if value.get("event").and_then(serde_json::Value::as_str) != Some("error") {
+        return None;
+    }
+    match value.get("code").and_then(serde_json::Value::as_str) {
+        Some("invalid-startup") => Some("sidecar-startup-rejected"),
+        Some("program-storage-unavailable") => Some("program-storage-unavailable"),
+        Some("database-startup-failed") => Some("database-startup-failed"),
+        Some("loopback-bind-failed") => Some("sidecar-loopback-unavailable"),
+        _ => Some("sidecar-ready-invalid"),
+    }
 }
 
 fn launch_sidecar(
@@ -3210,8 +3023,13 @@ fn launch_sidecar(
             .recv_timeout(SIDECAR_READY_TIMEOUT)
             .map_err(|_| "sidecar-ready-timeout")?
             .map_err(|_| "sidecar-ready-read-failed")?;
-        let ready: SidecarReady =
+        let readiness_value: serde_json::Value =
             serde_json::from_str(&readiness_line).map_err(|_| "sidecar-ready-invalid")?;
+        if let Some(error_code) = sidecar_startup_error_code(&readiness_value) {
+            return Err(error_code);
+        }
+        let ready: SidecarReady =
+            serde_json::from_value(readiness_value).map_err(|_| "sidecar-ready-invalid")?;
         if ready.event != "ready"
             || ready.protocol != SIDECAR_PROTOCOL_VERSION
             || ready.host != "127.0.0.1"
@@ -4869,7 +4687,7 @@ mod tests {
         character_skill_query_response_is_valid, character_skill_sync_response_is_valid,
         eve_character_record_is_valid, industry_job_query_response_is_valid,
         industry_job_sync_response_is_valid, industry_slot_query_response_is_valid,
-        migrate_to_program_directory_storage, release_page_url,
+        migrate_to_program_directory_storage, release_page_url, sidecar_startup_error_code,
         research_plan_query_response_is_valid, sso_login_status_is_valid, AccountGroupRecord,
         AssetDeltaCorrelation, AssetDeltaQueryResponse, AssetDeltaRecord, AssetDeltaSummary,
         AssetExportResponse, AssetLocationNode, AssetOwner, AssetQueryResponse, AssetRecord,
@@ -4978,6 +4796,57 @@ mod tests {
 
         assert!(executable_dir.join("data/.program-storage-v1").is_file());
         assert!(!previous_root.join("data").exists());
+    }
+
+    #[test]
+    fn migration_recovers_the_database_when_an_auxiliary_path_is_invalid() {
+        let root = TestDirectory::new("storage-essential-recovery");
+        let executable_dir = root.path().join("program");
+        let previous_root = root.path().join("appdata");
+        fs::create_dir(&executable_dir).expect("program directory must be created");
+        fs::create_dir_all(previous_root.join("data"))
+            .expect("previous data directory must be created");
+        fs::write(previous_root.join("data/foundry.sqlite3"), b"current-database")
+            .expect("previous database must be written");
+        fs::write(previous_root.join("data/backups"), b"invalid-directory-shape")
+            .expect("invalid auxiliary path must be written");
+
+        migrate_to_program_directory_storage(&executable_dir, &previous_root)
+            .expect("essential database recovery must succeed");
+
+        assert_eq!(
+            fs::read(executable_dir.join("data/foundry.sqlite3")).unwrap(),
+            b"current-database"
+        );
+        assert_eq!(
+            fs::read_to_string(executable_dir.join("data/.program-storage-v1")).unwrap(),
+            "program-directory\nmigration=essential-recovery\n"
+        );
+        assert!(previous_root.join("data/backups").is_file());
+        assert!(!executable_dir.join("data/backups").exists());
+    }
+
+    #[test]
+    fn preserves_specific_sidecar_startup_errors() {
+        let storage_error = serde_json::json!({
+            "event": "error",
+            "code": "program-storage-unavailable"
+        });
+        let database_error = serde_json::json!({
+            "event": "error",
+            "code": "database-startup-failed"
+        });
+        let ready = serde_json::json!({"event": "ready"});
+
+        assert_eq!(
+            sidecar_startup_error_code(&storage_error),
+            Some("program-storage-unavailable")
+        );
+        assert_eq!(
+            sidecar_startup_error_code(&database_error),
+            Some("database-startup-failed")
+        );
+        assert_eq!(sidecar_startup_error_code(&ready), None);
     }
 
     fn valid_authorization_url() -> String {
