@@ -944,7 +944,7 @@ const copy = {
     },
     planned: "Geplant",
     previewOnly: "Noch ohne Live-Funktion",
-    footerVersion: "v0.0.5-preview.18",
+    footerVersion: "v0.0.5-preview.19",
   },
   en: {
     nav: {
@@ -1695,7 +1695,7 @@ const copy = {
     },
     planned: "Planned",
     previewOnly: "No live function yet",
-    footerVersion: "v0.0.5-preview.18",
+    footerVersion: "v0.0.5-preview.19",
   },
 } as const;
 

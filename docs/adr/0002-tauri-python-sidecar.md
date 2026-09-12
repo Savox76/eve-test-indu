@@ -24,7 +24,7 @@ Die Desktop-Schale wird mit Tauri 2 und Rust gebaut, die Oberfläche mit React/T
 
 ## Folgen
 
-Für jedes freigegebene Zielsystem muss ein passender Sidecar gebaut und zusammen mit Tauri paketiert werden. Der Windows-x64-Sidecar wird als einzelne PyInstaller-EXE erzeugt und von Tauri als Ressource neben der Haupt-EXE installiert. Startprotokoll, Prozessüberwachung, Port-/Token-Handshake und Shutdown benötigen Integrations- und Pakettests. Der interne API-Vertrag wird versioniert.
+Für jedes freigegebene Zielsystem muss ein passender Sidecar gebaut und zusammen mit Tauri paketiert werden. Der Windows-x64-Sidecar wird mit PyInstaller im `onedir`-Modus erzeugt und von Tauri zusammen mit seinem Ordner `foundry-sidecar-lib` als Ressource neben der Haupt-EXE installiert. Die frühere selbstentpackende `onefile`-Ausgabe wurde nach einer Defender-Erkennung von `v0.0.5-preview.18` verworfen: Der entpackte Aufbau vermeidet beim Start temporär extrahierten eingebetteten Code und lässt die tatsächlich ausgelieferten Laufzeitdateien prüfen. Startprotokoll, Prozessüberwachung, Port-/Token-Handshake und Shutdown benötigen Integrations-, Defender- und Pakettests. Der interne API-Vertrag wird versioniert.
 
 ## Verifikation
 

@@ -29,6 +29,7 @@ OFFICIAL_INDUSTRY_SDE = (
 OFFICIAL_SDE_SOURCE = (
     BACKEND / "new_eden_foundry_backend" / "resources" / "official-sde-source.json"
 )
+SIDECAR_SUPPORT_DIRECTORY_NAME = "foundry-sidecar-lib"
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -47,12 +48,17 @@ def main() -> int:
     dist_directory = work_directory / "dist"
     spec_directory = work_directory / "spec"
     executable_suffix = ".exe" if os.name == "nt" else ""
-    built_executable = dist_directory / f"foundry-sidecar{executable_suffix}"
+    built_directory = dist_directory / "foundry-sidecar"
+    built_executable = built_directory / f"foundry-sidecar{executable_suffix}"
+    built_support_directory = built_directory / SIDECAR_SUPPORT_DIRECTORY_NAME
     target_executable = (
         ROOT
         / "src-tauri"
         / "binaries"
         / f"foundry-sidecar-{target_triple}{executable_suffix}"
+    )
+    target_support_directory = (
+        ROOT / "src-tauri" / "binaries" / SIDECAR_SUPPORT_DIRECTORY_NAME
     )
 
     command = [
@@ -61,7 +67,9 @@ def main() -> int:
         "PyInstaller",
         "--clean",
         "--noconfirm",
-        "--onefile",
+        "--onedir",
+        "--contents-directory",
+        SIDECAR_SUPPORT_DIRECTORY_NAME,
         "--noupx",
         "--name",
         "foundry-sidecar",
@@ -107,15 +115,26 @@ def main() -> int:
     subprocess.run(command, cwd=ROOT, check=True)
     if not built_executable.is_file():
         raise FileNotFoundError(f"PyInstaller did not create {built_executable}.")
+    if not built_support_directory.is_dir():
+        raise FileNotFoundError(
+            f"PyInstaller did not create {built_support_directory}."
+        )
 
     target_executable.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(built_executable, target_executable)
+    if target_support_directory.exists():
+        shutil.rmtree(target_support_directory)
+    shutil.copytree(built_support_directory, target_support_directory)
     print(
         json.dumps(
             {
                 "source": str(built_executable.relative_to(ROOT)),
                 "target": str(target_executable.relative_to(ROOT)),
                 "bytes": target_executable.stat().st_size,
+                "support": str(target_support_directory.relative_to(ROOT)),
+                "supportFiles": sum(
+                    1 for path in target_support_directory.rglob("*") if path.is_file()
+                ),
             },
             sort_keys=True,
         )
