@@ -245,17 +245,25 @@ with sqlite3.connect(os.environ["FOUNDRY_SMOKE_INSTALLED_DATABASE"]) as connecti
     @'
 import os
 import sqlite3
+import time
 
-with sqlite3.connect(os.environ["FOUNDRY_SMOKE_INSTALLED_DATABASE"]) as connection:
-    recovered = connection.execute(
-        "SELECT status, completed_at, error_code FROM sync_runs WHERE source=?",
-        ("installed-interrupted-recovery-smoke",),
-    ).fetchone()
-    integrity = connection.execute("PRAGMA quick_check").fetchone()
+deadline = time.monotonic() + 15
+recovered = None
+while time.monotonic() < deadline:
+    with sqlite3.connect(os.environ["FOUNDRY_SMOKE_INSTALLED_DATABASE"]) as connection:
+        recovered = connection.execute(
+            "SELECT status, completed_at, error_code FROM sync_runs WHERE source=?",
+            ("installed-interrupted-recovery-smoke",),
+        ).fetchone()
+    if recovered and recovered[0] == "cancelled" and recovered[1] is not None:
+        break
+    time.sleep(0.25)
 if recovered is None or recovered[0] != "cancelled" or recovered[1] is None:
     raise RuntimeError(f"Interrupted synchronization was not recovered: {recovered!r}")
 if recovered[2] != "sidecar-interrupted":
     raise RuntimeError(f"Interrupted synchronization has the wrong reason: {recovered!r}")
+with sqlite3.connect(os.environ["FOUNDRY_SMOKE_INSTALLED_DATABASE"]) as connection:
+    integrity = connection.execute("PRAGMA quick_check").fetchone()
 if integrity != ("ok",):
     raise RuntimeError(f"Database integrity failed after sidecar recovery: {integrity!r}")
 '@ | python -
