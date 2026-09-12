@@ -103,6 +103,9 @@ jobs:
       - name: Check Rust formatting
         run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
 
+      - name: Run Rust unit tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml --lib
+
       - name: Build ephemeral NSIS package
         run: npm run tauri build -- --bundles nsis
 

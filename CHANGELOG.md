@@ -28,7 +28,7 @@ Keine.
 
 ### Neu hinzugefügt
 
-- Ein Rust-Vertragstest bildet erstmals eine mehrstufige Produktionskette mit Vorprodukt und abschließendem Zielprodukt ab.
+- Ein Rust-Vertragstest bildet erstmals eine mehrstufige Produktionskette mit Vorprodukt und abschließendem Zielprodukt ab. Qualitäts- und Release-Workflow führen die Rust-Unit-Tests nun ausdrücklich vor dem Paketbau aus.
 
 ### Geändert
 
