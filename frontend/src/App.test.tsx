@@ -695,7 +695,7 @@ describe("New Eden Foundry design preview", () => {
   it("credits Savoxmedia as the app creator next to the version", () => {
     render(<App />);
 
-    expect(screen.getByText("v0.0.5-preview.24")).toBeInTheDocument();
+    expect(screen.getByText("v0.0.5-preview.25")).toBeInTheDocument();
     expect(screen.getByText("Savoxmedia")).toBeInTheDocument();
     expect(screen.getByText("Erstellt von", { exact: false })).toBeInTheDocument();
     expect(screen.queryByText("Lokaler Betreiber")).not.toBeInTheDocument();
@@ -1088,7 +1088,12 @@ describe("New Eden Foundry design preview", () => {
     expect(await screen.findByText("Bantam Blueprint")).toBeInTheDocument();
     expect(screen.getByText("Snapshot-Status")).toBeInTheDocument();
     expect(screen.getByText(/1 Blueprints · 1 Std\./)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /Bantam Blueprint/ }));
+    const blueprintGroup = screen.getByRole("button", { name: /Bantam Blueprint/ });
+    expect(blueprintGroup).toHaveClass("asset-summary-item");
+    fireEvent.click(blueprintGroup);
+    await waitFor(() => expect(blueprintsLoader).toHaveBeenLastCalledWith(
+      expect.objectContaining({ search: "Bantam Blueprint" }),
+    ));
     expect(await screen.findByText("BPC")).toBeInTheDocument();
     expect(screen.getByText("12")).toBeInTheDocument();
     fireEvent.change(screen.getByPlaceholderText("Blueprint, Besitzer, Ort oder ID suchen"), {
