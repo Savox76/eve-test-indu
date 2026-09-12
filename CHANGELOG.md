@@ -24,6 +24,30 @@ Keine.
 
 Keine.
 
+## 0.0.5-preview.26 – 12. September 2026
+
+### Neu hinzugefügt
+
+Keine.
+
+### Geändert
+
+- Alle kompakten Oberflächentexte verwenden eine zentrale sechsstufige Typografieskala. In der Grundansicht 3/5 wurden bisherige Einzelgrößen von 7 bis 9 px auf lesbare 10 bis 11 px angehoben; Fließtexte, Eingaben und Überschriften folgen ebenfalls gemeinsamen Größenstufen.
+- Die sichtbare Versionsnummer lautet `v0.0.5-preview.26`.
+
+### Behobene Fehler
+
+- Ein neu gespeichertes Produktionsziel konnte durch zuvor gespeicherte Filter, Sortierung oder Seitenauswahl unmittelbar nach dem Speichern verborgen bleiben. Die Zielliste wird nun ungefiltert und nach der neuesten Änderung sortiert auf die erste Seite zurückgesetzt und zeigt das neue Ziel direkt an.
+
+### Bekannte Einschränkungen
+
+- Die Preview ist noch nicht produktiv code-signiert; SmartScreen kann deshalb weiterhin vor einem unbekannten Herausgeber warnen.
+- Paket 22 wartet auf das vollständige Windows-A0-Protokoll.
+
+### Update und Datenbankmigration
+
+- Das Datenbankschema bleibt bei Version 9. Vorhandene Charaktere, Einstellungen, Pläne und Snapshots bleiben unverändert.
+
 ## 0.0.5-preview.25 – 12. September 2026
 
 ### Neu hinzugefügt
