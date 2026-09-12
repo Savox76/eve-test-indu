@@ -115,6 +115,7 @@ def validate_research_query(payload: Any) -> dict[str, Any]:
         "ownerCharacterId",
         "state",
         "plannedOnly",
+        "includeMaxed",
         "offset",
         "limit",
         "sortBy",
@@ -131,6 +132,7 @@ def validate_research_query(payload: Any) -> dict[str, Any]:
         and (isinstance(owner, bool) or not isinstance(owner, int) or not 0 < owner <= MAX_SAFE_INTEGER)
         or payload["state"] not in (None, *RESEARCH_STATES)
         or not isinstance(payload["plannedOnly"], bool)
+        or not isinstance(payload["includeMaxed"], bool)
         or isinstance(payload["offset"], bool)
         or not isinstance(payload["offset"], int)
         or not 0 <= payload["offset"] <= MAX_SAFE_INTEGER
@@ -210,7 +212,7 @@ def _latest_blueprints(connection: sqlite3.Connection) -> dict[tuple[int, int], 
             if item_id in seen:
                 raise ResearchPlanningError("research_blueprint_snapshot_invalid")
             seen.add(item_id)
-            if int(blueprint["quantity"]) != -1:
+            if int(blueprint["quantity"]) == -2:
                 continue
             result[(character_id, item_id)] = {
                 "ownerName": str(row["alias"] or row["name"]),
@@ -563,6 +565,14 @@ def query_research_plans(
         if (query["ownerCharacterId"] is None or row["ownerCharacterId"] == query["ownerCharacterId"])
         and (query["state"] is None or row["state"] == query["state"])
         and (not query["plannedOnly"] or row["planned"])
+        and (
+            query["includeMaxed"]
+            or not (
+                row["blueprintPresent"]
+                and int(row["currentMaterialEfficiency"]) >= 10
+                and int(row["currentTimeEfficiency"]) >= 20
+            )
+        )
         and (
             not tokens
             or all(

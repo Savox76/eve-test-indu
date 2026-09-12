@@ -975,11 +975,11 @@ describe("desktop runtime status", () => {
       observedAt: "2026-09-11T12:01:00Z", ageSeconds: 60, estimatesAvailable: false,
     };
     const invoke = vi.fn<RuntimeAdapter["invoke"]>().mockResolvedValueOnce(JSON.stringify(page));
-    const query = { search: "", ownerCharacterId: null, state: null, plannedOnly: true,
+    const query = { search: "", ownerCharacterId: null, state: null, plannedOnly: true, includeMaxed: false,
       offset: 0, limit: 100, sortBy: "priority", sortDirection: "desc" } as const;
     await expect(loadResearchPlans(query, { isAvailable: () => true, invoke })).resolves.toEqual(page);
     expect(invoke).toHaveBeenCalledWith("query_research_plans", expect.objectContaining({
-      planState: null, plannedOnly: true,
+      planState: null, plannedOnly: true, includeMaxed: false,
     }));
 
     const input = { ownerCharacterId: 7, blueprintItemId: 9, nextActivity: "material",

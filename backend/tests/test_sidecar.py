@@ -700,7 +700,7 @@ class SidecarIntegrationTests(unittest.TestCase):
                 f"{base_url}/research-plans/query",
                 data=json.dumps({
                     "search": "", "ownerCharacterId": None, "state": None,
-                    "plannedOnly": False, "offset": 0, "limit": 100,
+                    "plannedOnly": False, "includeMaxed": False, "offset": 0, "limit": 100,
                     "sortBy": "priority", "sortDirection": "desc",
                 }).encode(),
                 method="POST",
