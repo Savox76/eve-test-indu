@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 58364)
-Total output lines: 6410
-
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -2372,7 +2369,1927 @@ fn research_plan_record_is_valid(item: &ResearchPlanRecord) -> bool {
         && (current || no_current)
         && item
             .current_material_efficiency
-            .is_none_or(|val…18364 tokens truncated…IPT_MAX_SAFE_INTEGER
+            .is_none_or(|value| value <= 10)
+        && item.current_time_efficiency.is_none_or(|value| value <= 20)
+        && item
+            .location_id
+            .is_none_or(|value| value > 0 && value <= JAVASCRIPT_MAX_SAFE_INTEGER)
+        && item
+            .location_flag
+            .as_ref()
+            .is_none_or(|value| asset_text_is_valid(value, 100))
+        && RESEARCH_PLAN_ACTIVITIES.contains(&item.next_activity.as_str())
+        && item.target_material_efficiency <= 10
+        && item.target_time_efficiency <= 20
+        && item.priority <= 999
+        && item
+            .note
+            .as_ref()
+            .is_none_or(|value| asset_text_is_valid(value, 240))
+        && RESEARCH_PLAN_STATES.contains(&item.state.as_str())
+        && item.slot_capacity.is_some() == item.slots_available.is_some()
+        && item
+            .slot_capacity
+            .is_none_or(|value| (1..=11).contains(&value))
+        && item
+            .slots_available
+            .is_none_or(|value| item.slot_capacity.is_some_and(|capacity| value <= capacity))
+        && item.slots_used <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && item.research_level <= 5
+        && item.metallurgy_level <= 5
+        && active_job
+        && facility
+        && (item.facility_evidence != "active-job" || item.active_job_id.is_some())
+        && RESEARCH_FACILITY_EVIDENCE.contains(&item.facility_evidence.as_str())
+        && optional_source_pair_is_valid(item.blueprint_snapshot_id, item.blueprint_sync_run_id)
+        && optional_source_pair_is_valid(item.skill_snapshot_id, item.skill_sync_run_id)
+        && optional_source_pair_is_valid(item.job_snapshot_id, item.job_sync_run_id)
+        && persisted
+}
+
+fn research_plan_query_response_is_valid(response: &ResearchPlanQueryResponse) -> bool {
+    let item_keys = response
+        .items
+        .iter()
+        .map(|item| (item.owner_character_id, item.blueprint_item_id))
+        .collect::<HashSet<_>>();
+    let owner_ids = response
+        .owners
+        .iter()
+        .map(|owner| owner.character_id)
+        .collect::<HashSet<_>>();
+    let summary = [
+        response.summary.unplanned,
+        response.summary.ready,
+        response.summary.queued,
+        response.summary.running,
+        response.summary.complete,
+        response.summary.unverified,
+        response.summary.missing,
+    ];
+    response.limit > 0
+        && response.limit <= MAX_ASSET_PAGE_SIZE
+        && response.total <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && response.offset <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && response.items.len() as u64 <= response.limit
+        && response.items.len() as u64 <= response.total
+        && item_keys.len() == response.items.len()
+        && owner_ids.len() == response.owners.len()
+        && response.items.iter().all(research_plan_record_is_valid)
+        && response.owners.iter().all(research_plan_owner_is_valid)
+        && response
+            .states
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>()
+            == RESEARCH_PLAN_STATES
+        && response
+            .activities
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>()
+            == RESEARCH_PLAN_ACTIVITIES
+        && summary
+            .into_iter()
+            .all(|value| value <= JAVASCRIPT_MAX_SAFE_INTEGER)
+        && response.observed_at.is_some() == response.age_seconds.is_some()
+        && response
+            .observed_at
+            .as_ref()
+            .is_none_or(|value| asset_text_is_valid(value, 64))
+        && response
+            .age_seconds
+            .is_none_or(|value| value <= JAVASCRIPT_MAX_SAFE_INTEGER)
+        && !response.estimates_available
+}
+
+fn research_plan_mutation_response_is_valid(response: &ResearchPlanMutationResponse) -> bool {
+    response.owner_character_id > 0
+        && response.owner_character_id <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && response.blueprint_item_id > 0
+        && response.blueprint_item_id <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && response.blueprint_type_id > 0
+        && response.blueprint_type_id <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && RESEARCH_PLAN_ACTIVITIES.contains(&response.next_activity.as_str())
+        && response.target_material_efficiency <= 10
+        && response.target_time_efficiency <= 20
+        && response.priority <= 999
+        && response
+            .note
+            .as_ref()
+            .is_none_or(|value| asset_text_is_valid(value, 240))
+        && response.saved
+}
+
+fn production_id_is_valid(value: u64) -> bool {
+    value > 0 && value <= JAVASCRIPT_MAX_SAFE_INTEGER
+}
+
+fn production_catalog_response_is_valid(response: &ProductionCatalogResponse) -> bool {
+    let keys = response
+        .items
+        .iter()
+        .map(|item| {
+            (
+                item.blueprint_type_id,
+                item.activity.as_str(),
+                item.product_type_id,
+            )
+        })
+        .collect::<HashSet<_>>();
+    response.limit > 0
+        && response.limit <= 100
+        && response.offset <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && response.total <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && response.items.len() as u64 <= response.limit
+        && response.items.len() as u64 <= response.total
+        && keys.len() == response.items.len()
+        && response
+            .activities
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>()
+            == PRODUCTION_ACTIVITIES
+        && response
+            .build_number
+            .as_ref()
+            .is_none_or(|value| asset_text_is_valid(value, 80))
+        && (response.build_number.is_some() || (response.total == 0 && response.items.is_empty()))
+        && response.items.iter().all(|item| {
+            production_id_is_valid(item.blueprint_type_id)
+                && production_id_is_valid(item.product_type_id)
+                && asset_text_is_valid(&item.blueprint_name, 200)
+                && asset_text_is_valid(&item.product_name, 200)
+                && PRODUCTION_ACTIVITIES.contains(&item.activity.as_str())
+                && production_id_is_valid(item.base_time_seconds)
+                && production_id_is_valid(item.output_quantity)
+                && production_id_is_valid(item.material_count)
+        })
+}
+
+fn production_plan_record_is_valid(item: &ProductionPlanRecord) -> bool {
+    let steps_valid = item.steps.iter().enumerate().all(|(index, step)| {
+        step.sequence == index as u64 + 1
+            && production_id_is_valid(step.blueprint_type_id)
+            && production_id_is_valid(step.product_type_id)
+            && asset_text_is_valid(&step.blueprint_name, 200)
+            && asset_text_is_valid(&step.product_name, 200)
+            && PRODUCTION_ACTIVITIES.contains(&step.activity.as_str())
+            && production_id_is_valid(step.required_quantity)
+            && production_id_is_valid(step.output_quantity_per_run)
+            && production_id_is_valid(step.runs)
+            && production_id_is_valid(step.produced_quantity)
+            && step.surplus_quantity <= JAVASCRIPT_MAX_SAFE_INTEGER
+            && production_id_is_valid(step.base_time_seconds_per_run)
+            && production_id_is_valid(step.total_base_time_seconds)
+            && production_id_is_valid(step.recipe_alternatives)
+            && step.output_quantity_per_run.checked_mul(step.runs) == Some(step.produced_quantity)
+            && step.produced_quantity.checked_sub(step.required_quantity)
+                == Some(step.surplus_quantity)
+            && step.base_time_seconds_per_run.checked_mul(step.runs)
+                == Some(step.total_base_time_seconds)
+            && step.materials.iter().all(|material| {
+                production_id_is_valid(material.type_id)
+                    && asset_text_is_valid(&material.type_name, 200)
+                    && production_id_is_valid(material.quantity_per_run)
+                    && production_id_is_valid(material.gross_quantity)
+                    && material.quantity_per_run.checked_mul(step.runs)
+                        == Some(material.gross_quantity)
+            })
+    });
+    let gross_valid = item.gross_materials.iter().all(|material| {
+        production_id_is_valid(material.type_id)
+            && asset_text_is_valid(&material.type_name, 200)
+            && production_id_is_valid(material.quantity)
+    });
+    let warnings_valid = item.warnings.iter().all(|warning| {
+        warning.code == "alternative-recipe"
+            && production_id_is_valid(warning.type_id)
+            && asset_text_is_valid(&warning.type_name, 200)
+            && production_id_is_valid(warning.selected_blueprint_type_id)
+            && warning.candidate_count >= 2
+            && warning.candidate_count <= JAVASCRIPT_MAX_SAFE_INTEGER
+    });
+    let ready = item.state == "ready";
+    let resolution_shape = if ready {
+        item.build_number.is_some()
+            && !item.steps.is_empty()
+            && item.cycle_type_ids.is_empty()
+            && item.total_base_time_seconds.is_some()
+            && item.steps.last().is_some_and(|step| {
+                step.blueprint_type_id == item.blueprint_type_id
+                    && step.product_type_id == item.product_type_id
+                    && step.activity == item.activity
+                    && step.required_quantity == item.target_quantity
+            })
+            && item.steps.iter().try_fold(0_u64, |total, step| {
+                total.checked_add(step.total_base_time_seconds)
+            }) == item.total_base_time_seconds
+    } else {
+        item.steps.is_empty()
+            && item.gross_materials.is_empty()
+            && item.total_base_time_seconds.is_none()
+            && ((item.state == "cycle" && !item.cycle_type_ids.is_empty())
+                || (item.state != "cycle" && item.cycle_type_ids.is_empty()))
+    };
+    production_id_is_valid(item.plan_id)
+        && production_id_is_valid(item.owner_character_id)
+        && asset_text_is_valid(&item.owner_name, 100)
+        && production_id_is_valid(item.blueprint_type_id)
+        && asset_text_is_valid(&item.blueprint_name, 200)
+        && PRODUCTION_ACTIVITIES.contains(&item.activity.as_str())
+        && production_id_is_valid(item.product_type_id)
+        && asset_text_is_valid(&item.product_name, 200)
+        && production_id_is_valid(item.target_quantity)
+        && item.priority <= 999
+        && item
+            .note
+            .as_ref()
+            .is_none_or(|value| asset_text_is_valid(value, 240))
+        && PRODUCTION_PLAN_STATES.contains(&item.state.as_str())
+        && item
+            .build_number
+            .as_ref()
+            .is_none_or(|value| asset_text_is_valid(value, 80))
+        && item
+            .cycle_type_ids
+            .iter()
+            .all(|value| production_id_is_valid(*value))
+        && item
+            .total_base_time_seconds
+            .is_none_or(production_id_is_valid)
+        && asset_text_is_valid(&item.created_at, 64)
+        && asset_text_is_valid(&item.updated_at, 64)
+        && steps_valid
+        && gross_valid
+        && warnings_valid
+        && resolution_shape
+}
+
+fn production_plan_query_response_is_valid(response: &ProductionPlanQueryResponse) -> bool {
+    let ids = response
+        .items
+        .iter()
+        .map(|item| item.plan_id)
+        .collect::<HashSet<_>>();
+    let owner_ids = response
+        .owners
+        .iter()
+        .map(|owner| owner.character_id)
+        .collect::<HashSet<_>>();
+    let summary = [
+        response.summary.ready,
+        response.summary.sde_unavailable,
+        response.summary.recipe_missing,
+        response.summary.cycle,
+        response.summary.complexity_limit,
+    ];
+    response.limit > 0
+        && response.limit <= 100
+        && response.offset <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && response.total <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && response.items.len() as u64 <= response.limit
+        && response.items.len() as u64 <= response.total
+        && ids.len() == response.items.len()
+        && owner_ids.len() == response.owners.len()
+        && response.items.iter().all(production_plan_record_is_valid)
+        && response.owners.iter().all(|owner| {
+            production_id_is_valid(owner.character_id) && asset_text_is_valid(&owner.name, 100)
+        })
+        && response
+            .activities
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>()
+            == PRODUCTION_ACTIVITIES
+        && response
+            .states
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>()
+            == PRODUCTION_PLAN_STATES
+        && summary
+            .into_iter()
+            .all(|value| value <= JAVASCRIPT_MAX_SAFE_INTEGER)
+        && response
+            .build_number
+            .as_ref()
+            .is_none_or(|value| asset_text_is_valid(value, 80))
+        && !response.inventory_applied
+        && !response.modifiers_applied
+}
+
+fn production_plan_mutation_is_valid(item: &ProductionPlanMutationResponse) -> bool {
+    item.saved
+        && production_id_is_valid(item.plan_id)
+        && production_id_is_valid(item.owner_character_id)
+        && production_id_is_valid(item.blueprint_type_id)
+        && PRODUCTION_ACTIVITIES.contains(&item.activity.as_str())
+        && production_id_is_valid(item.product_type_id)
+        && production_id_is_valid(item.target_quantity)
+        && item.priority <= 999
+        && item
+            .note
+            .as_ref()
+            .is_none_or(|value| asset_text_is_valid(value, 240))
+}
+
+fn public_release_notice_is_valid(notice: &PublicReleaseNotice) -> bool {
+    let state_valid = matches!(
+        notice.state.as_str(),
+        "available" | "current" | "unavailable" | "error"
+    );
+    let version_fields = notice.latest_version.is_some()
+        && notice.release_url.is_some()
+        && notice.published_at.is_some();
+    let empty_fields = notice.latest_version.is_none()
+        && notice.release_url.is_none()
+        && notice.published_at.is_none();
+    let shape_valid = match notice.state.as_str() {
+        "available" | "current" => version_fields && notice.error_code.is_none(),
+        "unavailable" => empty_fields && notice.error_code.is_none(),
+        "error" => empty_fields && notice.error_code.is_some(),
+        _ => false,
+    };
+    state_valid
+        && matches!(notice.channel.as_str(), "stable" | "beta" | "preview")
+        && asset_text_is_valid(&notice.current_version, 80)
+        && notice
+            .latest_version
+            .as_ref()
+            .is_none_or(|value| asset_text_is_valid(value, 80))
+        && notice.release_url.as_ref().is_none_or(|url| {
+            url == &format!(
+                "https://github.com/Savox76/eve-test-indu/releases/tag/v{}",
+                notice.latest_version.as_deref().unwrap_or_default()
+            )
+        })
+        && notice
+            .published_at
+            .as_ref()
+            .is_none_or(|value| asset_text_is_valid(value, 64))
+        && notice
+            .error_code
+            .as_ref()
+            .is_none_or(|value| asset_text_is_valid(value, 120))
+        && !notice.automatic_install
+        && shape_valid
+}
+
+fn character_skill_query_response_is_valid(response: &CharacterSkillQueryResponse) -> bool {
+    let owner_ids = response
+        .owners
+        .iter()
+        .map(|owner| owner.character_id)
+        .collect::<HashSet<_>>();
+    let skill_keys = response
+        .items
+        .iter()
+        .map(|skill| (skill.owner_character_id, skill.skill_id))
+        .collect::<HashSet<_>>();
+    response.limit > 0
+        && response.limit <= MAX_ASSET_PAGE_SIZE
+        && [
+            response.total,
+            response.total_sp,
+            response.unallocated_sp,
+            response.offset,
+        ]
+        .into_iter()
+        .all(|value| value <= JAVASCRIPT_MAX_SAFE_INTEGER)
+        && response.items.len() as u64 <= response.limit
+        && response.items.len() as u64 <= response.total
+        && response.levels == [0, 1, 2, 3, 4, 5]
+        && response
+            .active_states
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>()
+            == CHARACTER_SKILL_ACTIVE_STATES
+        && response.observed_at.is_some() == response.age_seconds.is_some()
+        && response
+            .observed_at
+            .as_ref()
+            .is_none_or(|value| asset_text_is_valid(value, 64))
+        && owner_ids.len() == response.owners.len()
+        && skill_keys.len() == response.items.len()
+        && response.owners.iter().all(|owner| {
+            owner.character_id > 0
+                && owner.character_id <= JAVASCRIPT_MAX_SAFE_INTEGER
+                && asset_text_is_valid(&owner.name, 100)
+        })
+        && response.items.iter().all(|skill| {
+            let expected_state = if skill.active_level < skill.trained_level {
+                "limited"
+            } else if skill.active_level > skill.trained_level {
+                "boosted"
+            } else {
+                "normal"
+            };
+            skill.skill_id > 0
+                && skill.skill_id <= JAVASCRIPT_MAX_SAFE_INTEGER
+                && owner_ids.contains(&skill.owner_character_id)
+                && response.owners.iter().any(|owner| {
+                    owner.character_id == skill.owner_character_id && owner.name == skill.owner_name
+                })
+                && asset_text_is_valid(&skill.skill_name, 220)
+                && asset_text_is_valid(&skill.owner_name, 100)
+                && skill.trained_level <= 5
+                && skill.active_level <= 5
+                && skill.skillpoints <= JAVASCRIPT_MAX_SAFE_INTEGER
+                && skill.active_state == expected_state
+                && skill.snapshot_id > 0
+                && skill.snapshot_id <= JAVASCRIPT_MAX_SAFE_INTEGER
+                && skill.sync_run_id > 0
+                && skill.sync_run_id <= JAVASCRIPT_MAX_SAFE_INTEGER
+                && asset_text_is_valid(&skill.observed_at, 64)
+        })
+}
+
+fn character_skill_sync_response_is_valid(response: &CharacterSkillSyncResponse) -> bool {
+    let skills = response
+        .characters
+        .iter()
+        .try_fold(0_u64, |sum, item| sum.checked_add(item.skills));
+    let total_sp = response
+        .characters
+        .iter()
+        .try_fold(0_u64, |sum, item| sum.checked_add(item.total_sp));
+    let unallocated_sp = response
+        .characters
+        .iter()
+        .try_fold(0_u64, |sum, item| sum.checked_add(item.unallocated_sp));
+    response.completed.checked_add(response.failed) == Some(response.characters.len() as u64)
+        && skills == Some(response.skills)
+        && total_sp == Some(response.total_sp)
+        && unallocated_sp == Some(response.unallocated_sp)
+        && [response.skills, response.total_sp, response.unallocated_sp]
+            .into_iter()
+            .all(|value| value <= JAVASCRIPT_MAX_SAFE_INTEGER)
+        && response.characters.iter().all(|item| {
+            item.character_id > 0
+                && item.character_id <= JAVASCRIPT_MAX_SAFE_INTEGER
+                && matches!(item.status.as_str(), "completed" | "failed")
+                && [item.skills, item.total_sp, item.unallocated_sp]
+                    .into_iter()
+                    .all(|value| value <= JAVASCRIPT_MAX_SAFE_INTEGER)
+                && ((item.status == "completed" && item.error_code.is_none())
+                    || (item.status == "failed"
+                        && item.skills == 0
+                        && item.total_sp == 0
+                        && item.unallocated_sp == 0
+                        && item
+                            .error_code
+                            .as_ref()
+                            .is_some_and(|code| asset_text_is_valid(code, 120))))
+        })
+}
+
+fn asset_export_response_is_valid(response: &AssetExportResponse) -> bool {
+    response.rows <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && response.filename.starts_with("assets-")
+        && response.filename.ends_with(".csv")
+        && response.filename.len() <= 64
+        && response
+            .filename
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.'))
+        && response.relative_path == format!("data/exports/{}", response.filename)
+}
+
+fn asset_delta_response_is_valid(response: &AssetDeltaQueryResponse) -> bool {
+    let owner_ids = response
+        .owners
+        .iter()
+        .map(|owner| owner.character_id)
+        .collect::<HashSet<_>>();
+    let event_ids = response
+        .items
+        .iter()
+        .map(|event| event.event_id.as_str())
+        .collect::<HashSet<_>>();
+    response.limit > 0
+        && response.limit <= MAX_ASSET_PAGE_SIZE
+        && response.total <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && response.offset <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && response.items.len() as u64 <= response.limit
+        && response.items.len() as u64 <= response.total
+        && response
+            .change_types
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>()
+            == ASSET_DELTA_CHANGE_TYPES
+        && event_ids.len() == response.items.len()
+        && owner_ids.len() == response.owners.len()
+        && response.observed_at.is_some() == response.age_seconds.is_some()
+        && response.has_baseline == response.observed_at.is_some()
+        && response
+            .observed_at
+            .as_ref()
+            .is_none_or(|value| asset_text_is_valid(value, 64))
+        && [
+            response.summary.added,
+            response.summary.removed,
+            response.summary.quantity,
+            response.summary.location,
+        ]
+        .into_iter()
+        .all(|value| value <= response.total && value <= JAVASCRIPT_MAX_SAFE_INTEGER)
+        && response.owners.iter().all(|owner| {
+            owner.character_id > 0
+                && owner.character_id <= JAVASCRIPT_MAX_SAFE_INTEGER
+                && asset_text_is_valid(&owner.name, 100)
+        })
+        && response.items.iter().all(|event| {
+            let expected_delta = event.quantity_after.unwrap_or(0) as i128
+                - event.quantity_before.unwrap_or(0) as i128;
+            let location_changed = event.location_id_before != event.location_id_after
+                || event.location_type_before != event.location_type_after
+                || event.location_flag_before != event.location_flag_after;
+            let expected_direction = if event.quantity_delta > 0 {
+                "inbound"
+            } else if event.quantity_delta < 0 {
+                "outbound"
+            } else {
+                "neutral"
+            };
+            event.event_id.len() == 64
+                && event
+                    .event_id
+                    .bytes()
+                    .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+                && event.item_id > 0
+                && event.item_id <= JAVASCRIPT_MAX_SAFE_INTEGER
+                && event.type_id > 0
+                && event.type_id <= JAVASCRIPT_MAX_SAFE_INTEGER
+                && owner_ids.contains(&event.owner_character_id)
+                && asset_text_is_valid(&event.type_name, 220)
+                && asset_text_is_valid(&event.owner_name, 100)
+                && !event.change_types.is_empty()
+                && event.change_types.len() <= 2
+                && event
+                    .change_types
+                    .iter()
+                    .all(|value| ASSET_DELTA_CHANGE_TYPES.contains(&value.as_str()))
+                && event.change_types.iter().collect::<HashSet<_>>().len()
+                    == event.change_types.len()
+                && event.change_types.iter().any(|value| value == "added")
+                    == (event.quantity_before.is_none() && event.quantity_after.is_some())
+                && event.change_types.iter().any(|value| value == "removed")
+                    == (event.quantity_before.is_some() && event.quantity_after.is_none())
+                && event.change_types.iter().any(|value| value == "quantity")
+                    == (event.quantity_before.is_some()
+                        && event.quantity_after.is_some()
+                        && event.quantity_delta != 0)
+                && event.change_types.iter().any(|value| value == "location")
+                    == (event.quantity_before.is_some()
+                        && event.quantity_after.is_some()
+                        && location_changed)
+                && expected_delta == i128::from(event.quantity_delta)
+                && event.quantity_delta.unsigned_abs() <= JAVASCRIPT_MAX_SAFE_INTEGER
+                && event
+                    .quantity_before
+                    .is_none_or(|value| value <= JAVASCRIPT_MAX_SAFE_INTEGER)
+                && event
+                    .quantity_after
+                    .is_none_or(|value| value <= JAVASCRIPT_MAX_SAFE_INTEGER)
+                && event
+                    .location_id_before
+                    .is_none_or(|value| value > 0 && value <= JAVASCRIPT_MAX_SAFE_INTEGER)
+                && event
+                    .location_id_after
+                    .is_none_or(|value| value > 0 && value <= JAVASCRIPT_MAX_SAFE_INTEGER)
+                && event
+                    .location_type_before
+                    .as_ref()
+                    .is_none_or(|value| asset_text_is_valid(value, 40))
+                && event
+                    .location_type_after
+                    .as_ref()
+                    .is_none_or(|value| asset_text_is_valid(value, 40))
+                && event
+                    .location_flag_before
+                    .as_ref()
+                    .is_none_or(|value| asset_text_is_valid(value, 100))
+                && event
+                    .location_flag_after
+                    .as_ref()
+                    .is_none_or(|value| asset_text_is_valid(value, 100))
+                && event.previous_asset_snapshot_id > 0
+                && event.current_asset_snapshot_id > 0
+                && event.current_asset_sync_run_id > 0
+                && asset_text_is_valid(&event.observed_at, 64)
+                && [
+                    "linked",
+                    "ambiguous",
+                    "unmatched",
+                    "unavailable",
+                    "not-applicable",
+                ]
+                .contains(&event.job_correlation.state.as_str())
+                && event.job_correlation.key
+                    == format!("{}:{}", event.owner_character_id, event.type_id)
+                && ["inbound", "outbound", "neutral"]
+                    .contains(&event.job_correlation.direction.as_str())
+                && event.job_correlation.direction == expected_direction
+                && asset_text_is_valid(&event.job_correlation.window_start, 64)
+                && asset_text_is_valid(&event.job_correlation.window_end, 64)
+                && event.job_correlation.candidate_count <= JAVASCRIPT_MAX_SAFE_INTEGER
+                && event.job_correlation.job_ids.len() <= 20
+                && event
+                    .job_correlation
+                    .job_ids
+                    .iter()
+                    .all(|job_id| *job_id > 0 && *job_id <= JAVASCRIPT_MAX_SAFE_INTEGER)
+                && event
+                    .job_correlation
+                    .job_ids
+                    .iter()
+                    .collect::<HashSet<_>>()
+                    .len()
+                    == event.job_correlation.job_ids.len()
+                && match event.job_correlation.state.as_str() {
+                    "linked" => {
+                        event.job_correlation.candidate_count == 1
+                            && event.job_correlation.job_ids.len() == 1
+                    }
+                    "ambiguous" => {
+                        event.job_correlation.candidate_count > 1
+                            && !event.job_correlation.job_ids.is_empty()
+                    }
+                    _ => {
+                        event.job_correlation.candidate_count == 0
+                            && event.job_correlation.job_ids.is_empty()
+                            && !event.job_correlation.location_matched
+                    }
+                }
+        })
+}
+
+fn eve_character_record_is_valid(character: &EveCharacterRecord) -> bool {
+    let package_ids = character
+        .scope_packages
+        .iter()
+        .map(|package| package.id.as_str())
+        .collect::<HashSet<_>>();
+    sso_character_identity_is_valid(&SsoCharacterIdentity {
+        character_id: character.character_id,
+        name: character.name.clone(),
+        scopes: character.scopes.clone(),
+    }) && character
+        .alias
+        .as_deref()
+        .is_none_or(management_label_is_valid)
+        && character.account_group_id != Some(0)
+        && character
+            .account_group_label
+            .as_deref()
+            .is_none_or(management_label_is_valid)
+        && character.account_group_id.is_some() == character.account_group_label.is_some()
+        && matches!(
+            character.credential_state.as_str(),
+            "stored" | "missing" | "unavailable"
+        )
+        && character.scope_packages.len() == EVE_SSO_SCOPE_PACKAGES.len()
+        && package_ids.len() == EVE_SSO_SCOPE_PACKAGES.len()
+        && character
+            .scope_packages
+            .iter()
+            .all(scope_package_status_is_valid)
+}
+
+fn sso_login_status_is_valid(status: &SsoLoginStatus) -> bool {
+    let packages_are_valid = !status.scope_packages.is_empty()
+        && status
+            .scope_packages
+            .iter()
+            .all(|package| EVE_SSO_SCOPE_PACKAGES.contains(&package.as_str()))
+        && status.scope_packages.iter().collect::<HashSet<_>>().len()
+            == status.scope_packages.len();
+    match status.state.as_str() {
+        "idle" => {
+            status.attempt_id.is_none()
+                && status.scope_packages.is_empty()
+                && status.expires_at.is_none()
+                && status.error_code.is_none()
+                && status.character.is_none()
+        }
+        "waiting" | "exchanging" | "cancelled" => {
+            status
+                .attempt_id
+                .as_ref()
+                .is_some_and(|value| !value.is_empty())
+                && packages_are_valid
+                && status
+                    .expires_at
+                    .as_ref()
+                    .is_some_and(|value| !value.is_empty())
+                && status.error_code.is_none()
+                && status.character.is_none()
+        }
+        "connected" => {
+            status
+                .attempt_id
+                .as_ref()
+                .is_some_and(|value| !value.is_empty())
+                && packages_are_valid
+                && status
+                    .expires_at
+                    .as_ref()
+                    .is_some_and(|value| !value.is_empty())
+                && status.error_code.is_none()
+                && status
+                    .character
+                    .as_ref()
+                    .is_some_and(sso_character_identity_is_valid)
+        }
+        "timed-out" => {
+            status
+                .attempt_id
+                .as_ref()
+                .is_some_and(|value| !value.is_empty())
+                && packages_are_valid
+                && status
+                    .expires_at
+                    .as_ref()
+                    .is_some_and(|value| !value.is_empty())
+                && status.error_code.as_deref() == Some("login-timeout")
+                && status.character.is_none()
+        }
+        "failed" => {
+            status
+                .attempt_id
+                .as_ref()
+                .is_some_and(|value| !value.is_empty())
+                && packages_are_valid
+                && status
+                    .expires_at
+                    .as_ref()
+                    .is_some_and(|value| !value.is_empty())
+                && status.error_code.as_ref().is_some_and(|code| {
+                    matches!(
+                        code.as_str(),
+                        "authorization-denied"
+                            | "authorization-failed"
+                            | "callback-invalid"
+                            | "pkce-state-missing"
+                            | "sso-metadata-unavailable"
+                            | "sso-metadata-invalid"
+                            | "token-request-invalid"
+                            | "token-exchange-failed"
+                            | "token-response-invalid"
+                            | "jwks-unavailable"
+                            | "jwks-invalid"
+                            | "jwt-malformed"
+                            | "jwt-header-invalid"
+                            | "jwt-key-not-found"
+                            | "jwt-signature-invalid"
+                            | "jwt-claims-invalid"
+                            | "jwt-expired"
+                            | "jwt-identity-invalid"
+                            | "jwt-scopes-missing"
+                            | "character-save-failed"
+                    )
+                })
+                && status.character.is_none()
+        }
+        _ => false,
+    }
+}
+
+fn authorization_url_is_valid(value: &str) -> bool {
+    let Ok(url) = tauri::Url::parse(value) else {
+        return false;
+    };
+    if url.as_str().len() > 8_192
+        || url.scheme() != "https"
+        || url.host_str() != Some("login.eveonline.com")
+        || url.port_or_known_default() != Some(443)
+        || url.path() != "/v2/oauth/authorize"
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.fragment().is_some()
+        || !value.starts_with(EVE_SSO_AUTHORIZATION_ENDPOINT)
+    {
+        return false;
+    }
+
+    let mut parameters: HashMap<String, String> = HashMap::new();
+    for (key, value) in url.query_pairs() {
+        if parameters
+            .insert(key.into_owned(), value.into_owned())
+            .is_some()
+        {
+            return false;
+        }
+    }
+    let expected_keys: HashSet<&str> = [
+        "response_type",
+        "client_id",
+        "redirect_uri",
+        "scope",
+        "state",
+        "code_challenge",
+        "code_challenge_method",
+    ]
+    .into_iter()
+    .collect();
+    if parameters
+        .keys()
+        .map(String::as_str)
+        .collect::<HashSet<_>>()
+        != expected_keys
+    {
+        return false;
+    }
+    let is_pkce_token = |candidate: &str| {
+        candidate.len() == 43
+            && candidate
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+    };
+    parameters.get("response_type").map(String::as_str) == Some("code")
+        && parameters.get("client_id").map(String::as_str) == Some(EVE_SSO_CLIENT_ID)
+        && parameters.get("redirect_uri").map(String::as_str) == Some(EVE_SSO_REDIRECT_URI)
+        && parameters.get("code_challenge_method").map(String::as_str) == Some("S256")
+        && parameters
+            .get("state")
+            .is_some_and(|candidate| is_pkce_token(candidate))
+        && parameters
+            .get("code_challenge")
+            .is_some_and(|candidate| is_pkce_token(candidate))
+        && parameters.get("scope").is_some_and(|scope| {
+            !scope.is_empty()
+                && scope.split(' ').all(|item| {
+                    item.starts_with("esi-")
+                        && item.ends_with(".v1")
+                        && item.bytes().all(|byte| {
+                            byte.is_ascii_lowercase()
+                                || byte.is_ascii_digit()
+                                || matches!(byte, b'-' | b'_' | b'.')
+                        })
+                })
+        })
+}
+
+fn launch_system_browser(url: &str) -> Result<(), &'static str> {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        Command::new("rundll32.exe")
+            .arg("url.dll,FileProtocolHandler")
+            .arg(url)
+            .creation_flags(WINDOWS_CREATE_NO_WINDOW)
+            .spawn()
+            .map_err(|_| "system-browser-unavailable")?;
+    }
+    #[cfg(target_os = "macos")]
+    Command::new("open")
+        .arg(url)
+        .spawn()
+        .map_err(|_| "system-browser-unavailable")?;
+    #[cfg(all(unix, not(target_os = "macos")))]
+    Command::new("xdg-open")
+        .arg(url)
+        .spawn()
+        .map_err(|_| "system-browser-unavailable")?;
+    Ok(())
+}
+
+fn open_system_browser(url: &str) -> Result<(), &'static str> {
+    if !authorization_url_is_valid(url) {
+        return Err("sso-authorization-url-invalid");
+    }
+    launch_system_browser(url)
+}
+
+fn semantic_release_version_is_valid(value: &str) -> bool {
+    if value.is_empty() || value.len() > 80 || value.contains('+') {
+        return false;
+    }
+    let (core, prerelease) = value
+        .split_once('-')
+        .map_or((value, None), |(core, prerelease)| (core, Some(prerelease)));
+    let core_parts = core.split('.').collect::<Vec<_>>();
+    let numeric_component_is_valid = |part: &str| {
+        !part.is_empty()
+            && part.bytes().all(|byte| byte.is_ascii_digit())
+            && (part == "0" || !part.starts_with('0'))
+    };
+    if core_parts.len() != 3 || !core_parts.into_iter().all(numeric_component_is_valid) {
+        return false;
+    }
+    prerelease.is_none_or(|value| {
+        !value.is_empty()
+            && value.split('.').all(|part| {
+                !part.is_empty()
+                    && part
+                        .bytes()
+                        .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+                    && (!part.bytes().all(|byte| byte.is_ascii_digit())
+                        || numeric_component_is_valid(part))
+            })
+    })
+}
+
+fn release_page_url(version: Option<&str>) -> Result<String, &'static str> {
+    let base = "https://github.com/Savox76/eve-test-indu/releases";
+    let Some(version) = version else {
+        return Ok(base.to_owned());
+    };
+    if !semantic_release_version_is_valid(version) {
+        return Err("release-version-invalid");
+    }
+    Ok(format!("{base}/tag/v{version}"))
+}
+
+fn copy_directory_without_links(source: &Path, destination: &Path) -> Result<(), &'static str> {
+    fs::create_dir(destination).map_err(|_| "program-storage-migration-failed")?;
+    for entry in fs::read_dir(source).map_err(|_| "program-storage-migration-failed")? {
+        let entry = entry.map_err(|_| "program-storage-migration-failed")?;
+        let file_type = entry
+            .file_type()
+            .map_err(|_| "program-storage-migration-failed")?;
+        if file_type.is_symlink() {
+            return Err("program-storage-migration-failed");
+        }
+        let target = destination.join(entry.file_name());
+        if file_type.is_dir() {
+            copy_directory_without_links(&entry.path(), &target)?;
+        } else if file_type.is_file() {
+            copy_file_with_retry(&entry.path(), &target)?;
+        } else {
+            return Err("program-storage-migration-failed");
+        }
+    }
+    Ok(())
+}
+
+fn copy_file_with_retry(source: &Path, destination: &Path) -> Result<(), &'static str> {
+    for attempt in 0..5 {
+        if fs::copy(source, destination).is_ok() {
+            return Ok(());
+        }
+        if attempt < 4 {
+            thread::sleep(Duration::from_millis(100));
+        }
+    }
+    Err("program-storage-migration-failed")
+}
+
+fn copy_essential_program_data(source: &Path, destination: &Path) -> Result<(), &'static str> {
+    fs::create_dir(destination).map_err(|_| "program-storage-migration-failed")?;
+    let database = source.join("foundry.sqlite3");
+    if database.exists() {
+        if database.is_symlink() || !database.is_file() {
+            return Err("program-storage-migration-failed");
+        }
+        copy_file_with_retry(&database, &destination.join("foundry.sqlite3"))?;
+
+        let wal = source.join("foundry.sqlite3-wal");
+        if wal.exists() {
+            if wal.is_symlink() || !wal.is_file() {
+                return Err("program-storage-migration-failed");
+            }
+            copy_file_with_retry(&wal, &destination.join("foundry.sqlite3-wal"))?;
+        }
+    } else if source.join("foundry.sqlite3-wal").exists() {
+        return Err("program-storage-migration-failed");
+    }
+
+    for auxiliary_name in ["backups", "exports"] {
+        let auxiliary_source = source.join(auxiliary_name);
+        if auxiliary_source.is_dir() && !auxiliary_source.is_symlink() {
+            let auxiliary_destination = destination.join(auxiliary_name);
+            if copy_directory_without_links(&auxiliary_source, &auxiliary_destination).is_err() {
+                let _ = fs::remove_dir_all(auxiliary_destination);
+            }
+        }
+    }
+    Ok(())
+}
+
+fn staged_program_data_is_usable(staging: &Path) -> bool {
+    let database = staging.join("foundry.sqlite3");
+    if database.exists() && (database.is_symlink() || !database.is_file()) {
+        return false;
+    }
+    ["backups", "exports"].into_iter().all(|name| {
+        let path = staging.join(name);
+        !path.exists() || (!path.is_symlink() && path.is_dir())
+    })
+}
+
+fn stage_program_data(source: &Path, staging: &Path) -> Result<&'static str, &'static str> {
+    if copy_directory_without_links(source, staging).is_ok()
+        && staged_program_data_is_usable(staging)
+    {
+        return Ok("complete");
+    }
+    let _ = fs::remove_dir_all(staging);
+    copy_essential_program_data(source, staging)?;
+    Ok("essential-recovery")
+}
+
+fn available_program_data_backup(executable_dir: &Path) -> Result<PathBuf, &'static str> {
+    for suffix in 0..100_u8 {
+        let name = if suffix == 0 {
+            PREVIOUS_PROGRAM_DATA_BACKUP.to_owned()
+        } else {
+            format!("{PREVIOUS_PROGRAM_DATA_BACKUP}-{suffix}")
+        };
+        let candidate = executable_dir.join(name);
+        if !candidate.exists() {
+            return Ok(candidate);
+        }
+    }
+    Err("program-storage-migration-failed")
+}
+
+fn migrate_to_program_directory_storage(
+    executable_dir: &Path,
+    previous_storage_root: &Path,
+) -> Result<(), &'static str> {
+    let program_data = executable_dir.join("data");
+    let migration_marker = program_data.join(PROGRAM_STORAGE_MARKER);
+    if migration_marker.is_file() {
+        return Ok(());
+    }
+
+    let previous_data = previous_storage_root.join("data");
+    if previous_data.is_symlink() || program_data.is_symlink() {
+        return Err("program-storage-migration-failed");
+    }
+    if previous_data.is_dir() {
+        let staging = executable_dir.join(format!("data-appdata-migration-{}", std::process::id()));
+        if staging.exists() {
+            fs::remove_dir_all(&staging).map_err(|_| "program-storage-migration-failed")?;
+        }
+        let staged = stage_program_data(&previous_data, &staging);
+        if let Err(error) = staged.and_then(|migration_mode| {
+            fs::write(
+                staging.join(PROGRAM_STORAGE_MARKER),
+                format!("program-directory\nmigration={migration_mode}\n"),
+            )
+            .map_err(|_| "program-storage-migration-failed")
+        }) {
+            let _ = fs::remove_dir_all(&staging);
+            return Err(error);
+        }
+
+        let backup = if program_data.exists() {
+            let backup = match available_program_data_backup(executable_dir) {
+                Ok(value) => value,
+                Err(error) => {
+                    let _ = fs::remove_dir_all(&staging);
+                    return Err(error);
+                }
+            };
+            fs::rename(&program_data, &backup).map_err(|_| {
+                let _ = fs::remove_dir_all(&staging);
+                "program-storage-migration-failed"
+            })?;
+            Some(backup)
+        } else {
+            None
+        };
+
+        if fs::rename(&staging, &program_data).is_err() {
+            if let Some(backup) = backup {
+                let _ = fs::rename(backup, &program_data);
+            }
+            let _ = fs::remove_dir_all(&staging);
+            return Err("program-storage-migration-failed");
+        }
+        return Ok(());
+    }
+
+    fs::create_dir_all(&program_data).map_err(|_| "program-storage-unavailable")?;
+    fs::write(migration_marker, b"program-directory\n")
+        .map_err(|_| "program-storage-unavailable")?;
+    Ok(())
+}
+
+fn select_storage_root(app: &AppHandle, executable_dir: &Path) -> Result<PathBuf, &'static str> {
+    if executable_dir.join(PORTABLE_MARKER).is_file() {
+        return Ok(executable_dir.to_path_buf());
+    }
+    let previous_storage_root = app
+        .path()
+        .app_local_data_dir()
+        .map_err(|_| "program-storage-unavailable")?;
+    migrate_to_program_directory_storage(executable_dir, &previous_storage_root)?;
+    Ok(executable_dir.to_path_buf())
+}
+
+fn sidecar_startup_error_code(value: &serde_json::Value) -> Option<&'static str> {
+    if value.get("event").and_then(serde_json::Value::as_str) != Some("error") {
+        return None;
+    }
+    match value.get("code").and_then(serde_json::Value::as_str) {
+        Some("invalid-startup") => Some("sidecar-startup-rejected"),
+        Some("program-storage-unavailable") => Some("program-storage-unavailable"),
+        Some("database-startup-failed") => Some("database-startup-failed"),
+        Some("loopback-bind-failed") => Some("sidecar-loopback-unavailable"),
+        _ => Some("sidecar-ready-invalid"),
+    }
+}
+
+fn sidecar_startup_error_is_retryable(error_code: &str) -> bool {
+    matches!(
+        error_code,
+        "database-startup-failed"
+            | "sidecar-spawn-failed"
+            | "sidecar-startup-write-failed"
+            | "sidecar-ready-read-failed"
+            | "sidecar-ready-invalid"
+            | "sidecar-loopback-unavailable"
+    )
+}
+
+fn launch_sidecar(
+    app: &AppHandle,
+) -> Result<
+    (
+        SidecarProcess,
+        u32,
+        RuntimeDataSnapshot,
+        RuntimeUpdaterSnapshot,
+        RuntimeAppearanceSnapshot,
+    ),
+    &'static str,
+> {
+    let executable_directory = std::env::current_exe()
+        .map_err(|_| "program-directory-unavailable")?
+        .parent()
+        .ok_or("program-directory-unavailable")?
+        .to_path_buf();
+    let program_directory = select_storage_root(app, &executable_directory)?;
+    let sidecar_path = app
+        .path()
+        .resource_dir()
+        .map_err(|_| "sidecar-resource-unavailable")?
+        .join("foundry-sidecar.exe");
+    if !sidecar_path.is_file() {
+        return Err("sidecar-not-found");
+    }
+
+    let token = session_token()?;
+    let mut command = Command::new(sidecar_path);
+    command
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(WINDOWS_CREATE_NO_WINDOW);
+    }
+
+    let mut child = command.spawn().map_err(|_| "sidecar-spawn-failed")?;
+    let result = (|| {
+        let startup_message = serde_json::json!({
+            "protocol": SIDECAR_PROTOCOL_VERSION,
+            "sessionToken": token.clone(),
+            "programDirectory": program_directory,
+        });
+        let child_stdin = child.stdin.as_mut().ok_or("sidecar-stdin-unavailable")?;
+        serde_json::to_writer(&mut *child_stdin, &startup_message)
+            .map_err(|_| "sidecar-startup-write-failed")?;
+        child_stdin
+            .write_all(b"\n")
+            .and_then(|_| child_stdin.flush())
+            .map_err(|_| "sidecar-startup-write-failed")?;
+
+        let child_stdout = child.stdout.take().ok_or("sidecar-stdout-unavailable")?;
+        let (sender, receiver) = mpsc::sync_channel(1);
+        thread::spawn(move || {
+            let mut readiness_line = String::new();
+            let result = BufReader::new(child_stdout).read_line(&mut readiness_line);
+            let _ = sender.send(result.map(|_| readiness_line));
+        });
+
+        let readiness_line = receiver
+            .recv_timeout(SIDECAR_READY_TIMEOUT)
+            .map_err(|_| "sidecar-ready-timeout")?
+            .map_err(|_| "sidecar-ready-read-failed")?;
+        let readiness_value: serde_json::Value =
+            serde_json::from_str(&readiness_line).map_err(|_| "sidecar-ready-invalid")?;
+        if let Some(error_code) = sidecar_startup_error_code(&readiness_value) {
+            return Err(error_code);
+        }
+        let ready: SidecarReady =
+            serde_json::from_value(readiness_value).map_err(|_| "sidecar-ready-invalid")?;
+        if ready.event != "ready"
+            || ready.protocol != SIDECAR_PROTOCOL_VERSION
+            || ready.host != "127.0.0.1"
+            || ready.port == 0
+            || ready.database.state != "ready"
+            || ready.database.location != DATABASE_LOCATION
+            || !data_snapshot_is_valid(&ready.data)
+            || !updater_snapshot_is_valid(&ready.updater)
+            || !appearance_snapshot_is_valid(&ready.appearance)
+        {
+            return Err("sidecar-ready-invalid");
+        }
+
+        Ok((
+            ready.port,
+            ready.database.schema_version,
+            ready.data,
+            ready.updater,
+            ready.appearance,
+        ))
+    })();
+
+    match result {
+        Ok((port, schema_version, data, updater, appearance)) => Ok((
+            SidecarProcess {
+                child,
+                session_token: token,
+                port,
+            },
+            schema_version,
+            data,
+            updater,
+            appearance,
+        )),
+        Err(error_code) => {
+            terminate_child(&mut child);
+            Err(error_code)
+        }
+    }
+}
+
+fn start_sidecar(app: AppHandle) {
+    let state = app.state::<RuntimeState>();
+    if state.shutting_down.load(Ordering::Acquire) {
+        return;
+    }
+
+    let mut last_error = "sidecar-startup-failed";
+    for attempt in 0..SIDECAR_RESTART_RETRY_COUNT {
+        match launch_sidecar(&app) {
+            Ok((mut process, schema_version, data, updater, appearance)) => {
+                if state.shutting_down.load(Ordering::Acquire) {
+                    terminate_child(&mut process.child);
+                    return;
+                }
+                *state
+                    .sidecar
+                    .lock()
+                    .unwrap_or_else(|error| error.into_inner()) = Some(process);
+                state.set_snapshot(RuntimeSnapshot::ready(
+                    schema_version,
+                    data,
+                    updater,
+                    appearance,
+                ));
+                return;
+            }
+            Err(error_code) => last_error = error_code,
+        }
+
+        if attempt + 1 < SIDECAR_RESTART_RETRY_COUNT
+            && sidecar_startup_error_is_retryable(last_error)
+        {
+            thread::sleep(SIDECAR_RESTART_RETRY_DELAY);
+            if state.shutting_down.load(Ordering::Acquire) {
+                return;
+            }
+        } else {
+            break;
+        }
+    }
+    state.set_snapshot(RuntimeSnapshot::failed(last_error));
+}
+
+fn supervise_sidecar(app: AppHandle) {
+    start_sidecar(app.clone());
+    let state = app.state::<RuntimeState>();
+
+    loop {
+        thread::sleep(SIDECAR_SUPERVISOR_INTERVAL);
+        if state.shutting_down.load(Ordering::Acquire) {
+            return;
+        }
+
+        let exited = {
+            let mut sidecar = state
+                .sidecar
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            let exited = sidecar
+                .as_mut()
+                .is_some_and(|process| matches!(process.child.try_wait(), Ok(Some(_)) | Err(_)));
+            if exited {
+                sidecar.take();
+            }
+            exited
+        };
+        if !exited {
+            continue;
+        }
+
+        state.set_snapshot(RuntimeSnapshot::failed("sidecar-exited"));
+        thread::sleep(SIDECAR_RESTART_RETRY_DELAY);
+        if state.shutting_down.load(Ordering::Acquire) {
+            return;
+        }
+        state.set_snapshot(RuntimeSnapshot::starting());
+        start_sidecar(app.clone());
+    }
+}
+
+fn stop_sidecar(app: &AppHandle) {
+    let state = app.state::<RuntimeState>();
+    if state.shutting_down.swap(true, Ordering::AcqRel) {
+        return;
+    }
+
+    let mut process = state
+        .sidecar
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .take();
+    if let Some(process) = process.as_mut() {
+        if let Some(mut stdin) = process.child.stdin.take() {
+            let _ = stdin.write_all(b"{\"command\":\"shutdown\"}\n");
+            let _ = stdin.flush();
+        }
+
+        let deadline = Instant::now() + SIDECAR_SHUTDOWN_TIMEOUT;
+        while Instant::now() < deadline {
+            match process.child.try_wait() {
+                Ok(Some(_)) => return,
+                Ok(None) => thread::sleep(Duration::from_millis(50)),
+                Err(_) => break,
+            }
+        }
+        terminate_child(&mut process.child);
+    }
+}
+
+fn refresh_sidecar_status(state: &RuntimeState) {
+    if state.shutting_down.load(Ordering::Acquire) {
+        return;
+    }
+    let exited = state
+        .sidecar
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .as_mut()
+        .is_some_and(|process| matches!(process.child.try_wait(), Ok(Some(_)) | Err(_)));
+    if exited {
+        state.set_snapshot(RuntimeSnapshot::failed("sidecar-exited"));
+    }
+}
+
+fn sidecar_json_request(
+    process: &SidecarProcess,
+    method: &str,
+    path: &str,
+    body: &str,
+) -> Result<String, &'static str> {
+    sidecar_json_request_with_timeout(process, method, path, body, SIDECAR_REQUEST_TIMEOUT)
+}
+
+fn sidecar_json_request_with_timeout(
+    process: &SidecarProcess,
+    method: &str,
+    path: &str,
+    body: &str,
+    timeout: Duration,
+) -> Result<String, &'static str> {
+    let address = SocketAddrV4::new(Ipv4Addr::LOCALHOST, process.port);
+    let mut stream = TcpStream::connect_timeout(&address.into(), timeout)
+        .map_err(|_| "sidecar-request-failed")?;
+    stream
+        .set_read_timeout(Some(timeout))
+        .and_then(|_| stream.set_write_timeout(Some(timeout)))
+        .map_err(|_| "sidecar-request-failed")?;
+
+    let request = format!(
+        "{method} {path} HTTP/1.1\r\nHost: 127.0.0.1\r\nAuthorization: Bearer {}\r\nAccept: application/json\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+        process.session_token,
+        body.len(),
+    );
+    stream
+        .write_all(request.as_bytes())
+        .and_then(|_| stream.flush())
+        .map_err(|_| "sidecar-request-failed")?;
+
+    let mut response = String::new();
+    stream
+        .take(SIDECAR_MAX_RESPONSE_BYTES + 1)
+        .read_to_string(&mut response)
+        .map_err(|_| "sidecar-response-invalid")?;
+    if response.len() as u64 > SIDECAR_MAX_RESPONSE_BYTES {
+        return Err("sidecar-response-invalid");
+    }
+    let (headers, response_body) = response
+        .split_once("\r\n\r\n")
+        .ok_or("sidecar-response-invalid")?;
+    let status_line = headers.lines().next().ok_or("sidecar-response-invalid")?;
+    if status_line != "HTTP/1.1 200 OK" && status_line != "HTTP/1.0 200 OK" {
+        return Err("sidecar-request-rejected");
+    }
+    Ok(response_body.to_owned())
+}
+
+fn asset_sync_response_is_valid(response: &AssetSyncResponse) -> bool {
+    response
+        .completed
+        .checked_add(response.partial)
+        .and_then(|value| value.checked_add(response.failed))
+        == Some(response.characters.len() as u64)
+        && response
+            .characters
+            .iter()
+            .try_fold(0_u64, |total, character| {
+                total.checked_add(character.assets)
+            })
+            == Some(response.assets)
+        && response.characters.iter().all(|character| {
+            character.character_id > 0
+                && character.character_id <= JAVASCRIPT_MAX_SAFE_INTEGER
+                && matches!(
+                    character.status.as_str(),
+                    "completed" | "partial" | "failed"
+                )
+                && ((character.status == "completed" && character.error_code.is_none())
+                    || (character.status == "partial"
+                        && character
+                            .error_code
+                            .as_ref()
+                            .is_some_and(|code| asset_text_is_valid(code, 120)))
+                    || (character.status == "failed"
+                        && character.pages == 0
+                        && character.assets == 0
+                        && character.resolved == 0
+                        && character.restricted == 0
+                        && character.unresolved == 0
+                        && character.cycles == 0
+                        && character
+                            .error_code
+                            .as_ref()
+                            .is_some_and(|code| asset_text_is_valid(code, 120))))
+        })
+}
+
+#[tauri::command]
+fn set_update_channel(channel: String, state: State<'_, RuntimeState>) -> Result<String, String> {
+    if !matches!(channel.as_str(), "stable" | "beta" | "preview") {
+        return Err("unsupported-update-channel".to_owned());
+    }
+    refresh_sidecar_status(&state);
+    let body = serde_json::json!({ "channel": channel.clone() }).to_string();
+    let response = {
+        let sidecar = state
+            .sidecar
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let process = sidecar
+            .as_ref()
+            .ok_or_else(|| "sidecar-unavailable".to_owned())?;
+        sidecar_json_request(process, "PUT", "/settings/update", &body).map_err(str::to_owned)?
+    };
+    let updater: RuntimeUpdaterSnapshot =
+        serde_json::from_str(&response).map_err(|_| "sidecar-response-invalid".to_owned())?;
+    if !updater_snapshot_is_valid(&updater) || updater.channel != channel {
+        return Err("sidecar-response-invalid".to_owned());
+    }
+
+    state
+        .snapshot
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .updater = updater.clone();
+    serde_json::to_string(&updater).map_err(|_| "status-serialization-failed".to_owned())
+}
+
+#[tauri::command]
+fn set_font_scale(font_scale: String, state: State<'_, RuntimeState>) -> Result<String, String> {
+    if !FONT_SCALES.contains(&font_scale.as_str()) {
+        return Err("unsupported-font-scale".to_owned());
+    }
+    refresh_sidecar_status(&state);
+    let body = serde_json::json!({ "fontScale": font_scale.clone() }).to_string();
+    let response = {
+        let sidecar = state
+            .sidecar
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let process = sidecar
+            .as_ref()
+            .ok_or_else(|| "sidecar-unavailable".to_owned())?;
+        sidecar_json_request(process, "PUT", "/settings/appearance", &body)
+            .map_err(str::to_owned)?
+    };
+    let appearance: RuntimeAppearanceSnapshot =
+        serde_json::from_str(&response).map_err(|_| "sidecar-response-invalid".to_owned())?;
+    if !appearance_snapshot_is_valid(&appearance) || appearance.font_scale != font_scale {
+        return Err("sidecar-response-invalid".to_owned());
+    }
+    state
+        .snapshot
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .appearance = appearance.clone();
+    serde_json::to_string(&appearance).map_err(|_| "status-serialization-failed".to_owned())
+}
+
+#[tauri::command]
+fn list_eve_characters(state: State<'_, RuntimeState>) -> Result<String, String> {
+    refresh_sidecar_status(&state);
+    let response = {
+        let sidecar = state
+            .sidecar
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let process = sidecar
+            .as_ref()
+            .ok_or_else(|| "sidecar-unavailable".to_owned())?;
+        sidecar_json_request(process, "GET", "/characters", "").map_err(str::to_owned)?
+    };
+    let characters: EveCharactersResponse =
+        serde_json::from_str(&response).map_err(|_| "sidecar-response-invalid".to_owned())?;
+    if characters
+        .characters
+        .iter()
+        .any(|character| !eve_character_record_is_valid(character))
+        || characters
+            .characters
+            .iter()
+            .map(|character| character.character_id)
+            .collect::<HashSet<_>>()
+            .len()
+            != characters.characters.len()
+    {
+        return Err("sidecar-response-invalid".to_owned());
+    }
+    serde_json::to_string(&characters).map_err(|_| "status-serialization-failed".to_owned())
+}
+
+#[tauri::command]
+fn list_account_groups(state: State<'_, RuntimeState>) -> Result<String, String> {
+    refresh_sidecar_status(&state);
+    let response = {
+        let sidecar = state
+            .sidecar
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let process = sidecar
+            .as_ref()
+            .ok_or_else(|| "sidecar-unavailable".to_owned())?;
+        sidecar_json_request(process, "GET", "/account-groups", "").map_err(str::to_owned)?
+    };
+    let groups: AccountGroupsResponse =
+        serde_json::from_str(&response).map_err(|_| "sidecar-response-invalid".to_owned())?;
+    if groups
+        .groups
+        .iter()
+        .any(|group| !account_group_record_is_valid(group))
+        || groups
+            .groups
+            .iter()
+            .map(|group| group.id)
+            .collect::<HashSet<_>>()
+            .len()
+            != groups.groups.len()
+    {
+        return Err("sidecar-response-invalid".to_owned());
+    }
+    serde_json::to_string(&groups).map_err(|_| "status-serialization-failed".to_owned())
+}
+
+#[tauri::command]
+fn sync_assets(state: State<'_, RuntimeState>) -> Result<String, String> {
+    refresh_sidecar_status(&state);
+    let response = {
+        let sidecar = state
+            .sidecar
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let process = sidecar
+            .as_ref()
+            .ok_or_else(|| "sidecar-unavailable".to_owned())?;
+        sidecar_json_request_with_timeout(process, "POST", "/assets/sync", "{}", ASSET_SYNC_TIMEOUT)
+            .map_err(str::to_owned)?
+    };
+    let result: AssetSyncResponse =
+        serde_json::from_str(&response).map_err(|_| "sidecar-response-invalid".to_owned())?;
+    if !asset_sync_response_is_valid(&result) {
+        return Err("sidecar-response-invalid".to_owned());
+    }
+    serde_json::to_string(&result).map_err(|_| "status-serialization-failed".to_owned())
+}
+
+#[tauri::command]
+fn sync_blueprints(state: State<'_, RuntimeState>) -> Result<String, String> {
+    refresh_sidecar_status(&state);
+    let response = {
+        let sidecar = state
+            .sidecar
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let process = sidecar
+            .as_ref()
+            .ok_or_else(|| "sidecar-unavailable".to_owned())?;
+        sidecar_json_request_with_timeout(
+            process,
+            "POST",
+            "/blueprints/sync",
+            "{}",
+            ASSET_SYNC_TIMEOUT,
+        )
+        .map_err(str::to_owned)?
+    };
+    let result: BlueprintSyncResponse =
+        serde_json::from_str(&response).map_err(|_| "sidecar-response-invalid".to_owned())?;
+    if !blueprint_sync_response_is_valid(&result) {
+        return Err("sidecar-response-invalid".to_owned());
+    }
+    serde_json::to_string(&result).map_err(|_| "status-serialization-failed".to_owned())
+}
+
+#[tauri::command]
+fn sync_industry_jobs(state: State<'_, RuntimeState>) -> Result<String, String> {
+    refresh_sidecar_status(&state);
+    let response = {
+        let sidecar = state
+            .sidecar
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let process = sidecar
+            .as_ref()
+            .ok_or_else(|| "sidecar-unavailable".to_owned())?;
+        sidecar_json_request_with_timeout(
+            process,
+            "POST",
+            "/industry-jobs/sync",
+            "{}",
+            ASSET_SYNC_TIMEOUT,
+        )
+        .map_err(str::to_owned)?
+    };
+    let result: IndustryJobSyncResponse =
+        serde_json::from_str(&response).map_err(|_| "sidecar-response-invalid".to_owned())?;
+    if !industry_job_sync_response_is_valid(&result) {
+        return Err("sidecar-response-invalid".to_owned());
+    }
+    serde_json::to_string(&result).map_err(|_| "status-serialization-failed".to_owned())
+}
+
+#[tauri::command]
+fn sync_industry_facilities(state: State<'_, RuntimeState>) -> Result<String, String> {
+    refresh_sidecar_status(&state);
+    let response = {
+        let sidecar = state
+            .sidecar
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let process = sidecar
+            .as_ref()
+            .ok_or_else(|| "sidecar-unavailable".to_owned())?;
+        sidecar_json_request_with_timeout(
+            process,
+            "POST",
+            "/industry-facilities/sync",
+            "{}",
+            ASSET_SYNC_TIMEOUT,
+        )
+        .map_err(str::to_owned)?
+    };
+    let result: IndustryFacilitySyncResponse =
+        serde_json::from_str(&response).map_err(|_| "sidecar-response-invalid".to_owned())?;
+    if !industry_facility_sync_response_is_valid(&result) {
+        return Err("sidecar-response-invalid".to_owned());
+    }
+    serde_json::to_string(&result).map_err(|_| "status-serialization-failed".to_owned())
+}
+
+#[tauri::command]
+fn sync_character_skills(state: State<'_, RuntimeState>) -> Result<String, String> {
+    refresh_sidecar_status(&state);
+    let response = {
+        let sidecar = state
+            .sidecar
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let process = sidecar
+            .as_ref()
+            .ok_or_else(|| "sidecar-unavailable".to_owned())?;
+        sidecar_json_request_with_timeout(process, "POST", "/skills/sync", "{}", ASSET_SYNC_TIMEOUT)
+            .map_err(str::to_owned)?
+    };
+    let result: CharacterSkillSyncResponse =
+        serde_json::from_str(&response).map_err(|_| "sidecar-response-invalid".to_owned())?;
+    if !character_skill_sync_response_is_valid(&result) {
+        return Err("sidecar-response-invalid".to_owned());
+    }
+    serde_json::to_string(&result).map_err(|_| "status-serialization-failed".to_owned())
+}
+
+#[tauri::command]
+fn query_blueprints(
+    search: String,
+    owner_character_id: Option<u64>,
+    kind: Option<String>,
+    offset: u64,
+    limit: u64,
+    sort_by: String,
+    sort_direction: String,
+    state: State<'_, RuntimeState>,
+) -> Result<String, String> {
+    if search.chars().count() > MAX_ASSET_SEARCH_CHARACTERS
+        || search.trim() != search
+        || owner_character_id == Some(0)
+        || owner_character_id.is_some_and(|value| value > JAVASCRIPT_MAX_SAFE_INTEGER)
+        || kind
+            .as_deref()
+            .is_some_and(|value| !matches!(value, "original" | "copy"))
+        || limit == 0
+        || limit > MAX_ASSET_PAGE_SIZE
+        || offset > JAVASCRIPT_MAX_SAFE_INTEGER
+        || !BLUEPRINT_SORT_FIELDS.contains(&sort_by.as_str())
+        || !SORT_DIRECTIONS.contains(&sort_direction.as_str())
+    {
+        return Err("blueprint-query-invalid".to_owned());
+    }
+    refresh_sidecar_status(&state);
+    let body = serde_json::json!({
+        "search": search, "ownerCharacterId": owner_character_id, "kind": kind,
+        "offset": offset, "limit": limit, "sortBy": sort_by, "sortDirection": sort_direction,
+    })
+    .to_string();
+    let response = {
+        let sidecar = state
+            .sidecar
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let process = sidecar
+            .as_ref()
+            .ok_or_else(|| "sidecar-unavailable".to_owned())?;
+        sidecar_json_request(process, "POST", "/blueprints/query", &body).map_err(str::to_owned)?
+    };
+    let page: BlueprintQueryResponse =
+        serde_json::from_str(&response).map_err(|_| "sidecar-response-invalid".to_owned())?;
+    if !blueprint_query_response_is_valid(&page) || page.offset != offset || page.limit != limit {
+        return Err("sidecar-response-invalid".to_owned());
+    }
+    serde_json::to_string(&page).map_err(|_| "status-serialization-failed".to_owned())
+}
+
+#[tauri::command]
+fn query_industry_jobs(
+    search: String,
+    owner_character_id: Option<u64>,
+    status: Option<String>,
+    activity_id: Option<u8>,
+    correlation: Option<String>,
+    offset: u64,
+    limit: u64,
+    sort_by: String,
+    sort_direction: String,
+    state: State<'_, RuntimeState>,
+) -> Result<String, String> {
+    if search.chars().count() > MAX_ASSET_SEARCH_CHARACTERS
+        || search.trim() != search
+        || owner_character_id == Some(0)
+        || owner_character_id.is_some_and(|value| value > JAVASCRIPT_MAX_SAFE_INTEGER)
+        || status
+            .as_deref()
+            .is_some_and(|value| !INDUSTRY_JOB_STATUSES.contains(&value))
+        || activity_id.is_some_and(|value| !INDUSTRY_JOB_ACTIVITY_IDS.contains(&value))
+        || correlation
+            .as_deref()
+            .is_some_and(|value| !INDUSTRY_JOB_CORRELATIONS.contains(&value))
+        || limit == 0
+        || limit > MAX_ASSET_PAGE_SIZE
+        || offset > JAVASCRIPT_MAX_SAFE_INTEGER
+        || !INDUSTRY_JOB_SORT_FIELDS.contains(&sort_by.as_str())
+        || !SORT_DIRECTIONS.contains(&sort_direction.as_str())
+    {
+        return Err("industry-job-query-invalid".to_owned());
+    }
+    refresh_sidecar_status(&state);
+    let body = serde_json::json!({
+        "search": search,
+        "ownerCharacterId": owner_character_id,
+        "status": status,
+        "activityId": activity_id,
+        "correlation": correlation,
+        "offset": offset,
+        "limit": limit,
+        "sortBy": sort_by,
+        "sortDirection": sort_direction,
+    })
+    .to_string();
+    let response = {
+        let sidecar = state
+            .sidecar
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let process = sidecar
+            .as_ref()
+            .ok_or_else(|| "sidecar-unavailable".to_owned())?;
+        sidecar_json_request(process, "POST", "/industry-jobs/query", &body)
+            .map_err(str::to_owned)?
+    };
+    let page: IndustryJobQueryResponse =
+        serde_json::from_str(&response).map_err(|_| "sidecar-response-invalid".to_owned())?;
+    if !industry_job_query_response_is_valid(&page) || page.offset != offset || page.limit != limit
+    {
+        return Err("sidecar-response-invalid".to_owned());
+    }
+    serde_json::to_string(&page).map_err(|_| "status-serialization-failed".to_owned())
+}
+
+#[tauri::command]
+fn query_industry_facilities(
+    search: String,
+    kind: Option<String>,
+    access: Option<String>,
+    security_class: Option<String>,
+    activity: String,
+    used_only: bool,
+    offset: u64,
+    limit: u64,
+    sort_by: String,
+    sort_direction: String,
+    state: State<'_, RuntimeState>,
+) -> Result<String, String> {
+    if search.chars().count() > MAX_ASSET_SEARCH_CHARACTERS
+        || search.trim() != search
+        || kind
+            .as_deref()
+            .is_some_and(|value| !INDUSTRY_FACILITY_KINDS.contains(&value))
+        || access
+            .as_deref()
+            .is_some_and(|value| !INDUSTRY_FACILITY_ACCESS_STATES.contains(&value))
+        || security_class
+            .as_deref()
+            .is_some_and(|value| !INDUSTRY_SECURITY_CLASSES.contains(&value))
+        || !INDUSTRY_COST_ACTIVITIES.contains(&activity.as_str())
+        || limit == 0
+        || limit > MAX_ASSET_PAGE_SIZE
+        || offset > JAVASCRIPT_MAX_SAFE_INTEGER
+        || !INDUSTRY_FACILITY_SORT_FIELDS.contains(&sort_by.as_str())
+        || !SORT_DIRECTIONS.contains(&sort_direction.as_str())
+    {
+        return Err("industry-facility-query-invalid".to_owned());
+    }
+    refresh_sidecar_status(&state);
+    let body = serde_json::json!({
+        "search": search,
+        "kind": kind,
+        "access": access,
+        "securityClass": security_class,
+        "activity": activity,
+        "usedOnly": used_only,
+        "offset": offset,
+        "limit": limit,
+        "sortBy": sort_by,
+        "sortDirection": sort_direction,
+    })
+    .to_string();
+    let response = {
+        let sidecar = state
+            .sidecar
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let process = sidecar
+            .as_ref()
+            .ok_or_else(|| "sidecar-unavailable".to_owned())?;
+        sidecar_json_request(process, "POST", "/industry-facilities/query", &body)
+            .map_err(str::to_owned)?
+    };
+    let page: IndustryFacilityQueryResponse =
+        serde_json::from_str(&response).map_err(|_| "sidecar-response-invalid".to_owned())?;
+    if !industry_facility_query_response_is_valid(&page)
+        || page.offset != offset
+        || page.limit != limit
+        || page.activity != activity
+    {
+        return Err("sidecar-response-invalid".to_owned());
+    }
+    serde_json::to_string(&page).map_err(|_| "status-serialization-failed".to_owned())
+}
+
+#[tauri::command]
+fn query_industry_slots(
+    owner_character_id: Option<u64>,
+    offset: u64,
+    limit: u64,
+    state: State<'_, RuntimeState>,
+) -> Result<String, String> {
+    if owner_character_id == Some(0)
+        || owner_character_id.is_some_and(|value| value > JAVASCRIPT_MAX_SAFE_INTEGER)
+        || limit == 0
+        || limit > MAX_ASSET_PAGE_SIZE
+        || offset > JAVASCRIPT_MAX_SAFE_INTEGER
     {
         return Err("industry-slot-query-invalid".to_owned());
     }
