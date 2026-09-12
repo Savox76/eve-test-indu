@@ -24,6 +24,30 @@ Keine.
 
 Keine.
 
+## 0.0.5-preview.21 – 12. September 2026
+
+### Neu hinzugefügt
+
+- Der installierte Windows-Pakettest liest den PE-Header der Hauptanwendung und verlangt ausdrücklich das Windows-GUI-Subsystem.
+
+### Geändert
+
+- Die Release-EXE wird als reine Windows-GUI-Anwendung gebaut; beim Start erscheint neben der grafischen Oberfläche kein Konsolenfenster mehr.
+- Die sichtbare Versionsnummer lautet `v0.0.5-preview.21`.
+
+### Behobene Fehler
+
+- Das Schließen des bisher sichtbaren Konsolenfensters konnte die Hauptanwendung hart beenden, während die grafische Übersicht noch geöffnet war. Dadurch wurde der kontrollierte Sidecar-Shutdown umgangen und ein verwaister Synchronisationslauf konnte beim nächsten Start sichtbar werden.
+
+### Bekannte Einschränkungen
+
+- Die Preview ist noch nicht produktiv code-signiert; SmartScreen kann deshalb weiterhin vor einem unbekannten Herausgeber warnen.
+- Paket 22 wartet nach Veröffentlichung des korrigierten Abnahmekandidaten auf das vollständige Windows-A0-Protokoll.
+
+### Update und Datenbankmigration
+
+- Das Datenbankschema bleibt bei Version 9. Charaktere, Einstellungen, Pläne und vollständige Snapshots werden unverändert weiterverwendet.
+
 ## 0.0.5-preview.20 – 12. September 2026
 
 ### Neu hinzugefügt
