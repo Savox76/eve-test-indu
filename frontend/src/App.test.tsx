@@ -375,8 +375,10 @@ describe("New Eden Foundry design preview", () => {
     fireEvent.click(screen.getByRole("button", { name: "Produktion" }));
 
     await waitFor(() => expect(screen.getAllByRole("option", { name: "Builder" }).length).toBeGreaterThan(0), { timeout: 3_000 });
-    const owners = screen.getAllByLabelText("Ausführender Charakter");
-    expect(owners.some((owner) => (owner as HTMLSelectElement).value === String(connectedCharacter.characterId))).toBe(true);
+    await waitFor(() => {
+      const owners = screen.getAllByLabelText("Ausführender Charakter");
+      expect(owners.some((owner) => (owner as HTMLSelectElement).value === String(connectedCharacter.characterId))).toBe(true);
+    });
   });
 
   it("marks every displayed value as synthetic preview data", () => {
