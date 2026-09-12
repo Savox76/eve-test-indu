@@ -169,6 +169,9 @@ def seed_previous_release_database(program_directory: Path) -> Path:
                 VALUES (5, 'local_update_preferences');
             INSERT INTO app_metadata (key, value)
                 VALUES ('smoke-marker', 'portable-smoke-preserved');
+            INSERT INTO sync_runs (source, status, started_at)
+                VALUES ('frozen-interrupted-recovery-smoke', 'running',
+                        '2026-09-12T12:00:00Z');
             PRAGMA user_version = 5;
             """
         )
@@ -461,14 +464,23 @@ def main() -> int:
                 backup_record = connection.execute(
                     "SELECT filename, sha256 FROM migration_backups"
                 ).fetchone()
+                recovered_run = connection.execute(
+                    "SELECT status, completed_at, error_code FROM sync_runs "
+                    "WHERE source='frozen-interrupted-recovery-smoke'"
+                ).fetchone()
             if (
                 marker != SYNTHETIC_MIGRATION_MARKER
                 or update_channel != "preview"
                 or font_scale != "very-large"
                 or "alias" not in character_columns
                 or backup_record[0] != backup_name
+                or recovered_run[0] != "cancelled"
+                or recovered_run[1] is None
+                or recovered_run[2] != "sidecar-interrupted"
             ):
-                raise RuntimeError("The packaged migration did not preserve its source data.")
+                raise RuntimeError(
+                    "The packaged migration or interrupted-sync recovery is invalid."
+                )
 
             backup_path = program_directory / "data" / "backups" / backup_name
             if not backup_path.is_file():
@@ -507,7 +519,7 @@ def main() -> int:
     print(
         "Frozen sidecar handshake, signed updater skeleton, PKCE start/cancel, character "
         "roster, industry-job and production endpoints, ESI policy, font scale, migration backup, database "
-        "location and shutdown verified."
+        "location, interrupted-sync recovery and shutdown verified."
     )
     return 0
 

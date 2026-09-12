@@ -1,6 +1,6 @@
 [package]
 name = "new-eden-foundry"
-version = "0.0.5-preview.19"
+version = "0.0.5-preview.20"
 description = "Local-first EVE Online industry planning desktop application"
 authors = ["New Eden Foundry contributors"]
 edition = "2021"

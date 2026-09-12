@@ -180,6 +180,63 @@ with closing(connect_database(database)) as connection:
     throw 'The program-folder migration marker was not created.'
   }
 
+  $env:FOUNDRY_SMOKE_INSTALLED_DATABASE = $databasePath
+  try {
+    @'
+import os
+import sqlite3
+
+with sqlite3.connect(os.environ["FOUNDRY_SMOKE_INSTALLED_DATABASE"]) as connection:
+    connection.execute(
+        "INSERT INTO sync_runs (source, status, started_at) VALUES (?, 'running', ?)",
+        ("installed-interrupted-recovery-smoke", "2026-09-12T12:00:00Z"),
+    )
+'@ | python -
+    if ($LASTEXITCODE -ne 0) {
+      throw 'Could not seed an interrupted synchronization run.'
+    }
+  }
+  finally {
+    Remove-Item Env:FOUNDRY_SMOKE_INSTALLED_DATABASE -ErrorAction SilentlyContinue
+  }
+
+  Stop-Process -Id $firstSidecar.Id -Force
+  $replacementSidecar = Wait-InstalledApplicationReady `
+    -Application $application `
+    -IgnoredSidecarIds @($existingSidecarIds + $firstSidecar.Id) `
+    -DatabasePath $databasePath `
+    -MigrationMarker $migrationMarker
+  if ($replacementSidecar.Id -eq $firstSidecar.Id) {
+    throw 'The application did not replace the terminated sidecar process.'
+  }
+
+  $env:FOUNDRY_SMOKE_INSTALLED_DATABASE = $databasePath
+  try {
+    @'
+import os
+import sqlite3
+
+with sqlite3.connect(os.environ["FOUNDRY_SMOKE_INSTALLED_DATABASE"]) as connection:
+    recovered = connection.execute(
+        "SELECT status, completed_at, error_code FROM sync_runs WHERE source=?",
+        ("installed-interrupted-recovery-smoke",),
+    ).fetchone()
+    integrity = connection.execute("PRAGMA quick_check").fetchone()
+if recovered is None or recovered[0] != "cancelled" or recovered[1] is None:
+    raise RuntimeError(f"Interrupted synchronization was not recovered: {recovered!r}")
+if recovered[2] != "sidecar-interrupted":
+    raise RuntimeError(f"Interrupted synchronization has the wrong reason: {recovered!r}")
+if integrity != ("ok",):
+    raise RuntimeError(f"Database integrity failed after sidecar recovery: {integrity!r}")
+'@ | python -
+    if ($LASTEXITCODE -ne 0) {
+      throw 'Could not verify sidecar crash recovery.'
+    }
+  }
+  finally {
+    Remove-Item Env:FOUNDRY_SMOKE_INSTALLED_DATABASE -ErrorAction SilentlyContinue
+  }
+
   Close-InstalledApplicationCleanly `
     -Application $application `
     -IgnoredSidecarIds $existingSidecarIds
@@ -222,7 +279,7 @@ if marker != ("preserved",):
     -IgnoredSidecarIds $existingSidecarIds
   $secondApplication = $null
 
-  Write-Output 'Installed application migrated data, closed cleanly and restarted with a fresh sidecar.'
+  Write-Output 'Installed application recovered a terminated sidecar, cancelled its interrupted sync, preserved data and restarted cleanly.'
 }
 finally {
   if ($application -and -not $application.HasExited) {

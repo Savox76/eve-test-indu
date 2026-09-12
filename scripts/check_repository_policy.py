@@ -454,6 +454,22 @@ def check_backend_foundation(errors: list[str]) -> None:
             if marker not in recovery_content:
                 errors.append(f"Migration recovery is missing required marker: {marker}")
 
+    startup_state_source = (
+        ROOT / "backend" / "new_eden_foundry_backend" / "startup_state.py"
+    )
+    if startup_state_source.is_file():
+        startup_state_content = startup_state_source.read_text(encoding="utf-8")
+        for marker in (
+            "recover_interrupted_sync_runs",
+            "SET status='cancelled'",
+            'INTERRUPTED_SYNC_ERROR_CODE: Final = "sidecar-interrupted"',
+            'connection.execute("BEGIN IMMEDIATE")',
+        ):
+            if marker not in startup_state_content:
+                errors.append(
+                    f"Interrupted-sync recovery is missing required marker: {marker}"
+                )
+
     sidecar_source = ROOT / "backend" / "new_eden_foundry_backend" / "sidecar.py"
     if sidecar_source.is_file():
         sidecar_content = sidecar_source.read_text(encoding="utf-8")
@@ -635,6 +651,8 @@ def check_backend_foundation(errors: list[str]) -> None:
             "cancel_eve_sso",
             "EVE_SSO_AUTHORIZATION_ENDPOINT",
             "SIDECAR_REQUEST_TIMEOUT",
+            "SIDECAR_SUPERVISOR_INTERVAL",
+            "supervise_sidecar",
         ):
             if marker not in tauri_content:
                 errors.append(f"Tauri runtime is missing required marker: {marker}")
@@ -645,6 +663,20 @@ def check_backend_foundation(errors: list[str]) -> None:
         for marker in ("foundry-sidecar.exe", "foundry-sidecar-lib"):
             if marker not in portable_content:
                 errors.append(f"The portable package must contain {marker}.")
+
+    installed_smoke = ROOT / "scripts" / "smoke_installed_application.ps1"
+    if installed_smoke.is_file():
+        installed_smoke_content = installed_smoke.read_text(encoding="utf-8")
+        for marker in (
+            "installed-interrupted-recovery-smoke",
+            "Stop-Process -Id $firstSidecar.Id -Force",
+            "sidecar-interrupted",
+            "PRAGMA quick_check",
+        ):
+            if marker not in installed_smoke_content:
+                errors.append(
+                    f"Installed sidecar recovery smoke is missing required marker: {marker}"
+                )
 
     defender_scan = ROOT / "scripts" / "scan_windows_packages.ps1"
     if not defender_scan.is_file():

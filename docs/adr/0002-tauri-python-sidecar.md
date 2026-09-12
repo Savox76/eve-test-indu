@@ -19,7 +19,7 @@ Die Desktop-Schale wird mit Tauri 2 und Rust gebaut, die Oberfläche mit React/T
 - Der Sidecar meldet seine Bereitschaft und den gewählten Port maschinenlesbar; eine fehlerhafte oder verspätete Bereitschaft bricht kontrolliert ab.
 - Jede lokale HTTP-Anfrage einschließlich `/health` wird authentifiziert. CORS ist nicht als Sicherheitsgrenze anzusehen.
 - Die WebView erhält nur die minimal nötigen Tauri-Capabilities. Beliebige Shell-Ausführung ist ausgeschlossen.
-- Beim Beenden der App wird der Kindprozess kontrolliert beendet; ein verwaister Prozess gilt als Fehler.
+- Beim Beenden der App wird der Kindprozess kontrolliert beendet. Ein unerwartet beendeter Sidecar wird vom Tauri-Elternprozess erkannt und begrenzt neu gestartet; beim Neustart markiert der Sidecar zuvor dauerhaft gespeicherte `running`-Läufe transaktional als `cancelled`.
 - Das Single-Instance-Plugin wird vor allen anderen Plugins registriert. Ein zweiter Windows-Start fokussiert die bestehende Hauptinstanz und erreicht daher keinen zweiten Sidecar-Start.
 
 ## Folgen
@@ -28,7 +28,7 @@ Für jedes freigegebene Zielsystem muss ein passender Sidecar gebaut und zusamme
 
 ## Verifikation
 
-Architektur-Gate A0 muss auf Windows Start, dynamischen Port, Ablehnung ohne beziehungsweise mit falschem Token, paralleles SQLite-Lesen, Shutdown und Installation beweisen. Scheitert das Gate, wird diese ADR ersetzt, bevor Fachmodule auf dem Sidecar aufbauen.
+Architektur-Gate A0 muss auf Windows Start, dynamischen Port, Ablehnung ohne beziehungsweise mit falschem Token, paralleles SQLite-Lesen, kontrollierten Shutdown, erzwungenen Sidecar-Abbruch mit automatischer Wiederherstellung und Installation beweisen. Scheitert das Gate, wird diese ADR ersetzt, bevor Fachmodule auf dem Sidecar aufbauen.
 
 ## Referenzen
 

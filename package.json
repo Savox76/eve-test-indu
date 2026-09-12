@@ -1,7 +1,7 @@
 {
   "name": "new-eden-foundry",
   "private": true,
-  "version": "0.0.5-preview.19",
+  "version": "0.0.5-preview.20",
   "type": "module",
   "scripts": {
     "dev": "vite",

@@ -944,7 +944,7 @@ const copy = {
     },
     planned: "Geplant",
     previewOnly: "Noch ohne Live-Funktion",
-    footerVersion: "v0.0.5-preview.19",
+    footerVersion: "v0.0.5-preview.20",
   },
   en: {
     nav: {
@@ -1695,7 +1695,7 @@ const copy = {
     },
     planned: "Planned",
     previewOnly: "No live function yet",
-    footerVersion: "v0.0.5-preview.19",
+    footerVersion: "v0.0.5-preview.20",
   },
 } as const;
 
@@ -1963,9 +1963,8 @@ export function App({
       if (!active) return;
       setRuntimeStatus(status);
       if (status.state === "ready") setFontScale(status.appearance.fontScale);
-      if (status.state === "ready" && status.sidecar === "starting") {
-        pollTimer = window.setTimeout(refreshRuntimeStatus, 250);
-      }
+      const delay = status.state === "ready" && status.sidecar === "starting" ? 250 : 1_000;
+      pollTimer = window.setTimeout(refreshRuntimeStatus, delay);
     };
     void refreshRuntimeStatus();
     return () => {

@@ -24,6 +24,32 @@ Keine.
 
 Keine.
 
+## 0.0.5-preview.20 – 12. September 2026
+
+### Neu hinzugefügt
+
+- Der Tauri-Elternprozess überwacht den gestarteten Sidecar dauerhaft und startet ihn nach einem unerwarteten Ende automatisch neu.
+- Der installierte Windows-Pakettest beendet den Sidecar absichtlich hart und verlangt anschließend einen neuen Sidecar-Prozess, eine intakte Datenbank und einen korrekt abgebrochenen Sync-Lauf.
+
+### Geändert
+
+- Die Oberfläche fragt den Laufzeitstatus auch nach einem erfolgreichen Start weiter ab, damit eine Sidecar-Wiederherstellung sichtbar wird.
+- Die sichtbare Versionsnummer lautet `v0.0.5-preview.20`.
+
+### Behobene Fehler
+
+- Ein separat beendeter Sidecar hinterlässt keinen dauerhaft laufenden Synchronisationsstatus mehr. Beim nächsten Sidecar-Start werden solche Läufe transaktional als unterbrochen markiert; vollständige Snapshots bleiben erhalten.
+- Die Hauptanwendung bleibt nach einem Sidecar-Absturz nicht mehr dauerhaft mit einem toten Prozess verbunden.
+
+### Bekannte Einschränkungen
+
+- Die Preview ist noch nicht produktiv code-signiert; SmartScreen kann deshalb weiterhin vor einem unbekannten Herausgeber warnen.
+- Paket 22 wartet nach Veröffentlichung des korrigierten Abnahmekandidaten auf das vollständige Windows-A0-Protokoll.
+
+### Update und Datenbankmigration
+
+- Das Datenbankschema bleibt bei Version 9. Die Wiederherstellung ändert nur tatsächlich verwaiste `running`-Läufe in `cancelled`; Charaktere, Einstellungen, Pläne und vollständige Snapshots bleiben unverändert.
+
 ## 0.0.5-preview.19 – 12. September 2026
 
 ### Neu hinzugefügt
