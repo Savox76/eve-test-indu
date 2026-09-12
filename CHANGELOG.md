@@ -24,6 +24,29 @@ Keine.
 
 Keine.
 
+## 0.0.5-preview.28 – 12. September 2026
+
+### Neu hinzugefügt
+
+- Ein Rust-Vertragstest bildet erstmals eine mehrstufige Produktionskette mit Vorprodukt und abschließendem Zielprodukt ab.
+
+### Geändert
+
+- Die sichtbare Versionsnummer lautet `v0.0.5-preview.28`.
+
+### Behobene Fehler
+
+- Mehrstufige Produktionsziele wurden zwar in SQLite gespeichert, anschließend aber von der Windows-Brücke als ungültige Antwort verworfen. Die Brücke prüft das ausgewählte Zielprodukt jetzt wie Backend und Frontend am Ende der ausführbaren Fertigungsreihenfolge; vorhandene Ziele werden dadurch wieder sichtbar.
+
+### Bekannte Einschränkungen
+
+- Die Preview ist noch nicht produktiv code-signiert; SmartScreen kann deshalb weiterhin vor einem unbekannten Herausgeber warnen.
+- Paket 22 wartet auf das vollständige Windows-A0-Protokoll.
+
+### Update und Datenbankmigration
+
+- Das Datenbankschema bleibt bei Version 9. Der vorhandene `data`-Ordner muss beibehalten werden; bereits gespeicherte Produktionsziele, Charaktere, Einstellungen und Snapshots werden nicht verändert.
+
 ## 0.0.5-preview.27 – 12. September 2026
 
 ### Neu hinzugefügt
