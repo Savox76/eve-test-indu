@@ -1230,7 +1230,10 @@ fn data_snapshot_is_valid(data: &RuntimeDataSnapshot) -> bool {
     let state_combination_is_valid = match data.state.as_str() {
         "loading" | "empty" => !data.has_cached_data && data.error_code.is_none(),
         "refreshing" | "stale" => data.has_cached_data && data.age_seconds.is_some(),
-        "fresh" => data.has_cached_data && data.age_seconds.is_some() && data.expires_at.is_some(),
+        // The backend intentionally treats snapshots without an explicit expiry as
+        // fresh for the first two hours. Older databases can therefore report a
+        // valid fresh cache with `expiresAt: null` during startup.
+        "fresh" => data.has_cached_data && data.age_seconds.is_some(),
         "offline" | "error" => data.error_code.is_some(),
         _ => false,
     };
@@ -5287,8 +5290,8 @@ mod tests {
         IndustryBlueprintCorrelation, IndustryJobQueryResponse, IndustryJobRecord,
         IndustryJobSyncCharacterResponse, IndustryJobSyncResponse, IndustrySlotActivity,
         IndustrySlotQueryResponse, IndustrySlotRecord, ResearchPlanOwner,
-        ResearchPlanQueryResponse, ResearchPlanRecord, ResearchPlanSummary, ScopePackageStatus,
-        SsoCharacterIdentity, SsoLoginStatus,
+        ResearchPlanQueryResponse, ResearchPlanRecord, ResearchPlanSummary, RuntimeDataSnapshot,
+        ScopePackageStatus, SsoCharacterIdentity, SsoLoginStatus,
     };
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -5456,6 +5459,21 @@ mod tests {
             "program-storage-unavailable"
         ));
         assert!(!sidecar_startup_error_is_retryable("sidecar-not-found"));
+    }
+
+    #[test]
+    fn accepts_fresh_legacy_cache_without_explicit_expiry() {
+        let data = RuntimeDataSnapshot {
+            state: "fresh".to_owned(),
+            has_cached_data: true,
+            observed_at: Some("2026-09-12T10:00:00Z".to_owned()),
+            expires_at: None,
+            age_seconds: Some(60),
+            last_sync_status: "completed".to_owned(),
+            error_code: None,
+        };
+
+        assert!(super::data_snapshot_is_valid(&data));
     }
 
     fn valid_authorization_url() -> String {

@@ -246,6 +246,7 @@ with sqlite3.connect(os.environ["FOUNDRY_SMOKE_INSTALLED_DATABASE"]) as connecti
 import os
 import sqlite3
 import time
+from datetime import UTC, datetime
 
 deadline = time.monotonic() + 15
 recovered = None
@@ -264,6 +265,22 @@ if recovered[2] != "sidecar-interrupted":
     raise RuntimeError(f"Interrupted synchronization has the wrong reason: {recovered!r}")
 with sqlite3.connect(os.environ["FOUNDRY_SMOKE_INSTALLED_DATABASE"]) as connection:
     integrity = connection.execute("PRAGMA quick_check").fetchone()
+    completed_at = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+    cursor = connection.execute(
+        """
+        INSERT INTO sync_runs (source, status, started_at, completed_at, data_timestamp)
+        VALUES (?, 'completed', ?, ?, ?)
+        """,
+        ("installed-no-expiry-cache-smoke", completed_at, completed_at, completed_at),
+    )
+    connection.execute(
+        """
+        INSERT INTO cached_snapshots (
+            sync_run_id, resource, payload_json, observed_at, expires_at
+        ) VALUES (?, ?, ?, ?, NULL)
+        """,
+        (cursor.lastrowid, "installed-no-expiry-cache-smoke", "{}", completed_at),
+    )
 if integrity != ("ok",):
     raise RuntimeError(f"Database integrity failed after sidecar recovery: {integrity!r}")
 '@ | python -
@@ -303,6 +320,18 @@ with sqlite3.connect(os.environ["FOUNDRY_SMOKE_INSTALLED_DATABASE"]) as connecti
     ).fetchone()
 if marker != ("preserved",):
     raise RuntimeError("The migrated database marker was not preserved across the restart.")
+with sqlite3.connect(os.environ["FOUNDRY_SMOKE_INSTALLED_DATABASE"]) as connection:
+    no_expiry_cache = connection.execute(
+        """
+        SELECT COUNT(*)
+        FROM cached_snapshots AS snapshot
+        JOIN sync_runs AS run ON run.id = snapshot.sync_run_id
+        WHERE run.source = ? AND snapshot.expires_at IS NULL
+        """,
+        ("installed-no-expiry-cache-smoke",),
+    ).fetchone()
+if no_expiry_cache != (1,):
+    raise RuntimeError("The cache without an explicit expiry was not preserved across restart.")
 '@ | python -
     if ($LASTEXITCODE -ne 0) {
       throw 'Could not verify the database after the second application start.'

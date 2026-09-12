@@ -24,6 +24,30 @@ Keine.
 
 Keine.
 
+## 0.0.5-preview.23 – 12. September 2026
+
+### Neu hinzugefügt
+
+- Der installierte Windows-Pakettest legt vor dem zweiten Anwendungsstart einen vollständigen frischen Cache ohne eigenes Ablaufdatum an und prüft dessen Erhalt.
+- Ein Rust-Vertragstest bildet genau den vom Python-Kern vorgesehenen Ready-Zustand dieses Datenbestands ab.
+
+### Geändert
+
+- Die sichtbare Versionsnummer lautet `v0.0.5-preview.23`.
+
+### Behobene Fehler
+
+- Ein vorhandener lokaler Datenkern konnte nach einem Versionswechsel mit `sidecar-ready-invalid` abgewiesen werden. Die Windows-Hülle verlangte für einen frischen Cache immer ein Ablaufdatum, obwohl der Python-Kern Snapshots ohne ESI-Ablaufdatum innerhalb der ersten zwei Stunden absichtlich als gültig und frisch meldet. Der gemeinsame Startvertrag akzeptiert diesen vorhandenen Datenstand nun korrekt.
+
+### Bekannte Einschränkungen
+
+- Die Preview ist noch nicht produktiv code-signiert; SmartScreen kann deshalb weiterhin vor einem unbekannten Herausgeber warnen.
+- Paket 22 wartet nach Veröffentlichung des korrigierten Abnahmekandidaten auf das vollständige Windows-A0-Protokoll.
+
+### Update und Datenbankmigration
+
+- Das Datenbankschema bleibt bei Version 9. Der vorhandene `data`-Ordner wird nicht ersetzt oder zurückgesetzt.
+
 ## 0.0.5-preview.22 – 12. September 2026
 
 ### Neu hinzugefügt
