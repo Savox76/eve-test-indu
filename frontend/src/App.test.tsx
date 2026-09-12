@@ -695,7 +695,7 @@ describe("New Eden Foundry design preview", () => {
   it("credits Savoxmedia as the app creator next to the version", () => {
     render(<App />);
 
-    expect(screen.getByText("v0.0.5-preview.25")).toBeInTheDocument();
+    expect(screen.getByText("v0.0.5-preview.26")).toBeInTheDocument();
     expect(screen.getByText("Savoxmedia")).toBeInTheDocument();
     expect(screen.getByText("Erstellt von", { exact: false })).toBeInTheDocument();
     expect(screen.queryByText("Lokaler Betreiber")).not.toBeInTheDocument();
@@ -869,6 +869,44 @@ describe("New Eden Foundry design preview", () => {
       planId: null, ownerCharacterId: 90_888_001, blueprintTypeId: 100,
       activity: "manufacturing", productTypeId: 101, targetQuantity: 2,
       priority: 0, note: null,
+    }));
+  });
+
+  it("reveals a newly saved production goal even when persisted filters hid it", async () => {
+    window.localStorage.setItem("new-eden-foundry.ui.production.owner", JSON.stringify(99_999_999));
+    window.localStorage.setItem("new-eden-foundry.ui.production.activity", JSON.stringify("reaction"));
+    window.localStorage.setItem("new-eden-foundry.ui.production.state", JSON.stringify("cycle"));
+    let saved = false;
+    const hiddenPage: ProductionPlanPage = {
+      ...productionPlanPage,
+      items: [], total: 0,
+      summary: { ready: 0, "sde-unavailable": 0, "recipe-missing": 0, cycle: 0,
+        "complexity-limit": 0 },
+    };
+    const productionPlansLoader = vi.fn().mockImplementation((query) => Promise.resolve(
+      saved && query.ownerCharacterId === null && query.activity === null && query.state === null
+        && query.sortBy === "updated" && query.sortDirection === "desc" && query.offset === 0
+        ? productionPlanPage
+        : hiddenPage,
+    ));
+    const productionPlanSaver = vi.fn().mockImplementation(async () => {
+      saved = true;
+      return { saved: true, planId: 2 };
+    });
+    render(<App runtimeLoader={() => nativeRuntime()}
+      charactersLoader={() => Promise.resolve([connectedCharacter])}
+      productionCatalogLoader={() => Promise.resolve(productionCatalogPage)}
+      productionPlansLoader={productionPlansLoader}
+      productionPlanSaver={productionPlanSaver} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Produktion" }));
+    fireEvent.click(await screen.findByRole("button", { name: /Synthetic Hull.*Auswählen$/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Ziel speichern" }));
+
+    expect(await screen.findByText("Synthetic Mineral")).toBeInTheDocument();
+    expect(productionPlansLoader).toHaveBeenLastCalledWith(expect.objectContaining({
+      ownerCharacterId: null, activity: null, state: null, search: "", offset: 0,
+      sortBy: "updated", sortDirection: "desc",
     }));
   });
 

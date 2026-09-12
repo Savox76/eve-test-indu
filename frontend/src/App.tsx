@@ -992,7 +992,7 @@ const copy = {
     },
     planned: "Geplant",
     previewOnly: "Noch ohne Live-Funktion",
-    footerVersion: "v0.0.5-preview.25",
+    footerVersion: "v0.0.5-preview.26",
   },
   en: {
     nav: {
@@ -1756,7 +1756,7 @@ const copy = {
     },
     planned: "Planned",
     previewOnly: "No live function yet",
-    footerVersion: "v0.0.5-preview.25",
+    footerVersion: "v0.0.5-preview.26",
   },
 } as const;
 
@@ -5104,6 +5104,14 @@ function ProductionWorkspace({
         blueprintTypeId: selected.blueprintTypeId, activity: selected.activity,
         productTypeId: selected.productTypeId, targetQuantity: newQuantity,
         priority: newPriority, note: newNote || null });
+      setPlanSearch("");
+      setAppliedPlanSearch("");
+      setPlanOwner(null);
+      setPlanActivity(null);
+      setPlanState(null);
+      setSortBy("updated");
+      setSortDirection("desc");
+      setPlanOffset(0);
       setMutationState("saved");
       setSelected(null);
       setNewQuantity(1);
