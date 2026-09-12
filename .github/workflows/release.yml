@@ -151,6 +151,11 @@ jobs:
           npm run typecheck
           npm test
 
+      - name: Check and test Rust core
+        run: |
+          cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+          cargo test --manifest-path src-tauri/Cargo.toml --lib
+
       - name: Build NSIS installer
         run: npm run tauri build -- --bundles nsis
 

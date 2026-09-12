@@ -2576,7 +2576,7 @@ fn production_plan_record_is_valid(item: &ProductionPlanRecord) -> bool {
             && !item.steps.is_empty()
             && item.cycle_type_ids.is_empty()
             && item.total_base_time_seconds.is_some()
-            && item.steps.first().is_some_and(|step| {
+            && item.steps.last().is_some_and(|step| {
                 step.blueprint_type_id == item.blueprint_type_id
                     && step.product_type_id == item.product_type_id
                     && step.activity == item.activity
@@ -5396,22 +5396,30 @@ pub fn run() {
 mod tests {
     use super::{
         account_group_record_is_valid, asset_delta_response_is_valid,
-        asset_export_response_is_valid, asset_query_response_is_valid, authorization_url_is_valid,
+        asset_export_response_is_valid, asset_query_response_is_valid,
+        asset_summary_query_response_is_valid, authorization_url_is_valid,
         character_skill_query_response_is_valid, character_skill_sync_response_is_valid,
-        eve_character_record_is_valid, industry_job_query_response_is_valid,
+        eve_character_record_is_valid, industry_facility_query_response_is_valid,
+        industry_facility_sync_response_is_valid, industry_job_query_response_is_valid,
         industry_job_sync_response_is_valid, industry_slot_query_response_is_valid,
-        migrate_to_program_directory_storage, read_window_size, release_page_url,
-        research_plan_query_response_is_valid, sidecar_startup_error_code,
+        migrate_to_program_directory_storage, production_plan_record_is_valid, read_window_size,
+        release_page_url, research_plan_query_response_is_valid, sidecar_startup_error_code,
         sidecar_startup_error_is_retryable, sso_login_status_is_valid, write_window_size,
         AccountGroupRecord, AssetDeltaCorrelation, AssetDeltaQueryResponse, AssetDeltaRecord,
         AssetDeltaSummary, AssetExportResponse, AssetLocationNode, AssetOwner, AssetQueryResponse,
-        AssetRecord, CharacterSkillQueryResponse, CharacterSkillRecord,
-        CharacterSkillSyncCharacterResponse, CharacterSkillSyncResponse, EveCharacterRecord,
-        IndustryAssetCorrelation, IndustryBlueprintCorrelation, IndustryJobQueryResponse,
-        IndustryJobRecord, IndustryJobSyncCharacterResponse, IndustryJobSyncResponse,
-        IndustrySlotActivity, IndustrySlotQueryResponse, IndustrySlotRecord, ResearchPlanOwner,
+        AssetRecord, AssetSummaryOwner, AssetSummaryQueryResponse, AssetSummaryRecord,
+        CharacterSkillQueryResponse, CharacterSkillRecord, CharacterSkillSyncCharacterResponse,
+        CharacterSkillSyncResponse, EveCharacterRecord, IndustryAssetCorrelation,
+        IndustryBlueprintCorrelation, IndustryFacilityQueryResponse, IndustryFacilityRecord,
+        IndustryFacilitySyncResponse, IndustryJobQueryResponse, IndustryJobRecord,
+        IndustryJobSyncCharacterResponse, IndustryJobSyncResponse, IndustrySlotActivity,
+        IndustrySlotQueryResponse, IndustrySlotRecord, ProductionGrossMaterial,
+        ProductionPlanRecord, ProductionStep, ProductionStepMaterial, ResearchPlanOwner,
         ResearchPlanQueryResponse, ResearchPlanRecord, ResearchPlanSummary, RuntimeDataSnapshot,
         ScopePackageStatus, SsoCharacterIdentity, SsoLoginStatus, WindowSizePreference,
+        ASSET_LOCATION_STATUSES, INDUSTRY_COST_ACTIVITIES, INDUSTRY_FACILITY_ACCESS_STATES,
+        INDUSTRY_FACILITY_KINDS, INDUSTRY_SECURITY_CLASSES, INDUSTRY_SLOT_ACTIVITIES,
+        RESEARCH_PLAN_ACTIVITIES, RESEARCH_PLAN_STATES,
     };
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -6270,6 +6278,91 @@ mod tests {
 
         page.estimates_available = true;
         assert!(!research_plan_query_response_is_valid(&page));
+    }
+
+    #[test]
+    fn validates_multi_step_production_goal_at_end_of_execution_order() {
+        let mut plan = ProductionPlanRecord {
+            plan_id: 1,
+            owner_character_id: 90_888_001,
+            owner_name: "Builder".to_owned(),
+            blueprint_type_id: 100,
+            blueprint_name: "Synthetic Hull Blueprint".to_owned(),
+            activity: "manufacturing".to_owned(),
+            product_type_id: 101,
+            product_name: "Synthetic Hull".to_owned(),
+            target_quantity: 2,
+            priority: 10,
+            note: Some("Main line".to_owned()),
+            state: "ready".to_owned(),
+            build_number: Some("synthetic-production-1".to_owned()),
+            steps: vec![
+                ProductionStep {
+                    sequence: 1,
+                    blueprint_type_id: 110,
+                    blueprint_name: "Synthetic Frame Blueprint".to_owned(),
+                    activity: "manufacturing".to_owned(),
+                    product_type_id: 111,
+                    product_name: "Synthetic Frame".to_owned(),
+                    required_quantity: 2,
+                    output_quantity_per_run: 2,
+                    runs: 1,
+                    produced_quantity: 2,
+                    surplus_quantity: 0,
+                    base_time_seconds_per_run: 20,
+                    total_base_time_seconds: 20,
+                    recipe_alternatives: 1,
+                    materials: vec![ProductionStepMaterial {
+                        type_id: 900,
+                        type_name: "Synthetic Mineral".to_owned(),
+                        quantity_per_run: 3,
+                        gross_quantity: 3,
+                        produced_by_plan: false,
+                    }],
+                },
+                ProductionStep {
+                    sequence: 2,
+                    blueprint_type_id: 100,
+                    blueprint_name: "Synthetic Hull Blueprint".to_owned(),
+                    activity: "manufacturing".to_owned(),
+                    product_type_id: 101,
+                    product_name: "Synthetic Hull".to_owned(),
+                    required_quantity: 2,
+                    output_quantity_per_run: 1,
+                    runs: 2,
+                    produced_quantity: 2,
+                    surplus_quantity: 0,
+                    base_time_seconds_per_run: 100,
+                    total_base_time_seconds: 200,
+                    recipe_alternatives: 1,
+                    materials: vec![ProductionStepMaterial {
+                        type_id: 111,
+                        type_name: "Synthetic Frame".to_owned(),
+                        quantity_per_run: 1,
+                        gross_quantity: 2,
+                        produced_by_plan: true,
+                    }],
+                },
+            ],
+            gross_materials: vec![ProductionGrossMaterial {
+                type_id: 900,
+                type_name: "Synthetic Mineral".to_owned(),
+                quantity: 3,
+            }],
+            warnings: Vec::new(),
+            cycle_type_ids: Vec::new(),
+            total_base_time_seconds: Some(220),
+            created_at: "2026-09-12T10:00:00Z".to_owned(),
+            updated_at: "2026-09-12T10:00:00Z".to_owned(),
+        };
+
+        assert!(production_plan_record_is_valid(&plan));
+
+        plan.steps.reverse();
+        for (index, step) in plan.steps.iter_mut().enumerate() {
+            step.sequence = index as u64 + 1;
+        }
+        assert!(!production_plan_record_is_valid(&plan));
     }
 
     #[test]
