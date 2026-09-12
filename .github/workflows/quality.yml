@@ -93,6 +93,13 @@ jobs:
           python scripts/build_sidecar.py --target-triple x86_64-pc-windows-msvc
           python scripts/smoke_sidecar.py --executable src-tauri/binaries/foundry-sidecar-x86_64-pc-windows-msvc.exe
 
+      - name: Scan bundled sidecar with Microsoft Defender
+        shell: pwsh
+        run: |
+          ./scripts/scan_windows_packages.ps1 -Paths @(
+            'src-tauri/binaries/foundry-sidecar-x86_64-pc-windows-msvc.exe'
+          )
+
       - name: Check Rust formatting
         run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
 
@@ -160,3 +167,12 @@ jobs:
           }
 
           Write-Output "Validated installer and portable ZIP; workflow output remains ephemeral."
+
+      - name: Scan public packages with Microsoft Defender
+        shell: pwsh
+        run: |
+          $version = node --print "require('./package.json').version"
+          ./scripts/scan_windows_packages.ps1 -Paths @(
+            "src-tauri/target/release/bundle/nsis/New.Eden.Foundry_${version}_x64-setup.exe",
+            "src-tauri/target/release/bundle/New.Eden.Foundry_${version}_x64-portable.zip"
+          )
