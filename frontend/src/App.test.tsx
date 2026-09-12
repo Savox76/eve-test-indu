@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { App } from "./App";
+import { loadDesktopRuntimeStatus } from "./runtime";
 import type {
   AssetDeltaPage,
   AssetPage,
@@ -352,6 +353,33 @@ const productionPlanPage: ProductionPlanPage = {
 };
 
 describe("New Eden Foundry design preview", () => {
+  it("unlocks stored characters for a fresh cache without an explicit expiry", async () => {
+    const runtime = await nativeRuntime({
+      data: {
+        state: "fresh",
+        hasCachedData: true,
+        observedAt: "2026-09-12T10:00:01Z",
+        expiresAt: null,
+        ageSeconds: 7_199,
+        lastSyncStatus: "completed",
+        errorCode: null,
+      },
+    });
+    const invoke = vi.fn().mockResolvedValue(JSON.stringify(runtime));
+    const charactersLoader = vi.fn().mockResolvedValue([connectedCharacter]);
+    render(<App
+      runtimeLoader={() => loadDesktopRuntimeStatus({ isAvailable: () => true, invoke })}
+      ssoStatusLoader={() => Promise.resolve(idleSso)}
+      accountGroupsLoader={() => Promise.resolve([])}
+      charactersLoader={charactersLoader}
+    />);
+
+    expect(await screen.findByText("Lokaler Kern aktiv")).toBeInTheDocument();
+    await waitFor(() => expect(charactersLoader).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole("button", { name: "Setup" }));
+    expect(await screen.findByText("Builder")).toBeInTheDocument();
+  });
+
   it("keeps character management in setup and restores the selected workspace", async () => {
     const first = render(<App runtimeLoader={() => nativeRuntime()}
       charactersLoader={() => Promise.resolve([connectedCharacter])} />);
@@ -695,7 +723,7 @@ describe("New Eden Foundry design preview", () => {
   it("credits Savoxmedia as the app creator next to the version", () => {
     render(<App />);
 
-    expect(screen.getByText("v0.0.5-preview.26")).toBeInTheDocument();
+    expect(screen.getByText("v0.0.5-preview.27")).toBeInTheDocument();
     expect(screen.getByText("Savoxmedia")).toBeInTheDocument();
     expect(screen.getByText("Erstellt von", { exact: false })).toBeInTheDocument();
     expect(screen.queryByText("Lokaler Betreiber")).not.toBeInTheDocument();

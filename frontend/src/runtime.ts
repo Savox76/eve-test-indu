@@ -1070,7 +1070,6 @@ function parseLocalDataStatus(candidate: unknown): LocalDataStatus {
         return (
           data.hasCachedData &&
           data.ageSeconds !== null &&
-          data.expiresAt !== null &&
           data.errorCode === null
         );
       case "offline":
