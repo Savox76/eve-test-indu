@@ -24,6 +24,31 @@ Keine.
 
 Keine.
 
+## 0.0.5-preview.25 – 12. September 2026
+
+### Neu hinzugefügt
+
+Keine.
+
+### Geändert
+
+- Die Blueprint-Gruppen verwenden dieselbe transparente Tabellendarstellung und dieselbe Hervorhebung wie die gruppierte Asset-Ansicht.
+- Die sichtbare Versionsnummer lautet `v0.0.5-preview.25`.
+
+### Behobene Fehler
+
+- Blueprint-Namen wurden wegen einer fehlenden Komponentenklasse als breite graue Windows-Standardschaltflächen dargestellt.
+- Beim Öffnen einer Blueprint-Gruppe wird der passende Suchfilter nun unmittelbar angewendet, ohne kurz den ungefilterten Bestand zu laden.
+
+### Bekannte Einschränkungen
+
+- Die Preview ist noch nicht produktiv code-signiert; SmartScreen kann deshalb weiterhin vor einem unbekannten Herausgeber warnen.
+- Paket 22 wartet auf das vollständige Windows-A0-Protokoll.
+
+### Update und Datenbankmigration
+
+- Das Datenbankschema bleibt bei Version 9. Vorhandene Charaktere, Einstellungen, Pläne und Snapshots bleiben unverändert.
+
 ## 0.0.5-preview.24 – 12. September 2026
 
 ### Neu hinzugefügt

@@ -992,7 +992,7 @@ const copy = {
     },
     planned: "Geplant",
     previewOnly: "Noch ohne Live-Funktion",
-    footerVersion: "v0.0.5-preview.24",
+    footerVersion: "v0.0.5-preview.25",
   },
   en: {
     nav: {
@@ -1756,7 +1756,7 @@ const copy = {
     },
     planned: "Planned",
     previewOnly: "No live function yet",
-    footerVersion: "v0.0.5-preview.24",
+    footerVersion: "v0.0.5-preview.25",
   },
 } as const;
 
@@ -4162,7 +4162,7 @@ function BlueprintWorkspace({
           : page && view === "summary" ? <div className="asset-table-wrap"><table className="asset-table blueprint-table blueprint-summary-table"><thead><tr>
               <th>{t.blueprints.type}</th><th>{t.blueprints.count}</th><th>{t.blueprints.originals}</th><th>{t.blueprints.copies}</th><th>{t.blueprints.me}</th><th>{t.blueprints.te}</th><th>{t.blueprints.owners}</th><th>{t.blueprints.locations}</th>
             </tr></thead><tbody>{summaryRows.map((item) => <tr key={item.typeId}>
-              <td><button type="button" className="asset-item-link" onClick={() => { setSearch(item.typeName); setView("positions"); setOffset(0); }}><strong>{item.typeName}</strong><small>Type #{item.typeId}</small></button></td><td className="asset-table__number">{numberFormat.format(item.count)}</td><td className="asset-table__number">{numberFormat.format(item.originals)}</td><td className="asset-table__number">{numberFormat.format(item.copies)}</td><td className="asset-table__number">{item.minMe === item.maxMe ? item.minMe : `${item.minMe}–${item.maxMe}`}</td><td className="asset-table__number">{item.minTe === item.maxTe ? item.minTe : `${item.minTe}–${item.maxTe}`}</td><td className="asset-table__number">{item.owners}</td><td className="asset-table__number">{item.locations}</td>
+              <td><button type="button" className="asset-summary-item" aria-label={`${t.blueprints.positions}: ${item.typeName}`} onClick={() => { setSearch(item.typeName); setAppliedSearch(item.typeName); setView("positions"); setOffset(0); }}><strong>{item.typeName}</strong><small>Type #{item.typeId}</small></button></td><td className="asset-table__number">{numberFormat.format(item.count)}</td><td className="asset-table__number">{numberFormat.format(item.originals)}</td><td className="asset-table__number">{numberFormat.format(item.copies)}</td><td className="asset-table__number">{item.minMe === item.maxMe ? item.minMe : `${item.minMe}–${item.maxMe}`}</td><td className="asset-table__number">{item.minTe === item.maxTe ? item.minTe : `${item.minTe}–${item.maxTe}`}</td><td className="asset-table__number">{item.owners}</td><td className="asset-table__number">{item.locations}</td>
             </tr>)}</tbody></table></div>
           : page ? <div className="asset-table-wrap"><table className="asset-table blueprint-table"><thead><tr>
               <th>{header("type", t.blueprints.type)}</th><th>{header("owner", t.blueprints.owner)}</th><th>{header("kind", t.blueprints.kind)}</th><th>{header("me", t.blueprints.me)}</th><th>{header("te", t.blueprints.te)}</th><th>{header("runs", t.blueprints.runs)}</th><th>{t.blueprints.location}</th><th>{header("age", t.blueprints.age)}</th>
