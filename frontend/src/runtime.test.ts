@@ -152,6 +152,23 @@ describe("desktop runtime status", () => {
     ).resolves.toMatchObject({ state: "ready", data });
   });
 
+  it("accepts a fresh cache without an explicit expiry", async () => {
+    const data = {
+      state: "fresh",
+      hasCachedData: true,
+      observedAt: "2026-09-09T10:00:01Z",
+      expiresAt: null,
+      ageSeconds: 7_199,
+      lastSyncStatus: "completed",
+      errorCode: null,
+    } as const;
+    const invoke = vi.fn<RuntimeAdapter["invoke"]>().mockResolvedValue(nativeStatus({ data }));
+
+    await expect(
+      loadDesktopRuntimeStatus({ isAvailable: () => true, invoke }),
+    ).resolves.toMatchObject({ state: "ready", sidecar: "ready", data });
+  });
+
   it("accepts offline state while retaining verified cache metadata", async () => {
     const data = {
       state: "offline",

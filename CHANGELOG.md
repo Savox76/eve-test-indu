@@ -24,6 +24,29 @@ Keine.
 
 Keine.
 
+## 0.0.5-preview.27 – 12. September 2026
+
+### Neu hinzugefügt
+
+- Ein Frontend-Vertragstest bildet den installierten Neustart mit einem frischen Cache ohne eigenes Ablaufdatum ab und verlangt, dass der Desktop-Kern sowie gespeicherte Charaktere freigegeben werden.
+
+### Geändert
+
+- Die sichtbare Versionsnummer lautet `v0.0.5-preview.27`.
+
+### Behobene Fehler
+
+- Nach einer Synchronisierung und einem anschließenden Neustart konnte die Oberfläche einen gültigen frischen Cache ohne Ablaufdatum ablehnen. Dadurch erschien fälschlich „Statusabfrage nicht möglich“ und Charaktere, Assets sowie alle Synchronisationsbefehle blieben gesperrt, obwohl Sidecar und Datenbank bereit waren.
+
+### Bekannte Einschränkungen
+
+- Die Preview ist noch nicht produktiv code-signiert; SmartScreen kann deshalb weiterhin vor einem unbekannten Herausgeber warnen.
+- Paket 22 wartet auf das vollständige Windows-A0-Protokoll.
+
+### Update und Datenbankmigration
+
+- Das Datenbankschema bleibt bei Version 9. Der vorhandene `data`-Ordner muss beibehalten werden; Charaktere, Einstellungen, Pläne und Snapshots werden nicht verändert.
+
 ## 0.0.5-preview.26 – 12. September 2026
 
 ### Neu hinzugefügt
