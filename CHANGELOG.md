@@ -24,6 +24,32 @@ Keine.
 
 Keine.
 
+## 0.0.5-preview.22 – 12. September 2026
+
+### Neu hinzugefügt
+
+- Regressionstests decken positive Blueprint-Stapelmengen und mehrstufige Produktionspläne mit dem Zielprodukt als letztem Schritt ab.
+
+### Geändert
+
+- Die Karten und Verwaltungsbuttons verbundener Charaktere sind kompakter, sodass mehr Charaktere in die Übersicht passen.
+- In der Asset-Bestandsübersicht öffnet ein Klick auf den Gegenstand direkt dessen Einzelpositionen. Der dauerhafte Umschalter auf „Einzelpositionen“ und die zusätzlichen Textbuttons je Gegenstand entfallen.
+- Die sichtbare Versionsnummer lautet `v0.0.5-preview.22`.
+
+### Behobene Fehler
+
+- Der Blueprint-Sync wies positive, von ESI für gestapelte Blueprints verwendete Mengen fälschlich als `blueprint_payload_invalid` ab.
+- Die Frontend-Vertragsprüfung erwartete bei mehrstufigen Produktionsplänen das Zielprodukt an erster Stelle, obwohl die sichtbare Herstellungsreihenfolge korrekt mit den Vorprodukten beginnt. Dadurch konnte die lokale Produktionsplanung nicht gelesen werden.
+
+### Bekannte Einschränkungen
+
+- Die Preview ist noch nicht produktiv code-signiert; SmartScreen kann deshalb weiterhin vor einem unbekannten Herausgeber warnen.
+- Paket 22 wartet nach Veröffentlichung des korrigierten Abnahmekandidaten auf das vollständige Windows-A0-Protokoll.
+
+### Update und Datenbankmigration
+
+- Das Datenbankschema bleibt bei Version 9. Charaktere, Einstellungen, Pläne und vollständige Snapshots werden unverändert weiterverwendet.
+
 ## 0.0.5-preview.21 – 12. September 2026
 
 ### Neu hinzugefügt

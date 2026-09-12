@@ -1269,11 +1269,11 @@ select:focus-visible {
 
 .character-chip {
   display: grid;
-  grid-template-columns: 30px minmax(105px, auto) auto;
+  grid-template-columns: 24px minmax(92px, auto) auto;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   min-width: max-content;
-  padding: 7px 9px;
+  padding: 5px 7px;
   border: 1px solid rgba(103, 198, 188, 0.16);
   border-radius: 8px;
   background: rgba(103, 198, 188, 0.045);
@@ -1282,8 +1282,8 @@ select:focus-visible {
 .character-chip__avatar {
   display: grid;
   place-items: center;
-  width: 28px;
-  height: 28px;
+  width: 23px;
+  height: 23px;
   border-radius: 50%;
   color: #8ed4ca;
   background: rgba(103, 198, 188, 0.1);
@@ -1314,7 +1314,7 @@ select:focus-visible {
 }
 
 .character-chip {
-  grid-template-columns: 30px minmax(105px, auto) auto auto auto;
+  grid-template-columns: 24px minmax(92px, auto) auto auto auto;
 }
 
 .character-chip--inactive {
@@ -1333,6 +1333,12 @@ select:focus-visible {
   background: rgba(103, 198, 188, 0.06);
   cursor: pointer;
   font-size: calc(8px * var(--font-scale));
+}
+
+.character-chip__manage {
+  min-height: 22px;
+  padding: 2px 6px;
+  font-size: calc(7px * var(--font-scale));
 }
 
 .character-chip__manage:disabled,
@@ -2999,22 +3005,25 @@ select:focus-visible {
 .asset-summary-table th:nth-child(5) { width: 11%; }
 .asset-summary-table th:nth-child(6) { width: 10%; }
 
-.asset-summary-drilldown {
-  display: inline-flex;
-  margin-top: 7px;
-  padding: 4px 8px;
-  border: 1px solid rgba(103, 198, 188, 0.25);
-  border-radius: 6px;
-  color: #8fc8bc;
-  background: rgba(103, 198, 188, 0.06);
-  font-size: calc(8px * var(--font-scale));
+.asset-summary-item {
+  display: grid;
+  width: 100%;
+  padding: 2px 0;
+  border: 0;
+  color: inherit;
+  text-align: left;
+  background: transparent;
   cursor: pointer;
 }
 
-.asset-summary-drilldown:hover,
-.asset-summary-drilldown:focus-visible {
-  border-color: rgba(103, 198, 188, 0.55);
-  color: #c8e7df;
+.asset-summary-item:hover strong,
+.asset-summary-item:focus-visible strong {
+  color: #9dd8cd;
+}
+
+.asset-summary-item:focus-visible {
+  outline: 1px solid rgba(103, 198, 188, 0.55);
+  outline-offset: 3px;
 }
 
 .blueprint-table { min-width: 1120px; }

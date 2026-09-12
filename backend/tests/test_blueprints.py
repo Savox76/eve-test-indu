@@ -42,18 +42,31 @@ class BlueprintTests(unittest.TestCase):
         self.temp.cleanup()
 
     def test_syncs_all_pages_and_exposes_bpo_bpc_read_model(self):
-        client = FakeClient([[blueprint(1, 681)], [blueprint(2, 682, quantity=-2, runs=7, me=4, te=8)]])
+        client = FakeClient([
+            [blueprint(1, 681), blueprint(3, 683, quantity=4)],
+            [blueprint(2, 682, quantity=-2, runs=7, me=4, te=8)],
+        ])
         result = sync_character_blueprints(self.db, client, 90000001)
-        self.assertEqual((result.pages, result.blueprints, result.type_ids), (2, 2, (681, 682)))
+        self.assertEqual((result.pages, result.blueprints, result.type_ids), (2, 3, (681, 682, 683)))
         self.assertEqual(client.last_scope, ("esi-characters.read_blueprints.v1",))
         self.db.execute("INSERT INTO resolved_type_names(type_id,name) VALUES(681,'Bantam Blueprint')")
         query = {"search": "", "ownerCharacterId": None, "kind": None, "offset": 0,
                  "limit": 100, "sortBy": "type", "sortDirection": "asc"}
         page = query_blueprints(self.db, query, now=datetime(2026, 9, 10, tzinfo=timezone.utc))
-        self.assertEqual(page["total"], 2)
+        self.assertEqual(page["total"], 3)
         self.assertEqual(page["items"][0]["typeName"], "Bantam Blueprint")
         self.assertEqual({item["kind"] for item in page["items"]}, {"original", "copy"})
+        self.assertEqual(next(item for item in page["items"] if item["itemId"] == 3)["kind"], "original")
         self.assertEqual(next(item for item in page["items"] if item["kind"] == "copy")["runs"], 7)
+
+    def test_rejects_blueprint_quantity_values_outside_esi_semantics(self):
+        for item_id, quantity in enumerate((0, -3, 9_007_199_254_740_992), start=10):
+            with self.subTest(quantity=quantity), self.assertRaises(BlueprintSyncError):
+                sync_character_blueprints(
+                    self.db,
+                    FakeClient([[blueprint(item_id, quantity=quantity)]]),
+                    90000001,
+                )
 
     def test_failed_followup_keeps_last_complete_snapshot(self):
         first = sync_character_blueprints(self.db, FakeClient([[blueprint(10)]]), 90000001)

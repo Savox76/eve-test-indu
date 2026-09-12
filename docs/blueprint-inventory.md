@@ -2,7 +2,7 @@
 
 Paket 23 synchronisiert für jeden aktivierten Charakter den ESI-Endpunkt `/characters/{character_id}/blueprints/` vollständig paginiert. Der dafür benötigte Scope `esi-characters.read_blueprints.v1` gehört zum automatisch angeforderten Paket `industry-core`. Das ist der persönliche Charakterbestand; Corporation-Blueprints gehören nicht zu diesem ESI-Endpunkt und werden derzeit nicht angezeigt.
 
-Jeder Lauf besitzt einen eigenen `sync_runs`-Nachweis. Erst nach erfolgreichem Abruf und strenger Prüfung aller Seiten wird ein vollständiger Snapshot `character_blueprints:<character_id>` veröffentlicht. Fehler, ungültige Datensätze und doppelte Item-IDs markieren den Lauf als fehlgeschlagen und lassen den letzten vollständigen Snapshot unverändert.
+Jeder Lauf besitzt einen eigenen `sync_runs`-Nachweis. Erst nach erfolgreichem Abruf und strenger Prüfung aller Seiten wird ein vollständiger Snapshot `character_blueprints:<character_id>` veröffentlicht. Die ESI-Mengenwerte `-1` für ein einzelnes Original, `-2` für eine Kopie und positive Werte für einen Blueprint-Stapel werden ausdrücklich akzeptiert; positive Stapel werden als Originalbestand dargestellt. Null, Werte kleiner als `-2`, ungültige Datensätze und doppelte Item-IDs markieren den Lauf als fehlgeschlagen und lassen den letzten vollständigen Snapshot unverändert.
 
 Die zweisprachige Oberfläche zeigt:
 

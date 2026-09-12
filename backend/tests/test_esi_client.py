@@ -134,7 +134,7 @@ class EsiClientTests(unittest.TestCase):
         )
         self.assertEqual(ESI_COMPATIBILITY_DATE, headers["X-Compatibility-Date"])
         self.assertEqual(ESI_USER_AGENT, headers["User-Agent"])
-        self.assertTrue(ESI_USER_AGENT.startswith("New-Eden-Foundry/0.0.5-preview.21 "))
+        self.assertTrue(ESI_USER_AGENT.startswith("New-Eden-Foundry/0.0.5-preview.22 "))
         self.assertIn("Savox76/eve-test-indu", ESI_USER_AGENT)
         self.assertEqual("Bearer synthetic-access-token", headers["Authorization"])
         self.assertEqual(20.0, timeout)

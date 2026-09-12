@@ -46,7 +46,8 @@ def _validate_blueprint(row: Any) -> dict[str, Any]:
         not 0 < row["item_id"] <= MAX_SAFE_INTEGER
         or not 0 < row["type_id"] <= MAX_SAFE_INTEGER
         or not 0 < row["location_id"] <= MAX_SAFE_INTEGER
-        or row["quantity"] not in (-1, -2)
+        or row["quantity"] == 0
+        or not -2 <= row["quantity"] <= MAX_SAFE_INTEGER
         or not 0 <= row["material_efficiency"] <= 10
         or not 0 <= row["time_efficiency"] <= 20
         or not -1 <= row["runs"] <= MAX_SAFE_INTEGER
