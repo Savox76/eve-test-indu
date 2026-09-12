@@ -148,10 +148,10 @@ def query_blueprints(
                 flag = str(item["location_flag"])
             except (KeyError, TypeError, ValueError) as error:
                 raise BlueprintViewError("blueprint_snapshot_invalid") from error
-            if item_id in seen or quantity not in (-1, -2):
+            if item_id in seen or quantity == 0 or not -2 <= quantity <= MAX_SAFE_INTEGER:
                 raise BlueprintViewError("blueprint_snapshot_invalid")
             seen.add(item_id)
-            kind = "original" if quantity == -1 else "copy"
+            kind = "copy" if quantity == -2 else "original"
             if query["kind"] is not None and query["kind"] != kind:
                 continue
             type_name = names.get(type_id, f"Type #{type_id}")

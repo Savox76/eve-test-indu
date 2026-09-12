@@ -944,7 +944,7 @@ const copy = {
     },
     planned: "Geplant",
     previewOnly: "Noch ohne Live-Funktion",
-    footerVersion: "v0.0.5-preview.21",
+    footerVersion: "v0.0.5-preview.22",
   },
   en: {
     nav: {
@@ -1695,7 +1695,7 @@ const copy = {
     },
     planned: "Planned",
     previewOnly: "No live function yet",
-    footerVersion: "v0.0.5-preview.21",
+    footerVersion: "v0.0.5-preview.22",
   },
 } as const;
 
@@ -2877,24 +2877,22 @@ function AssetWorkspace({
       </section>
 
       <section className="asset-browser" aria-busy={loading}>
-        <div className="asset-view-switch" role="group" aria-label={t.assets.view}>
-          <button
-            type="button"
-            className={viewMode === "summary" ? "is-active" : ""}
-            aria-pressed={viewMode === "summary"}
-            onClick={() => { setViewMode("summary"); setOffset(0); setSortDirection("asc"); }}
-          >
-            {t.assets.summaryView}
-          </button>
-          <button
-            type="button"
-            className={viewMode === "positions" ? "is-active" : ""}
-            aria-pressed={viewMode === "positions"}
-            onClick={() => { setViewMode("positions"); setOffset(0); setSortDirection("asc"); }}
-          >
-            {t.assets.positionsView}
-          </button>
-        </div>
+        {viewMode === "positions" && (
+          <div className="asset-view-switch" role="group" aria-label={t.assets.view}>
+            <button
+              type="button"
+              onClick={() => {
+                setSearch("");
+                setAppliedSearch("");
+                setViewMode("summary");
+                setOffset(0);
+                setSortDirection("asc");
+              }}
+            >
+              {t.assets.summaryView}
+            </button>
+          </div>
+        )}
         <div className="asset-toolbar">
           <label className="asset-search">
             <span>{t.assets.search}</span>
@@ -3034,11 +3032,10 @@ function AssetWorkspace({
                 {summaryPage.items.map((item) => (
                   <tr key={item.typeId}>
                     <td>
-                      <strong>{item.typeName}</strong>
-                      <small>Type {item.typeId}</small>
                       <button
                         type="button"
-                        className="asset-summary-drilldown"
+                        className="asset-summary-item"
+                        aria-label={`${t.assets.showPositions}: ${item.typeName}`}
                         onClick={() => {
                           setSearch(item.typeName);
                           setAppliedSearch(item.typeName);
@@ -3046,7 +3043,8 @@ function AssetWorkspace({
                           setOffset(0);
                         }}
                       >
-                        {t.assets.showPositions}
+                        <strong>{item.typeName}</strong>
+                        <small>Type {item.typeId}</small>
                       </button>
                     </td>
                     <td className="asset-table__number"><strong>{numberFormat.format(item.quantityTotal)}</strong></td>

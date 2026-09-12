@@ -6,7 +6,7 @@ Beim Programmstart und nach einer neuen Charakterverbindung startet die App den 
 
 ## Bestandsübersicht und Einzelpositionen
 
-Die Asset-Seite öffnet standardmäßig eine nach Typ gruppierte Bestandsübersicht. Sie zeigt je Gegenstand die Gesamtmenge, Zahl der EVE-Positionen, Verteilung auf Charaktere, Zahl der tatsächlichen Asset-Orte, vorkommende Standortzustände und das älteste Datenalter. **Einzelpositionen anzeigen** übernimmt den Typnamen als Suche und wechselt gezielt in die Detailansicht.
+Die Asset-Seite öffnet standardmäßig eine nach Typ gruppierte Bestandsübersicht. Sie zeigt je Gegenstand die Gesamtmenge, Zahl der EVE-Positionen, Verteilung auf Charaktere, Zahl der tatsächlichen Asset-Orte, vorkommende Standortzustände und das älteste Datenalter. Ein Klick auf den Gegenstand übernimmt dessen Typnamen als Suche und wechselt gezielt in die Detailansicht; ein eigener dauerhafter Einzelpositions-Umschalter und zusätzliche Textbuttons je Zeile sind nicht nötig. In der Detailansicht führt **Bestandsübersicht** zurück und hebt die übernommene Suche auf.
 
 Suche sowie Besitzer- und Standortstatusfilter gelten in beiden Ansichten. Erst werden die passenden Positionen gefiltert, anschließend wird die Bestandsübersicht gruppiert. Damit beantworten Summen und Verteilungen immer genau die aktuell gewählte Suche.
 

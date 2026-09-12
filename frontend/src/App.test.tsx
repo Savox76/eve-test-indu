@@ -367,12 +367,15 @@ describe("New Eden Foundry design preview", () => {
         ssoStatusLoader={() => Promise.resolve(idleSso)}
         charactersLoader={() => Promise.resolve([])}
         accountGroupsLoader={() => Promise.resolve([])}
+        assetSummaryLoader={() => Promise.resolve(assetSummaryPage())}
         assetsLoader={assetsLoader}
       />,
     );
 
     fireEvent.click(screen.getByRole("button", { name: /Assets/i }));
-    fireEvent.click(screen.getByRole("button", { name: "Einzelpositionen" }));
+    fireEvent.click(await screen.findByRole("button", {
+      name: "Einzelpositionen anzeigen: Synthetic Component",
+    }));
 
     expect(await screen.findByText("Synthetic Component")).toBeInTheDocument();
     expect(screen.getAllByText("Builder")).toHaveLength(2);
@@ -380,7 +383,7 @@ describe("New Eden Foundry design preview", () => {
     expect(screen.getByText("17")).toBeInTheDocument();
     expect(screen.getAllByText("1 Std.").length).toBeGreaterThan(0);
     expect(assetsLoader).toHaveBeenCalledWith({
-      search: "",
+      search: "Synthetic Component",
       ownerCharacterId: null,
       locationStatus: null,
       offset: 0,
@@ -391,7 +394,7 @@ describe("New Eden Foundry design preview", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Nächste Seite" }));
     await waitFor(() => expect(assetsLoader).toHaveBeenLastCalledWith({
-      search: "",
+      search: "Synthetic Component",
       ownerCharacterId: null,
       locationStatus: null,
       offset: 100,
@@ -429,7 +432,9 @@ describe("New Eden Foundry design preview", () => {
       sortDirection: "asc",
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Einzelpositionen anzeigen" }));
+    fireEvent.click(screen.getByRole("button", {
+      name: "Einzelpositionen anzeigen: Synthetic Component",
+    }));
     await waitFor(() => expect(assetsLoader).toHaveBeenLastCalledWith(
       expect.objectContaining({ search: "Synthetic Component" }),
     ));
@@ -443,11 +448,14 @@ describe("New Eden Foundry design preview", () => {
         ssoStatusLoader={() => Promise.resolve(idleSso)}
         charactersLoader={() => Promise.resolve([])}
         accountGroupsLoader={() => Promise.resolve([])}
+        assetSummaryLoader={() => Promise.resolve(assetSummaryPage())}
         assetsLoader={assetsLoader}
       />,
     );
     fireEvent.click(screen.getByRole("button", { name: /Assets/i }));
-    fireEvent.click(screen.getByRole("button", { name: "Einzelpositionen" }));
+    fireEvent.click(await screen.findByRole("button", {
+      name: "Einzelpositionen anzeigen: Synthetic Component",
+    }));
     await screen.findByText("Synthetic Component");
 
     fireEvent.click(screen.getByRole("button", { name: "Menge" }));
@@ -473,12 +481,15 @@ describe("New Eden Foundry design preview", () => {
         ssoStatusLoader={() => Promise.resolve(idleSso)}
         charactersLoader={() => Promise.resolve([])}
         accountGroupsLoader={() => Promise.resolve([])}
+        assetSummaryLoader={() => Promise.resolve(assetSummaryPage())}
         assetsLoader={assetsLoader}
         assetsCsvExporter={assetsCsvExporter}
       />,
     );
     fireEvent.click(screen.getByRole("button", { name: /Assets/i }));
-    fireEvent.click(screen.getByRole("button", { name: "Einzelpositionen" }));
+    fireEvent.click(await screen.findByRole("button", {
+      name: "Einzelpositionen anzeigen: Synthetic Component",
+    }));
     await screen.findByText("Synthetic Component");
 
     fireEvent.change(screen.getByPlaceholderText(/Typ, Standort, Besitzer oder ID suchen/), {
@@ -537,12 +548,15 @@ describe("New Eden Foundry design preview", () => {
         ssoStatusLoader={() => Promise.resolve(idleSso)}
         charactersLoader={() => Promise.resolve([])}
         accountGroupsLoader={() => Promise.resolve([])}
+        assetSummaryLoader={() => Promise.resolve(assetSummaryPage())}
         assetsLoader={assetsLoader}
         assetSyncer={assetSyncer}
       />,
     );
     fireEvent.click(screen.getByRole("button", { name: /Assets/i }));
-    fireEvent.click(screen.getByRole("button", { name: "Einzelpositionen" }));
+    fireEvent.click(await screen.findByRole("button", {
+      name: "Einzelpositionen anzeigen: Synthetic Component",
+    }));
     await screen.findByText("Synthetic Component");
 
     fireEvent.click(screen.getByRole("button", { name: "Assets aktualisieren" }));
@@ -639,7 +653,7 @@ describe("New Eden Foundry design preview", () => {
   it("credits Savoxmedia as the app creator next to the version", () => {
     render(<App />);
 
-    expect(screen.getByText("v0.0.5-preview.21")).toBeInTheDocument();
+    expect(screen.getByText("v0.0.5-preview.22")).toBeInTheDocument();
     expect(screen.getByText("Savoxmedia")).toBeInTheDocument();
     expect(screen.getByText("Erstellt von", { exact: false })).toBeInTheDocument();
     expect(screen.queryByText("Lokaler Betreiber")).not.toBeInTheDocument();

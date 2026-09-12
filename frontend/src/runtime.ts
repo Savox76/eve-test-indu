@@ -2827,9 +2827,9 @@ function parseProductionPlanRecord(candidate: unknown): ProductionPlanRecord {
   if (
     ready !== (steps.length > 0 && candidate.totalBaseTimeSeconds !== null) ||
     (ready && (candidate.buildNumber === null || candidate.cycleTypeIds.length !== 0 ||
-      steps[0].blueprintTypeId !== candidate.blueprintTypeId ||
-      steps[0].productTypeId !== candidate.productTypeId ||
-      steps[0].activity !== candidate.activity || steps[0].requiredQuantity !== candidate.targetQuantity ||
+      steps.at(-1)?.blueprintTypeId !== candidate.blueprintTypeId ||
+      steps.at(-1)?.productTypeId !== candidate.productTypeId ||
+      steps.at(-1)?.activity !== candidate.activity || steps.at(-1)?.requiredQuantity !== candidate.targetQuantity ||
       steps.reduce((total, step) => total + step.totalBaseTimeSeconds, 0) !== candidate.totalBaseTimeSeconds)) ||
     (!ready && (grossMaterials.length !== 0 || candidate.totalBaseTimeSeconds !== null)) ||
     ((candidate.state === "cycle") !== (candidate.cycleTypeIds.length > 0))

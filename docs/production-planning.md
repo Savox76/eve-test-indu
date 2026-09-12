@@ -23,7 +23,7 @@ Die Wurzel verwendet immer das vom Nutzer gewählte exakte Rezept. Für ein prod
 
 Existieren Alternativen, zeigt die Oberfläche Anzahl und ausgewähltes Blueprint. Gemeinsamer Bedarf mehrerer Elternschritte wird zuerst zusammengeführt. Erst danach werden die benötigten Läufe mit ganzzahligem Aufrunden berechnet. Dadurch wird ein gemeinsames Zwischenprodukt nicht pro Elternzweig separat überrundet.
 
-Jeder Schritt nennt Rezept, Aktivität, benötigte Menge, Ausgabemenge je Lauf, Läufe, produzierte Menge, Überschuss, unveränderte SDE-Basiszeit und direkte Materialien. Die sichtbare Herstellungsreihenfolge beginnt bei den tiefsten Vorprodukten und endet bewusst mit dem ausgewählten Zielprodukt. Das Ziel wird zusätzlich hervorgehoben; die Nummern sind damit als ausführbare Reihenfolge und nicht als Abhängigkeitsbaum zu lesen. Alle Mengen und Zeiten bleiben innerhalb der verlustfrei in JavaScript darstellbaren Ganzzahlgrenze; Überläufe werden abgewiesen.
+Jeder Schritt nennt Rezept, Aktivität, benötigte Menge, Ausgabemenge je Lauf, Läufe, produzierte Menge, Überschuss, unveränderte SDE-Basiszeit und direkte Materialien. Die sichtbare Herstellungsreihenfolge beginnt bei den tiefsten Vorprodukten und endet bewusst mit dem ausgewählten Zielprodukt. Backend und Frontend prüfen deshalb den letzten Schritt als gewähltes Wurzelziel. Das Ziel wird zusätzlich hervorgehoben; die Nummern sind damit als ausführbare Reihenfolge und nicht als Abhängigkeitsbaum zu lesen. Alle Mengen und Zeiten bleiben innerhalb der verlustfrei in JavaScript darstellbaren Ganzzahlgrenze; Überläufe werden abgewiesen.
 
 ## Bruttomaterial und Zustände
 
