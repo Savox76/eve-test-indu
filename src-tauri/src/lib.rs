@@ -5402,17 +5402,16 @@ mod tests {
         industry_job_sync_response_is_valid, industry_slot_query_response_is_valid,
         migrate_to_program_directory_storage, read_window_size, release_page_url,
         research_plan_query_response_is_valid, sidecar_startup_error_code,
-        sidecar_startup_error_is_retryable, sso_login_status_is_valid, AccountGroupRecord,
-        AssetDeltaCorrelation, AssetDeltaQueryResponse, AssetDeltaRecord, AssetDeltaSummary,
-        AssetExportResponse, AssetLocationNode, AssetOwner, AssetQueryResponse, AssetRecord,
-        CharacterSkillQueryResponse, CharacterSkillRecord, CharacterSkillSyncCharacterResponse,
-        CharacterSkillSyncResponse, EveCharacterRecord, IndustryAssetCorrelation,
-        IndustryBlueprintCorrelation, IndustryJobQueryResponse, IndustryJobRecord,
-        IndustryJobSyncCharacterResponse, IndustryJobSyncResponse, IndustrySlotActivity,
-        IndustrySlotQueryResponse, IndustrySlotRecord, ResearchPlanOwner,
+        sidecar_startup_error_is_retryable, sso_login_status_is_valid, write_window_size,
+        AccountGroupRecord, AssetDeltaCorrelation, AssetDeltaQueryResponse, AssetDeltaRecord,
+        AssetDeltaSummary, AssetExportResponse, AssetLocationNode, AssetOwner, AssetQueryResponse,
+        AssetRecord, CharacterSkillQueryResponse, CharacterSkillRecord,
+        CharacterSkillSyncCharacterResponse, CharacterSkillSyncResponse, EveCharacterRecord,
+        IndustryAssetCorrelation, IndustryBlueprintCorrelation, IndustryJobQueryResponse,
+        IndustryJobRecord, IndustryJobSyncCharacterResponse, IndustryJobSyncResponse,
+        IndustrySlotActivity, IndustrySlotQueryResponse, IndustrySlotRecord, ResearchPlanOwner,
         ResearchPlanQueryResponse, ResearchPlanRecord, ResearchPlanSummary, RuntimeDataSnapshot,
         ScopePackageStatus, SsoCharacterIdentity, SsoLoginStatus, WindowSizePreference,
-        write_window_size,
     };
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -5471,7 +5470,10 @@ mod tests {
             width: 10_000,
             height: 900,
         };
-        assert_eq!(write_window_size(&path, invalid), Err("window-size-invalid"));
+        assert_eq!(
+            write_window_size(&path, invalid),
+            Err("window-size-invalid")
+        );
     }
 
     #[test]
