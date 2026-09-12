@@ -657,6 +657,13 @@ def check_backend_foundation(errors: list[str]) -> None:
             if marker not in tauri_content:
                 errors.append(f"Tauri runtime is missing required marker: {marker}")
 
+    tauri_entrypoint = ROOT / "src-tauri" / "src" / "main.rs"
+    if tauri_entrypoint.is_file() and (
+        '#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]'
+        not in tauri_entrypoint.read_text(encoding="utf-8")
+    ):
+        errors.append("The Windows release entrypoint must use the GUI subsystem.")
+
     portable_script = ROOT / "scripts" / "package_portable.ps1"
     if portable_script.is_file():
         portable_content = portable_script.read_text(encoding="utf-8")
@@ -672,6 +679,8 @@ def check_backend_foundation(errors: list[str]) -> None:
             "Stop-Process -Id $firstSidecar.Id -Force",
             "sidecar-interrupted",
             "PRAGMA quick_check",
+            "Assert-WindowsGuiExecutable",
+            "$subsystem -ne 2",
         ):
             if marker not in installed_smoke_content:
                 errors.append(

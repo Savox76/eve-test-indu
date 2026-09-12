@@ -92,6 +92,35 @@ function Close-InstalledApplicationCleanly {
   throw 'The installed sidecar remained after the application was closed.'
 }
 
+function Assert-WindowsGuiExecutable {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Path
+  )
+
+  $bytes = [IO.File]::ReadAllBytes($Path)
+  if ($bytes.Length -lt 96 -or $bytes[0] -ne 0x4d -or $bytes[1] -ne 0x5a) {
+    throw 'The installed application is not a valid PE executable.'
+  }
+  $peOffset = [BitConverter]::ToInt32($bytes, 0x3c)
+  $optionalHeader = $peOffset + 24
+  if (
+    $peOffset -lt 0 -or
+    $optionalHeader + 70 -gt $bytes.Length -or
+    [BitConverter]::ToUInt32($bytes, $peOffset) -ne 0x00004550
+  ) {
+    throw 'The installed application has an invalid PE header.'
+  }
+  $magic = [BitConverter]::ToUInt16($bytes, $optionalHeader)
+  if ($magic -notin @(0x010b, 0x020b)) {
+    throw 'The installed application has an unsupported PE optional header.'
+  }
+  $subsystem = [BitConverter]::ToUInt16($bytes, $optionalHeader + 68)
+  if ($subsystem -ne 2) {
+    throw "The installed application is not marked as a Windows GUI executable: $subsystem"
+  }
+}
+
 $repositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $resolvedInstaller = (Resolve-Path -LiteralPath $InstallerPath).Path
 $installRoot = Join-Path $env:LOCALAPPDATA 'New Eden Foundry'
@@ -159,6 +188,7 @@ with closing(connect_database(database)) as connection:
   if (-not $applicationPath) {
     throw "Installed application not found below: $installRoot"
   }
+  Assert-WindowsGuiExecutable -Path $applicationPath
   $sidecarSupport = Join-Path $installRoot 'foundry-sidecar-lib'
   if (-not (Test-Path -LiteralPath $sidecarSupport -PathType Container)) {
     throw "Installed sidecar support directory not found: $sidecarSupport"
