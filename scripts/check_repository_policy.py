@@ -181,6 +181,7 @@ def check_workflows(errors: list[str]) -> None:
             "scripts/build_sidecar.py",
             "scripts/smoke_sidecar.py",
             "scripts/smoke_installed_application.ps1",
+            "scripts/scan_windows_packages.ps1",
             "requirements-build.txt",
             "gh release",
         ):
@@ -383,6 +384,9 @@ def check_application_release(errors: list[str]) -> None:
         tauri_config = json.loads(tauri_config_path.read_text(encoding="utf-8"))
         if tauri_config.get("version") != "../package.json":
             errors.append("Tauri must read its application version from ../package.json.")
+        resources = tauri_config.get("bundle", {}).get("resources", {})
+        if not isinstance(resources, dict) or "foundry-sidecar-lib/" not in resources.values():
+            errors.append("Tauri must bundle the foundry-sidecar-lib support directory.")
 
     cargo_path = ROOT / "src-tauri" / "Cargo.toml"
     if not cargo_path.is_file():
@@ -579,10 +583,15 @@ def check_backend_foundation(errors: list[str]) -> None:
             errors.append("The SSO token implementation must not contain a client secret field.")
 
     sidecar_build = ROOT / "scripts" / "build_sidecar.py"
-    if sidecar_build.is_file() and "SSO_REGISTRATION_PROFILE" not in sidecar_build.read_text(
-        encoding="utf-8"
-    ):
-        errors.append("The frozen sidecar must include the SSO registration profile.")
+    if sidecar_build.is_file():
+        sidecar_build_content = sidecar_build.read_text(encoding="utf-8")
+        if "SSO_REGISTRATION_PROFILE" not in sidecar_build_content:
+            errors.append("The frozen sidecar must include the SSO registration profile.")
+        for marker in ("--onedir", "--contents-directory", "foundry-sidecar-lib"):
+            if marker not in sidecar_build_content:
+                errors.append(f"The sidecar build is missing safe bundle marker: {marker}")
+        if '"--onefile"' in sidecar_build_content:
+            errors.append("The Windows sidecar must not use the self-extracting onefile mode.")
 
     sidecar_smoke = ROOT / "scripts" / "smoke_sidecar.py"
     if sidecar_smoke.is_file():
@@ -631,8 +640,25 @@ def check_backend_foundation(errors: list[str]) -> None:
                 errors.append(f"Tauri runtime is missing required marker: {marker}")
 
     portable_script = ROOT / "scripts" / "package_portable.ps1"
-    if portable_script.is_file() and "foundry-sidecar.exe" not in portable_script.read_text(encoding="utf-8"):
-        errors.append("The portable package must contain foundry-sidecar.exe.")
+    if portable_script.is_file():
+        portable_content = portable_script.read_text(encoding="utf-8")
+        for marker in ("foundry-sidecar.exe", "foundry-sidecar-lib"):
+            if marker not in portable_content:
+                errors.append(f"The portable package must contain {marker}.")
+
+    defender_scan = ROOT / "scripts" / "scan_windows_packages.ps1"
+    if not defender_scan.is_file():
+        errors.append("The Windows package Defender scan is missing.")
+    else:
+        defender_content = defender_scan.read_text(encoding="utf-8")
+        for marker in (
+            "Update-MpSignature",
+            "MpCmdRun.exe",
+            "-DisableRemediation",
+            "Remove-MpPreference",
+        ):
+            if marker not in defender_content:
+                errors.append(f"The Defender scan is missing required marker: {marker}")
 
     package_path = ROOT / "package.json"
     if not package_path.is_file():

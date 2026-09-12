@@ -140,7 +140,7 @@ jobs:
         shell: pwsh
         run: |
           ./scripts/scan_windows_packages.ps1 -Paths @(
-            'src-tauri/binaries/foundry-sidecar-x86_64-pc-windows-msvc.exe'
+            'src-tauri/binaries'
           )
 
       - name: Validate release source

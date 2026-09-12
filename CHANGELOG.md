@@ -24,6 +24,31 @@ Keine.
 
 Keine.
 
+## 0.0.5-preview.19 – 12. September 2026
+
+### Neu hinzugefügt
+
+- Windows-CI und Release-Pipeline scannen Sidecar, Installer und Portable-ZIP mit aktualisierten Microsoft-Defender-Signaturen und stoppen bei einer Erkennung.
+
+### Geändert
+
+- Der Python-Sidecar wird als entpackter Laufzeitordner statt als selbstentpackende `onefile`-EXE ausgeliefert.
+- Die sichtbare Versionsnummer lautet `v0.0.5-preview.19`.
+
+### Behobene Fehler
+
+- Der von Windows Defender blockierte `.18`-Download wird durch einen Paketaufbau ohne temporäre `onefile`-Extraktion ersetzt.
+
+### Bekannte Einschränkungen
+
+- Die Preview ist noch nicht produktiv code-signiert; SmartScreen kann deshalb weiterhin vor einem unbekannten Herausgeber warnen.
+- Paket 22 wartet nach Veröffentlichung des korrigierten Abnahmekandidaten auf das vollständige Windows-A0-Protokoll.
+
+### Update und Datenbankmigration
+
+- Das Datenbankschema bleibt bei Version 9; bestehende Charaktere, Einstellungen, Pläne und Snapshots werden unverändert weiterverwendet.
+- Die Portable-ZIP muss vollständig einschließlich `foundry-sidecar-lib` entpackt werden. Bei einem neuen Zielordner wird der bisherige `data`-Ordner vor dem ersten Start übernommen.
+
 ## 0.0.5-preview.18 – 11. September 2026
 
 ### Neu hinzugefügt

@@ -97,7 +97,7 @@ jobs:
         shell: pwsh
         run: |
           ./scripts/scan_windows_packages.ps1 -Paths @(
-            'src-tauri/binaries/foundry-sidecar-x86_64-pc-windows-msvc.exe'
+            'src-tauri/binaries'
           )
 
       - name: Check Rust formatting
@@ -160,6 +160,10 @@ jobs:
               if ($expected -notin $entries) {
                 throw "Portable package is missing: $expected"
               }
+            }
+            $supportPrefix = "${folder}foundry-sidecar-lib/"
+            if (-not ($entries | Where-Object { $_.StartsWith($supportPrefix) })) {
+              throw "Portable package is missing sidecar support files: $supportPrefix"
             }
           }
           finally {

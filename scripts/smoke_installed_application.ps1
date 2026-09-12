@@ -159,6 +159,13 @@ with closing(connect_database(database)) as connection:
   if (-not $applicationPath) {
     throw "Installed application not found below: $installRoot"
   }
+  $sidecarSupport = Join-Path $installRoot 'foundry-sidecar-lib'
+  if (-not (Test-Path -LiteralPath $sidecarSupport -PathType Container)) {
+    throw "Installed sidecar support directory not found: $sidecarSupport"
+  }
+  if (-not (Get-ChildItem -LiteralPath $sidecarSupport -File -Recurse | Select-Object -First 1)) {
+    throw "Installed sidecar support directory is empty: $sidecarSupport"
+  }
 
   $application = Start-Process -FilePath $applicationPath -WorkingDirectory $installRoot -PassThru
   $firstSidecar = Wait-InstalledApplicationReady `

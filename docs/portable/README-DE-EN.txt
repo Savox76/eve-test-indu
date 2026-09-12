@@ -19,6 +19,8 @@ Wichtig:
   aktuellen Windows-10- und Windows-11-Systemen normalerweise bereits enthalten.
 - Diese Preview ist noch nicht code-signiert. Windows kann deshalb vor einem
   unbekannten Herausgeber warnen.
+- "foundry-sidecar.exe" benötigt den mitgelieferten Ordner
+  "foundry-sidecar-lib". Beide müssen unverändert nebeneinander liegen.
 - Beim ersten Start entsteht im Programmordner "data\foundry.sqlite3". Der
   entpackte Ordner muss deshalb beschreibbar sein. Es wird kein versteckter
   Ersatzpfad verwendet.
@@ -71,6 +73,8 @@ Important:
   with supported, up-to-date Windows 10 and Windows 11 systems.
 - This preview is not code-signed yet. Windows may therefore warn about an
   unknown publisher.
+- "foundry-sidecar.exe" requires the bundled "foundry-sidecar-lib" folder.
+  Keep both unchanged and next to each other.
 - The first start creates "data\foundry.sqlite3" inside the program folder. The
   extracted folder must therefore be writable. No hidden fallback path is used.
 - Before a required database migration, the app automatically creates a

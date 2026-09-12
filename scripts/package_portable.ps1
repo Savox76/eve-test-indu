@@ -25,12 +25,16 @@ if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
 
 $sourceExecutable = Join-Path $TargetDirectory 'new-eden-foundry.exe'
 $sourceSidecar = Join-Path $repositoryRoot 'src-tauri/binaries/foundry-sidecar-x86_64-pc-windows-msvc.exe'
+$sourceSidecarSupport = Join-Path $repositoryRoot 'src-tauri/binaries/foundry-sidecar-lib'
 $sourceReadme = Join-Path $repositoryRoot 'docs/portable/README-DE-EN.txt'
 if (-not (Test-Path -LiteralPath $sourceExecutable -PathType Leaf)) {
   throw "Built application executable not found: $sourceExecutable"
 }
 if (-not (Test-Path -LiteralPath $sourceSidecar -PathType Leaf)) {
   throw "Bundled sidecar executable not found: $sourceSidecar"
+}
+if (-not (Test-Path -LiteralPath $sourceSidecarSupport -PathType Container)) {
+  throw "Bundled sidecar support directory not found: $sourceSidecarSupport"
 }
 if (-not (Test-Path -LiteralPath $sourceReadme -PathType Leaf)) {
   throw "Portable usage notes not found: $sourceReadme"
@@ -47,6 +51,9 @@ try {
   New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
   Copy-Item -LiteralPath $sourceExecutable -Destination (Join-Path $packageRoot 'New Eden Foundry.exe')
   Copy-Item -LiteralPath $sourceSidecar -Destination (Join-Path $packageRoot 'foundry-sidecar.exe')
+  Copy-Item -LiteralPath $sourceSidecarSupport `
+    -Destination (Join-Path $packageRoot 'foundry-sidecar-lib') `
+    -Recurse
   Copy-Item -LiteralPath $sourceReadme -Destination (Join-Path $packageRoot 'PORTABLE-README-DE-EN.txt')
 
   if (Test-Path -LiteralPath $archivePath) {
@@ -73,6 +80,10 @@ try {
       if ($expected -notin $entries) {
         throw "Portable package is missing: $expected"
       }
+    }
+    $supportPrefix = "${folder}foundry-sidecar-lib/"
+    if (-not ($entries | Where-Object { $_.StartsWith($supportPrefix) })) {
+      throw "Portable package is missing sidecar support files: $supportPrefix"
     }
   }
   finally {

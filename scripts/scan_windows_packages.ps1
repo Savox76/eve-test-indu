@@ -48,27 +48,46 @@ Write-Output (
 )
 
 $defenderCommand = Resolve-DefenderCommand
-foreach ($path in $Paths) {
-  $resolvedPath = (Resolve-Path -LiteralPath $path).Path
-  Write-Output "Scanning with Microsoft Defender: $resolvedPath"
-  & $defenderCommand -Scan -ScanType 3 -File $resolvedPath -DisableRemediation
-  $scanExitCode = $LASTEXITCODE
-  if ($scanExitCode -eq 0) {
-    continue
+$preferences = Get-MpPreference
+$temporarilyRemovedExclusions = @(
+  $preferences.ExclusionPath |
+    Where-Object { $_ -in @('C:\', 'D:\') }
+)
+
+try {
+  foreach ($exclusion in $temporarilyRemovedExclusions) {
+    Write-Output "Temporarily removing hosted-runner scan exclusion: $exclusion"
+    Remove-MpPreference -ExclusionPath $exclusion
   }
 
-  $detections = @(
-    Get-MpThreatDetection -ErrorAction SilentlyContinue |
-      Sort-Object -Property InitialDetectionTime -Descending |
-      Select-Object -First 10 ThreatID, ThreatStatusID, InitialDetectionTime, Resources
-  )
-  if ($detections.Count -gt 0) {
-    $detections | Format-List | Out-String | Write-Error
+  foreach ($path in $Paths) {
+    $resolvedPath = (Resolve-Path -LiteralPath $path).Path
+    Write-Output "Scanning with Microsoft Defender: $resolvedPath"
+    & $defenderCommand -Scan -ScanType 3 -File $resolvedPath -DisableRemediation
+    $scanExitCode = $LASTEXITCODE
+    if ($scanExitCode -eq 0) {
+      continue
+    }
+
+    $detections = @(
+      Get-MpThreatDetection -ErrorAction SilentlyContinue |
+        Sort-Object -Property InitialDetectionTime -Descending |
+        Select-Object -First 10 ThreatID, ThreatStatusID, InitialDetectionTime, Resources
+    )
+    if ($detections.Count -gt 0) {
+      $detections | Format-List | Out-String | Write-Error
+    }
+    if ($scanExitCode -eq 2) {
+      throw "Microsoft Defender detected malware or unwanted software in: $resolvedPath"
+    }
+    throw "Microsoft Defender scan failed with exit code ${scanExitCode}: $resolvedPath"
   }
-  if ($scanExitCode -eq 2) {
-    throw "Microsoft Defender detected malware or unwanted software in: $resolvedPath"
+}
+finally {
+  foreach ($exclusion in $temporarilyRemovedExclusions) {
+    Add-MpPreference -ExclusionPath $exclusion
+    Write-Output "Restored hosted-runner scan exclusion: $exclusion"
   }
-  throw "Microsoft Defender scan failed with exit code ${scanExitCode}: $resolvedPath"
 }
 
 Write-Output 'Microsoft Defender found no threats in the requested Windows packages.'
