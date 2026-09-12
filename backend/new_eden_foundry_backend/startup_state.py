@@ -21,6 +21,7 @@ DATA_STATES: Final = frozenset(
     {"loading", "refreshing", "empty", "fresh", "stale", "offline", "error"}
 )
 STALE_AFTER_SECONDS: Final = 2 * 60 * 60
+INTERRUPTED_SYNC_ERROR_CODE: Final = "sidecar-interrupted"
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,6 +55,35 @@ def _parse_utc_timestamp(value: str) -> datetime:
     if parsed.tzinfo is None:
         raise ValueError("Cache timestamps must contain an explicit timezone.")
     return parsed.astimezone(UTC)
+
+
+def recover_interrupted_sync_runs(
+    connection: sqlite3.Connection,
+    *,
+    now: datetime | None = None,
+) -> int:
+    """Cancel durable runs that cannot still be active after a sidecar restart."""
+
+    completed_time = now or datetime.now(UTC)
+    if completed_time.tzinfo is None:
+        raise ValueError("The recovery timestamp must be timezone-aware.")
+    completed_at = completed_time.astimezone(UTC).isoformat().replace("+00:00", "Z")
+
+    connection.execute("BEGIN IMMEDIATE")
+    try:
+        result = connection.execute(
+            """
+            UPDATE sync_runs
+            SET status='cancelled', completed_at=?, error_code=?
+            WHERE status='running'
+            """,
+            (completed_at, INTERRUPTED_SYNC_ERROR_CODE),
+        )
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
+    return max(0, result.rowcount)
 
 
 def inspect_startup_data_state(

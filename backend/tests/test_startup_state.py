@@ -7,7 +7,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from new_eden_foundry_backend.database import connect_database, initialize_database
-from new_eden_foundry_backend.startup_state import inspect_startup_data_state
+from new_eden_foundry_backend.startup_state import (
+    inspect_startup_data_state,
+    recover_interrupted_sync_runs,
+)
 
 
 NOW = datetime(2026, 9, 9, 12, 0, tzinfo=UTC)
@@ -192,6 +195,52 @@ class CacheFirstStartupStateTests(unittest.TestCase):
         self.assertEqual(state.state, "refreshing")
         self.assertTrue(state.has_cached_data)
         self.assertEqual(state.last_sync_status, "running")
+
+    def test_sidecar_restart_cancels_interrupted_runs_and_keeps_cache(self) -> None:
+        completed_run = self.add_run(
+            "completed",
+            observed_at="2026-09-09T11:54:00Z",
+            expires_at="2026-09-09T12:04:00Z",
+        )
+        interrupted_run = self.add_run("running")
+
+        recovered = recover_interrupted_sync_runs(self.connection, now=NOW)
+        state = inspect_startup_data_state(self.connection, now=NOW)
+
+        self.assertEqual(recovered, 1)
+        interrupted = self.connection.execute(
+            "SELECT status, completed_at, error_code FROM sync_runs WHERE id=?",
+            (interrupted_run,),
+        ).fetchone()
+        self.assertEqual(
+            tuple(interrupted),
+            ("cancelled", "2026-09-09T12:00:00Z", "sidecar-interrupted"),
+        )
+        self.assertEqual(state.state, "fresh")
+        self.assertTrue(state.has_cached_data)
+        snapshot_run = self.connection.execute(
+            "SELECT sync_run_id FROM cached_snapshots"
+        ).fetchone()[0]
+        self.assertEqual(snapshot_run, completed_run)
+
+    def test_interrupted_run_recovery_is_idempotent(self) -> None:
+        run_id = self.add_run("running")
+
+        self.assertEqual(recover_interrupted_sync_runs(self.connection, now=NOW), 1)
+        self.assertEqual(recover_interrupted_sync_runs(self.connection, now=NOW), 0)
+        status = self.connection.execute(
+            "SELECT status FROM sync_runs WHERE id=?", (run_id,)
+        ).fetchone()[0]
+        self.assertEqual(status, "cancelled")
+
+    def test_interrupted_run_recovery_requires_aware_time(self) -> None:
+        self.add_run("running")
+
+        with self.assertRaises(ValueError):
+            recover_interrupted_sync_runs(
+                self.connection,
+                now=datetime(2026, 9, 9, 12, 0),
+            )
 
     def test_invalid_cache_timestamp_becomes_a_visible_error(self) -> None:
         self.add_run(

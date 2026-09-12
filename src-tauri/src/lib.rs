@@ -17,6 +17,7 @@ const SIDECAR_READY_TIMEOUT: Duration = Duration::from_secs(25);
 const SIDECAR_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(4);
 const SIDECAR_RESTART_RETRY_DELAY: Duration = Duration::from_millis(750);
 const SIDECAR_RESTART_RETRY_COUNT: u8 = 3;
+const SIDECAR_SUPERVISOR_INTERVAL: Duration = Duration::from_millis(250);
 const SIDECAR_REQUEST_TIMEOUT: Duration = Duration::from_secs(3);
 const ASSET_SYNC_TIMEOUT: Duration = Duration::from_secs(120);
 const UPDATE_NOTICE_TIMEOUT: Duration = Duration::from_secs(8);
@@ -3587,6 +3588,43 @@ fn start_sidecar(app: AppHandle) {
     state.set_snapshot(RuntimeSnapshot::failed(last_error));
 }
 
+fn supervise_sidecar(app: AppHandle) {
+    start_sidecar(app.clone());
+    let state = app.state::<RuntimeState>();
+
+    loop {
+        thread::sleep(SIDECAR_SUPERVISOR_INTERVAL);
+        if state.shutting_down.load(Ordering::Acquire) {
+            return;
+        }
+
+        let exited = {
+            let mut sidecar = state
+                .sidecar
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            let exited = sidecar
+                .as_mut()
+                .is_some_and(|process| matches!(process.child.try_wait(), Ok(Some(_)) | Err(_)));
+            if exited {
+                sidecar.take();
+            }
+            exited
+        };
+        if !exited {
+            continue;
+        }
+
+        state.set_snapshot(RuntimeSnapshot::failed("sidecar-exited"));
+        thread::sleep(SIDECAR_RESTART_RETRY_DELAY);
+        if state.shutting_down.load(Ordering::Acquire) {
+            return;
+        }
+        state.set_snapshot(RuntimeSnapshot::starting());
+        start_sidecar(app.clone());
+    }
+}
+
 fn stop_sidecar(app: &AppHandle) {
     let state = app.state::<RuntimeState>();
     if state.shutting_down.swap(true, Ordering::AcqRel) {
@@ -5180,7 +5218,7 @@ pub fn run() {
         .manage(RuntimeState::new())
         .setup(|app| {
             let app_handle = app.handle().clone();
-            thread::spawn(move || start_sidecar(app_handle));
+            thread::spawn(move || supervise_sidecar(app_handle));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

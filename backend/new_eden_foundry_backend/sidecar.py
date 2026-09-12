@@ -100,7 +100,11 @@ from .sde import (
     validate_blueprint_activity_query,
 )
 from .storage import ProgramStorage, ProgramStorageError, prepare_program_storage
-from .startup_state import StartupDataState, inspect_startup_data_state
+from .startup_state import (
+    StartupDataState,
+    inspect_startup_data_state,
+    recover_interrupted_sync_runs,
+)
 from .sso_registration import (
     SsoRegistrationProfile,
     load_bundled_sso_registration_profile,
@@ -1428,6 +1432,7 @@ def run_sidecar(input_stream: TextIO = sys.stdin, output_stream: TextIO = sys.st
             backup_directory=storage.backup_directory,
         )
         with closing(connect_database(storage.database_path)) as connection:
+            recover_interrupted_sync_runs(connection)
             install_bundled_industry_sde(connection)
             data_state = inspect_startup_data_state(connection)
             update_channel = read_update_channel(connection)
