@@ -28,6 +28,19 @@ const idleSso: SsoLoginStatus = {
   character: null,
 };
 
+const connectedCharacter: EveCharacter = {
+  characterId: 90_888_001, name: "Builder", alias: null,
+  accountGroupId: null, accountGroupLabel: null, enabled: true,
+  credentialState: "stored", scopes: ["esi-assets.read_assets.v1"],
+  scopePackages: [
+    { id: "industry-core", status: "granted", grantedCount: 4, requiredCount: 4 },
+    { id: "market", status: "granted", grantedCount: 2, requiredCount: 2 },
+    { id: "planetary-industry", status: "granted", grantedCount: 1, requiredCount: 1 },
+    { id: "projects", status: "granted", grantedCount: 1, requiredCount: 1 },
+    { id: "private-structures", status: "granted", grantedCount: 1, requiredCount: 1 },
+  ],
+};
+
 const nativeRuntime = (overrides: Partial<Extract<DesktopRuntimeStatus, { state: "ready" }>> = {}) =>
   Promise.resolve<DesktopRuntimeStatus>({
     state: "ready",
@@ -339,6 +352,33 @@ const productionPlanPage: ProductionPlanPage = {
 };
 
 describe("New Eden Foundry design preview", () => {
+  it("keeps character management in setup and restores the selected workspace", async () => {
+    const first = render(<App runtimeLoader={() => nativeRuntime()}
+      charactersLoader={() => Promise.resolve([connectedCharacter])} />);
+
+    expect(screen.queryByText("Verbundene EVE-Charaktere")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Setup" }));
+    expect(await screen.findByText("Verbundene EVE-Charaktere")).toBeInTheDocument();
+    first.unmount();
+
+    render(<App runtimeLoader={() => nativeRuntime()}
+      charactersLoader={() => Promise.resolve([connectedCharacter])} />);
+    expect(await screen.findByRole("heading", { name: "Setup" })).toBeInTheDocument();
+  });
+
+  it("offers connected characters in production even when plan loading fails", async () => {
+    render(<App runtimeLoader={() => nativeRuntime()}
+      ssoStatusLoader={() => Promise.resolve(idleSso)}
+      accountGroupsLoader={() => Promise.resolve([])}
+      charactersLoader={() => Promise.resolve([connectedCharacter])}
+      productionPlansLoader={() => Promise.reject(new Error("query failed"))} />);
+    fireEvent.click(screen.getByRole("button", { name: "Produktion" }));
+
+    await waitFor(() => expect(screen.getAllByRole("option", { name: "Builder" }).length).toBeGreaterThan(0), { timeout: 3_000 });
+    const owners = screen.getAllByLabelText("Ausführender Charakter");
+    expect(owners.some((owner) => (owner as HTMLSelectElement).value === String(connectedCharacter.characterId))).toBe(true);
+  });
+
   it("marks every displayed value as synthetic preview data", () => {
     render(<App />);
 
@@ -653,7 +693,7 @@ describe("New Eden Foundry design preview", () => {
   it("credits Savoxmedia as the app creator next to the version", () => {
     render(<App />);
 
-    expect(screen.getByText("v0.0.5-preview.23")).toBeInTheDocument();
+    expect(screen.getByText("v0.0.5-preview.24")).toBeInTheDocument();
     expect(screen.getByText("Savoxmedia")).toBeInTheDocument();
     expect(screen.getByText("Erstellt von", { exact: false })).toBeInTheDocument();
     expect(screen.queryByText("Lokaler Betreiber")).not.toBeInTheDocument();
@@ -698,7 +738,7 @@ describe("New Eden Foundry design preview", () => {
     );
 
     expect(await screen.findByText("Offline · Cache bleibt verfügbar")).toBeInTheDocument();
-    expect(screen.getAllByText("Datenalter: 2 Std.")).toHaveLength(2);
+    expect(screen.getAllByText("Datenalter: 2 Std.")).toHaveLength(1);
     expect(screen.getByText("18.42 B")).toBeInTheDocument();
   });
 
@@ -889,6 +929,7 @@ describe("New Eden Foundry design preview", () => {
       />,
     );
 
+    fireEvent.click(screen.getByRole("button", { name: "Setup" }));
     const startButton = await screen.findByRole("button", { name: "Charakter verbinden" });
     await waitFor(() => expect(startButton).toBeEnabled());
     expect(screen.getByText("Alle aktuell benötigten SSO-Pakete werden automatisch angefordert.")).toBeInTheDocument();
@@ -962,6 +1003,7 @@ describe("New Eden Foundry design preview", () => {
       />,
     );
 
+    fireEvent.click(screen.getByRole("button", { name: /Setup/ }));
     expect(await screen.findByText("EVE-Charakter verbunden")).toBeInTheDocument();
     expect(screen.getByText("Verbunden: Synthetic Pilot")).toBeInTheDocument();
     expect(screen.getByText("1 lokal verbunden")).toBeInTheDocument();
@@ -1009,6 +1051,7 @@ describe("New Eden Foundry design preview", () => {
       />,
     );
 
+    fireEvent.click(screen.getByRole("button", { name: /Setup/ }));
     fireEvent.click(await screen.findByRole("button", { name: "Verwalten" }));
     expect(screen.getByText("Berechtigungen müssen erneuert werden")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Jetzt neu anmelden" }));
@@ -1031,6 +1074,7 @@ describe("New Eden Foundry design preview", () => {
   it("keeps real EVE sign-in disabled in browser design preview", async () => {
     render(<App />);
 
+    fireEvent.click(screen.getByRole("button", { name: "Setup" }));
     expect(await screen.findByRole("button", { name: "Charakter verbinden" })).toBeDisabled();
     expect(screen.getByText("Die echte Anmeldung ist in der Windows-App verfügbar.")).toBeInTheDocument();
   });
@@ -1042,7 +1086,8 @@ describe("New Eden Foundry design preview", () => {
     expect(await screen.findByText("Bantam Blueprint")).toBeInTheDocument();
     expect(screen.getByText("Snapshot-Status")).toBeInTheDocument();
     expect(screen.getByText(/1 Blueprints · 1 Std\./)).toBeInTheDocument();
-    expect(screen.getByText("BPC")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Bantam Blueprint/ }));
+    expect(await screen.findByText("BPC")).toBeInTheDocument();
     expect(screen.getByText("12")).toBeInTheDocument();
     fireEvent.change(screen.getByPlaceholderText("Blueprint, Besitzer, Ort oder ID suchen"), {
       target: { value: "Bantam" },
@@ -1205,13 +1250,18 @@ describe("New Eden Foundry design preview", () => {
     expect(screen.getByText(/4 frei · 2\/6 belegt/)).toBeInTheDocument();
     expect(screen.getByText(/zuletzt dort genutzt/)).toBeInTheDocument();
     expect(screen.getByText(/Zeiten und Gesamtkosten werden vor dem Einbau nicht geschätzt/)).toBeInTheDocument();
+    expect(researchPlansLoader).toHaveBeenCalledWith(expect.objectContaining({ includeMaxed: false }));
+    fireEvent.click(screen.getByRole("button", { name: "Vollständig erforschte anzeigen" }));
+    await waitFor(() => expect(researchPlansLoader).toHaveBeenLastCalledWith(
+      expect.objectContaining({ includeMaxed: true }),
+    ));
 
     fireEvent.change(screen.getByLabelText("Planstatus"), { target: { value: "ready" } });
     await waitFor(() => expect(researchPlansLoader).toHaveBeenLastCalledWith(
       expect.objectContaining({ state: "ready" }),
     ));
     fireEvent.change(screen.getByLabelText("Priorität"), { target: { value: "90" } });
-    fireEvent.click(screen.getByRole("button", { name: "Aktualisieren" }));
+    fireEvent.click(screen.getByRole("button", { name: "Änderungen speichern" }));
     await waitFor(() => expect(researchPlanSaver).toHaveBeenCalledWith(
       expect.objectContaining({ blueprintItemId: 7_010, priority: 90 }),
     ));

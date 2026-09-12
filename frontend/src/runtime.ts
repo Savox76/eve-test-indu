@@ -817,6 +817,7 @@ export interface ResearchPlanQuery {
   ownerCharacterId: number | null;
   state: ResearchPlanState | null;
   plannedOnly: boolean;
+  includeMaxed: boolean;
   offset: number;
   limit: number;
   sortBy: ResearchPlanSortField;
@@ -2961,6 +2962,7 @@ function validateResearchPlanQuery(query: ResearchPlanQuery): ResearchPlanQuery 
     !(query.ownerCharacterId === null || isPositiveSafeInteger(query.ownerCharacterId)) ||
     !(query.state === null || researchPlanStates.includes(query.state)) ||
     typeof query.plannedOnly !== "boolean" ||
+    typeof query.includeMaxed !== "boolean" ||
     !isNonNegativeSafeInteger(query.offset) ||
     !Number.isSafeInteger(query.limit) || query.limit < 1 || query.limit > 200 ||
     !researchPlanSortFields.includes(query.sortBy) ||
@@ -3134,6 +3136,7 @@ export async function loadResearchPlans(
     ownerCharacterId: validated.ownerCharacterId,
     planState: validated.state,
     plannedOnly: validated.plannedOnly,
+    includeMaxed: validated.includeMaxed,
     offset: validated.offset,
     limit: validated.limit,
     sortBy: validated.sortBy,

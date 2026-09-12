@@ -24,6 +24,35 @@ Keine.
 
 Keine.
 
+## 0.0.5-preview.24 – 12. September 2026
+
+### Neu hinzugefügt
+
+- Ein eigener Setup-Bereich bündelt EVE-Anmeldung, verbundene Charaktere, Berechtigungen und Kontogruppen in einer kompakten Liste.
+- Persönliche Blueprints werden standardmäßig nach Blueprint-Typ gruppiert; ein Klick auf den Namen öffnet die zugehörigen Positionen.
+- Sprache, letzter Arbeitsbereich sowie die fachlichen Besitzer-, Status-, Aktivitäts-, Sortier- und Umschalterauswahlen werden lokal gespeichert.
+- Die zuletzt verwendete normale Größe des Programmfensters wird beim Beenden gespeichert und vor dem Einblenden beim nächsten Start wiederhergestellt.
+
+### Geändert
+
+- Der globale Knopf zeigt nur noch `Aktualisieren`; der zusätzliche Hinweis für einen veralteten Cache entfällt.
+- Vollständig erforschte BPOs sind im ME-/TE-Plan standardmäßig ausgeblendet und können über einen gespeicherten Schalter eingeblendet werden.
+- Die sichtbare Versionsnummer lautet `v0.0.5-preview.24`.
+
+### Behobene Fehler
+
+- Ausführende Charaktere in der Produktionsplanung stammen nun direkt aus der aktivierten Charakterliste und bleiben auch auswählbar, wenn noch kein Produktionsplan existiert oder dessen Abfrage fehlschlägt.
+- Gestapelte BPOs mit positiver ESI-Menge werden wieder als Originale in der Forschungsplanung berücksichtigt.
+
+### Bekannte Einschränkungen
+
+- Die Preview ist noch nicht produktiv code-signiert; SmartScreen kann deshalb weiterhin vor einem unbekannten Herausgeber warnen.
+- Paket 22 wartet auf das vollständige Windows-A0-Protokoll.
+
+### Update und Datenbankmigration
+
+- Das Datenbankschema bleibt bei Version 9. UI-Auswahlen werden im lokalen WebView-Profil und die Fenstergröße in `data/window-size.json` gespeichert; vorhandene Programmdaten bleiben unverändert.
+
 ## 0.0.5-preview.23 – 12. September 2026
 
 ### Neu hinzugefügt

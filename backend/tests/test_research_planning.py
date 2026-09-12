@@ -90,6 +90,7 @@ def query(**overrides):
         "ownerCharacterId": None,
         "state": None,
         "plannedOnly": False,
+        "includeMaxed": False,
         "offset": 0,
         "limit": 100,
         "sortBy": "priority",
@@ -209,6 +210,14 @@ class ResearchPlanningTests(unittest.TestCase):
         self.assertEqual(record["state"], "unverified")
         self.assertIsNone(record["slotCapacity"])
         self.assertIsNone(record["skillSnapshotId"])
+
+    def test_stacked_originals_are_plannable_and_maxed_bpos_are_hidden_by_default(self):
+        self.sync_sources(blueprints=[blueprint(quantity=3, me=10, te=20)])
+
+        self.assertEqual(query_research_plans(self.db, query())["total"], 0)
+        visible = query_research_plans(self.db, query(includeMaxed=True))
+        self.assertEqual(visible["total"], 1)
+        self.assertTrue(visible["items"][0]["blueprintPresent"])
 
     def test_disappeared_blueprint_keeps_saved_plan_and_can_be_deleted(self):
         self.sync_sources()

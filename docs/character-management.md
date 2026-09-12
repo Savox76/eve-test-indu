@@ -6,7 +6,7 @@ Jede EVE-Anmeldung autorisiert genau einen Charakter. New Eden Foundry führt de
 
 ## Verwaltungsfunktionen
 
-Die Desktop-Oberfläche lädt Charaktere und Kontogruppen ausschließlich über die authentifizierte Sidecar-Verbindung. Pro Charakter können folgende Werte geändert werden:
+Die Desktop-Oberfläche lädt Charaktere und Kontogruppen ausschließlich über die authentifizierte Sidecar-Verbindung. Anmeldung und Verwaltung liegen im eigenen Bereich **Setup**; die Charaktere erscheinen dort als kompakte Liste. In den normalen Arbeitsbereichen bleibt die Verwaltung verborgen und es erscheint nur dann ein kurzer Setup-Hinweis, wenn mindestens ein Charakter neu angemeldet werden muss. Pro Charakter können folgende Werte geändert werden:
 
 - **Alias:** optionaler lokaler Anzeigename mit maximal 80 Zeichen; der verifizierte EVE-Name bleibt unverändert sichtbar.
 - **Aktivstatus:** inaktive Charaktere bleiben gespeichert, werden aber von späteren regulären Synchronisierungen und Gesamtberechnungen ausgeschlossen.

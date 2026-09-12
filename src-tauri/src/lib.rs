@@ -9,7 +9,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
-use tauri::{AppHandle, Manager, RunEvent, State};
+use tauri::{AppHandle, Manager, PhysicalSize, RunEvent, Size, State, WindowEvent};
 
 const SIDECAR_PROTOCOL_VERSION: u8 = 1;
 const DATABASE_LOCATION: &str = "data/foundry.sqlite3";
@@ -24,6 +24,13 @@ const UPDATE_NOTICE_TIMEOUT: Duration = Duration::from_secs(8);
 const PORTABLE_MARKER: &str = "PORTABLE-README-DE-EN.txt";
 const PROGRAM_STORAGE_MARKER: &str = ".program-storage-v1";
 const PREVIOUS_PROGRAM_DATA_BACKUP: &str = "data-before-appdata-migration";
+const WINDOW_SIZE_FILE: &str = "window-size.json";
+const DEFAULT_WINDOW_WIDTH: u32 = 1440;
+const DEFAULT_WINDOW_HEIGHT: u32 = 900;
+const MIN_WINDOW_WIDTH: u32 = 1100;
+const MIN_WINDOW_HEIGHT: u32 = 720;
+const MAX_WINDOW_WIDTH: u32 = 7680;
+const MAX_WINDOW_HEIGHT: u32 = 4320;
 const SIDECAR_MAX_RESPONSE_BYTES: u64 = 4_194_304;
 const WINDOWS_CREATE_NO_WINDOW: u32 = 0x0800_0000;
 const EVE_SSO_AUTHORIZATION_ENDPOINT: &str = "https://login.eveonline.com/v2/oauth/authorize";
@@ -1159,6 +1166,7 @@ struct SidecarProcess {
 struct RuntimeState {
     snapshot: Mutex<RuntimeSnapshot>,
     sidecar: Mutex<Option<SidecarProcess>>,
+    window_size: Mutex<WindowSizePreference>,
     shutting_down: AtomicBool,
 }
 
@@ -1167,6 +1175,7 @@ impl RuntimeState {
         Self {
             snapshot: Mutex::new(RuntimeSnapshot::starting()),
             sidecar: Mutex::new(None),
+            window_size: Mutex::new(WindowSizePreference::default()),
             shutting_down: AtomicBool::new(false),
         }
     }
@@ -1176,6 +1185,71 @@ impl RuntimeState {
             .snapshot
             .lock()
             .unwrap_or_else(|error| error.into_inner()) = snapshot;
+    }
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct WindowSizePreference {
+    width: u32,
+    height: u32,
+}
+
+impl Default for WindowSizePreference {
+    fn default() -> Self {
+        Self {
+            width: DEFAULT_WINDOW_WIDTH,
+            height: DEFAULT_WINDOW_HEIGHT,
+        }
+    }
+}
+
+impl WindowSizePreference {
+    fn is_valid(self) -> bool {
+        (MIN_WINDOW_WIDTH..=MAX_WINDOW_WIDTH).contains(&self.width)
+            && (MIN_WINDOW_HEIGHT..=MAX_WINDOW_HEIGHT).contains(&self.height)
+    }
+}
+
+fn program_data_directory() -> Result<PathBuf, &'static str> {
+    std::env::current_exe()
+        .map_err(|_| "program-directory-unavailable")?
+        .parent()
+        .map(|directory| directory.join("data"))
+        .ok_or("program-directory-unavailable")
+}
+
+fn read_window_size(path: &Path) -> Option<WindowSizePreference> {
+    if path.is_symlink() || !path.is_file() {
+        return None;
+    }
+    let preference = serde_json::from_slice::<WindowSizePreference>(&fs::read(path).ok()?).ok()?;
+    preference.is_valid().then_some(preference)
+}
+
+fn write_window_size(path: &Path, preference: WindowSizePreference) -> Result<(), &'static str> {
+    if !preference.is_valid() {
+        return Err("window-size-invalid");
+    }
+    let directory = path.parent().ok_or("window-size-write-failed")?;
+    if directory.is_symlink() || (path.exists() && path.is_symlink()) {
+        return Err("window-size-write-failed");
+    }
+    fs::create_dir_all(directory).map_err(|_| "window-size-write-failed")?;
+    let payload = serde_json::to_vec(&preference).map_err(|_| "window-size-write-failed")?;
+    fs::write(path, payload).map_err(|_| "window-size-write-failed")
+}
+
+fn load_window_size() -> WindowSizePreference {
+    program_data_directory()
+        .ok()
+        .and_then(|directory| read_window_size(&directory.join(WINDOW_SIZE_FILE)))
+        .unwrap_or_default()
+}
+
+fn save_window_size(preference: WindowSizePreference) {
+    if let Ok(directory) = program_data_directory() {
+        let _ = write_window_size(&directory.join(WINDOW_SIZE_FILE), preference);
     }
 }
 
@@ -4501,6 +4575,7 @@ fn query_research_plans(
     owner_character_id: Option<u64>,
     plan_state: Option<String>,
     planned_only: bool,
+    include_maxed: bool,
     offset: u64,
     limit: u64,
     sort_by: String,
@@ -4528,6 +4603,7 @@ fn query_research_plans(
         "ownerCharacterId": owner_character_id,
         "state": plan_state,
         "plannedOnly": planned_only,
+        "includeMaxed": include_maxed,
         "offset": offset,
         "limit": limit,
         "sortBy": sort_by,
@@ -5220,9 +5296,47 @@ pub fn run() {
     let application = builder
         .manage(RuntimeState::new())
         .setup(|app| {
+            let preference = load_window_size();
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.set_size(Size::Physical(PhysicalSize::new(
+                    preference.width,
+                    preference.height,
+                )));
+                let _ = window.center();
+                let _ = window.show();
+            }
+            *app.state::<RuntimeState>()
+                .window_size
+                .lock()
+                .unwrap_or_else(|error| error.into_inner()) = preference;
             let app_handle = app.handle().clone();
             thread::spawn(move || supervise_sidecar(app_handle));
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            if window.label() != "main" || !matches!(event, WindowEvent::Resized(_)) {
+                return;
+            }
+            let is_normal = window.is_maximized().is_ok_and(|value| !value)
+                && window.is_minimized().is_ok_and(|value| !value)
+                && window.is_fullscreen().is_ok_and(|value| !value);
+            if !is_normal {
+                return;
+            }
+            let WindowEvent::Resized(size) = event else {
+                return;
+            };
+            let preference = WindowSizePreference {
+                width: size.width,
+                height: size.height,
+            };
+            if preference.is_valid() {
+                *window
+                    .state::<RuntimeState>()
+                    .window_size
+                    .lock()
+                    .unwrap_or_else(|error| error.into_inner()) = preference;
+            }
         })
         .invoke_handler(tauri::generate_handler![
             desktop_runtime_status,
@@ -5267,6 +5381,12 @@ pub fn run() {
 
     application.run(|app, event| {
         if matches!(event, RunEvent::Exit | RunEvent::ExitRequested { .. }) {
+            let preference = *app
+                .state::<RuntimeState>()
+                .window_size
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            save_window_size(preference);
             stop_sidecar(app);
         }
     });
@@ -5280,7 +5400,7 @@ mod tests {
         character_skill_query_response_is_valid, character_skill_sync_response_is_valid,
         eve_character_record_is_valid, industry_job_query_response_is_valid,
         industry_job_sync_response_is_valid, industry_slot_query_response_is_valid,
-        migrate_to_program_directory_storage, release_page_url,
+        migrate_to_program_directory_storage, read_window_size, release_page_url,
         research_plan_query_response_is_valid, sidecar_startup_error_code,
         sidecar_startup_error_is_retryable, sso_login_status_is_valid, AccountGroupRecord,
         AssetDeltaCorrelation, AssetDeltaQueryResponse, AssetDeltaRecord, AssetDeltaSummary,
@@ -5291,7 +5411,8 @@ mod tests {
         IndustryJobSyncCharacterResponse, IndustryJobSyncResponse, IndustrySlotActivity,
         IndustrySlotQueryResponse, IndustrySlotRecord, ResearchPlanOwner,
         ResearchPlanQueryResponse, ResearchPlanRecord, ResearchPlanSummary, RuntimeDataSnapshot,
-        ScopePackageStatus, SsoCharacterIdentity, SsoLoginStatus,
+        ScopePackageStatus, SsoCharacterIdentity, SsoLoginStatus, WindowSizePreference,
+        write_window_size,
     };
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -5322,6 +5443,35 @@ mod tests {
         fn drop(&mut self) {
             let _ = fs::remove_dir_all(&self.0);
         }
+    }
+
+    #[test]
+    fn persists_and_reads_a_valid_window_size() {
+        let root = TestDirectory::new("window-size");
+        let path = root.path().join("data/window-size.json");
+        let preference = WindowSizePreference {
+            width: 1680,
+            height: 1050,
+        };
+
+        write_window_size(&path, preference).expect("window size must be written");
+
+        assert_eq!(read_window_size(&path), Some(preference));
+    }
+
+    #[test]
+    fn rejects_invalid_or_out_of_range_window_sizes() {
+        let root = TestDirectory::new("invalid-window-size");
+        let path = root.path().join("window-size.json");
+        fs::write(&path, br#"{"width":800,"height":600}"#)
+            .expect("invalid fixture must be written");
+        assert_eq!(read_window_size(&path), None);
+
+        let invalid = WindowSizePreference {
+            width: 10_000,
+            height: 900,
+        };
+        assert_eq!(write_window_size(&path, invalid), Err("window-size-invalid"));
     }
 
     #[test]
