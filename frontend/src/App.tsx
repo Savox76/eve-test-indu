@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 66739)
-Total output lines: 5274
-
 import {
   AlertTriangle,
   ArrowRight,
@@ -2415,7 +2412,1622 @@ export function App({
                 ? t.updates.checkingRelease
                 : releaseNotice?.state === "available"
                   ? t.updates.releaseAvailable.replace("{version}", releaseNotice.latestVersion ?? "")
-                  : releaseNoti…16739 tokens truncated… "owner", "kind", "me", "te", "runs", "age"].includes(String(value)));
+                  : releaseNotice?.state === "current"
+                    ? t.updates.releaseCurrent
+                    : releaseNotice?.state === "unavailable"
+                      ? t.updates.releaseUnavailable
+                      : releaseNotice?.state === "error" || (nativeCoreReady && releaseNotice === null)
+                        ? t.updates.releaseError
+                        : t.updates.desktopOnly}
+            </strong>
+            {runtimeStatus.state === "ready" && (
+              <span>{runtimeStatus.distribution === "portable" ? t.updates.portableHint : t.updates.installedHint}</span>
+            )}
+            <span>{t.updates.signedBoundary}</span>
+            <div>
+              <button type="button" onClick={() => void refreshReleaseNotice()} disabled={!nativeCoreReady || releaseChecking}>
+                <RefreshCw className={releaseChecking ? "spin" : ""} size={13} />{t.updates.checkNow}
+              </button>
+              {releaseNotice?.state === "available" && (
+                <button type="button" onClick={() => void releaseDownloadsOpener(releaseNotice.latestVersion)}>
+                  <Download size={13} />{t.updates.openRelease}
+                </button>
+              )}
+            </div>
+          </div>
+        </section>
+
+        <div className={`local-status local-status--${runtimePresentationState}`} role="status">
+          <div className="local-status__icon">
+            <ShieldCheck size={17} />
+          </div>
+          <div>
+            <strong>{t.runtimeStatus[runtimePresentationState].title}</strong>
+            <span>{runtimeDetail}</span>
+          </div>
+        </div>
+
+        <div className="sidebar-footer">
+          <span>{t.footerVersion}</span>
+          <span className="creator-credit">
+            {t.creatorLabel} <strong>Savoxmedia</strong>
+          </span>
+        </div>
+      </aside>
+
+      <main className="main-content">
+        <header className="topbar">
+          <div className="topbar-title">
+            <span>{t.nav[activeModule]}</span>
+            <small>New Eden Foundry</small>
+          </div>
+
+          <div className="search-wrap">
+            <Search size={17} aria-hidden="true" />
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              onFocus={() => setSearchFocused(true)}
+              onBlur={() => window.setTimeout(() => setSearchFocused(false), 120)}
+              placeholder={t.search}
+              aria-label={t.search}
+            />
+            <kbd><Command size={11} /> K</kbd>
+            {searchFocused && (
+              <div className="search-results">
+                <span className="search-results__hint">{t.searchHint}</span>
+                {searchResults.length > 0 ? (
+                  searchResults.slice(0, 5).map(({ id, icon: Icon }) => (
+                    <button key={id} type="button" onMouseDown={() => selectModule(id)}>
+                      <Icon size={16} />
+                      <span>{t.nav[id]}</span>
+                      <ArrowRight size={14} />
+                    </button>
+                  ))
+                ) : (
+                  <span className="search-results__empty">{t.noResults}</span>
+                )}
+              </div>
+            )}
+          </div>
+
+          <button
+            className={`sync-status ${localData ? `sync-status--${localData.state}` : ""}`}
+            type="button"
+            onClick={() => void runAllSyncs().catch(() => undefined)}
+            aria-label={t.refresh}
+            disabled={!nativeCoreReady || syncing}
+          >
+            <RefreshCw
+              className={syncing || localData?.state === "loading" || localData?.state === "refreshing" ? "spin" : ""}
+              size={15}
+            />
+            <span>{t.refresh}</span>
+          </button>
+
+          <div className="font-size-control" aria-label={t.fontSize.label}>
+            <Type size={15} aria-hidden="true" />
+            <button
+              type="button"
+              onClick={() => void changeFontScale(-1)}
+              disabled={fontScaleBusy || fontScale === fontScales[0]}
+              aria-label={t.fontSize.smaller}
+              title={t.fontSize.smaller}
+            >
+              <Minus size={13} />
+            </button>
+            <span title={t.fontSize.levels[fontScale]}>{fontScales.indexOf(fontScale) + 1}/5</span>
+            <button
+              type="button"
+              onClick={() => void changeFontScale(1)}
+              disabled={fontScaleBusy || fontScale === fontScales[fontScales.length - 1]}
+              aria-label={t.fontSize.larger}
+              title={t.fontSize.larger}
+            >
+              <Plus size={13} />
+            </button>
+          </div>
+
+          <div className="language-switch" aria-label="Language">
+            <Languages size={15} />
+            {(["de", "en"] as const).map((language) => (
+              <button
+                key={language}
+                type="button"
+                className={locale === language ? "is-active" : ""}
+                onClick={() => setLocale(language)}
+                aria-label={language.toUpperCase()}
+              >
+                {language.toUpperCase()}
+              </button>
+            ))}
+          </div>
+
+          <button className="icon-button" type="button" aria-label={t.notices} onClick={scrollToAttention}>
+            <Bell size={18} />
+            <span className="notification-dot" aria-hidden="true" />
+          </button>
+        </header>
+
+        {activeModule === "setup" ? null : (activeModule === "assets" || activeModule === "blueprints") && nativeCoreReady ? (
+          <div className="preview-strip preview-strip--live" role="status">
+            <Database size={15} />
+            <strong>LOCAL</strong>
+            <span>{activeModule === "blueprints" ? t.blueprints.liveNotice : t.assets.liveNotice}</span>
+          </div>
+        ) : (
+          <div className="preview-strip" role="status">
+            <FlaskConical size={15} />
+            <strong>{t.preview}</strong>
+            <span>{t.synthetic}</span>
+            <span className="preview-strip__meta">synthetic: {String(demoMetadata.synthetic)}</span>
+          </div>
+        )}
+
+        {activeModule === "setup" && <div className="workspace setup-workspace">
+          <section className="setup-hero">
+            <Settings size={24} aria-hidden="true" />
+            <div><span className="eyebrow">{t.setupSection}</span><h1>{t.nav.setup}</h1><p>{t.setupIntro}</p></div>
+          </section>
+        <section className={`sso-panel sso-panel--${ssoStatus.state}`} aria-labelledby="sso-title">
+          <div className="sso-panel__icon" aria-hidden="true">
+            {ssoStatus.state === "waiting" || ssoStatus.state === "exchanging"
+              ? <RefreshCw className="spin" size={20} />
+              : <LogIn size={20} />}
+          </div>
+          <div className="sso-panel__copy" aria-live="polite">
+            <span>{t.sso.eyebrow}</span>
+            <strong id="sso-title">{t.sso.states[ssoStatus.state].title}</strong>
+            <p>
+              {ssoCommandError
+                ? t.sso.commandError
+                : ssoStatus.state === "connected" && ssoStatus.character
+                  ? t.sso.connectedName.replace("{name}", ssoStatus.character.name)
+                  : t.sso.states[ssoStatus.state].detail}
+            </p>
+            <small>{nativeCoreReady ? t.sso.security : t.sso.desktopOnly}</small>
+          </div>
+          <div className="sso-scopes sso-scopes--automatic">
+            <strong>{t.sso.scopeTitle}</strong>
+            <span>{t.sso.scopeAutomatic}</span>
+          </div>
+          <div className="sso-panel__actions">
+            {ssoStatus.state === "waiting" || ssoStatus.state === "exchanging" ? (
+              <button type="button" className="sso-cancel" onClick={() => void abortSsoLogin()} disabled={ssoBusy}>
+                <X size={15} />
+                {t.sso.cancel}
+              </button>
+            ) : (
+              <button type="button" className="sso-start" onClick={() => void beginSsoLogin()} disabled={!nativeCoreReady || ssoBusy}>
+                <LogIn size={15} />
+                {ssoStatus.state === "connected"
+                  ? t.sso.startAnother
+                  : ssoStatus.state === "idle"
+                    ? t.sso.start
+                    : t.sso.retry}
+              </button>
+            )}
+          </div>
+        </section>
+
+        <CharacterManager
+          characters={characters}
+          groups={managedGroups}
+          unavailable={charactersError}
+          disabled={!nativeCoreReady}
+          t={t}
+          updateCharacter={characterUpdater}
+          deleteCharacter={characterDeleter}
+          createGroup={accountGroupCreator}
+          renameGroup={accountGroupRenamer}
+          deleteGroup={accountGroupDeleter}
+          onRefresh={refreshCharacterManagement}
+          onReauthorize={beginSsoLogin}
+        />
+        </div>}
+
+        {activeModule !== "setup" && reconnectCharacters.length > 0 && (
+          <section className="reauthorization-notice" role="alert">
+            <AlertTriangle size={18} />
+            <span>{t.reconnectNotice.replace("{count}", String(reconnectCharacters.length))}</span>
+            <button type="button" onClick={() => selectModule("setup")}>{t.openSetup}<ArrowRight size={14} /></button>
+          </section>
+        )}
+
+        {activeModule !== "setup" && localData && localData.state !== "stale" && (
+          <DataStateNotice
+            state={localData.state}
+            hasCachedData={localData.hasCachedData}
+            ageSeconds={localData.ageSeconds}
+            locale={locale}
+            t={t}
+          />
+        )}
+
+        {activeModule === "setup" ? null : activeModule === "overview" ? (
+          <Overview
+            locale={locale}
+            t={t}
+            scope={overviewScope}
+            onScopeChange={setOverviewScope}
+            onOpenProduction={() => selectModule("production")}
+            onInspect={scrollToAttention}
+          />
+        ) : activeModule === "assets" ? (
+          <AssetWorkspace
+            available={nativeCoreReady}
+            locale={locale}
+            t={t}
+            loadAssets={assetsLoader}
+            loadSummary={assetSummaryLoader}
+            exportCsv={assetsCsvExporter}
+            loadDeltas={assetDeltasLoader}
+            syncAssets={runAssetSync}
+            refreshRevision={assetRevision}
+          />
+        ) : activeModule === "blueprints" ? (
+          <BlueprintWorkspace
+            available={nativeCoreReady}
+            locale={locale}
+            t={t}
+            loadBlueprints={blueprintsLoader}
+            syncBlueprints={runBlueprintSync}
+            refreshRevision={blueprintRevision}
+            loadIndustryJobs={industryJobsLoader}
+            syncIndustryJobs={runIndustryJobSync}
+            industryJobRevision={industryJobRevision}
+            loadCharacterSkills={characterSkillsLoader}
+            syncCharacterSkills={runCharacterSkillSync}
+            characterSkillRevision={characterSkillRevision}
+            loadIndustryFacilities={industryFacilitiesLoader}
+            syncIndustryFacilities={runIndustryFacilitySync}
+            industryFacilityRevision={industryFacilityRevision}
+            loadIndustrySlots={industrySlotsLoader}
+            industrySlotRevision={blueprintRevision + industryJobRevision + characterSkillRevision + researchPlanRevision}
+            loadResearchPlans={researchPlansLoader}
+            saveResearchPlan={researchPlanSaver}
+            deleteResearchPlan={researchPlanDeleter}
+            researchPlanRevision={researchPlanRevision}
+          />
+        ) : activeModule === "production" ? (
+          <ProductionWorkspace
+            available={nativeCoreReady}
+            locale={locale}
+            t={t}
+            characters={characters}
+            loadCatalog={productionCatalogLoader}
+            loadPlans={productionPlansLoader}
+            savePlan={productionPlanSaver}
+            deletePlan={productionPlanDeleter}
+          />
+        ) : (
+          <ModulePreview activeModule={activeModule} t={t} />
+        )}
+      </main>
+    </div>
+  );
+}
+
+type Translation = (typeof copy)[Locale];
+
+function AssetWorkspace({
+  available,
+  locale,
+  t,
+  loadAssets: loadAssetPage,
+  loadSummary,
+  exportCsv,
+  loadDeltas: loadDeltaPage,
+  syncAssets: runAssetSync,
+  refreshRevision,
+}: {
+  available: boolean;
+  locale: Locale;
+  t: Translation;
+  loadAssets: (query: AssetQuery) => Promise<AssetPage>;
+  loadSummary: (query: AssetSummaryQuery) => Promise<AssetSummaryPage>;
+  exportCsv: (query: Omit<AssetQuery, "offset" | "limit">) => Promise<AssetCsvExport>;
+  loadDeltas: (query: AssetDeltaQuery) => Promise<AssetDeltaPage>;
+  syncAssets: () => Promise<AssetSyncResult>;
+  refreshRevision: number;
+}) {
+  const [search, setSearch] = useState("");
+  const [appliedSearch, setAppliedSearch] = useState("");
+  const [ownerCharacterId, setOwnerCharacterId] = useStoredState<number | null>("assets.owner", null, isNullablePositiveInteger);
+  const [locationStatus, setLocationStatus] = useStoredState<AssetLocationStatus | null>("assets.location", null, (value): value is AssetLocationStatus | null => value === null || assetLocationStatuses.includes(value as AssetLocationStatus));
+  const [viewMode, setViewMode] = useState<"summary" | "positions">("summary");
+  const [sortBy, setSortBy] = useStoredState<AssetSortField>("assets.sort", "type", (value): value is AssetSortField => ["type", "quantity", "owner", "location", "age"].includes(String(value)));
+  const [summarySortBy, setSummarySortBy] = useStoredState<AssetSummarySortField>("assets.summary-sort", "type", (value): value is AssetSummarySortField => ["type", "quantity", "stacks", "owners", "locations", "age"].includes(String(value)));
+  const [sortDirection, setSortDirection] = useStoredState<SortDirection>("assets.direction", "asc", (value): value is SortDirection => value === "asc" || value === "desc");
+  const [offset, setOffset] = useState(0);
+  const [page, setPage] = useState<AssetPage | null>(null);
+  const [summaryPage, setSummaryPage] = useState<AssetSummaryPage | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [exported, setExported] = useState<AssetCsvExport | null>(null);
+  const [exportFailed, setExportFailed] = useState(false);
+  const [deltaChangeType, setDeltaChangeType] = useStoredState<AssetDeltaChangeType | null>("assets.delta-type", null, (value): value is AssetDeltaChangeType | null => value === null || assetDeltaChangeTypes.includes(value as AssetDeltaChangeType));
+  const [deltaOffset, setDeltaOffset] = useState(0);
+  const [deltaPage, setDeltaPage] = useState<AssetDeltaPage | null>(null);
+  const [deltasLoading, setDeltasLoading] = useState(false);
+  const [deltasFailed, setDeltasFailed] = useState(false);
+  const [syncResult, setSyncResult] = useState<AssetSyncResult | null>(null);
+  const [syncFailed, setSyncFailed] = useState(false);
+  const [assetsSyncing, setAssetsSyncing] = useState(false);
+  const numberFormat = useMemo(
+    () => new Intl.NumberFormat(locale === "de" ? "de-DE" : "en-US"),
+    [locale],
+  );
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setAppliedSearch(search.trim().replace(/\s+/g, " "));
+      setOffset(0);
+      setDeltaOffset(0);
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [search]);
+
+  useEffect(() => {
+    if (!available) return;
+    let active = true;
+    setLoading(true);
+    setFailed(false);
+    const request = viewMode === "summary"
+      ? loadSummary({
+          search: appliedSearch,
+          ownerCharacterId,
+          locationStatus,
+          offset,
+          limit: assetPageSize,
+          sortBy: summarySortBy,
+          sortDirection,
+        })
+      : loadAssetPage({
+          search: appliedSearch,
+          ownerCharacterId,
+          locationStatus,
+          offset,
+          limit: assetPageSize,
+          sortBy,
+          sortDirection,
+        });
+    void request
+      .then((loadedPage) => {
+        if (!active) return;
+        if (loadedPage.total > 0 && loadedPage.offset >= loadedPage.total) {
+          setOffset(Math.floor((loadedPage.total - 1) / assetPageSize) * assetPageSize);
+          return;
+        }
+        if (viewMode === "summary") setSummaryPage(loadedPage as AssetSummaryPage);
+        else setPage(loadedPage as AssetPage);
+        setFailed(false);
+      })
+      .catch(() => {
+        if (active) setFailed(true);
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [appliedSearch, available, loadAssetPage, loadSummary, locationStatus, offset, ownerCharacterId, refreshRevision, sortBy, sortDirection, summarySortBy, viewMode]);
+
+  useEffect(() => {
+    if (!available) return;
+    let active = true;
+    setDeltasLoading(true);
+    setDeltasFailed(false);
+    void loadDeltaPage({
+      search: appliedSearch,
+      ownerCharacterId,
+      changeType: deltaChangeType,
+      offset: deltaOffset,
+      limit: assetDeltaPageSize,
+    })
+      .then((loadedPage) => {
+        if (!active) return;
+        if (loadedPage.total > 0 && loadedPage.offset >= loadedPage.total) {
+          setDeltaOffset(Math.floor((loadedPage.total - 1) / assetDeltaPageSize) * assetDeltaPageSize);
+          return;
+        }
+        setDeltaPage(loadedPage);
+        setDeltasFailed(false);
+      })
+      .catch(() => {
+        if (active) setDeltasFailed(true);
+      })
+      .finally(() => {
+        if (active) setDeltasLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [appliedSearch, available, deltaChangeType, deltaOffset, loadDeltaPage, ownerCharacterId, refreshRevision]);
+
+  const refreshAssets = async () => {
+    if (!available || assetsSyncing) return;
+    setAssetsSyncing(true);
+    setSyncFailed(false);
+    setSyncResult(null);
+    try {
+      const result = await runAssetSync();
+      setSyncResult(result);
+      setOffset(0);
+      setDeltaOffset(0);
+    } catch {
+      setSyncFailed(true);
+    } finally {
+      setAssetsSyncing(false);
+    }
+  };
+
+  const createExport = async () => {
+    if (!available || exporting) return;
+    setExporting(true);
+    setExported(null);
+    setExportFailed(false);
+    try {
+      setExported(await exportCsv({
+        search: appliedSearch,
+        ownerCharacterId,
+        locationStatus,
+        sortBy,
+        sortDirection,
+      }));
+    } catch {
+      setExportFailed(true);
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const activePage = viewMode === "summary" ? summaryPage : page;
+  const total = activePage?.total ?? 0;
+  const from = total === 0 ? 0 : offset + 1;
+  const to = Math.min(offset + (activePage?.items.length ?? 0), total);
+  const resultRange = t.assets.resultRange
+    .replace("{from}", numberFormat.format(from))
+    .replace("{to}", numberFormat.format(to))
+    .replace("{total}", numberFormat.format(total));
+  const statusTone = (status: AssetLocationStatus) =>
+    status === "resolved"
+      ? "good"
+      : status === "restricted" || status === "pending"
+        ? "warn"
+        : "critical";
+  const changeSort = (field: AssetSortField) => {
+    if (sortBy === field) {
+      setSortDirection((direction) => direction === "asc" ? "desc" : "asc");
+    } else {
+      setSortBy(field);
+      setSortDirection("asc");
+    }
+    setOffset(0);
+  };
+  const changeSummarySort = (field: AssetSummarySortField) => {
+    if (summarySortBy === field) {
+      setSortDirection((direction) => direction === "asc" ? "desc" : "asc");
+    } else {
+      setSummarySortBy(field);
+      setSortDirection("asc");
+    }
+    setOffset(0);
+  };
+  const sortHeader = (field: AssetSortField, label: string) => (
+    <button type="button" className="asset-sort" onClick={() => changeSort(field)}>
+      {label}
+      {sortBy === field && (
+        <ChevronDown
+          className={sortDirection === "asc" ? "asset-sort__asc" : ""}
+          size={14}
+          aria-hidden="true"
+        />
+      )}
+    </button>
+  );
+  const summarySortHeader = (field: AssetSummarySortField, label: string) => (
+    <button type="button" className="asset-sort" onClick={() => changeSummarySort(field)}>
+      {label}
+      {summarySortBy === field && (
+        <ChevronDown
+          className={sortDirection === "asc" ? "asset-sort__asc" : ""}
+          size={14}
+          aria-hidden="true"
+        />
+      )}
+    </button>
+  );
+  const syncIssues = syncResult?.characters.filter((character) => character.status !== "completed") ?? [];
+
+  return (
+    <div className="workspace asset-workspace">
+      <section className="asset-hero">
+        <div>
+          <span className="eyebrow">{t.assets.kicker}</span>
+          <h1>{t.nav.assets}</h1>
+          <p>{t.assets.subtitle}</p>
+        </div>
+        <div className="asset-hero__metrics" aria-live="polite">
+          <span>
+            <strong>{numberFormat.format(total)}</strong>
+            <small>{viewMode === "summary" ? t.assets.itemTypes : t.assets.positions}</small>
+          </span>
+          <span>
+            <strong>{numberFormat.format(activePage?.quantityTotal ?? 0)}</strong>
+            <small>{t.assets.units}</small>
+          </span>
+          <span>
+            <strong>
+              {activePage?.ageSeconds === null || activePage?.ageSeconds === undefined
+                ? "—"
+                : formatDataAge(activePage.ageSeconds, locale)}
+            </strong>
+            <small>{t.assets.age}</small>
+          </span>
+        </div>
+      </section>
+
+      <section className="asset-browser" aria-busy={loading}>
+        {viewMode === "positions" && (
+          <div className="asset-view-switch" role="group" aria-label={t.assets.view}>
+            <button
+              type="button"
+              onClick={() => {
+                setSearch("");
+                setAppliedSearch("");
+                setViewMode("summary");
+                setOffset(0);
+                setSortDirection("asc");
+              }}
+            >
+              {t.assets.summaryView}
+            </button>
+          </div>
+        )}
+        <div className="asset-toolbar">
+          <label className="asset-search">
+            <span>{t.assets.search}</span>
+            <div>
+              <Search size={16} aria-hidden="true" />
+              <input
+                value={search}
+                maxLength={120}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder={t.assets.search}
+                disabled={!available}
+              />
+            </div>
+          </label>
+          <label>
+            <span>{t.assets.owner}</span>
+            <select
+              aria-label={t.assets.owner}
+              value={ownerCharacterId ?? ""}
+              onChange={(event) => {
+                setOwnerCharacterId(event.target.value ? Number(event.target.value) : null);
+                setOffset(0);
+                setDeltaOffset(0);
+              }}
+              disabled={!available}
+            >
+              <option value="">{t.assets.allOwners}</option>
+              {(activePage?.owners ?? []).map((owner) => (
+                <option value={owner.characterId} key={owner.characterId}>{owner.name}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>{t.assets.status}</span>
+            <select
+              aria-label={t.assets.status}
+              value={locationStatus ?? ""}
+              onChange={(event) => {
+                setLocationStatus((event.target.value || null) as AssetLocationStatus | null);
+                setOffset(0);
+              }}
+              disabled={!available}
+            >
+              <option value="">{t.assets.allStatuses}</option>
+              {assetLocationStatuses.map((status) => (
+                <option value={status} key={status}>{t.assets.statusLabels[status]}</option>
+              ))}
+            </select>
+          </label>
+          <button
+            className="secondary-button asset-export"
+            type="button"
+            onClick={() => void refreshAssets()}
+            disabled={!available || assetsSyncing}
+          >
+            <RefreshCw className={assetsSyncing ? "spin" : ""} size={15} />
+            {assetsSyncing ? t.assets.syncing : t.assets.sync}
+          </button>
+          <button
+            className="secondary-button asset-export"
+            type="button"
+            onClick={() => void createExport()}
+            disabled={!available || exporting || loading}
+          >
+            {exporting ? <RefreshCw className="spin" size={15} /> : <Download size={15} />}
+            {exporting ? t.assets.exporting : t.assets.export}
+          </button>
+        </div>
+
+        {(syncResult || syncFailed) && (
+          <div className={`asset-export-status asset-sync-status ${syncFailed || syncIssues.length > 0 ? "asset-export-status--error" : ""}`} role="status">
+            <span>
+              {syncFailed
+                ? t.assets.syncError
+                : syncResult?.characters.length === 0
+                  ? t.assets.syncEmpty
+                  : syncIssues.length > 0
+                    ? t.assets.syncPartial
+                        .replace("{completed}", numberFormat.format(syncResult?.completed ?? 0))
+                        .replace("{partial}", numberFormat.format(syncResult?.partial ?? 0))
+                        .replace("{failed}", numberFormat.format(syncResult?.failed ?? 0))
+                    : t.assets.syncComplete
+                        .replace("{assets}", numberFormat.format(syncResult?.assets ?? 0))
+                        .replace("{characters}", numberFormat.format(syncResult?.completed ?? 0))}
+            </span>
+            {syncIssues.map((character) => {
+              const owner = activePage?.owners.find((candidate) => candidate.characterId === character.characterId);
+              const label = owner?.name ?? `EVE ID ${character.characterId}`;
+              return (
+                <small key={character.characterId}>
+                  {t.assets.syncDetail
+                    .replace("{character}", label)
+                    .replace("{reason}", describeAssetSyncError(character.errorCode, locale))}
+                </small>
+              );
+            })}
+          </div>
+        )}
+
+        {(exported || exportFailed) && (
+          <div className={`asset-export-status ${exportFailed ? "asset-export-status--error" : ""}`} role="status">
+            {exportFailed
+              ? t.assets.exportError
+              : t.assets.exported
+                  .replace("{rows}", numberFormat.format(exported?.rows ?? 0))
+                  .replace("{path}", exported?.relativePath ?? "")}
+          </div>
+        )}
+
+        {!available ? (
+          <div className="asset-empty"><Database size={22} />{t.assets.deltas.unavailable}</div>
+        ) : failed ? (
+          <div className="asset-empty asset-empty--error" role="alert">
+            <AlertTriangle size={22} />{t.assets.queryError}
+          </div>
+        ) : loading && activePage === null ? (
+          <div className="asset-empty"><RefreshCw className="spin" size={22} />{t.assets.loading}</div>
+        ) : activePage && activePage.items.length === 0 ? (
+          <div className="asset-empty">
+            <PackageSearch size={22} />
+            {activePage.observedAt === null ? t.assets.noData : t.assets.noMatches}
+          </div>
+        ) : viewMode === "summary" && summaryPage ? (
+          <div className="asset-table-wrap">
+            <table className="asset-table asset-summary-table">
+              <thead>
+                <tr>
+                  <th>{summarySortHeader("type", t.assets.type)}</th>
+                  <th className="asset-table__number">{summarySortHeader("quantity", t.assets.quantity)}</th>
+                  <th className="asset-table__number">{summarySortHeader("positions", t.assets.positions)}</th>
+                  <th>{summarySortHeader("owners", t.assets.ownersCount)}</th>
+                  <th className="asset-table__number">{summarySortHeader("locations", t.assets.locationsCount)}</th>
+                  <th>{summarySortHeader("age", t.assets.age)}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {summaryPage.items.map((item) => (
+                  <tr key={item.typeId}>
+                    <td>
+                      <button
+                        type="button"
+                        className="asset-summary-item"
+                        aria-label={`${t.assets.showPositions}: ${item.typeName}`}
+                        onClick={() => {
+                          setSearch(item.typeName);
+                          setAppliedSearch(item.typeName);
+                          setViewMode("positions");
+                          setOffset(0);
+                        }}
+                      >
+                        <strong>{item.typeName}</strong>
+                        <small>Type {item.typeId}</small>
+                      </button>
+                    </td>
+                    <td className="asset-table__number"><strong>{numberFormat.format(item.quantityTotal)}</strong></td>
+                    <td className="asset-table__number">{numberFormat.format(item.positionCount)}</td>
+                    <td>
+                      <strong>{numberFormat.format(item.ownerCount)}</strong>
+                      <small>{t.assets.distribution}: {item.owners.map((owner) => `${owner.name} ${numberFormat.format(owner.quantity)}`).join(" · ")}</small>
+                    </td>
+                    <td className="asset-table__number">
+                      <strong>{numberFormat.format(item.locationCount)}</strong>
+                      <small>{item.locationStatuses.map((status) => t.assets.statusLabels[status]).join(" · ")}</small>
+                    </td>
+                    <td>{formatDataAge(item.ageSeconds, locale)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : page ? (
+          <div className="asset-table-wrap">
+            <table className="asset-table">
+              <thead>
+                <tr>
+                  <th aria-sort={sortBy === "type" ? (sortDirection === "asc" ? "ascending" : "descending") : "none"}>{sortHeader("type", t.assets.type)}</th>
+                  <th aria-sort={sortBy === "owner" ? (sortDirection === "asc" ? "ascending" : "descending") : "none"}>{sortHeader("owner", t.assets.owner)}</th>
+                  <th aria-sort={sortBy === "location" ? (sortDirection === "asc" ? "ascending" : "descending") : "none"}>{sortHeader("location", t.assets.location)}</th>
+                  <th aria-sort={sortBy === "flag" ? (sortDirection === "asc" ? "ascending" : "descending") : "none"}>{sortHeader("flag", t.assets.flag)}</th>
+                  <th className="asset-table__number" aria-sort={sortBy === "quantity" ? (sortDirection === "asc" ? "ascending" : "descending") : "none"}>{sortHeader("quantity", t.assets.quantity)}</th>
+                  <th aria-sort={sortBy === "age" ? (sortDirection === "asc" ? "ascending" : "descending") : "none"}>{sortHeader("age", t.assets.age)}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {page.items.map((item) => (
+                  <tr key={item.itemId}>
+                    <td>
+                      <strong>{item.typeName}</strong>
+                      <small>Type {item.typeId} · Item {item.itemId}</small>
+                    </td>
+                    <td><strong>{item.ownerName}</strong><small>EVE ID {item.ownerCharacterId}</small></td>
+                    <td>
+                      <span className={`asset-status asset-status--${statusTone(item.locationStatus)}`}>
+                        <StatusDot tone={statusTone(item.locationStatus)} />
+                        {t.assets.statusLabels[item.locationStatus]}
+                      </span>
+                      <small title={item.locationPath}>
+                        {item.locationPath || t.assets.pendingLocation}
+                      </small>
+                    </td>
+                    <td>{item.locationFlag}</td>
+                    <td className="asset-table__number"><strong>{numberFormat.format(item.quantity)}</strong></td>
+                    <td>{formatDataAge(item.ageSeconds, locale)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
+
+        {available && activePage && (
+          <footer className="asset-pagination">
+            <span>{resultRange}</span>
+            <div>
+              <button
+                type="button"
+                onClick={() => setOffset(Math.max(0, offset - assetPageSize))}
+                disabled={loading || offset === 0}
+              >
+                <ChevronRight className="asset-pagination__previous" size={15} />
+                {t.assets.previous}
+              </button>
+              <button
+                type="button"
+                onClick={() => setOffset(offset + assetPageSize)}
+                disabled={loading || offset + assetPageSize >= total}
+              >
+                {t.assets.next}
+                <ChevronRight size={15} />
+              </button>
+            </div>
+          </footer>
+        )}
+      </section>
+
+      <section className="asset-browser asset-deltas" aria-busy={deltasLoading}>
+        <header className="asset-deltas__header">
+          <div>
+            <span className="eyebrow">{t.assets.deltas.kicker}</span>
+            <h2>{t.assets.deltas.title}</h2>
+            <p>{t.assets.deltas.subtitle}</p>
+          </div>
+          <label>
+            <span>{t.assets.deltas.filter}</span>
+            <select
+              aria-label={t.assets.deltas.filter}
+              value={deltaChangeType ?? ""}
+              disabled={!available}
+              onChange={(event) => {
+                setDeltaChangeType(event.target.value === "" ? null : event.target.value as AssetDeltaChangeType);
+                setDeltaOffset(0);
+              }}
+            >
+              <option value="">{t.assets.deltas.all}</option>
+              {assetDeltaChangeTypes.map((changeType) => (
+                <option key={changeType} value={changeType}>{t.assets.deltas.labels[changeType]}</option>
+              ))}
+            </select>
+          </label>
+        </header>
+
+        {deltaPage && (
+          <div className="asset-deltas__summary" aria-live="polite">
+            {assetDeltaChangeTypes.map((changeType) => (
+              <span key={changeType}>
+                <strong>{numberFormat.format(deltaPage.summary[changeType])}</strong>
+                <small>{t.assets.deltas.labels[changeType]}</small>
+              </span>
+            ))}
+          </div>
+        )}
+
+        {!available ? (
+          <div className="asset-empty"><Database size={22} />{t.assets.unavailable}</div>
+        ) : deltasFailed ? (
+          <div className="asset-empty asset-empty--error" role="alert">
+            <AlertTriangle size={22} />{t.assets.deltas.error}
+          </div>
+        ) : deltasLoading && deltaPage === null ? (
+          <div className="asset-empty"><RefreshCw className="spin" size={22} />{t.assets.deltas.loading}</div>
+        ) : deltaPage && deltaPage.items.length === 0 ? (
+          <div className="asset-empty">
+            <Clock3 size={22} />
+            {deltaPage.hasBaseline ? t.assets.deltas.noChanges : t.assets.deltas.noBaseline}
+          </div>
+        ) : deltaPage ? (
+          <div className="asset-table-wrap">
+            <table className="asset-table asset-delta-table">
+              <thead>
+                <tr>
+                  <th>{t.assets.type}</th>
+                  <th>{t.assets.deltas.changes}</th>
+                  <th>{t.assets.deltas.beforeAfter}</th>
+                  <th>{t.assets.location}</th>
+                  <th>{t.assets.deltas.interval}</th>
+                  <th>{t.assets.deltas.source}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {deltaPage.items.map((event) => (
+                  <tr key={event.eventId}>
+                    <td>
+                      <strong>{event.typeName}</strong>
+                      <small>{event.ownerName} · Item {event.itemId}</small>
+                    </td>
+                    <td>
+                      <div className="asset-delta-table__badges">
+                        {event.changeTypes.map((changeType) => (
+                          <span key={changeType} className={`asset-delta-badge asset-delta-badge--${changeType}`}>
+                            {t.assets.deltas.labels[changeType]}
+                          </span>
+                        ))}
+                      </div>
+                      <small className={event.quantityDelta > 0 ? "delta-positive" : event.quantityDelta < 0 ? "delta-negative" : ""}>
+                        {event.quantityDelta > 0 ? "+" : ""}{numberFormat.format(event.quantityDelta)}
+                      </small>
+                    </td>
+                    <td>
+                      <strong>{event.quantityBefore === null ? "—" : numberFormat.format(event.quantityBefore)} → {event.quantityAfter === null ? "—" : numberFormat.format(event.quantityAfter)}</strong>
+                    </td>
+                    <td>
+                      <strong>{event.locationFlagBefore ?? "—"} → {event.locationFlagAfter ?? "—"}</strong>
+                      <small>{event.locationIdBefore ?? "—"} → {event.locationIdAfter ?? "—"}</small>
+                    </td>
+                    <td>
+                      <strong>{formatDataAge(event.ageSeconds, locale)}</strong>
+                      <small>{event.jobCorrelation.windowStart} → {event.jobCorrelation.windowEnd}</small>
+                    </td>
+                    <td>
+                      <strong>{t.assets.deltas.correlationLabels[event.jobCorrelation.state]}</strong>
+                      <small>{event.jobCorrelation.jobIds.length > 0 ? `Job ${event.jobCorrelation.jobIds.join(", ")} · ` : ""}Run {event.currentAssetSyncRunId}</small>
+                      <small>{event.eventId.slice(0, 10)}</small>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
+
+        {available && deltaPage && (
+          <footer className="asset-pagination">
+            <span>{t.assets.resultRange
+              .replace("{from}", numberFormat.format(deltaPage.total === 0 ? 0 : deltaOffset + 1))
+              .replace("{to}", numberFormat.format(Math.min(deltaOffset + deltaPage.items.length, deltaPage.total)))
+              .replace("{total}", numberFormat.format(deltaPage.total))}</span>
+            <div>
+              <button aria-label={`${t.assets.deltas.title}: ${t.assets.previous}`} type="button" onClick={() => setDeltaOffset(Math.max(0, deltaOffset - assetDeltaPageSize))} disabled={deltasLoading || deltaOffset === 0}>
+                <ChevronRight className="asset-pagination__previous" size={15} />{t.assets.previous}
+              </button>
+              <button aria-label={`${t.assets.deltas.title}: ${t.assets.next}`} type="button" onClick={() => setDeltaOffset(deltaOffset + assetDeltaPageSize)} disabled={deltasLoading || deltaOffset + assetDeltaPageSize >= deltaPage.total}>
+                {t.assets.next}<ChevronRight size={15} />
+              </button>
+            </div>
+          </footer>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function CharacterManager({
+  characters,
+  groups,
+  unavailable,
+  disabled,
+  t,
+  updateCharacter,
+  deleteCharacter,
+  createGroup,
+  renameGroup,
+  deleteGroup,
+  onRefresh,
+  onReauthorize,
+}: {
+  characters: EveCharacter[];
+  groups: AccountGroup[];
+  unavailable: boolean;
+  disabled: boolean;
+  t: Translation;
+  updateCharacter: (characterId: number, update: CharacterUpdate) => Promise<EveCharacter>;
+  deleteCharacter: (characterId: number) => Promise<void>;
+  createGroup: (label: string) => Promise<AccountGroup>;
+  renameGroup: (groupId: number, label: string) => Promise<AccountGroup>;
+  deleteGroup: (groupId: number) => Promise<void>;
+  onRefresh: () => Promise<void>;
+  onReauthorize: () => Promise<void>;
+}) {
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [alias, setAlias] = useState("");
+  const [groupId, setGroupId] = useState("");
+  const [enabled, setEnabled] = useState(true);
+  const [newGroup, setNewGroup] = useState("");
+  const [groupLabels, setGroupLabels] = useState<Record<number, string>>({});
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const [deleteArmed, setDeleteArmed] = useState(false);
+  const selected = characters.find((character) => character.characterId === selectedId) ?? null;
+
+  const selectCharacter = (character: EveCharacter) => {
+    setSelectedId(character.characterId);
+    setAlias(character.alias ?? "");
+    setGroupId(character.accountGroupId === null ? "" : String(character.accountGroupId));
+    setEnabled(character.enabled);
+    setDeleteArmed(false);
+    setFailed(false);
+  };
+
+  const saveCharacter = async () => {
+    if (!selected || busy) return;
+    setBusy(true);
+    setFailed(false);
+    try {
+      await updateCharacter(selected.characterId, {
+        alias: alias.trim() || null,
+        accountGroupId: groupId === "" ? null : Number(groupId),
+        enabled,
+      });
+      await onRefresh();
+      setDeleteArmed(false);
+    } catch {
+      setFailed(true);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const removeCharacter = async () => {
+    if (!selected || busy) return;
+    if (!deleteArmed) {
+      setDeleteArmed(true);
+      return;
+    }
+    setBusy(true);
+    setFailed(false);
+    try {
+      await deleteCharacter(selected.characterId);
+      setSelectedId(null);
+      setDeleteArmed(false);
+      await onRefresh();
+    } catch {
+      setFailed(true);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const addGroup = async () => {
+    const label = newGroup.trim();
+    if (!label || busy) return;
+    setBusy(true);
+    setFailed(false);
+    try {
+      await createGroup(label);
+      setNewGroup("");
+      await onRefresh();
+    } catch {
+      setFailed(true);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const changeGroupLabel = async (group: AccountGroup) => {
+    const label = (groupLabels[group.id] ?? group.label).trim();
+    if (!label || label === group.label || busy) return;
+    setBusy(true);
+    setFailed(false);
+    try {
+      await renameGroup(group.id, label);
+      setGroupLabels((current) => ({ ...current, [group.id]: label }));
+      await onRefresh();
+    } catch {
+      setFailed(true);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const removeGroup = async (group: AccountGroup) => {
+    if (busy) return;
+    setBusy(true);
+    setFailed(false);
+    try {
+      await deleteGroup(group.id);
+      if (groupId === String(group.id)) setGroupId("");
+      await onRefresh();
+    } catch {
+      setFailed(true);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="character-roster" aria-label={t.characters.title}>
+      <div className="character-roster__heading">
+        <div><UsersRound size={17} aria-hidden="true" /></div>
+        <span>
+          <strong>{t.characters.title}</strong>
+          <small>{t.characters.count.replace("{count}", String(characters.length))}</small>
+        </span>
+      </div>
+      <div className="character-roster__list" aria-live="polite">
+        {unavailable ? (
+          <span className="character-roster__empty character-roster__empty--error">
+            {t.characters.unavailable}
+          </span>
+        ) : characters.length === 0 ? (
+          <span className="character-roster__empty">{t.characters.empty}</span>
+        ) : characters.map((character) => {
+          const authorizationRequired = character.credentialState !== "stored" ||
+            character.scopePackages.some((scopePackage) => scopePackage.status !== "granted");
+          return (
+          <article
+            className={`character-chip ${character.enabled ? "" : "character-chip--inactive"} ${authorizationRequired ? "character-chip--authorization" : ""}`}
+            key={character.characterId}
+          >
+            <span className="character-chip__avatar"><UserRound size={16} /></span>
+            <span>
+              <strong>{character.alias ?? character.name}</strong>
+              <small>
+                {character.alias ? `${character.name} · ` : ""}
+                {character.accountGroupLabel ?? t.characters.ungrouped}
+              </small>
+            </span>
+            <span className="character-chip__scopes">
+              <ShieldCheck size={13} />
+              {t.characters.scopes.replace("{count}", String(character.scopes.length))}
+            </span>
+            {!character.enabled && <small className="status-pill">{t.characters.inactive}</small>}
+            {authorizationRequired && <small className="status-pill status-pill--warn">{t.characters.reauthorizationShort}</small>}
+            <button
+              type="button"
+              className="character-chip__manage"
+              onClick={() => selectCharacter(character)}
+              disabled={disabled}
+              aria-expanded={selectedId === character.characterId}
+            >
+              {t.characters.manage}
+            </button>
+          </article>
+          );
+        })}
+      </div>
+
+      {selected && (
+        <div className="character-manager" data-testid="character-manager">
+          <div className="character-manager__title">
+            <span>
+              <strong>{selected.alias ?? selected.name}</strong>
+              <small>{selected.name} · EVE ID {selected.characterId}</small>
+            </span>
+            <button
+              type="button"
+              className="icon-button"
+              onClick={() => setSelectedId(null)}
+              aria-label={t.characters.close}
+            >
+              <X size={16} />
+            </button>
+          </div>
+
+          <form
+            className="character-manager__form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void saveCharacter();
+            }}
+          >
+            <label>
+              <span>{t.characters.alias}</span>
+              <input
+                value={alias}
+                maxLength={80}
+                placeholder={t.characters.aliasPlaceholder}
+                onChange={(event) => setAlias(event.target.value)}
+                disabled={busy}
+              />
+            </label>
+            <label>
+              <span>{t.characters.group}</span>
+              <select
+                value={groupId}
+                onChange={(event) => setGroupId(event.target.value)}
+                disabled={busy}
+              >
+                <option value="">{t.characters.ungrouped}</option>
+                {groups.map((group) => (
+                  <option value={group.id} key={group.id}>{group.label}</option>
+                ))}
+              </select>
+            </label>
+            <label className="character-manager__toggle">
+              <input
+                type="checkbox"
+                checked={enabled}
+                onChange={(event) => setEnabled(event.target.checked)}
+                disabled={busy}
+              />
+              <span>{t.characters.active}</span>
+            </label>
+            <div className="character-manager__status">
+              <span>
+                {t.characters.credential}:{" "}
+                <strong>{t.characters.credentialStates[selected.credentialState]}</strong>
+              </span>
+              <div>
+                {selected.scopePackages.map((scopePackage) => (
+                  <span
+                    className={`scope-status scope-status--${scopePackage.status}`}
+                    key={scopePackage.id}
+                  >
+                    {t.sso.packageLabels[scopePackage.id]} ·{" "}
+                    {t.characters.scopeStates[scopePackage.status]}{" "}
+                    {scopePackage.grantedCount}/{scopePackage.requiredCount}
+                  </span>
+                ))}
+              </div>
+            </div>
+            {(selected.credentialState !== "stored" || selected.scopePackages.some((scopePackage) => scopePackage.status !== "granted")) && (
+              <div className="character-manager__reauthorization" role="alert">
+                <strong>{t.characters.reauthorizationTitle}</strong>
+                <span>{t.characters.reauthorizationDetail}</span>
+                <button type="button" className="sso-start" onClick={() => void onReauthorize()} disabled={busy || disabled}>
+                  <LogIn size={15} />
+                  {t.characters.reauthorize}
+                </button>
+              </div>
+            )}
+            {failed && <p className="character-manager__error" role="alert">{t.characters.error}</p>}
+            <div className="character-manager__actions">
+              <button type="submit" className="sso-start" disabled={busy}>
+                <Check size={15} />
+                {busy ? t.characters.saving : t.characters.save}
+              </button>
+              <button
+                type="button"
+                className={deleteArmed ? "danger-button danger-button--armed" : "danger-button"}
+                onClick={() => void removeCharacter()}
+                disabled={busy}
+              >
+                {deleteArmed ? t.characters.confirmDelete : t.characters.delete}
+              </button>
+              {deleteArmed && (
+                <button
+                  type="button"
+                  className="sso-cancel"
+                  onClick={() => setDeleteArmed(false)}
+                  disabled={busy}
+                >
+                  {t.characters.cancelDelete}
+                </button>
+              )}
+            </div>
+            {deleteArmed && <small className="character-manager__delete-detail">{t.characters.deleteDetail}</small>}
+          </form>
+
+          <div className="account-groups">
+            <strong>{t.characters.groupsTitle}</strong>
+            <form
+              className="account-groups__create"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void addGroup();
+              }}
+            >
+              <input
+                value={newGroup}
+                maxLength={80}
+                placeholder={t.characters.newGroup}
+                aria-label={t.characters.newGroup}
+                onChange={(event) => setNewGroup(event.target.value)}
+                disabled={busy}
+              />
+              <button type="submit" className="sso-start" disabled={busy || !newGroup.trim()}>
+                <Plus size={14} />
+                {t.characters.createGroup}
+              </button>
+            </form>
+            {groups.length === 0 ? (
+              <small>{t.characters.noGroups}</small>
+            ) : (
+              <div className="account-groups__list">
+                {groups.map((group) => (
+                  <div className="account-group-row" key={group.id}>
+                    <input
+                      value={groupLabels[group.id] ?? group.label}
+                      maxLength={80}
+                      aria-label={`${t.characters.renameGroup}: ${group.label}`}
+                      onChange={(event) => setGroupLabels((current) => ({
+                        ...current,
+                        [group.id]: event.target.value,
+                      }))}
+                      disabled={busy}
+                    />
+                    <small>{t.characters.members.replace("{count}", String(group.characterCount))}</small>
+                    <button
+                      type="button"
+                      onClick={() => void changeGroupLabel(group)}
+                      disabled={busy || (groupLabels[group.id] ?? group.label).trim() === group.label}
+                    >
+                      {t.characters.renameGroup}
+                    </button>
+                    <button
+                      type="button"
+                      className="danger-button"
+                      onClick={() => void removeGroup(group)}
+                      disabled={busy}
+                    >
+                      {t.characters.deleteGroup}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function Overview({
+  locale,
+  t,
+  scope,
+  onScopeChange,
+  onOpenProduction,
+  onInspect,
+}: {
+  locale: Locale;
+  t: Translation;
+  scope: OverviewScopeId;
+  onScopeChange: (scope: OverviewScopeId) => void;
+  onOpenProduction: () => void;
+  onInspect: () => void;
+}) {
+  const selectedCharacter = scope === "all"
+    ? undefined
+    : demoCharacters.find((character) => character.id === scope);
+  const selectedGroup = selectedCharacter
+    ? accountGroups.find((group) =>
+        (group.characterIds as readonly string[]).includes(selectedCharacter.id))
+    : undefined;
+  const selectedMetrics = overviewMetrics[scope];
+  const readiness = Number(
+    selectedMetrics.find((metric) => metric.id === "readiness")?.value ?? 0,
+  );
+  const dataAgeMinutes = selectedCharacter?.dataAgeMinutes
+    ?? Math.max(...demoCharacters.map((character) => character.dataAgeMinutes));
+  const readinessDelta = selectedCharacter?.readinessDelta ?? 6;
+  const scopeDetail = selectedCharacter
+    ? `${selectedGroup?.label ?? "—"} · ${t.scope.roles[selectedCharacter.role]}`
+    : `${accountGroups.length} ${t.scope.accountGroups} · ${demoCharacters.length} ${t.scope.characters}`;
+  const scopedProductionStages = productionStages
+    .map((stage, sourceIndex) => ({ stage, sourceIndex }))
+    .filter(({ stage }) => scope === "all" || stage.ownerId === scope);
+  const scopedAttentionItems = attentionItems
+    .map((item, sourceIndex) => ({ item, sourceIndex }))
+    .filter(({ item }) => scope === "all" || item.ownerId === scope);
+  const scopedActivity = activity
+    .map((item, sourceIndex) => ({ item, sourceIndex }))
+    .filter(({ item }) => scope === "all" || item.ownerId === scope);
+  const characterName = (characterId: string) =>
+    demoCharacters.find((character) => character.id === characterId)?.name ?? "—";
+
+  return (
+    <div className="workspace overview-workspace">
+      <section className="scope-bar" aria-label={t.scope.label}>
+        <div className="scope-bar__icon" aria-hidden="true">
+          {scope === "all" ? <UsersRound size={19} /> : <UserRound size={19} />}
+        </div>
+        <div className="scope-bar__copy" aria-live="polite">
+          <span>{t.scope.label}</span>
+          <div>
+            <strong>{selectedCharacter?.name ?? t.scope.combined}</strong>
+            <small>{scope === "all" ? t.scope.combinedBadge : t.scope.characterBadge}</small>
+          </div>
+          <p>{scopeDetail}</p>
+        </div>
+        <div className="scope-bar__freshness">
+          <StatusDot />
+          <span>{t.scope.dataAge}: {dataAgeMinutes} Min.</span>
+        </div>
+        <label className="scope-picker">
+          <span>{t.scope.select}</span>
+          <div>
+            <select
+              value={scope}
+              onChange={(event) => onScopeChange(event.target.value as OverviewScopeId)}
+              aria-label={t.scope.label}
+            >
+              <option value="all">{t.scope.combined}</option>
+              {accountGroups.map((group) => (
+                <optgroup label={group.label} key={group.id}>
+                  {group.characterIds.map((characterId) => {
+                    const character = demoCharacters.find(({ id }) => id === characterId)!;
+                    return <option value={character.id} key={character.id}>{character.name}</option>;
+                  })}
+                </optgroup>
+              ))}
+            </select>
+            <ChevronDown size={15} aria-hidden="true" />
+          </div>
+        </label>
+      </section>
+
+      <section className="hero-panel">
+        <div className="hero-grid" aria-hidden="true" />
+        <div className="hero-copy">
+          <div className="eyebrow"><Sparkles size={14} /> {t.dateLine}</div>
+          <h1>{t.greeting}</h1>
+          <p>{t.heroText}</p>
+          <div className="hero-actions">
+            <button className="primary-button" type="button" onClick={onOpenProduction}>
+              {t.planAction}<ArrowUpRight size={17} />
+            </button>
+            <button className="secondary-button" type="button" onClick={onInspect}>
+              {t.inspectAction}<ChevronRight size={16} />
+            </button>
+          </div>
+        </div>
+        <div className="readiness-block">
+          <div
+            className="readiness-ring"
+            aria-label={`${t.readiness}: ${readiness}%`}
+            style={{
+              background: `conic-gradient(var(--teal) 0 ${readiness}%, #29332c ${readiness}% 100%)`,
+            }}
+          >
+            <div>
+              <strong>{readiness}</strong><span>%</span>
+            </div>
+          </div>
+          <div className="readiness-copy">
+            <strong>{t.readiness}</strong>
+            <span>{t.readinessDetail}</span>
+            <small>
+              <TrendingUp size={13} /> +{readinessDelta} {locale === "de" ? "Punkte seit gestern" : "points since yesterday"}
+            </small>
+          </div>
+        </div>
+      </section>
+
+      <section className="metric-grid" aria-label={locale === "de" ? "Kennzahlen" : "Metrics"}>
+        {selectedMetrics.map((metric) => (
+          <article className={`metric-card metric-card--${metric.trend}`} key={`${scope}-${metric.id}`}>
+            <div className="metric-topline">
+              <span>{t.metricLabels[metric.id]}</span>
+              <button type="button" aria-label="Details"><MoreHorizontal size={17} /></button>
+            </div>
+            <div className="metric-body">
+              <div>
+                <strong className="metric-value">{metric.value}</strong>
+                <span className="metric-unit">{metric.unit}</span>
+              </div>
+              <TrendLine id={`${scope}-${metric.id}`} points={metric.points} warning={metric.trend === "warn"} />
+            </div>
+            <div className="metric-footer">
+              <span className="metric-delta">{metric.delta}</span>
+              <span>{t.metricContext[metric.id]}</span>
+            </div>
+          </article>
+        ))}
+      </section>
+
+      <div className="dashboard-grid">
+        <section className="panel production-panel">
+          <PanelHeader
+            icon={Factory}
+            title={t.operations}
+            subtitle={t.operationsSubtitle}
+            action={t.viewProduction}
+            onAction={onOpenProduction}
+          />
+          <div className="production-table">
+            <div className="production-table__head">
+              <span>{locale === "de" ? "Vorhaben" : "Initiative"}</span>
+              <span>{t.jobProgress}</span>
+              <span>{t.due}</span>
+            </div>
+            {scopedProductionStages.map(({ stage, sourceIndex }) => (
+              <div className="production-row" key={stage.name}>
+                <div className="job-name">
+                  <span className={`job-glyph job-glyph--${sourceIndex + 1}`}><Factory size={15} /></span>
+                  <div>
+                    <strong>{stage.name}</strong>
+                    <small>
+                      {locale === "de"
+                        ? ["42 von 60 Einheiten", "Material reserviert", "Blueprint-Forschung"][sourceIndex]
+                        : stage.detail}
+                      {scope === "all" ? ` · ${characterName(stage.ownerId)}` : ""}
+                    </small>
+                  </div>
+                </div>
+                <div className="job-progress">
+                  <div><span>{stage.progress}%</span><span>{stage.status === "research" ? (locale === "de" ? "Forschung" : "Research") : (locale === "de" ? "Aktiv" : "Active")}</span></div>
+                  <div className="progress-track"><span style={{ width: `${stage.progress}%` }} /></div>
+                </div>
+                <span className="job-eta"><Clock3 size={14} /> {stage.eta}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="panel material-panel">
+          <PanelHeader icon={Boxes} title={t.materialTitle} subtitle={t.materialSubtitle} />
+          <div className="material-total">
+            <span>{t.materialTotal}</span>
+            <strong>{t.materialValue}</strong>
+          </div>
+          <div className="coverage-bar" aria-label={`${t.materialTitle}: 68%`}>
+            {materialCoverage.map((part) => (
+              <span key={part.name} className={`coverage-bar__${part.tone}`} style={{ width: `${part.value}%` }} />
+            ))}
+          </div>
+          <div className="coverage-legend">
+            {materialCoverage.map((part, index) => (
+              <div key={part.name}>
+                <span className={`legend-dot legend-dot--${part.tone}`} />
+                <span>{t.coverageLegend[index]}</span>
+                <strong>{part.value}%</strong>
+              </div>
+            ))}
+          </div>
+          <div className="recommendation-card">
+            <div className="recommendation-icon"><Zap size={17} /></div>
+            <div><small>{t.buildBuy}</small><strong>{t.buildBuyValue}</strong><span>{t.buildBuySaving}</span></div>
+            <ChevronRight size={17} />
+          </div>
+        </section>
+
+        <section className="panel attention-panel" id="attention-panel">
+          <PanelHeader icon={AlertTriangle} title={t.attentionTitle} subtitle={t.attentionSubtitle} />
+          <div className="attention-list">
+            {scopedAttentionItems.map(({ item, sourceIndex }) => (
+              <div className="attention-item" key={item.title}>
+                <StatusDot tone={item.severity === "critical" ? "critical" : item.severity === "warning" ? "warn" : "good"} />
+                <div>
+                  <strong>{item.title}</strong>
+                  <span>
+                    {scope === "all" ? `${characterName(item.ownerId)} · ` : ""}
+                    {t.attentionDetails[sourceIndex]}
+                  </span>
+                </div>
+                <button type="button">{t.attentionActions[sourceIndex]}<ChevronRight size={14} /></button>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="panel activity-panel">
+          <PanelHeader icon={Database} title={t.activityTitle} subtitle={t.activitySubtitle} />
+          <div className="activity-list">
+            {scopedActivity.map(({ item, sourceIndex }) => (
+              <div className="activity-item" key={item.title}>
+                <span className={`activity-icon activity-icon--${item.kind}`}>
+                  {item.kind === "complete" ? <Check size={15} /> : item.kind === "market" ? <LineChart size={15} /> : <RefreshCw size={15} />}
+                </span>
+                <div>
+                  <strong>{t.activityTitles[sourceIndex]}</strong>
+                  <span>
+                    {scope === "all" ? `${characterName(item.ownerId)} · ` : ""}
+                    {t.activityDetails[sourceIndex]}
+                  </span>
+                </div>
+                <time>{t.activityTimes[sourceIndex]}</time>
+              </div>
+            ))}
+          </div>
+          <div className="trust-row">
+            <div><ShieldCheck size={16} /><span>{t.confidence}</span><strong>{t.confidenceValue}</strong></div>
+            <div><CircleCheck size={16} /><span>{t.cache}</span></div>
+            <div><Database size={16} /><span>{t.localOnly}</span></div>
+          </div>
+        </section>
+      </div>
+    </div>
+  );
+}
+
+function PanelHeader({
+  icon: Icon,
+  title,
+  subtitle,
+  action,
+  onAction,
+}: {
+  icon: LucideIcon;
+  title: string;
+  subtitle: string;
+  action?: string;
+  onAction?: () => void;
+}) {
+  return (
+    <header className="panel-header">
+      <div className="panel-heading-icon"><Icon size={17} /></div>
+      <div><h2>{title}</h2><p>{subtitle}</p></div>
+      {action && <button type="button" onClick={onAction}>{action}<ArrowRight size={15} /></button>}
+    </header>
+  );
+}
+
+function BlueprintWorkspace({
+  available, locale, t, loadBlueprints: loadPage, syncBlueprints: runSync, refreshRevision,
+  loadIndustryJobs: loadJobs, syncIndustryJobs: runJobSync, industryJobRevision,
+  loadCharacterSkills: loadSkills, syncCharacterSkills: runSkillSync, characterSkillRevision,
+  loadIndustryFacilities: loadFacilities, syncIndustryFacilities: runFacilitySync,
+  industryFacilityRevision,
+  loadIndustrySlots: loadSlots, industrySlotRevision,
+  loadResearchPlans: loadPlans, saveResearchPlan: savePlan,
+  deleteResearchPlan: deletePlan, researchPlanRevision,
+}: {
+  available: boolean;
+  locale: Locale;
+  t: Translation;
+  loadBlueprints: (query: BlueprintQuery) => Promise<BlueprintPage>;
+  syncBlueprints: () => Promise<BlueprintSyncResult>;
+  refreshRevision: number;
+  loadIndustryJobs: (query: IndustryJobQuery) => Promise<IndustryJobPage>;
+  syncIndustryJobs: () => Promise<IndustryJobSyncResult>;
+  industryJobRevision: number;
+  loadCharacterSkills: (query: CharacterSkillQuery) => Promise<CharacterSkillPage>;
+  syncCharacterSkills: () => Promise<CharacterSkillSyncResult>;
+  characterSkillRevision: number;
+  loadIndustryFacilities: (query: IndustryFacilityQuery) => Promise<IndustryFacilityPage>;
+  syncIndustryFacilities: () => Promise<IndustryFacilitySyncResult>;
+  industryFacilityRevision: number;
+  loadIndustrySlots: (query: IndustrySlotQuery) => Promise<IndustrySlotPage>;
+  industrySlotRevision: number;
+  loadResearchPlans: (query: ResearchPlanQuery) => Promise<ResearchPlanPage>;
+  saveResearchPlan: (input: ResearchPlanInput) => Promise<unknown>;
+  deleteResearchPlan: (ownerCharacterId: number, blueprintItemId: number) => Promise<void>;
+  researchPlanRevision: number;
+}) {
+  const [search, setSearch] = useState("");
+  const [appliedSearch, setAppliedSearch] = useState("");
+  const [ownerCharacterId, setOwnerCharacterId] = useStoredState<number | null>("blueprints.owner", null, isNullablePositiveInteger);
+  const [kind, setKind] = useStoredState<BlueprintKind | null>("blueprints.kind", null, (value): value is BlueprintKind | null => value === null || value === "original" || value === "copy");
+  const [sortBy, setSortBy] = useStoredState<BlueprintSortField>("blueprints.sort", "type", (value): value is BlueprintSortField => ["type", "owner", "kind", "me", "te", "runs", "age"].includes(String(value)));
   const [sortDirection, setSortDirection] = useStoredState<SortDirection>("blueprints.direction", "asc", (value): value is SortDirection => value === "asc" || value === "desc");
   const [view, setView] = useState<"summary" | "positions">("summary");
   const [offset, setOffset] = useState(0);
