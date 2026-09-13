@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import heapq
+import json
 import sqlite3
 from collections import defaultdict, deque
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any, Mapping
 
 from .sde import (
@@ -18,6 +20,7 @@ from .sde import (
 MAX_PAGE_SIZE = 100
 MAX_CATALOG_PAGE_SIZE = 100
 MAX_PLAN_STEPS = 500
+MAX_INVENTORY_LOCATION_GROUPS = 50
 PLAN_STATES = (
     "ready",
     "sde-unavailable",
@@ -27,6 +30,8 @@ PLAN_STATES = (
 )
 PLAN_SORT_FIELDS = ("priority", "product", "owner", "activity", "state", "updated")
 SORT_DIRECTIONS = ("asc", "desc")
+INVENTORY_STATES = ("covered", "shortage", "snapshot-missing", "not-applicable")
+ASSET_LOCATION_STATUSES = ("resolved", "restricted", "unresolved", "cycle", "pending")
 
 
 class ProductionPlanningError(RuntimeError):
@@ -44,6 +49,16 @@ class Recipe:
     output_quantity: int
     products: tuple[tuple[int, str, int], ...]
     materials: tuple[tuple[int, str, int], ...]
+
+
+@dataclass(frozen=True, slots=True)
+class InventorySource:
+    character_id: int
+    owner_name: str
+    snapshot_id: int
+    sync_run_id: int
+    observed_at: str
+    stock: dict[int, tuple[dict[str, Any], ...]]
 
 
 def _positive_int(value: Any) -> bool:
@@ -275,6 +290,311 @@ def _fallback_name(connection: sqlite3.Connection, type_id: int) -> str:
         "SELECT name FROM resolved_type_names WHERE type_id=?", (type_id,)
     ).fetchone()
     return str(row[0]) if row is not None else f"Type #{type_id}"
+
+
+def _inventory_payload(raw: Any, error_code: str) -> Mapping[str, Any]:
+    try:
+        payload = json.loads(str(raw))
+    except (TypeError, ValueError, json.JSONDecodeError) as error:
+        raise ProductionPlanningError(error_code) from error
+    if not isinstance(payload, Mapping):
+        raise ProductionPlanningError(error_code)
+    return payload
+
+
+def _inventory_timestamp(raw: Any) -> str:
+    if not isinstance(raw, str) or not raw.strip() or raw.strip() != raw or len(raw) > 64:
+        raise ProductionPlanningError("production_inventory_snapshot_invalid")
+    try:
+        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError as error:
+        raise ProductionPlanningError("production_inventory_snapshot_invalid") from error
+    if parsed.tzinfo is None:
+        raise ProductionPlanningError("production_inventory_snapshot_invalid")
+    return raw
+
+
+def _inventory_location_paths(
+    connection: sqlite3.Connection,
+    character_id: int,
+    asset_snapshot_id: int,
+) -> tuple[bool, dict[int, tuple[str, str]]]:
+    rows = connection.execute(
+        "SELECT cached_snapshots.payload_json FROM cached_snapshots "
+        "JOIN sync_runs ON sync_runs.id=cached_snapshots.sync_run_id "
+        "WHERE cached_snapshots.resource=? AND sync_runs.status='completed' "
+        "ORDER BY cached_snapshots.observed_at DESC,cached_snapshots.id DESC",
+        (f"asset_locations:{character_id}",),
+    )
+    for row in rows:
+        payload = _inventory_payload(
+            row[0], "production_inventory_location_snapshot_invalid"
+        )
+        if payload.get("assetSnapshotId") != asset_snapshot_id:
+            continue
+        if payload.get("characterId") != character_id or not isinstance(
+            payload.get("locations"), list
+        ):
+            raise ProductionPlanningError(
+                "production_inventory_location_snapshot_invalid"
+            )
+        locations: dict[int, tuple[str, str]] = {}
+        for raw_location in payload["locations"]:
+            if not isinstance(raw_location, Mapping):
+                raise ProductionPlanningError(
+                    "production_inventory_location_snapshot_invalid"
+                )
+            item_id = raw_location.get("itemId")
+            status = raw_location.get("status")
+            path = raw_location.get("path")
+            if (
+                not _positive_int(item_id)
+                or status not in ASSET_LOCATION_STATUSES[:-1]
+                or not isinstance(path, list)
+                or not 1 <= len(path) <= 64
+                or item_id in locations
+            ):
+                raise ProductionPlanningError(
+                    "production_inventory_location_snapshot_invalid"
+                )
+            labels: list[str] = []
+            for node in path:
+                if not isinstance(node, Mapping):
+                    raise ProductionPlanningError(
+                        "production_inventory_location_snapshot_invalid"
+                    )
+                location_id = node.get("locationId")
+                kind = node.get("kind")
+                name = node.get("name")
+                access = node.get("access")
+                if (
+                    not _positive_int(location_id)
+                    or not isinstance(kind, str)
+                    or not kind.strip()
+                    or kind.strip() != kind
+                    or len(kind) > 40
+                    or not isinstance(access, str)
+                    or not access.strip()
+                    or access.strip() != access
+                    or len(access) > 40
+                    or not (
+                        name is None
+                        or isinstance(name, str)
+                        and bool(name.strip())
+                        and name.strip() == name
+                        and len(name) <= 200
+                    )
+                ):
+                    raise ProductionPlanningError(
+                        "production_inventory_location_snapshot_invalid"
+                    )
+                labels.append(str(name) if name is not None else f"{kind} #{location_id}")
+            locations[int(item_id)] = (str(status), " / ".join(labels))
+        return True, locations
+    return False, {}
+
+
+def _inventory_source(
+    connection: sqlite3.Connection,
+    character_id: int,
+    owner_name: str,
+) -> InventorySource | None:
+    row = connection.execute(
+        "SELECT cached_snapshots.id,cached_snapshots.sync_run_id,"
+        "cached_snapshots.payload_json,cached_snapshots.observed_at "
+        "FROM cached_snapshots JOIN sync_runs "
+        "ON sync_runs.id=cached_snapshots.sync_run_id "
+        "WHERE cached_snapshots.resource=? AND sync_runs.status='completed' "
+        "ORDER BY cached_snapshots.observed_at DESC,cached_snapshots.id DESC LIMIT 1",
+        (f"character_assets:{character_id}",),
+    ).fetchone()
+    if row is None:
+        return None
+    snapshot_id = int(row[0])
+    payload = _inventory_payload(row[2], "production_inventory_snapshot_invalid")
+    if payload.get("characterId") != character_id or not isinstance(
+        payload.get("assets"), list
+    ):
+        raise ProductionPlanningError("production_inventory_snapshot_invalid")
+    observed_at = _inventory_timestamp(row[3])
+    has_location_snapshot, locations = _inventory_location_paths(
+        connection, character_id, snapshot_id
+    )
+    seen_items: set[int] = set()
+    grouped: dict[int, dict[tuple[int, str, str, str], dict[str, Any]]] = defaultdict(dict)
+    for raw_asset in payload["assets"]:
+        if not isinstance(raw_asset, Mapping):
+            raise ProductionPlanningError("production_inventory_snapshot_invalid")
+        item_id = raw_asset.get("item_id")
+        type_id = raw_asset.get("type_id")
+        location_id = raw_asset.get("location_id")
+        quantity = raw_asset.get("quantity")
+        location_type = raw_asset.get("location_type")
+        location_flag = raw_asset.get("location_flag")
+        if (
+            not _positive_int(item_id)
+            or not _positive_int(type_id)
+            or not _positive_int(location_id)
+            or not _non_negative_int(quantity)
+            or not isinstance(location_type, str)
+            or not location_type.strip()
+            or location_type.strip() != location_type
+            or len(location_type) > 40
+            or not isinstance(location_flag, str)
+            or not location_flag.strip()
+            or location_flag.strip() != location_flag
+            or len(location_flag) > 100
+            or item_id in seen_items
+        ):
+            raise ProductionPlanningError("production_inventory_snapshot_invalid")
+        seen_items.add(int(item_id))
+        if int(quantity) == 0:
+            continue
+        status, path = locations.get(int(item_id), ("pending", ""))
+        key = (int(location_id), status, path, location_flag)
+        current = grouped[int(type_id)].get(key)
+        if current is None:
+            grouped[int(type_id)][key] = {
+                "ownerCharacterId": character_id,
+                "ownerName": owner_name,
+                "locationId": int(location_id),
+                "locationStatus": status,
+                "locationPath": path,
+                "locationFlag": location_flag,
+                "quantity": int(quantity),
+                "positionCount": 1,
+                "assetSnapshotId": snapshot_id,
+                "assetSyncRunId": int(row[1]),
+                "assetObservedAt": observed_at,
+            }
+        else:
+            current["quantity"] = _checked_add(int(current["quantity"]), int(quantity))
+            current["positionCount"] = _checked_add(int(current["positionCount"]), 1)
+    if has_location_snapshot and set(locations) != seen_items:
+        raise ProductionPlanningError("production_inventory_location_snapshot_invalid")
+    stock = {
+        type_id: tuple(
+            sorted(
+                values.values(),
+                key=lambda item: (
+                    str(item["locationPath"]).casefold(),
+                    str(item["locationFlag"]).casefold(),
+                    int(item["locationId"]),
+                ),
+            )
+        )
+        for type_id, values in grouped.items()
+    }
+    return InventorySource(
+        character_id=character_id,
+        owner_name=owner_name,
+        snapshot_id=snapshot_id,
+        sync_run_id=int(row[1]),
+        observed_at=observed_at,
+        stock=stock,
+    )
+
+
+def _load_inventory_sources(
+    connection: sqlite3.Connection,
+    plan_rows: list[sqlite3.Row],
+) -> dict[int, InventorySource]:
+    plan_owner_ids = {int(row["owner_character_id"]) for row in plan_rows}
+    rows = connection.execute(
+        "SELECT character_id,COALESCE(alias,name),enabled FROM characters ORDER BY character_id"
+    )
+    sources: dict[int, InventorySource] = {}
+    for row in rows:
+        character_id = int(row[0])
+        if not bool(row[2]) and character_id not in plan_owner_ids:
+            continue
+        source = _inventory_source(connection, character_id, str(row[1]))
+        if source is not None:
+            sources[character_id] = source
+    return sources
+
+
+def _inventory_locations(
+    groups: tuple[dict[str, Any], ...],
+) -> tuple[int, int, list[dict[str, Any]]]:
+    quantity = 0
+    positions = 0
+    for group in groups:
+        quantity = _checked_add(quantity, int(group["quantity"]))
+        positions = _checked_add(positions, int(group["positionCount"]))
+    return quantity, positions, list(groups[:MAX_INVENTORY_LOCATION_GROUPS])
+
+
+def _apply_inventory(
+    resolution: dict[str, Any],
+    owner_character_id: int,
+    sources: Mapping[int, InventorySource],
+) -> dict[str, Any]:
+    if resolution["state"] != "ready":
+        return {
+            **resolution,
+            "inventoryState": "not-applicable",
+            "assetSnapshotId": None,
+            "assetSyncRunId": None,
+            "assetObservedAt": None,
+        }
+    source = sources.get(owner_character_id)
+    materials: list[dict[str, Any]] = []
+    for material in resolution["grossMaterials"]:
+        available_groups = () if source is None else source.stock.get(material["typeId"], ())
+        available_quantity, available_positions, available_locations = _inventory_locations(
+            available_groups
+        )
+        excluded_groups = tuple(
+            group
+            for character_id, candidate in sorted(
+                sources.items(), key=lambda item: (item[1].owner_name.casefold(), item[0])
+            )
+            if character_id != owner_character_id
+            for group in candidate.stock.get(material["typeId"], ())
+        )
+        excluded_quantity, excluded_positions, excluded_locations = _inventory_locations(
+            excluded_groups
+        )
+        if source is None:
+            availability_state = "snapshot-missing"
+            available: int | None = None
+            missing: int | None = None
+        else:
+            available = available_quantity
+            missing = max(0, int(material["quantity"]) - available)
+            availability_state = "covered" if missing == 0 else "shortage"
+        materials.append(
+            {
+                **material,
+                "availabilityState": availability_state,
+                "availableQuantity": available,
+                "missingQuantity": missing,
+                "availablePositionCount": available_positions,
+                "availableLocationCount": len(available_groups),
+                "availableLocations": available_locations,
+                "excludedQuantity": excluded_quantity,
+                "excludedPositionCount": excluded_positions,
+                "excludedLocationCount": len(excluded_groups),
+                "excludedLocations": excluded_locations,
+            }
+        )
+    if not materials:
+        inventory_state = "covered"
+    elif source is None:
+        inventory_state = "snapshot-missing"
+    elif any(material["missingQuantity"] > 0 for material in materials):
+        inventory_state = "shortage"
+    else:
+        inventory_state = "covered"
+    return {
+        **resolution,
+        "grossMaterials": materials,
+        "inventoryState": inventory_state,
+        "assetSnapshotId": None if source is None else source.snapshot_id,
+        "assetSyncRunId": None if source is None else source.sync_run_id,
+        "assetObservedAt": None if source is None else source.observed_at,
+    }
 
 
 def _empty_resolution(
@@ -554,6 +874,10 @@ def _serialize_plan(row: sqlite3.Row, resolution: Mapping[str, Any]) -> dict[str
         "warnings": resolution["warnings"],
         "cycleTypeIds": resolution["cycleTypeIds"],
         "totalBaseTimeSeconds": resolution["totalBaseTimeSeconds"],
+        "inventoryState": resolution["inventoryState"],
+        "assetSnapshotId": resolution["assetSnapshotId"],
+        "assetSyncRunId": resolution["assetSyncRunId"],
+        "assetObservedAt": resolution["assetObservedAt"],
         "createdAt": str(row["created_at"]),
         "updatedAt": str(row["updated_at"]),
     }
@@ -567,12 +891,18 @@ def query_production_plans(connection: sqlite3.Connection, raw_query: Any) -> di
         if build_number is not None and _sde_tables_available(connection)
         else None
     )
+    plan_rows = _plan_rows(connection)
+    inventory_sources = _load_inventory_sources(connection, plan_rows)
     records = [
         _serialize_plan(
             row,
-            resolve_production_plan(connection, row, loaded_recipes=loaded_recipes),
+            _apply_inventory(
+                resolve_production_plan(connection, row, loaded_recipes=loaded_recipes),
+                int(row["owner_character_id"]),
+                inventory_sources,
+            ),
         )
-        for row in _plan_rows(connection)
+        for row in plan_rows
     ]
     search = query["search"].casefold()
     records = [
@@ -619,7 +949,7 @@ def query_production_plans(connection: sqlite3.Connection, raw_query: Any) -> di
         "states": list(PLAN_STATES),
         "summary": summary,
         "buildNumber": build_number,
-        "inventoryApplied": False,
+        "inventoryApplied": True,
         "modifiersApplied": False,
     }
 

@@ -1,6 +1,6 @@
 # Produktionsplanung
 
-Paket 30 ergänzt lokale, updatefeste Fertigungs- und Reaktionsziele. Die Planung verwendet ausschließlich die vollständig importierte Blueprint-Aktivitätsbasis aus Paket 29, verändert keine Daten in EVE und startet keine Industrieaufträge.
+Paket 30 ergänzt lokale, updatefeste Fertigungs- und Reaktionsziele. Paket 31 gleicht deren äußeren Materialbedarf mit vollständigen persönlichen Asset-Snapshots ab. Die Planung verwendet ausschließlich die vollständig importierte Blueprint-Aktivitätsbasis aus Paket 29, verändert keine Daten in EVE und startet keine Industrieaufträge.
 
 ## Persistentes Ziel
 
@@ -29,6 +29,21 @@ Jeder Schritt nennt Rezept, Aktivität, benötigte Menge, Ausgabemenge je Lauf, 
 
 `grossMaterials` enthält nur die äußeren Materialien, für die innerhalb der ausgewählten Kette kein Rezept verwendet wird. Zwischenprodukte erscheinen stattdessen als eigene Schritte.
 
+## Bestandsabgleich und Fehlmengen
+
+Für jedes äußere Material gilt `fehlend = max(0, Bruttobedarf - verfügbar)`. Als verfügbar zählt ausschließlich der letzte vollständig abgeschlossene Asset-Snapshot des im Ziel gewählten ausführenden Charakters. Ein fehlgeschlagener, abgebrochener oder noch laufender neuerer Sync ersetzt diesen Stand nicht. Fehlt ein vollständiger Snapshot, bleiben verfügbar und fehlend unbekannt; die Oberfläche zeigt ausdrücklich `Asset-Snapshot fehlt` statt eine erfundene Fehlmenge von null oder der gesamten Bedarfsmenge.
+
+Angerechnete Bestände werden nach Standortpfad und EVE-Bereich zusammengefasst. Jede Gruppe nennt Charakter, Quellstandort, Standortstatus, Bereich, Menge, Positionszahl sowie Asset-Snapshot-, Sync-Lauf- und Beobachtungszeitpunkt. Höchstens 50 Standortgruppen je Material und Kategorie werden übertragen; Gesamtmenge, Positions- und Gruppenzahl bleiben auch bei einer gekürzten Detailansicht vollständig. Fehlt der exakt zum Asset-Snapshot gehörende Standort-Snapshot, bleibt die Menge anrechenbar und ihr Standortstatus nachvollziehbar `pending`.
+
+Passende Bestände anderer aktivierter Charaktere werden nicht stillschweigend zusammengelegt. Sie erscheinen getrennt als bewusst nicht angerechneter Bestand mit denselben Quellenangaben. Dadurch bleibt sichtbar, wo Material vorhanden wäre, ohne die technische und fachliche Charaktertrennung aufzuheben.
+
+| Bestandszustand | Bedeutung |
+| --- | --- |
+| `covered` | Der bekannte Bestand des ausführenden Charakters deckt den Bruttobedarf vollständig. |
+| `shortage` | Ein vollständiger Snapshot liegt vor und mindestens eine echte Fehlmenge ist größer als null. |
+| `snapshot-missing` | Für den ausführenden Charakter fehlt ein vollständiger Asset-Snapshot; eine Fehlmenge ist nicht belastbar. |
+| `not-applicable` | Die Rezeptkette selbst ist nicht auflösbar, daher wird kein Bestand angerechnet. |
+
 | Zustand | Bedeutung |
 | --- | --- |
 | `ready` | Rezeptkette ist vollständig und deterministisch aufgelöst. |
@@ -41,15 +56,15 @@ Neue Ziele mit Zyklus oder überschrittener Komplexitätsgrenze werden nicht ges
 
 ## Bewusste Berechnungsgrenze
 
-Paket 30 berechnet Bruttobedarf und SDE-Basiszeit. Noch nicht einbezogen werden:
+Paket 31 berechnet Bruttobedarf, SDE-Basiszeit, verfügbaren persönlichen Bestand und echte Fehlmengen. Noch nicht einbezogen werden:
 
-- vorhandener Bestand und Reservierungen,
+- Reservierungen zwischen mehreren Zielen,
 - Blueprint-ME und konkrete Blueprint-Kopien,
 - Charakter-Skills,
 - Anlagen-, Service- und Rigboni,
 - Systemkosten, Steuern und Preise.
 
-Die API bestätigt diese Grenze mit `inventoryApplied: false` und `modifiersApplied: false`. Diese Werte dürfen nicht als reale Installationsmenge, Fertigstellungszeit oder Kostenprognose verstanden werden. Bestand, Reservierungen und Modifikatoren benötigen eigene nachvollziehbare Fachverträge und Golden-Fälle.
+Die API bestätigt den aktiven Bestandsvertrag mit `inventoryApplied: true` und die verbleibende Modifikatorgrenze mit `modifiersApplied: false`. Solange Reservierungen fehlen, kann derselbe bekannte Bestand mehrere Ziele jeweils einzeln decken; die Summen sind deshalb noch keine konfliktfreie gemeinsame Einkaufsliste. SDE-Basiszeiten dürfen weiterhin nicht als reale Fertigstellungszeit oder Kostenprognose verstanden werden.
 
 ## Arbeitsvorrat und Bedienung
 

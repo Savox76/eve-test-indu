@@ -908,8 +908,8 @@ const copy = {
     productionPlanning: {
       kicker: "PRODUKTIONSPLANUNG",
       title: "Fertigungs- und Reaktionsziele",
-      subtitle: "Persistente Ziele werden aus der aktiven Blueprintbasis reproduzierbar in Schritte und Bruttomaterial aufgelöst.",
-      boundary: "Bruttobedarf ohne Bestandsabzug, Reservierungen, Blueprint-ME, Skills, Anlagen-/Rigboni, Steuern oder Preise. Angezeigt werden unveränderte SDE-Basiswerte.",
+      subtitle: "Persistente Ziele werden in Schritte aufgelöst und mit dem letzten vollständigen Asset-Snapshot abgeglichen.",
+      boundary: "Der Bestand des ausführenden Charakters wird je äußerem Material angerechnet. Bestände anderer Charaktere bleiben sichtbar, aber bewusst ausgeschlossen. Reservierungen, Blueprint-ME, Skills, Anlagen-/Rigboni, Steuern und Preise folgen später.",
       build: "SDE-Build {build}",
       searchRecipe: "Produkt oder Blueprint suchen",
       activity: "Aktivität",
@@ -955,6 +955,20 @@ const copy = {
       runs: "{runs} Läufe · {produced} produziert · {surplus} Überschuss",
       baseTime: "SDE-Basiszeit {time}",
       gross: "Bruttomaterialbedarf",
+      inventory: "Bestandsabgleich",
+      inventoryLabels: {
+        covered: "Bestand ausreichend", shortage: "Fehlmenge", "snapshot-missing": "Asset-Snapshot fehlt",
+        "not-applicable": "Nicht anwendbar",
+      },
+      required: "Bedarf",
+      available: "Verfügbar",
+      missing: "Fehlt",
+      snapshotMissing: "Für den ausführenden Charakter liegt noch kein vollständiger Asset-Snapshot vor. Eine echte Fehlmenge kann erst nach der Aktualisierung berechnet werden.",
+      includedStock: "Angerechneter Bestand · {quantity} in {locations} Orten",
+      excludedStock: "Nicht angerechnet: andere Charaktere · {quantity}",
+      stockPosition: "{quantity} · {positions} Positionen",
+      stockSource: "Asset-Snapshot #{snapshot} · Lauf #{run} · {date}",
+      locationsOmitted: "Weitere {count} Standortgruppen sind im verknüpften Snapshot belegt.",
       noGross: "Kein äußerer Materialbedarf",
       alternatives: "Für {type} existieren {count} Rezepte; deterministisch wurde Blueprint #{blueprint} gewählt.",
       loading: "Produktionsplanung wird geladen …",
@@ -992,7 +1006,7 @@ const copy = {
     },
     planned: "Geplant",
     previewOnly: "Noch ohne Live-Funktion",
-    footerVersion: "v0.2.0-alpha.1",
+    footerVersion: "v0.2.0-alpha.2",
   },
   en: {
     nav: {
@@ -1672,8 +1686,8 @@ const copy = {
     productionPlanning: {
       kicker: "PRODUCTION PLANNING",
       title: "Manufacturing and reaction goals",
-      subtitle: "Persistent goals are reproducibly expanded from the active blueprint basis into steps and gross materials.",
-      boundary: "Gross demand without inventory deduction, reservations, blueprint ME, skills, facility/rig bonuses, taxes or prices. Values are unchanged SDE base values.",
+      subtitle: "Persistent goals are expanded into steps and matched against the latest complete asset snapshot.",
+      boundary: "Stock owned by the executing character is applied to each external material. Stock owned by other characters remains visible but is deliberately excluded. Reservations, blueprint ME, skills, facility/rig bonuses, taxes and prices follow later.",
       build: "SDE build {build}",
       searchRecipe: "Search product or blueprint",
       activity: "Activity",
@@ -1719,6 +1733,20 @@ const copy = {
       runs: "{runs} runs · {produced} produced · {surplus} surplus",
       baseTime: "SDE base time {time}",
       gross: "Gross material demand",
+      inventory: "Inventory match",
+      inventoryLabels: {
+        covered: "Stock sufficient", shortage: "Shortage", "snapshot-missing": "Asset snapshot missing",
+        "not-applicable": "Not applicable",
+      },
+      required: "Required",
+      available: "Available",
+      missing: "Missing",
+      snapshotMissing: "The executing character has no complete asset snapshot yet. A real shortage can only be calculated after refreshing assets.",
+      includedStock: "Applied stock · {quantity} at {locations} locations",
+      excludedStock: "Not applied: other characters · {quantity}",
+      stockPosition: "{quantity} · {positions} positions",
+      stockSource: "Asset snapshot #{snapshot} · run #{run} · {date}",
+      locationsOmitted: "Another {count} location groups are evidenced in the linked snapshot.",
       noGross: "No external material demand",
       alternatives: "{count} recipes exist for {type}; blueprint #{blueprint} was selected deterministically.",
       loading: "Loading production planning …",
@@ -1756,7 +1784,7 @@ const copy = {
     },
     planned: "Planned",
     previewOnly: "No live function yet",
-    footerVersion: "v0.2.0-alpha.1",
+    footerVersion: "v0.2.0-alpha.2",
   },
 } as const;
 
@@ -5222,7 +5250,7 @@ function ProductionWorkspace({
           : plans ? <div className="production-plan-list">{plans.items.map((item) => {
               const draft = drafts[item.planId] ?? { owner: item.ownerCharacterId, quantity: item.targetQuantity, priority: item.priority, note: item.note ?? "" };
               return <article className="production-plan-card" key={item.planId}>
-                <header><div><span className={`status-pill status-pill--${item.state === "ready" ? "good" : "warn"}`}>{t.productionPlanning.stateLabels[item.state]}</span><h2>{item.productName}</h2><p>{item.blueprintName} · {t.productionPlanning.activityLabels[item.activity]} · #{item.blueprintTypeId}</p></div><strong>{t.productionPlanning.goalQuantity.replace("{quantity}", numberFormat.format(item.targetQuantity))}</strong></header>
+                <header><div><div className="production-plan-statuses"><span className={`status-pill status-pill--${item.state === "ready" ? "good" : "warn"}`}>{t.productionPlanning.stateLabels[item.state]}</span><span className={`status-pill status-pill--${item.inventoryState === "covered" ? "good" : "warn"}`}>{t.productionPlanning.inventoryLabels[item.inventoryState]}</span></div><h2>{item.productName}</h2><p>{item.blueprintName} · {t.productionPlanning.activityLabels[item.activity]} · #{item.blueprintTypeId}</p></div><strong>{t.productionPlanning.goalQuantity.replace("{quantity}", numberFormat.format(item.targetQuantity))}</strong></header>
                 <div className="production-plan-editor">
                   <label><span>{t.productionPlanning.owner}</span><select value={draft.owner} onChange={(event) => setDrafts((current) => ({ ...current, [item.planId]: { ...draft, owner: Number(event.target.value) } }))}>{!productionOwners.some((owner) => owner.characterId === draft.owner) && <option value={draft.owner}>{item.ownerName}</option>}{productionOwners.map((owner) => <option key={owner.characterId} value={owner.characterId}>{owner.name}</option>)}</select></label>
                   <label><span>{t.productionPlanning.quantity}</span><input type="number" min={1} value={draft.quantity} onChange={(event) => setDrafts((current) => ({ ...current, [item.planId]: { ...draft, quantity: Math.max(1, Number(event.target.value) || 1) } }))} /></label>
@@ -5234,7 +5262,14 @@ function ProductionWorkspace({
                 {item.warnings.map((warning) => <div className="production-warning" key={`${warning.typeId}:${warning.selectedBlueprintTypeId}`}><AlertTriangle size={14} />{t.productionPlanning.alternatives.replace("{type}", warning.typeName).replace("{count}", String(warning.candidateCount)).replace("{blueprint}", String(warning.selectedBlueprintTypeId))}</div>)}
                 {item.state === "ready" && <div className="production-resolution">
                   <details open><summary>{t.productionPlanning.steps} · {item.steps.length}</summary><p className="production-sequence-hint">{t.productionPlanning.sequenceHint}</p><ol>{item.steps.map((step, index) => { const isGoal = index === item.steps.length - 1; return <li className={isGoal ? "production-step--goal" : ""} key={`${step.sequence}:${step.productTypeId}`}><div><strong>{t.productionPlanning.step.replace("{sequence}", String(step.sequence))} · {isGoal ? t.productionPlanning.goalStep : t.productionPlanning.intermediateStep}: {step.productName}</strong><span>{step.blueprintName} · {t.productionPlanning.activityLabels[step.activity]}</span></div><div><strong>{t.productionPlanning.runs.replace("{runs}", numberFormat.format(step.runs)).replace("{produced}", numberFormat.format(step.producedQuantity)).replace("{surplus}", numberFormat.format(step.surplusQuantity))}</strong><span>{t.productionPlanning.baseTime.replace("{time}", formatDuration(step.totalBaseTimeSeconds))}</span></div></li>; })}</ol></details>
-                  <details open><summary>{t.productionPlanning.gross} · {item.grossMaterials.length}</summary>{item.grossMaterials.length === 0 ? <p>{t.productionPlanning.noGross}</p> : <ul>{item.grossMaterials.map((material) => <li key={material.typeId}><span>{material.typeName}<small>Type #{material.typeId}</small></span><strong>{numberFormat.format(material.quantity)}</strong></li>)}</ul>}</details>
+                  <details open><summary>{t.productionPlanning.inventory} · {item.grossMaterials.length}</summary>{item.grossMaterials.length === 0 ? <p>{t.productionPlanning.noGross}</p> : <ul className="production-material-list">{item.grossMaterials.map((material) => <li key={material.typeId}>
+                    <div className="production-material-heading"><span><strong>{material.typeName}</strong><small>Type #{material.typeId}</small></span><span className={`status-pill status-pill--${material.availabilityState === "covered" ? "good" : "warn"}`}>{t.productionPlanning.inventoryLabels[material.availabilityState]}</span></div>
+                    <div className="production-material-metrics"><span><small>{t.productionPlanning.required}</small><strong>{numberFormat.format(material.quantity)}</strong></span><span><small>{t.productionPlanning.available}</small><strong>{material.availableQuantity === null ? "—" : numberFormat.format(material.availableQuantity)}</strong></span><span className={material.missingQuantity !== null && material.missingQuantity > 0 ? "is-shortage" : ""}><small>{t.productionPlanning.missing}</small><strong>{material.missingQuantity === null ? "—" : numberFormat.format(material.missingQuantity)}</strong></span></div>
+                    {material.availabilityState === "snapshot-missing" ? <p className="production-material-note"><AlertTriangle size={14} />{t.productionPlanning.snapshotMissing}</p> : <div className="production-stock-evidence">
+                      <details><summary>{t.productionPlanning.includedStock.replace("{quantity}", numberFormat.format(material.availableQuantity ?? 0)).replace("{locations}", numberFormat.format(material.availableLocationCount))}</summary><ul>{material.availableLocations.map((location) => <li key={`${location.ownerCharacterId}:${location.locationId}:${location.locationFlag}`}><span><strong>{location.locationPath || `Location #${location.locationId}`}</strong><small>{location.ownerName} · {location.locationFlag}</small></span><span><strong>{t.productionPlanning.stockPosition.replace("{quantity}", numberFormat.format(location.quantity)).replace("{positions}", numberFormat.format(location.positionCount))}</strong><small>{t.productionPlanning.stockSource.replace("{snapshot}", String(location.assetSnapshotId)).replace("{run}", String(location.assetSyncRunId)).replace("{date}", location.assetObservedAt)}</small></span></li>)}</ul>{material.availableLocationCount > material.availableLocations.length && <p>{t.productionPlanning.locationsOmitted.replace("{count}", numberFormat.format(material.availableLocationCount - material.availableLocations.length))}</p>}</details>
+                    </div>}
+                    {material.excludedQuantity > 0 && <div className="production-stock-evidence production-stock-evidence--excluded"><details><summary>{t.productionPlanning.excludedStock.replace("{quantity}", numberFormat.format(material.excludedQuantity))}</summary><ul>{material.excludedLocations.map((location) => <li key={`${location.ownerCharacterId}:${location.locationId}:${location.locationFlag}`}><span><strong>{location.ownerName}</strong><small>{location.locationPath || `Location #${location.locationId}`} · {location.locationFlag}</small></span><span><strong>{t.productionPlanning.stockPosition.replace("{quantity}", numberFormat.format(location.quantity)).replace("{positions}", numberFormat.format(location.positionCount))}</strong><small>{t.productionPlanning.stockSource.replace("{snapshot}", String(location.assetSnapshotId)).replace("{run}", String(location.assetSyncRunId)).replace("{date}", location.assetObservedAt)}</small></span></li>)}</ul>{material.excludedLocationCount > material.excludedLocations.length && <p>{t.productionPlanning.locationsOmitted.replace("{count}", numberFormat.format(material.excludedLocationCount - material.excludedLocations.length))}</p>}</details></div>}
+                  </li>)}</ul>}</details>
                 </div>}
               </article>;
             })}</div> : null}

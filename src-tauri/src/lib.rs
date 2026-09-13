@@ -128,6 +128,12 @@ const PRODUCTION_PLAN_STATES: [&str; 5] = [
     "cycle",
     "complexity-limit",
 ];
+const PRODUCTION_INVENTORY_STATES: [&str; 4] = [
+    "covered",
+    "shortage",
+    "snapshot-missing",
+    "not-applicable",
+];
 const PRODUCTION_PLAN_SORT_FIELDS: [&str; 6] = [
     "priority", "product", "owner", "activity", "state", "updated",
 ];
@@ -858,6 +864,32 @@ struct ProductionGrossMaterial {
     type_id: u64,
     type_name: String,
     quantity: u64,
+    availability_state: String,
+    available_quantity: Option<u64>,
+    missing_quantity: Option<u64>,
+    available_position_count: u64,
+    available_location_count: u64,
+    available_locations: Vec<ProductionStockLocation>,
+    excluded_quantity: u64,
+    excluded_position_count: u64,
+    excluded_location_count: u64,
+    excluded_locations: Vec<ProductionStockLocation>,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ProductionStockLocation {
+    owner_character_id: u64,
+    owner_name: String,
+    location_id: u64,
+    location_status: String,
+    location_path: String,
+    location_flag: String,
+    quantity: u64,
+    position_count: u64,
+    asset_snapshot_id: u64,
+    asset_sync_run_id: u64,
+    asset_observed_at: String,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -891,6 +923,10 @@ struct ProductionPlanRecord {
     warnings: Vec<ProductionWarning>,
     cycle_type_ids: Vec<u64>,
     total_base_time_seconds: Option<u64>,
+    inventory_state: String,
+    asset_snapshot_id: Option<u64>,
+    asset_sync_run_id: Option<u64>,
+    asset_observed_at: Option<String>,
     created_at: String,
     updated_at: String,
 }
@@ -2527,6 +2563,22 @@ fn production_catalog_response_is_valid(response: &ProductionCatalogResponse) ->
         })
 }
 
+fn production_stock_location_is_valid(item: &ProductionStockLocation) -> bool {
+    production_id_is_valid(item.owner_character_id)
+        && asset_text_is_valid(&item.owner_name, 100)
+        && production_id_is_valid(item.location_id)
+        && ASSET_LOCATION_STATUSES.contains(&item.location_status.as_str())
+        && item.location_path.chars().count() <= 4_096
+        && ((item.location_status == "pending" && item.location_path.is_empty())
+            || (item.location_status != "pending" && !item.location_path.is_empty()))
+        && asset_text_is_valid(&item.location_flag, 100)
+        && production_id_is_valid(item.quantity)
+        && production_id_is_valid(item.position_count)
+        && production_id_is_valid(item.asset_snapshot_id)
+        && production_id_is_valid(item.asset_sync_run_id)
+        && asset_text_is_valid(&item.asset_observed_at, 64)
+}
+
 fn production_plan_record_is_valid(item: &ProductionPlanRecord) -> bool {
     let steps_valid = item.steps.iter().enumerate().all(|(index, step)| {
         step.sequence == index as u64 + 1
@@ -2558,9 +2610,70 @@ fn production_plan_record_is_valid(item: &ProductionPlanRecord) -> bool {
             })
     });
     let gross_valid = item.gross_materials.iter().all(|material| {
+        let represented_available = material
+            .available_locations
+            .iter()
+            .try_fold(0_u64, |total, location| total.checked_add(location.quantity));
+        let represented_available_positions = material
+            .available_locations
+            .iter()
+            .try_fold(0_u64, |total, location| {
+                total.checked_add(location.position_count)
+            });
+        let represented_excluded = material
+            .excluded_locations
+            .iter()
+            .try_fold(0_u64, |total, location| total.checked_add(location.quantity));
+        let represented_excluded_positions = material
+            .excluded_locations
+            .iter()
+            .try_fold(0_u64, |total, location| {
+                total.checked_add(location.position_count)
+            });
+        let availability_valid = match material.availability_state.as_str() {
+            "snapshot-missing" => {
+                material.available_quantity.is_none()
+                    && material.missing_quantity.is_none()
+                    && material.available_position_count == 0
+                    && material.available_location_count == 0
+                    && material.available_locations.is_empty()
+            }
+            "covered" | "shortage" => material
+                .available_quantity
+                .zip(material.missing_quantity)
+                .is_some_and(|(available, missing)| {
+                    missing == material.quantity.saturating_sub(available)
+                        && ((material.availability_state == "covered") == (missing == 0))
+                        && represented_available.is_some_and(|value| value <= available)
+                }),
+            _ => false,
+        };
         production_id_is_valid(material.type_id)
             && asset_text_is_valid(&material.type_name, 200)
             && production_id_is_valid(material.quantity)
+            && availability_valid
+            && material.available_position_count <= JAVASCRIPT_MAX_SAFE_INTEGER
+            && material.available_location_count <= JAVASCRIPT_MAX_SAFE_INTEGER
+            && material.available_locations.len() <= 50
+            && material.available_location_count >= material.available_locations.len() as u64
+            && represented_available_positions
+                .is_some_and(|value| value <= material.available_position_count)
+            && material.excluded_quantity <= JAVASCRIPT_MAX_SAFE_INTEGER
+            && material.excluded_position_count <= JAVASCRIPT_MAX_SAFE_INTEGER
+            && material.excluded_location_count <= JAVASCRIPT_MAX_SAFE_INTEGER
+            && material.excluded_locations.len() <= 50
+            && material.excluded_location_count >= material.excluded_locations.len() as u64
+            && represented_excluded.is_some_and(|value| value <= material.excluded_quantity)
+            && represented_excluded_positions
+                .is_some_and(|value| value <= material.excluded_position_count)
+            && material.available_locations.iter().all(|location| {
+                production_stock_location_is_valid(location)
+                    && location.owner_character_id == item.owner_character_id
+            })
+            && material.excluded_locations.iter().all(|location| {
+                production_stock_location_is_valid(location)
+                    && location.owner_character_id != item.owner_character_id
+            })
     });
     let warnings_valid = item.warnings.iter().all(|warning| {
         warning.code == "alternative-recipe"
@@ -2571,6 +2684,35 @@ fn production_plan_record_is_valid(item: &ProductionPlanRecord) -> bool {
             && warning.candidate_count <= JAVASCRIPT_MAX_SAFE_INTEGER
     });
     let ready = item.state == "ready";
+    let asset_source_valid = match (
+        item.asset_snapshot_id,
+        item.asset_sync_run_id,
+        item.asset_observed_at.as_ref(),
+    ) {
+        (None, None, None) => true,
+        (Some(snapshot_id), Some(sync_run_id), Some(observed_at)) => {
+            production_id_is_valid(snapshot_id)
+                && production_id_is_valid(sync_run_id)
+                && asset_text_is_valid(observed_at, 64)
+        }
+        _ => false,
+    };
+    let owner_snapshot_available = item.asset_snapshot_id.is_some();
+    let expected_inventory_state = if !ready {
+        "not-applicable"
+    } else if item.gross_materials.is_empty() {
+        "covered"
+    } else if !owner_snapshot_available {
+        "snapshot-missing"
+    } else if item
+        .gross_materials
+        .iter()
+        .any(|material| material.missing_quantity.is_some_and(|quantity| quantity > 0))
+    {
+        "shortage"
+    } else {
+        "covered"
+    };
     let resolution_shape = if ready {
         item.build_number.is_some()
             && !item.steps.is_empty()
@@ -2618,6 +2760,21 @@ fn production_plan_record_is_valid(item: &ProductionPlanRecord) -> bool {
         && item
             .total_base_time_seconds
             .is_none_or(production_id_is_valid)
+        && PRODUCTION_INVENTORY_STATES.contains(&item.inventory_state.as_str())
+        && item.inventory_state == expected_inventory_state
+        && asset_source_valid
+        && (ready || !owner_snapshot_available)
+        && (!owner_snapshot_available
+            || item
+                .gross_materials
+                .iter()
+                .all(|material| material.availability_state != "snapshot-missing"))
+        && (owner_snapshot_available
+            || item.gross_materials.is_empty()
+            || item
+                .gross_materials
+                .iter()
+                .all(|material| material.availability_state == "snapshot-missing"))
         && asset_text_is_valid(&item.created_at, 64)
         && asset_text_is_valid(&item.updated_at, 64)
         && steps_valid
@@ -2675,7 +2832,7 @@ fn production_plan_query_response_is_valid(response: &ProductionPlanQueryRespons
             .build_number
             .as_ref()
             .is_none_or(|value| asset_text_is_valid(value, 80))
-        && !response.inventory_applied
+        && response.inventory_applied
         && !response.modifiers_applied
 }
 
@@ -6348,10 +6505,24 @@ mod tests {
                 type_id: 900,
                 type_name: "Synthetic Mineral".to_owned(),
                 quantity: 3,
+                availability_state: "snapshot-missing".to_owned(),
+                available_quantity: None,
+                missing_quantity: None,
+                available_position_count: 0,
+                available_location_count: 0,
+                available_locations: Vec::new(),
+                excluded_quantity: 0,
+                excluded_position_count: 0,
+                excluded_location_count: 0,
+                excluded_locations: Vec::new(),
             }],
             warnings: Vec::new(),
             cycle_type_ids: Vec::new(),
             total_base_time_seconds: Some(220),
+            inventory_state: "snapshot-missing".to_owned(),
+            asset_snapshot_id: None,
+            asset_sync_run_id: None,
+            asset_observed_at: None,
             created_at: "2026-09-12T10:00:00Z".to_owned(),
             updated_at: "2026-09-12T10:00:00Z".to_owned(),
         };

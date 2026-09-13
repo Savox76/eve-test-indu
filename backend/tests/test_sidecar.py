@@ -693,7 +693,7 @@ class SidecarIntegrationTests(unittest.TestCase):
                 production_plans = json.loads(response.read())
             self.assertEqual(production_plans["items"], [])
             self.assertEqual(production_plans["total"], 0)
-            self.assertFalse(production_plans["inventoryApplied"])
+            self.assertTrue(production_plans["inventoryApplied"])
             self.assertFalse(production_plans["modifiersApplied"])
 
             research_query_request = urllib.request.Request(

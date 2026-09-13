@@ -340,8 +340,23 @@ const productionPlanPage: ProductionPlanPage = {
       totalBaseTimeSeconds: 200, recipeAlternatives: 1,
       materials: [{ typeId: 900, typeName: "Synthetic Mineral", quantityPerRun: 5,
         grossQuantity: 10, producedByPlan: false }] }],
-    grossMaterials: [{ typeId: 900, typeName: "Synthetic Mineral", quantity: 10 }],
+    grossMaterials: [{ typeId: 900, typeName: "Synthetic Mineral", quantity: 10,
+      availabilityState: "shortage", availableQuantity: 7, missingQuantity: 3,
+      availablePositionCount: 1, availableLocationCount: 1,
+      availableLocations: [{ ownerCharacterId: 90_888_001, ownerName: "Builder",
+        locationId: 60_003_760, locationStatus: "resolved",
+        locationPath: "Jita / Jita IV - Moon 4", locationFlag: "Hangar",
+        quantity: 7, positionCount: 1, assetSnapshotId: 8, assetSyncRunId: 9,
+        assetObservedAt: "2026-09-11T12:00:00Z" }],
+      excludedQuantity: 20, excludedPositionCount: 1, excludedLocationCount: 1,
+      excludedLocations: [{ ownerCharacterId: 90_888_002, ownerName: "Hauler",
+        locationId: 60_003_760, locationStatus: "resolved",
+        locationPath: "Jita / Jita IV - Moon 4", locationFlag: "Hangar",
+        quantity: 20, positionCount: 1, assetSnapshotId: 10, assetSyncRunId: 11,
+        assetObservedAt: "2026-09-11T11:59:00Z" }] }],
     warnings: [], cycleTypeIds: [], totalBaseTimeSeconds: 200,
+    inventoryState: "shortage", assetSnapshotId: 8, assetSyncRunId: 9,
+    assetObservedAt: "2026-09-11T12:00:00Z",
     createdAt: "2026-09-11T12:00:00Z", updatedAt: "2026-09-11T12:00:00Z" }],
   total: 1, offset: 0, limit: 50,
   owners: [{ characterId: 90_888_001, name: "Builder" }],
@@ -349,7 +364,7 @@ const productionPlanPage: ProductionPlanPage = {
   states: ["ready", "sde-unavailable", "recipe-missing", "cycle", "complexity-limit"],
   summary: { ready: 1, "sde-unavailable": 0, "recipe-missing": 0, cycle: 0,
     "complexity-limit": 0 }, buildNumber: "synthetic-production-1",
-  inventoryApplied: false, modifiersApplied: false,
+  inventoryApplied: true, modifiersApplied: false,
 };
 
 describe("New Eden Foundry design preview", () => {
@@ -723,7 +738,7 @@ describe("New Eden Foundry design preview", () => {
   it("credits Savoxmedia as the app creator next to the version", () => {
     render(<App />);
 
-    expect(screen.getByText("v0.2.0-alpha.1")).toBeInTheDocument();
+    expect(screen.getByText("v0.2.0-alpha.2")).toBeInTheDocument();
     expect(screen.getByText("Savoxmedia")).toBeInTheDocument();
     expect(screen.getByText("Erstellt von", { exact: false })).toBeInTheDocument();
     expect(screen.queryByText("Lokaler Betreiber")).not.toBeInTheDocument();
@@ -889,7 +904,12 @@ describe("New Eden Foundry design preview", () => {
     fireEvent.click(screen.getByRole("button", { name: "Produktion" }));
 
     expect(await screen.findByText("Synthetic Mineral")).toBeInTheDocument();
-    expect(screen.getByText(/Bruttobedarf ohne Bestandsabzug/)).toBeInTheDocument();
+    expect(screen.getByText(/Bestand des ausführenden Charakters/)).toBeInTheDocument();
+    expect(screen.getAllByText("Fehlmenge")).toHaveLength(2);
+    expect(screen.getByText("Verfügbar")).toBeInTheDocument();
+    expect(screen.getByText("Fehlt")).toBeInTheDocument();
+    expect(screen.getByText(/Angerechneter Bestand · 7 in 1 Orten/)).toBeInTheDocument();
+    expect(screen.getByText(/Nicht angerechnet: andere Charaktere · 20/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Synthetic Hull.*Auswählen$/ }));
     fireEvent.click(screen.getByRole("button", { name: "Ziel speichern" }));
 

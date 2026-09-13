@@ -24,6 +24,33 @@ Keine.
 
 Keine.
 
+## 0.2.0-alpha.2 – 13. September 2026
+
+### Neu hinzugefügt
+
+- Paket 31 gleicht die äußeren Bruttomaterialien eines Fertigungs- oder Reaktionsziels mit dem letzten vollständigen Asset-Snapshot des ausführenden Charakters ab.
+- Die zweisprachige Produktionsansicht zeigt je Material Bedarf, verfügbaren Bestand und echte Fehlmenge sowie die angerechneten Standortgruppen mit Snapshot-, Lauf- und Zeitbeleg.
+- Passende Bestände anderer aktivierter Charaktere bleiben separat als bewusst nicht angerechnet sichtbar, statt unbemerkt in den Bestand des ausführenden Charakters einzufließen.
+
+### Geändert
+
+- Die sichtbare Versionsnummer lautet `v0.2.0-alpha.2`.
+- Ein fehlender vollständiger Asset-Snapshot bleibt als unbekannter Bestandszustand sichtbar. Fehlgeschlagene, abgebrochene oder laufende neuere Synchronisationen überschreiben keinen gültigen Abgleich.
+
+### Behobene Fehler
+
+- Keine.
+
+### Bekannte Einschränkungen
+
+- Bestände werden noch nicht zwischen mehreren Produktionszielen reserviert. Derselbe bekannte Bestand kann deshalb mehrere Ziele einzeln decken, bis Paket 32 die konfliktfeste Reservierung ergänzt.
+- Blueprint-ME, Skills, Anlagen-/Rigboni, Steuern, Preise und belastbare reale Laufzeiten sind noch nicht eingerechnet.
+- Die Alpha ist noch nicht produktiv code-signiert; SmartScreen kann deshalb weiterhin vor einem unbekannten Herausgeber warnen.
+
+### Update und Datenbankmigration
+
+- Das Datenbankschema bleibt bei Version 9. Der bestehende `data`-Ordner mit Charakteren, Einstellungen, Plänen und vollständigen Snapshots wird unverändert weiterverwendet.
+
 ## 0.2.0-alpha.1 – 13. September 2026
 
 ### Neu hinzugefügt
