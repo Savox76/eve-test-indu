@@ -197,6 +197,7 @@ class IndustrySlotTests(unittest.TestCase):
                     "planId": None,
                     "ownerCharacterId": CHARACTER_ID,
                     "blueprintTypeId": 6_001,
+                    "blueprintItemId": None,
                     "activity": activity,
                     "productTypeId": 6_002,
                     "targetQuantity": 1,

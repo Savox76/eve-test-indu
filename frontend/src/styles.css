@@ -563,13 +563,26 @@ select:focus-visible {
 
 .production-plan-editor {
   display: grid;
-  grid-template-columns: minmax(150px, 1fr) repeat(2, minmax(105px, 0.55fr)) minmax(180px, 1.2fr) auto auto;
+  grid-template-columns: minmax(145px, 0.9fr) minmax(230px, 1.35fr) repeat(2, minmax(95px, 0.5fr)) minmax(170px, 1fr) auto auto;
   align-items: end;
   gap: 9px;
   padding: 12px 14px;
   border-top: 1px solid #303a32;
   border-bottom: 1px solid #303a32;
   background: #1b211d;
+}
+
+.production-blueprint-evidence {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  padding: 10px 14px 0;
+  color: #97a39a;
+  font-size: var(--font-size-2xs);
+}
+
+.production-blueprint-evidence strong {
+  color: #cfd8d0;
 }
 
 .production-plan-editor button {
@@ -4188,7 +4201,8 @@ select:focus-visible {
   .production-create__selection,
   .production-create__note,
   .production-plan-editor label:first-child,
-  .production-plan-editor label:nth-child(4) {
+  .production-plan-editor label:nth-child(2),
+  .production-plan-editor label:nth-child(5) {
     grid-column: span 2;
   }
 }
@@ -4205,7 +4219,8 @@ select:focus-visible {
   .production-create__selection,
   .production-create__note,
   .production-plan-editor label:first-child,
-  .production-plan-editor label:nth-child(4) {
+  .production-plan-editor label:nth-child(2),
+  .production-plan-editor label:nth-child(5) {
     grid-column: auto;
   }
 

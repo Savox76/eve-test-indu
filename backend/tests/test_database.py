@@ -160,6 +160,12 @@ class DatabaseFoundationTests(unittest.TestCase):
             character_columns = {
                 row["name"] for row in migrated.execute("PRAGMA table_info(characters)")
             }
+            production_columns = {
+                row["name"] for row in migrated.execute("PRAGMA table_info(production_plans)")
+            }
+            production_indexes = {
+                row["name"] for row in migrated.execute("PRAGMA index_list(production_plans)")
+            }
         self.assertEqual(record["filename"], backup_path.name)
         self.assertEqual(record["source_schema_version"], previous_version)
         self.assertEqual(record["target_schema_version"], SCHEMA_VERSION)
@@ -167,6 +173,8 @@ class DatabaseFoundationTests(unittest.TestCase):
         self.assertEqual(selected_channel, "stable")
         self.assertEqual(tuple(migrated_character), ("Migration Pilot", None))
         self.assertIn("alias", character_columns)
+        self.assertIn("blueprint_item_id", production_columns)
+        self.assertIn("idx_production_plans_blueprint_item", production_indexes)
         verify_database_backup(
             backup_path,
             expected_schema_version=previous_version,
