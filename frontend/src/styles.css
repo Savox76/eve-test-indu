@@ -535,6 +535,12 @@ select:focus-visible {
   gap: 5px;
 }
 
+.production-plan-statuses {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 .production-plan-card h2,
 .production-plan-card p {
   margin: 0;
@@ -649,6 +655,86 @@ select:focus-visible {
 
 .production-resolution li.production-step--goal strong {
   color: #bfe4dc;
+}
+
+.production-material-list > li {
+  display: grid;
+  gap: 10px;
+  padding: 11px 12px;
+}
+
+.production-material-heading,
+.production-material-metrics {
+  display: flex !important;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.production-material-heading > span:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+.production-material-heading strong {
+  color: #dce5dd;
+}
+
+.production-material-metrics {
+  padding: 8px 10px;
+  border: 1px solid #303a32;
+  border-radius: 6px;
+  background: #202722;
+}
+
+.production-material-metrics > span {
+  display: grid;
+  gap: 2px;
+  min-width: 64px;
+}
+
+.production-material-metrics strong {
+  color: #dce5dd;
+  font-size: var(--font-size-sm);
+}
+
+.production-material-metrics .is-shortage strong {
+  color: #e59a89;
+}
+
+.production-material-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  color: #d5a867 !important;
+  background: #2c281f !important;
+}
+
+.production-material-note svg {
+  flex: 0 0 auto;
+}
+
+.production-stock-evidence details {
+  border-color: #303a32;
+  background: #1e2520;
+}
+
+.production-stock-evidence summary {
+  padding: 8px 10px;
+  color: #a9cfc8;
+  font-size: var(--font-size-2xs);
+}
+
+.production-stock-evidence li {
+  padding: 8px 10px;
+}
+
+.production-stock-evidence li > span:last-child {
+  text-align: right;
+}
+
+.production-stock-evidence--excluded summary {
+  color: #c7ad83;
 }
 
 .production-resolution p {

@@ -4,7 +4,7 @@
 
 **Stand:** 11. September 2026
 
-**Status:** Paket 30 – Produktionsplanung technisch abgeschlossen; Windows-A0 für Paket 22 bleibt offen
+**Status:** Paket 31 – Bestandsabgleich und Fehlmengen technisch abgeschlossen
 
 **Geltungsbereich:** `Savox76/eve-test-indu`
 
@@ -197,6 +197,7 @@ Die Reihenfolge ist verbindlicher als eine Kalenderangabe.
 | 29 | Blueprint-Aktivitätsbasis | Produkte, Materialien und Basiszeiten der für Fertigung und Reaktionen benötigten SDE-Blueprintaktivitäten werden build-versioniert und atomar importiert |
 | 30 | Produktionsplanung | Persistente Fertigungs- und Reaktionsziele werden aus der Blueprint-Aktivitätsbasis deterministisch in Produktionsschritte und Bruttomaterialbedarf aufgelöst |
 | 31 | Bestandsabgleich und Fehlmengen | Vollständige Asset-Snapshots werden nachvollziehbar auf äußere Bruttomaterialien angerechnet; verfügbare Mengen, ungedeckter Bedarf und bewusst ausgeschlossene Bestände bleiben charakter- und standortbezogen belegbar |
+| 32 | Bestandsreservierungen | Bestände werden zielbezogen und konfliktfest reserviert; Priorität und eindeutige Regeln verhindern eine unbemerkte Doppelverwendung zwischen Produktionszielen |
 
 ### Aktueller Stand
 
@@ -229,7 +230,8 @@ Die Reihenfolge ist verbindlicher als eine Kalenderangabe.
 - **Abgeschlossen:** 28 – eine gemeinsame, begrenzte Übersicht stellt pro Charakter Fertigungs-, Reaktions- und Wissenschaftskapazität aus aktuell wirksamen Skills der realen Belegung durch aktive, pausierte und abholbereite Jobs gegenüber. Forschungspläne und seit Paket 30 Produktionsziele ergänzen den belegbaren Arbeitsvorrat; fehlende Skill- oder Job-Snapshots bleiben unabhängig voneinander unbekannt. Die Ansicht führt Datenalter und stabile Quellen-IDs.
 - **Abgeschlossen:** 29 – Gruppen, Typen, Orte und die Fertigungs-/Reaktionsaktivitäten der Blueprintbasis werden unter derselben SDE-Buildnummer atomar ersetzt. Strikte Validierung sichert Blueprint-, Produkt- und Materialreferenzen, positive Basiswerte und vollständige Rezepte; ein Fehler lässt sämtliche Tabellen und den letzten Aktivitäts-Buildmarker unverändert. Eine authentifizierte, nach Blueprint, Produkt und Aktivität filterbare Abfrage überträgt höchstens 200 vollständige Aktivitäten und weist die verwendete Buildnummer aus. Seit `v0.0.5-preview.14` wird der aus dem offiziellen, prüfsummengebundenen EVE-SDE-Build abgeleitete Bestand automatisch mitgeliefert und beim ersten Start atomar installiert. Die abgeleiteten Tabellen verändern das Anwendungsschema nicht.
 - **Abgeschlossen:** 30 – persistente Fertigungs- und Reaktionsziele werden aus dem exakten Wurzelrezept und einer stabilen Zwischenprodukt-Auswahl deterministisch aufgelöst. Gemeinsamer Bedarf wird vor ganzzahliger Laufberechnung aggregiert; die sichtbare Herstellungsreihenfolge beginnt mit den tiefsten Vorprodukten und endet mit dem gewählten Zielprodukt. Schritte, Überschuss, SDE-Basiszeit, äußeres Bruttomaterial, Alternativen, Zyklen und fehlende SDE-Stände bleiben nachvollziehbar. Schema 9 speichert Zielmenge, Priorität und Notiz updatefest.
-- **Als Nächstes:** Paket 31 verbindet die äußeren Bruttomaterialien eines Produktionsziels mit vollständigen Asset-Snapshots und weist verfügbare Bestände sowie echte Fehlmengen aus. Reservierungen sowie belastbare Zeit- und Kostenmodifikatoren bleiben bis zu eigenen Fachverträgen ausdrücklich ausgeschlossen.
+- **Abgeschlossen:** 31 – der letzte vollständig abgeschlossene Asset-Snapshot des ausführenden Charakters wird je äußerem Bruttomaterial angerechnet. Bedarf, verfügbarer Bestand und echte Fehlmenge bleiben mit Snapshot-, Sync-, Zeit-, Standort- und Bereichsbelegen nachvollziehbar; ein fehlender Snapshot bleibt unbekannt. Bestände anderer aktivierter Charaktere werden separat als bewusst ausgeschlossen ausgewiesen. Standortdetails sind pro Material und Kategorie auf 50 Gruppen begrenzt, während vollständige Mengen-, Positions- und Gruppensummen erhalten bleiben. Reservierungen und Modifikatoren werden nicht vorweggenommen.
+- **Als Nächstes:** Paket 32 führt zielbezogene Bestandsreservierungen mit stabiler Prioritäts- und Konfliktregel ein, damit derselbe Bestand nicht unbemerkt mehreren Produktionszielen zugleich zugerechnet wird. Belastbare Zeit- und Kostenmodifikatoren bleiben bis zu eigenen Fachverträgen ausgeschlossen.
 - Architektur-Gate A0 ist vollständig erfüllt; `v0.2.0-alpha.1` bildet die erste freigegebene Alpha-Grundlage für die folgenden Produktionspakete.
 
 ## 13. Entscheidungs- und Quellenrang

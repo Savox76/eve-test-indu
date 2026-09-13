@@ -597,10 +597,14 @@ export interface IndustrySlotPage {
 
 export type ProductionActivity = "manufacturing" | "reaction";
 export type ProductionPlanState = "ready" | "sde-unavailable" | "recipe-missing" | "cycle" | "complexity-limit";
+export type ProductionInventoryState = "covered" | "shortage" | "snapshot-missing" | "not-applicable";
 export type ProductionPlanSortField = "priority" | "product" | "owner" | "activity" | "state" | "updated";
 export const productionActivities: readonly ProductionActivity[] = ["manufacturing", "reaction"];
 export const productionPlanStates: readonly ProductionPlanState[] = [
   "ready", "sde-unavailable", "recipe-missing", "cycle", "complexity-limit",
+];
+export const productionInventoryStates: readonly ProductionInventoryState[] = [
+  "covered", "shortage", "snapshot-missing", "not-applicable",
 ];
 export const productionPlanSortFields: readonly ProductionPlanSortField[] = [
   "priority", "product", "owner", "activity", "state", "updated",
@@ -665,6 +669,30 @@ export interface ProductionGrossMaterial {
   typeId: number;
   typeName: string;
   quantity: number;
+  availabilityState: Exclude<ProductionInventoryState, "not-applicable">;
+  availableQuantity: number | null;
+  missingQuantity: number | null;
+  availablePositionCount: number;
+  availableLocationCount: number;
+  availableLocations: ProductionStockLocation[];
+  excludedQuantity: number;
+  excludedPositionCount: number;
+  excludedLocationCount: number;
+  excludedLocations: ProductionStockLocation[];
+}
+
+export interface ProductionStockLocation {
+  ownerCharacterId: number;
+  ownerName: string;
+  locationId: number;
+  locationStatus: AssetLocationStatus;
+  locationPath: string;
+  locationFlag: string;
+  quantity: number;
+  positionCount: number;
+  assetSnapshotId: number;
+  assetSyncRunId: number;
+  assetObservedAt: string;
 }
 
 export interface ProductionWarning {
@@ -694,6 +722,10 @@ export interface ProductionPlanRecord {
   warnings: ProductionWarning[];
   cycleTypeIds: number[];
   totalBaseTimeSeconds: number | null;
+  inventoryState: ProductionInventoryState;
+  assetSnapshotId: number | null;
+  assetSyncRunId: number | null;
+  assetObservedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -719,7 +751,7 @@ export interface ProductionPlanPage {
   states: ProductionPlanState[];
   summary: Record<ProductionPlanState, number>;
   buildNumber: string | null;
-  inventoryApplied: false;
+  inventoryApplied: true;
   modifiersApplied: false;
 }
 
@@ -2785,6 +2817,22 @@ function parseProductionStep(candidate: unknown, index: number): ProductionStep 
   return { ...candidate, materials } as unknown as ProductionStep;
 }
 
+function parseProductionStockLocation(candidate: unknown): ProductionStockLocation {
+  if (
+    !isRecord(candidate) || !isPositiveSafeInteger(candidate.ownerCharacterId) ||
+    !isBoundedText(candidate.ownerName, 100) || !isPositiveSafeInteger(candidate.locationId) ||
+    !assetLocationStatuses.includes(candidate.locationStatus as AssetLocationStatus) ||
+    typeof candidate.locationPath !== "string" || candidate.locationPath.length > 4_096 ||
+    !isBoundedText(candidate.locationFlag, 100) || !isPositiveSafeInteger(candidate.quantity) ||
+    !isPositiveSafeInteger(candidate.positionCount) || !isPositiveSafeInteger(candidate.assetSnapshotId) ||
+    !isPositiveSafeInteger(candidate.assetSyncRunId) || !isBoundedText(candidate.assetObservedAt, 64) ||
+    ((candidate.locationStatus === "pending") !== (candidate.locationPath === ""))
+  ) {
+    throw new Error("The native runtime returned invalid production stock evidence.");
+  }
+  return candidate as unknown as ProductionStockLocation;
+}
+
 function parseProductionPlanRecord(candidate: unknown): ProductionPlanRecord {
   if (
     !isRecord(candidate) || !isPositiveSafeInteger(candidate.planId) ||
@@ -2799,6 +2847,11 @@ function parseProductionPlanRecord(candidate: unknown): ProductionPlanRecord {
     !Array.isArray(candidate.steps) || !Array.isArray(candidate.grossMaterials) ||
     !Array.isArray(candidate.warnings) || !Array.isArray(candidate.cycleTypeIds) ||
     !(candidate.totalBaseTimeSeconds === null || isPositiveSafeInteger(candidate.totalBaseTimeSeconds)) ||
+    !productionInventoryStates.includes(candidate.inventoryState as ProductionInventoryState) ||
+    !((candidate.assetSnapshotId === null && candidate.assetSyncRunId === null &&
+      candidate.assetObservedAt === null) ||
+      (isPositiveSafeInteger(candidate.assetSnapshotId) && isPositiveSafeInteger(candidate.assetSyncRunId) &&
+        isBoundedText(candidate.assetObservedAt, 64))) ||
     !isBoundedText(candidate.createdAt, 64) || !isBoundedText(candidate.updatedAt, 64)
   ) {
     throw new Error("The native runtime returned invalid production plans.");
@@ -2806,10 +2859,46 @@ function parseProductionPlanRecord(candidate: unknown): ProductionPlanRecord {
   const steps = candidate.steps.map(parseProductionStep);
   const grossMaterials = candidate.grossMaterials.map((material): ProductionGrossMaterial => {
     if (!isRecord(material) || !isPositiveSafeInteger(material.typeId) ||
-      !isBoundedText(material.typeName, 200) || !isPositiveSafeInteger(material.quantity)) {
+      !isBoundedText(material.typeName, 200) || !isPositiveSafeInteger(material.quantity) ||
+      !productionInventoryStates.slice(0, 3).includes(material.availabilityState as ProductionInventoryState) ||
+      !(material.availableQuantity === null || isNonNegativeSafeInteger(material.availableQuantity)) ||
+      !(material.missingQuantity === null || isNonNegativeSafeInteger(material.missingQuantity)) ||
+      !isNonNegativeSafeInteger(material.availablePositionCount) ||
+      !isNonNegativeSafeInteger(material.availableLocationCount) ||
+      !Array.isArray(material.availableLocations) || material.availableLocations.length > 50 ||
+      !isNonNegativeSafeInteger(material.excludedQuantity) ||
+      !isNonNegativeSafeInteger(material.excludedPositionCount) ||
+      !isNonNegativeSafeInteger(material.excludedLocationCount) ||
+      !Array.isArray(material.excludedLocations) || material.excludedLocations.length > 50) {
       throw new Error("The native runtime returned invalid gross materials.");
     }
-    return material as unknown as ProductionGrossMaterial;
+    const availableLocations = material.availableLocations.map(parseProductionStockLocation);
+    const excludedLocations = material.excludedLocations.map(parseProductionStockLocation);
+    const availableQuantity = material.availableQuantity as number | null;
+    const missingQuantity = material.missingQuantity as number | null;
+    const snapshotMissing = material.availabilityState === "snapshot-missing";
+    const representedAvailable = availableLocations.reduce((total, item) => total + item.quantity, 0);
+    const representedExcluded = excludedLocations.reduce((total, item) => total + item.quantity, 0);
+    if (
+      Number(material.availableLocationCount) < availableLocations.length ||
+      Number(material.excludedLocationCount) < excludedLocations.length ||
+      !isNonNegativeSafeInteger(representedAvailable) || !isNonNegativeSafeInteger(representedExcluded) ||
+      Number(material.availablePositionCount) < availableLocations.reduce((total, item) => total + item.positionCount, 0) ||
+      Number(material.excludedPositionCount) < excludedLocations.reduce((total, item) => total + item.positionCount, 0) ||
+      representedExcluded > Number(material.excludedQuantity) ||
+      availableLocations.some((item) => item.ownerCharacterId !== candidate.ownerCharacterId) ||
+      excludedLocations.some((item) => item.ownerCharacterId === candidate.ownerCharacterId) ||
+      (snapshotMissing && (availableQuantity !== null || missingQuantity !== null ||
+        material.availablePositionCount !== 0 || material.availableLocationCount !== 0 ||
+        availableLocations.length !== 0)) ||
+      (!snapshotMissing && (availableQuantity === null || missingQuantity === null ||
+        representedAvailable > availableQuantity ||
+        missingQuantity !== Math.max(0, Number(material.quantity) - availableQuantity) ||
+        ((material.availabilityState === "covered") !== (missingQuantity === 0))))
+    ) {
+      throw new Error("The native runtime returned inconsistent production stock evidence.");
+    }
+    return { ...material, availableLocations, excludedLocations } as unknown as ProductionGrossMaterial;
   });
   const warnings = candidate.warnings.map((warning): ProductionWarning => {
     if (!isRecord(warning) || warning.code !== "alternative-recipe" ||
@@ -2824,6 +2913,16 @@ function parseProductionPlanRecord(candidate: unknown): ProductionPlanRecord {
     throw new Error("The native runtime returned invalid production cycles.");
   }
   const ready = candidate.state === "ready";
+  const ownerSnapshotAvailable = candidate.assetSnapshotId !== null;
+  const expectedInventoryState: ProductionInventoryState = !ready
+    ? "not-applicable"
+    : grossMaterials.length === 0
+      ? "covered"
+      : !ownerSnapshotAvailable
+        ? "snapshot-missing"
+        : grossMaterials.some((material) => Number(material.missingQuantity) > 0)
+          ? "shortage"
+          : "covered";
   if (
     ready !== (steps.length > 0 && candidate.totalBaseTimeSeconds !== null) ||
     (ready && (candidate.buildNumber === null || candidate.cycleTypeIds.length !== 0 ||
@@ -2832,7 +2931,13 @@ function parseProductionPlanRecord(candidate: unknown): ProductionPlanRecord {
       steps.at(-1)?.activity !== candidate.activity || steps.at(-1)?.requiredQuantity !== candidate.targetQuantity ||
       steps.reduce((total, step) => total + step.totalBaseTimeSeconds, 0) !== candidate.totalBaseTimeSeconds)) ||
     (!ready && (grossMaterials.length !== 0 || candidate.totalBaseTimeSeconds !== null)) ||
-    ((candidate.state === "cycle") !== (candidate.cycleTypeIds.length > 0))
+    ((candidate.state === "cycle") !== (candidate.cycleTypeIds.length > 0)) ||
+    candidate.inventoryState !== expectedInventoryState ||
+    (!ready && ownerSnapshotAvailable) ||
+    (ownerSnapshotAvailable && grossMaterials.some((material) =>
+      material.availabilityState === "snapshot-missing")) ||
+    (!ownerSnapshotAvailable && grossMaterials.length > 0 && grossMaterials.some((material) =>
+      material.availabilityState !== "snapshot-missing"))
   ) {
     throw new Error("The native runtime returned inconsistent production-plan data.");
   }
@@ -2869,7 +2974,7 @@ function parseProductionPlanPage(candidate: unknown): ProductionPlanPage {
     !productionPlanStates.every((state) => isNonNegativeSafeInteger(
       (candidate.summary as Record<string, unknown>)[state])) ||
     !(candidate.buildNumber === null || isBoundedText(candidate.buildNumber, 80)) ||
-    candidate.inventoryApplied !== false || candidate.modifiersApplied !== false
+    candidate.inventoryApplied !== true || candidate.modifiersApplied !== false
   ) throw new Error("The native runtime returned invalid production-plan data.");
   const items = candidate.items.map(parseProductionPlanRecord);
   const owners = candidate.owners.map((owner): AssetOwner => {
@@ -2894,7 +2999,7 @@ export async function loadProductionPlans(
   if (!adapter.isAvailable()) return {
     items: [], total: 0, offset: validated.offset, limit: validated.limit, owners: [],
     activities: [...productionActivities], states: [...productionPlanStates],
-    summary: emptyProductionSummary(), buildNumber: null, inventoryApplied: false, modifiersApplied: false,
+    summary: emptyProductionSummary(), buildNumber: null, inventoryApplied: true, modifiersApplied: false,
   };
   const page = parseProductionPlanPage(JSON.parse(await adapter.invoke("query_production_plans", {
     search: validated.search, ownerCharacterId: validated.ownerCharacterId,

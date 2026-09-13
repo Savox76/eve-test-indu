@@ -349,7 +349,7 @@ def main() -> int:
             if (
                 production_plans.get("items") != []
                 or production_plans.get("total") != 0
-                or production_plans.get("inventoryApplied") is not False
+                or production_plans.get("inventoryApplied") is not True
                 or production_plans.get("modifiersApplied") is not False
             ):
                 raise RuntimeError("The packaged production-plan query is invalid.")

@@ -916,8 +916,23 @@ describe("desktop runtime status", () => {
         surplusQuantity: 1, baseTimeSecondsPerRun: 100, totalBaseTimeSeconds: 200,
         recipeAlternatives: 1, materials: [{ typeId: 111, typeName: "Synthetic Component",
           quantityPerRun: 2, grossQuantity: 4, producedByPlan: true }] }],
-      grossMaterials: [{ typeId: 901, typeName: "Synthetic Ore", quantity: 8 }],
+      grossMaterials: [{ typeId: 901, typeName: "Synthetic Ore", quantity: 8,
+        availabilityState: "shortage", availableQuantity: 5, missingQuantity: 3,
+        availablePositionCount: 1, availableLocationCount: 1,
+        availableLocations: [{ ownerCharacterId: 7, ownerName: "Pilot",
+          locationId: 60_003_760, locationStatus: "resolved",
+          locationPath: "Jita / Jita IV - Moon 4", locationFlag: "Hangar",
+          quantity: 5, positionCount: 1, assetSnapshotId: 8, assetSyncRunId: 9,
+          assetObservedAt: "2026-09-11T12:00:00Z" }],
+        excludedQuantity: 12, excludedPositionCount: 1, excludedLocationCount: 1,
+        excludedLocations: [{ ownerCharacterId: 8, ownerName: "Hauler",
+          locationId: 60_003_760, locationStatus: "resolved",
+          locationPath: "Jita / Jita IV - Moon 4", locationFlag: "Hangar",
+          quantity: 12, positionCount: 1, assetSnapshotId: 10, assetSyncRunId: 11,
+          assetObservedAt: "2026-09-11T11:59:00Z" }] }],
       warnings: [], cycleTypeIds: [], totalBaseTimeSeconds: 300,
+      inventoryState: "shortage", assetSnapshotId: 8, assetSyncRunId: 9,
+      assetObservedAt: "2026-09-11T12:00:00Z",
       createdAt: "2026-09-11T12:00:00Z", updatedAt: "2026-09-11T12:00:00Z",
     };
     const page = { items: [plan], total: 1, offset: 0, limit: 50,
@@ -925,7 +940,7 @@ describe("desktop runtime status", () => {
       states: ["ready", "sde-unavailable", "recipe-missing", "cycle", "complexity-limit"],
       summary: { ready: 1, "sde-unavailable": 0, "recipe-missing": 0, cycle: 0,
         "complexity-limit": 0 }, buildNumber: "synthetic-production-1",
-      inventoryApplied: false, modifiersApplied: false };
+      inventoryApplied: true, modifiersApplied: false };
     invoke.mockResolvedValueOnce(JSON.stringify(page));
     const query = { search: "", ownerCharacterId: null, activity: null, state: null,
       offset: 0, limit: 50, sortBy: "priority", sortDirection: "desc" } as const;
@@ -933,6 +948,13 @@ describe("desktop runtime status", () => {
     expect(invoke).toHaveBeenLastCalledWith("query_production_plans", expect.objectContaining({
       planState: null, sortBy: "priority",
     }));
+    const inconsistentInventory = JSON.parse(JSON.stringify(page)) as {
+      items: Array<{ grossMaterials: Array<{ missingQuantity: number }> }>;
+    };
+    inconsistentInventory.items[0].grossMaterials[0].missingQuantity = 2;
+    invoke.mockResolvedValueOnce(JSON.stringify(inconsistentInventory));
+    await expect(loadProductionPlans(query, { isAvailable: () => true, invoke }))
+      .rejects.toThrow("inconsistent production stock evidence");
 
     const input = { planId: null, ownerCharacterId: 7, blueprintTypeId: 100,
       activity: "manufacturing", productTypeId: 101, targetQuantity: 3,

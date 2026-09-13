@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 import tempfile
 import unittest
 
@@ -124,6 +125,84 @@ class ProductionPlanningTests(unittest.TestCase):
         self.db.close()
         self.temp.cleanup()
 
+    def publish_assets(
+        self,
+        character_id: int,
+        assets: list[dict[str, object]],
+        observed_at: str,
+        *,
+        status: str = "completed",
+    ) -> tuple[int, int]:
+        run = self.db.execute(
+            "INSERT INTO sync_runs(source,status,started_at,completed_at,data_timestamp,"
+            "character_id) VALUES('character_assets',?,?,?,?,?)",
+            (status, observed_at, observed_at, observed_at, character_id),
+        )
+        snapshot = self.db.execute(
+            "INSERT INTO cached_snapshots(sync_run_id,resource,payload_json,observed_at) "
+            "VALUES(?,?,?,?)",
+            (
+                int(run.lastrowid),
+                f"character_assets:{character_id}",
+                json.dumps({"characterId": character_id, "pages": 1, "assets": assets}),
+                observed_at,
+            ),
+        )
+        return int(snapshot.lastrowid), int(run.lastrowid)
+
+    def publish_locations(
+        self,
+        character_id: int,
+        asset_snapshot_id: int,
+        item_ids: list[int],
+        observed_at: str,
+    ) -> None:
+        run = self.db.execute(
+            "INSERT INTO sync_runs(source,status,started_at,completed_at,data_timestamp,"
+            "character_id) VALUES('asset_locations','completed',?,?,?,?)",
+            (observed_at, observed_at, observed_at, character_id),
+        )
+        locations = [
+            {
+                "itemId": item_id,
+                "status": "resolved",
+                "path": [
+                    {
+                        "locationId": 30_000_142,
+                        "kind": "solar_system",
+                        "name": "Synthetic System",
+                        "access": "available",
+                        "typeId": None,
+                    },
+                    {
+                        "locationId": 60_003_760,
+                        "kind": "station",
+                        "name": "Synthetic Station",
+                        "access": "available",
+                        "typeId": None,
+                    },
+                ],
+                "errorCode": None,
+            }
+            for item_id in item_ids
+        ]
+        self.db.execute(
+            "INSERT INTO cached_snapshots(sync_run_id,resource,payload_json,observed_at) "
+            "VALUES(?,?,?,?)",
+            (
+                int(run.lastrowid),
+                f"asset_locations:{character_id}",
+                json.dumps(
+                    {
+                        "characterId": character_id,
+                        "assetSnapshotId": asset_snapshot_id,
+                        "locations": locations,
+                    }
+                ),
+                observed_at,
+            ),
+        )
+
     def test_goal_persists_and_expands_shared_inputs_after_rounding(self) -> None:
         import_industry_sde(self.db, **bundle())
         saved = save_production_plan(self.db, plan_input())
@@ -132,7 +211,7 @@ class ProductionPlanningTests(unittest.TestCase):
         self.assertTrue(saved["saved"])
         self.assertEqual(saved["note"], "main goal")
         self.assertEqual(page["buildNumber"], "synthetic-production-1")
-        self.assertFalse(page["inventoryApplied"])
+        self.assertTrue(page["inventoryApplied"])
         self.assertFalse(page["modifiersApplied"])
         self.assertEqual(page["summary"]["ready"], 1)
         record = page["items"][0]
@@ -142,10 +221,21 @@ class ProductionPlanningTests(unittest.TestCase):
              for step in record["steps"]],
             [(121, 23, 3, 30), (111, 6, 3, 6), (101, 3, 2, 4)],
         )
-        self.assertEqual(record["grossMaterials"], [
-            {"typeId": 900, "typeName": "Synthetic Mineral", "quantity": 27}
-        ])
+        self.assertEqual(
+            {
+                key: record["grossMaterials"][0][key]
+                for key in ("typeId", "typeName", "quantity")
+            },
+            {"typeId": 900, "typeName": "Synthetic Mineral", "quantity": 27},
+        )
         self.assertEqual(record["totalBaseTimeSeconds"], 290)
+        self.assertEqual(record["inventoryState"], "snapshot-missing")
+        self.assertIsNone(record["assetSnapshotId"])
+        self.assertEqual(
+            record["grossMaterials"][0]["availabilityState"], "snapshot-missing"
+        )
+        self.assertIsNone(record["grossMaterials"][0]["availableQuantity"])
+        self.assertIsNone(record["grossMaterials"][0]["missingQuantity"])
         self.assertEqual(record["warnings"], [{
             "code": "alternative-recipe",
             "typeId": 121,
@@ -153,6 +243,102 @@ class ProductionPlanningTests(unittest.TestCase):
             "selectedBlueprintTypeId": 120,
             "candidateCount": 2,
         }])
+
+    def test_complete_asset_snapshots_expose_shortage_locations_and_other_owner_stock(self) -> None:
+        import_industry_sde(self.db, **bundle())
+        self.db.execute("INSERT INTO characters(character_id,name) VALUES (8,'Synthetic Hauler')")
+        owner_snapshot, owner_run = self.publish_assets(
+            7,
+            [
+                {
+                    "item_id": 7_001,
+                    "type_id": 900,
+                    "location_id": 60_003_760,
+                    "location_type": "station",
+                    "location_flag": "Hangar",
+                    "quantity": 20,
+                },
+                {
+                    "item_id": 7_002,
+                    "type_id": 900,
+                    "location_id": 60_003_760,
+                    "location_type": "station",
+                    "location_flag": "Hangar",
+                    "quantity": 3,
+                },
+            ],
+            "2026-09-13T09:00:00Z",
+        )
+        self.publish_locations(
+            7, owner_snapshot, [7_001, 7_002], "2026-09-13T09:01:00Z"
+        )
+        excluded_snapshot, _ = self.publish_assets(
+            8,
+            [
+                {
+                    "item_id": 8_001,
+                    "type_id": 900,
+                    "location_id": 60_003_760,
+                    "location_type": "station",
+                    "location_flag": "Hangar",
+                    "quantity": 100,
+                }
+            ],
+            "2026-09-13T08:00:00Z",
+        )
+        self.publish_locations(8, excluded_snapshot, [8_001], "2026-09-13T08:01:00Z")
+        self.publish_assets(
+            7,
+            [
+                {
+                    "item_id": 7_999,
+                    "type_id": 900,
+                    "location_id": 60_003_760,
+                    "location_type": "station",
+                    "location_flag": "Hangar",
+                    "quantity": 999,
+                }
+            ],
+            "2026-09-13T10:00:00Z",
+            status="failed",
+        )
+        save_production_plan(self.db, plan_input())
+
+        record = query_production_plans(self.db, query())["items"][0]
+
+        self.assertEqual(record["inventoryState"], "shortage")
+        self.assertEqual(record["assetSnapshotId"], owner_snapshot)
+        self.assertEqual(record["assetSyncRunId"], owner_run)
+        self.assertEqual(record["assetObservedAt"], "2026-09-13T09:00:00Z")
+        material = record["grossMaterials"][0]
+        self.assertEqual(
+            (
+                material["quantity"],
+                material["availableQuantity"],
+                material["missingQuantity"],
+                material["availabilityState"],
+            ),
+            (27, 23, 4, "shortage"),
+        )
+        self.assertEqual(material["availablePositionCount"], 2)
+        self.assertEqual(material["availableLocationCount"], 1)
+        self.assertEqual(material["availableLocations"][0]["quantity"], 23)
+        self.assertEqual(
+            material["availableLocations"][0]["locationPath"],
+            "Synthetic System / Synthetic Station",
+        )
+        self.assertEqual(material["excludedQuantity"], 100)
+        self.assertEqual(material["excludedPositionCount"], 1)
+        self.assertEqual(material["excludedLocationCount"], 1)
+        self.assertEqual(material["excludedLocations"][0]["ownerCharacterId"], 8)
+
+        save_production_plan(
+            self.db,
+            plan_input(planId=record["planId"], targetQuantity=1),
+        )
+        covered = query_production_plans(self.db, query())["items"][0]
+        self.assertEqual(covered["inventoryState"], "covered")
+        self.assertEqual(covered["grossMaterials"][0]["missingQuantity"], 0)
 
     def test_reaction_catalog_query_and_plan_update_are_bounded(self) -> None:
         import_industry_sde(self.db, **bundle())
