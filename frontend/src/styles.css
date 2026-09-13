@@ -663,8 +663,7 @@ select:focus-visible {
   padding: 11px 12px;
 }
 
-.production-material-heading,
-.production-material-metrics {
+.production-material-heading {
   display: flex !important;
   align-items: center;
   justify-content: space-between;
@@ -681,6 +680,9 @@ select:focus-visible {
 }
 
 .production-material-metrics {
+  display: grid !important;
+  grid-template-columns: repeat(5, minmax(62px, 1fr));
+  gap: 8px;
   padding: 8px 10px;
   border: 1px solid #303a32;
   border-radius: 6px;
@@ -710,6 +712,18 @@ select:focus-visible {
   background: #2c281f !important;
 }
 
+.production-reservation-shortage {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  color: #dfb374 !important;
+  background: #2a261f !important;
+}
+
+.production-reservation-shortage svg {
+  flex: 0 0 auto;
+}
+
 .production-material-note svg {
   flex: 0 0 auto;
 }
@@ -735,6 +749,10 @@ select:focus-visible {
 
 .production-stock-evidence--excluded summary {
   color: #c7ad83;
+}
+
+.production-stock-evidence--reservations summary {
+  color: #d2b06f;
 }
 
 .production-resolution p {

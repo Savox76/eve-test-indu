@@ -24,6 +24,32 @@ Keine.
 
 Keine.
 
+## 0.2.0-alpha.3 – 13. September 2026
+
+### Neu hinzugefügt
+
+- Paket 32 reserviert den persönlichen Bestand konfliktfrei über alle Produktionsziele eines Charakters. Höhere Priorität gewinnt; bei Gleichstand entscheiden das ältere Ziel und danach die kleinere Ziel-ID.
+- Jedes äußere Material zeigt den physischen Bestand, durch vorrangige Ziele bereits gebundene Menge, die eigene Zielreservierung, den danach freien Bestand und die endgültige Fehlmenge.
+- Vorrangige Reservierungen bleiben mit Ziel, Produkt, Priorität, reservierter Menge und Erstellungszeit belegbar. Physische Fehlmenge und reservierungsbedingter Konflikt werden getrennt ausgewiesen.
+
+### Geändert
+
+- Die sichtbare Versionsnummer lautet `v0.2.0-alpha.3`.
+- Suche, Filter, Sortierung und Seitenauswahl verändern die globale Reservierung nicht. Eine geänderte Priorität, Zielmenge, Charakterzuordnung oder ein neuer vollständiger Asset-Snapshot berechnet sie unmittelbar neu.
+
+### Behobene Fehler
+
+- Derselbe Asset-Bestand kann nicht mehr unbemerkt mehreren Produktionszielen gleichzeitig als vollständig verfügbar zugerechnet werden.
+
+### Bekannte Einschränkungen
+
+- Blueprint-ME, konkrete Blueprintkopien, Skills, Anlagen-/Rigboni, Steuern, Preise und belastbare reale Laufzeiten sind noch nicht eingerechnet.
+- Die Alpha ist noch nicht produktiv code-signiert; SmartScreen kann deshalb weiterhin vor einem unbekannten Herausgeber warnen.
+
+### Update und Datenbankmigration
+
+- Das Datenbankschema bleibt bei Version 9. Der bestehende `data`-Ordner mit Charakteren, Einstellungen, Plänen und vollständigen Snapshots wird unverändert weiterverwendet.
+
 ## 0.2.0-alpha.2 – 13. September 2026
 
 ### Neu hinzugefügt

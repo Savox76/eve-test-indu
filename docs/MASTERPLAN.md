@@ -1,10 +1,10 @@
 # Masterplan – New Eden Foundry
 
-**Fassung:** 3.6 (lebendes Repository-Dokument)
+**Fassung:** 3.7 (lebendes Repository-Dokument)
 
-**Stand:** 11. September 2026
+**Stand:** 13. September 2026
 
-**Status:** Paket 31 – Bestandsabgleich und Fehlmengen technisch abgeschlossen
+**Status:** Paket 32 – konfliktfeste Bestandsreservierungen technisch abgeschlossen
 
 **Geltungsbereich:** `Savox76/eve-test-indu`
 
@@ -198,6 +198,7 @@ Die Reihenfolge ist verbindlicher als eine Kalenderangabe.
 | 30 | Produktionsplanung | Persistente Fertigungs- und Reaktionsziele werden aus der Blueprint-Aktivitätsbasis deterministisch in Produktionsschritte und Bruttomaterialbedarf aufgelöst |
 | 31 | Bestandsabgleich und Fehlmengen | Vollständige Asset-Snapshots werden nachvollziehbar auf äußere Bruttomaterialien angerechnet; verfügbare Mengen, ungedeckter Bedarf und bewusst ausgeschlossene Bestände bleiben charakter- und standortbezogen belegbar |
 | 32 | Bestandsreservierungen | Bestände werden zielbezogen und konfliktfest reserviert; Priorität und eindeutige Regeln verhindern eine unbemerkte Doppelverwendung zwischen Produktionszielen |
+| 33 | Blueprintzuordnung und ME-Materialbedarf | Ein Produktionsziel kann eine vorhandene persönliche Blueprintkopie nachvollziehbar zuordnen; deren ME-Wert verändert den Materialbedarf nach den belegten EVE-Rundungsregeln, während fehlende oder ungeeignete Kopien sichtbar bleiben |
 
 ### Aktueller Stand
 
@@ -231,7 +232,8 @@ Die Reihenfolge ist verbindlicher als eine Kalenderangabe.
 - **Abgeschlossen:** 29 – Gruppen, Typen, Orte und die Fertigungs-/Reaktionsaktivitäten der Blueprintbasis werden unter derselben SDE-Buildnummer atomar ersetzt. Strikte Validierung sichert Blueprint-, Produkt- und Materialreferenzen, positive Basiswerte und vollständige Rezepte; ein Fehler lässt sämtliche Tabellen und den letzten Aktivitäts-Buildmarker unverändert. Eine authentifizierte, nach Blueprint, Produkt und Aktivität filterbare Abfrage überträgt höchstens 200 vollständige Aktivitäten und weist die verwendete Buildnummer aus. Seit `v0.0.5-preview.14` wird der aus dem offiziellen, prüfsummengebundenen EVE-SDE-Build abgeleitete Bestand automatisch mitgeliefert und beim ersten Start atomar installiert. Die abgeleiteten Tabellen verändern das Anwendungsschema nicht.
 - **Abgeschlossen:** 30 – persistente Fertigungs- und Reaktionsziele werden aus dem exakten Wurzelrezept und einer stabilen Zwischenprodukt-Auswahl deterministisch aufgelöst. Gemeinsamer Bedarf wird vor ganzzahliger Laufberechnung aggregiert; die sichtbare Herstellungsreihenfolge beginnt mit den tiefsten Vorprodukten und endet mit dem gewählten Zielprodukt. Schritte, Überschuss, SDE-Basiszeit, äußeres Bruttomaterial, Alternativen, Zyklen und fehlende SDE-Stände bleiben nachvollziehbar. Schema 9 speichert Zielmenge, Priorität und Notiz updatefest.
 - **Abgeschlossen:** 31 – der letzte vollständig abgeschlossene Asset-Snapshot des ausführenden Charakters wird je äußerem Bruttomaterial angerechnet. Bedarf, verfügbarer Bestand und echte Fehlmenge bleiben mit Snapshot-, Sync-, Zeit-, Standort- und Bereichsbelegen nachvollziehbar; ein fehlender Snapshot bleibt unbekannt. Bestände anderer aktivierter Charaktere werden separat als bewusst ausgeschlossen ausgewiesen. Standortdetails sind pro Material und Kategorie auf 50 Gruppen begrenzt, während vollständige Mengen-, Positions- und Gruppensummen erhalten bleiben. Reservierungen und Modifikatoren werden nicht vorweggenommen.
-- **Als Nächstes:** Paket 32 führt zielbezogene Bestandsreservierungen mit stabiler Prioritäts- und Konfliktregel ein, damit derselbe Bestand nicht unbemerkt mehreren Produktionszielen zugleich zugerechnet wird. Belastbare Zeit- und Kostenmodifikatoren bleiben bis zu eigenen Fachverträgen ausgeschlossen.
+- **Abgeschlossen:** 32 – der bekannte persönliche Bestand wird je Charakter und Material über alle auflösbaren Ziele konfliktfrei reserviert. Die stabile Reihenfolge ist höhere Priorität, älteres Erstellungsdatum und kleinere Ziel-ID. Jedes Ziel zeigt physischen Bestand, vorrangig reservierte Menge, eigene Reservierung, danach freien Bestand sowie getrennte physische und reservierungsbedingte Fehlmengen. Suche, Filter, Sortierung und Seitenauswahl verändern die globale Reservierung nicht; ein neuer Snapshot oder eine Zieländerung berechnet sie unmittelbar neu. Das Schema bleibt bei Version 9.
+- **Als Nächstes:** Paket 33 ordnet Produktionszielen vorhandene persönliche Blueprintkopien zu und wendet deren belegten ME-Wert mit geprüften Rundungsregeln auf den Materialbedarf an. Skills, Anlagen-/Rigboni, Steuern, Preise und belastbare reale Laufzeiten bleiben bis zu eigenen Fachverträgen ausgeschlossen.
 - Architektur-Gate A0 ist vollständig erfüllt; `v0.2.0-alpha.1` bildet die erste freigegebene Alpha-Grundlage für die folgenden Produktionspakete.
 
 ## 13. Entscheidungs- und Quellenrang

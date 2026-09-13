@@ -694,6 +694,11 @@ class SidecarIntegrationTests(unittest.TestCase):
             self.assertEqual(production_plans["items"], [])
             self.assertEqual(production_plans["total"], 0)
             self.assertTrue(production_plans["inventoryApplied"])
+            self.assertTrue(production_plans["reservationsApplied"])
+            self.assertEqual(
+                production_plans["reservationRule"],
+                "priority-desc-created-asc-plan-id-asc",
+            )
             self.assertFalse(production_plans["modifiersApplied"])
 
             research_query_request = urllib.request.Request(

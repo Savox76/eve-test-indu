@@ -862,7 +862,14 @@ struct ProductionGrossMaterial {
     quantity: u64,
     availability_state: String,
     available_quantity: Option<u64>,
+    reserved_quantity: Option<u64>,
+    reserved_by_prior_plans_quantity: Option<u64>,
+    remaining_quantity: Option<u64>,
+    inventory_shortage_quantity: Option<u64>,
+    reservation_conflict_quantity: Option<u64>,
     missing_quantity: Option<u64>,
+    prior_reservation_count: u64,
+    prior_reservations: Vec<ProductionReservationClaim>,
     available_position_count: u64,
     available_location_count: u64,
     available_locations: Vec<ProductionStockLocation>,
@@ -870,6 +877,17 @@ struct ProductionGrossMaterial {
     excluded_position_count: u64,
     excluded_location_count: u64,
     excluded_locations: Vec<ProductionStockLocation>,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ProductionReservationClaim {
+    plan_id: u64,
+    product_type_id: u64,
+    product_name: String,
+    priority: u16,
+    quantity: u64,
+    created_at: String,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -952,6 +970,8 @@ struct ProductionPlanQueryResponse {
     summary: ProductionPlanSummary,
     build_number: Option<String>,
     inventory_applied: bool,
+    reservations_applied: bool,
+    reservation_rule: String,
     modifiers_applied: bool,
 }
 
@@ -2575,6 +2595,24 @@ fn production_stock_location_is_valid(item: &ProductionStockLocation) -> bool {
         && asset_text_is_valid(&item.asset_observed_at, 64)
 }
 
+fn production_reservation_claim_is_valid(
+    claim: &ProductionReservationClaim,
+    item: &ProductionPlanRecord,
+) -> bool {
+    let precedes_item = claim.priority > item.priority
+        || (claim.priority == item.priority
+            && (claim.created_at.as_str() < item.created_at.as_str()
+                || (claim.created_at == item.created_at && claim.plan_id < item.plan_id)));
+    production_id_is_valid(claim.plan_id)
+        && claim.plan_id != item.plan_id
+        && production_id_is_valid(claim.product_type_id)
+        && asset_text_is_valid(&claim.product_name, 200)
+        && claim.priority <= 999
+        && production_id_is_valid(claim.quantity)
+        && asset_text_is_valid(&claim.created_at, 64)
+        && precedes_item
+}
+
 fn production_plan_record_is_valid(item: &ProductionPlanRecord) -> bool {
     let steps_valid = item.steps.iter().enumerate().all(|(index, step)| {
         step.sequence == index as u64 + 1
@@ -2630,28 +2668,84 @@ fn production_plan_record_is_valid(item: &ProductionPlanRecord) -> bool {
             .try_fold(0_u64, |total, location| {
                 total.checked_add(location.position_count)
             });
-        let availability_valid = match material.availability_state.as_str() {
-            "snapshot-missing" => {
-                material.available_quantity.is_none()
-                    && material.missing_quantity.is_none()
-                    && material.available_position_count == 0
-                    && material.available_location_count == 0
-                    && material.available_locations.is_empty()
-            }
-            "covered" | "shortage" => material
-                .available_quantity
-                .zip(material.missing_quantity)
-                .is_some_and(|(available, missing)| {
-                    missing == material.quantity.saturating_sub(available)
-                        && ((material.availability_state == "covered") == (missing == 0))
-                        && represented_available.is_some_and(|value| value <= available)
-                }),
-            _ => false,
-        };
+        let represented_prior = material
+            .prior_reservations
+            .iter()
+            .try_fold(0_u64, |total, claim| total.checked_add(claim.quantity));
+        let prior_ids = material
+            .prior_reservations
+            .iter()
+            .map(|claim| claim.plan_id)
+            .collect::<HashSet<_>>();
+        let prior_count_valid = material.prior_reservation_count
+            >= material.prior_reservations.len() as u64
+            && if material.prior_reservation_count <= 50 {
+                material.prior_reservation_count == material.prior_reservations.len() as u64
+            } else {
+                material.prior_reservations.len() == 50
+            };
+        let availability_valid =
+            match material.availability_state.as_str() {
+                "snapshot-missing" => {
+                    material.available_quantity.is_none()
+                        && material.reserved_quantity.is_none()
+                        && material.reserved_by_prior_plans_quantity.is_none()
+                        && material.remaining_quantity.is_none()
+                        && material.inventory_shortage_quantity.is_none()
+                        && material.reservation_conflict_quantity.is_none()
+                        && material.missing_quantity.is_none()
+                        && material.prior_reservation_count == 0
+                        && material.prior_reservations.is_empty()
+                        && material.available_position_count == 0
+                        && material.available_location_count == 0
+                        && material.available_locations.is_empty()
+                }
+                "covered" | "shortage" => match (
+                    material.available_quantity,
+                    material.reserved_quantity,
+                    material.reserved_by_prior_plans_quantity,
+                    material.remaining_quantity,
+                    material.inventory_shortage_quantity,
+                    material.reservation_conflict_quantity,
+                    material.missing_quantity,
+                ) {
+                    (
+                        Some(available),
+                        Some(reserved),
+                        Some(reserved_by_prior),
+                        Some(remaining),
+                        Some(inventory_shortage),
+                        Some(reservation_conflict),
+                        Some(missing),
+                    ) => available.checked_sub(reserved_by_prior).is_some_and(
+                        |available_before_plan| {
+                            reserved == material.quantity.min(available_before_plan)
+                                && available_before_plan.checked_sub(reserved) == Some(remaining)
+                                && material.quantity.checked_sub(reserved) == Some(missing)
+                                && inventory_shortage == material.quantity.saturating_sub(available)
+                                && missing.checked_sub(inventory_shortage)
+                                    == Some(reservation_conflict)
+                                && ((material.availability_state == "covered") == (missing == 0))
+                                && represented_available.is_some_and(|value| value <= available)
+                                && represented_prior.is_some_and(|value| value <= reserved_by_prior)
+                        },
+                    ),
+                    _ => false,
+                },
+                _ => false,
+            };
         production_id_is_valid(material.type_id)
             && asset_text_is_valid(&material.type_name, 200)
             && production_id_is_valid(material.quantity)
             && availability_valid
+            && material.prior_reservation_count <= JAVASCRIPT_MAX_SAFE_INTEGER
+            && material.prior_reservations.len() <= 50
+            && prior_count_valid
+            && prior_ids.len() == material.prior_reservations.len()
+            && material
+                .prior_reservations
+                .iter()
+                .all(|claim| production_reservation_claim_is_valid(claim, item))
             && material.available_position_count <= JAVASCRIPT_MAX_SAFE_INTEGER
             && material.available_location_count <= JAVASCRIPT_MAX_SAFE_INTEGER
             && material.available_locations.len() <= 50
@@ -2833,6 +2927,8 @@ fn production_plan_query_response_is_valid(response: &ProductionPlanQueryRespons
             .as_ref()
             .is_none_or(|value| asset_text_is_valid(value, 80))
         && response.inventory_applied
+        && response.reservations_applied
+        && response.reservation_rule == "priority-desc-created-asc-plan-id-asc"
         && !response.modifiers_applied
 }
 
@@ -5571,12 +5667,12 @@ mod tests {
         IndustryFacilitySyncResponse, IndustryJobQueryResponse, IndustryJobRecord,
         IndustryJobSyncCharacterResponse, IndustryJobSyncResponse, IndustrySlotActivity,
         IndustrySlotQueryResponse, IndustrySlotRecord, ProductionGrossMaterial,
-        ProductionPlanRecord, ProductionStep, ProductionStepMaterial, ResearchPlanOwner,
-        ResearchPlanQueryResponse, ResearchPlanRecord, ResearchPlanSummary, RuntimeDataSnapshot,
-        ScopePackageStatus, SsoCharacterIdentity, SsoLoginStatus, WindowSizePreference,
-        ASSET_LOCATION_STATUSES, INDUSTRY_COST_ACTIVITIES, INDUSTRY_FACILITY_ACCESS_STATES,
-        INDUSTRY_FACILITY_KINDS, INDUSTRY_SECURITY_CLASSES, INDUSTRY_SLOT_ACTIVITIES,
-        RESEARCH_PLAN_ACTIVITIES, RESEARCH_PLAN_STATES,
+        ProductionPlanRecord, ProductionReservationClaim, ProductionStep, ProductionStepMaterial,
+        ResearchPlanOwner, ResearchPlanQueryResponse, ResearchPlanRecord, ResearchPlanSummary,
+        RuntimeDataSnapshot, ScopePackageStatus, SsoCharacterIdentity, SsoLoginStatus,
+        WindowSizePreference, ASSET_LOCATION_STATUSES, INDUSTRY_COST_ACTIVITIES,
+        INDUSTRY_FACILITY_ACCESS_STATES, INDUSTRY_FACILITY_KINDS, INDUSTRY_SECURITY_CLASSES,
+        INDUSTRY_SLOT_ACTIVITIES, RESEARCH_PLAN_ACTIVITIES, RESEARCH_PLAN_STATES,
     };
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -6507,7 +6603,14 @@ mod tests {
                 quantity: 3,
                 availability_state: "snapshot-missing".to_owned(),
                 available_quantity: None,
+                reserved_quantity: None,
+                reserved_by_prior_plans_quantity: None,
+                remaining_quantity: None,
+                inventory_shortage_quantity: None,
+                reservation_conflict_quantity: None,
                 missing_quantity: None,
+                prior_reservation_count: 0,
+                prior_reservations: Vec::new(),
                 available_position_count: 0,
                 available_location_count: 0,
                 available_locations: Vec::new(),
@@ -6528,6 +6631,34 @@ mod tests {
         };
 
         assert!(production_plan_record_is_valid(&plan));
+
+        plan.inventory_state = "covered".to_owned();
+        plan.asset_snapshot_id = Some(8);
+        plan.asset_sync_run_id = Some(9);
+        plan.asset_observed_at = Some("2026-09-12T10:05:00Z".to_owned());
+        let material = &mut plan.gross_materials[0];
+        material.availability_state = "covered".to_owned();
+        material.available_quantity = Some(100);
+        material.reserved_quantity = Some(3);
+        material.reserved_by_prior_plans_quantity = Some(60);
+        material.remaining_quantity = Some(37);
+        material.inventory_shortage_quantity = Some(0);
+        material.reservation_conflict_quantity = Some(0);
+        material.missing_quantity = Some(0);
+        material.prior_reservation_count = 1;
+        material.prior_reservations = vec![ProductionReservationClaim {
+            plan_id: 2,
+            product_type_id: 201,
+            product_name: "Synthetic Composite".to_owned(),
+            priority: 11,
+            quantity: 60,
+            created_at: "2026-09-12T09:00:00Z".to_owned(),
+        }];
+        assert!(production_plan_record_is_valid(&plan));
+
+        plan.gross_materials[0].reserved_quantity = Some(4);
+        assert!(!production_plan_record_is_valid(&plan));
+        plan.gross_materials[0].reserved_quantity = Some(3);
 
         plan.steps.reverse();
         for (index, step) in plan.steps.iter_mut().enumerate() {
