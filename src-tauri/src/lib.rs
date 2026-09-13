@@ -128,12 +128,8 @@ const PRODUCTION_PLAN_STATES: [&str; 5] = [
     "cycle",
     "complexity-limit",
 ];
-const PRODUCTION_INVENTORY_STATES: [&str; 4] = [
-    "covered",
-    "shortage",
-    "snapshot-missing",
-    "not-applicable",
-];
+const PRODUCTION_INVENTORY_STATES: [&str; 4] =
+    ["covered", "shortage", "snapshot-missing", "not-applicable"];
 const PRODUCTION_PLAN_SORT_FIELDS: [&str; 6] = [
     "priority", "product", "owner", "activity", "state", "updated",
 ];
@@ -2613,7 +2609,9 @@ fn production_plan_record_is_valid(item: &ProductionPlanRecord) -> bool {
         let represented_available = material
             .available_locations
             .iter()
-            .try_fold(0_u64, |total, location| total.checked_add(location.quantity));
+            .try_fold(0_u64, |total, location| {
+                total.checked_add(location.quantity)
+            });
         let represented_available_positions = material
             .available_locations
             .iter()
@@ -2623,7 +2621,9 @@ fn production_plan_record_is_valid(item: &ProductionPlanRecord) -> bool {
         let represented_excluded = material
             .excluded_locations
             .iter()
-            .try_fold(0_u64, |total, location| total.checked_add(location.quantity));
+            .try_fold(0_u64, |total, location| {
+                total.checked_add(location.quantity)
+            });
         let represented_excluded_positions = material
             .excluded_locations
             .iter()
@@ -2704,11 +2704,11 @@ fn production_plan_record_is_valid(item: &ProductionPlanRecord) -> bool {
         "covered"
     } else if !owner_snapshot_available {
         "snapshot-missing"
-    } else if item
-        .gross_materials
-        .iter()
-        .any(|material| material.missing_quantity.is_some_and(|quantity| quantity > 0))
-    {
+    } else if item.gross_materials.iter().any(|material| {
+        material
+            .missing_quantity
+            .is_some_and(|quantity| quantity > 0)
+    }) {
         "shortage"
     } else {
         "covered"
