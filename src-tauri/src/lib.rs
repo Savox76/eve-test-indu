@@ -2684,55 +2684,56 @@ fn production_plan_record_is_valid(item: &ProductionPlanRecord) -> bool {
             } else {
                 material.prior_reservations.len() == 50
             };
-        let availability_valid = match material.availability_state.as_str() {
-            "snapshot-missing" => {
-                material.available_quantity.is_none()
-                    && material.reserved_quantity.is_none()
-                    && material.reserved_by_prior_plans_quantity.is_none()
-                    && material.remaining_quantity.is_none()
-                    && material.inventory_shortage_quantity.is_none()
-                    && material.reservation_conflict_quantity.is_none()
-                    && material.missing_quantity.is_none()
-                    && material.prior_reservation_count == 0
-                    && material.prior_reservations.is_empty()
-                    && material.available_position_count == 0
-                    && material.available_location_count == 0
-                    && material.available_locations.is_empty()
-            }
-            "covered" | "shortage" => match (
-                material.available_quantity,
-                material.reserved_quantity,
-                material.reserved_by_prior_plans_quantity,
-                material.remaining_quantity,
-                material.inventory_shortage_quantity,
-                material.reservation_conflict_quantity,
-                material.missing_quantity,
-            ) {
-                (
-                    Some(available),
-                    Some(reserved),
-                    Some(reserved_by_prior),
-                    Some(remaining),
-                    Some(inventory_shortage),
-                    Some(reservation_conflict),
-                    Some(missing),
-                ) => available
-                    .checked_sub(reserved_by_prior)
-                    .is_some_and(|available_before_plan| {
-                        reserved == material.quantity.min(available_before_plan)
-                            && available_before_plan.checked_sub(reserved) == Some(remaining)
-                            && material.quantity.checked_sub(reserved) == Some(missing)
-                            && inventory_shortage == material.quantity.saturating_sub(available)
-                            && missing.checked_sub(inventory_shortage)
-                                == Some(reservation_conflict)
-                            && ((material.availability_state == "covered") == (missing == 0))
-                            && represented_available.is_some_and(|value| value <= available)
-                            && represented_prior.is_some_and(|value| value <= reserved_by_prior)
-                    }),
+        let availability_valid =
+            match material.availability_state.as_str() {
+                "snapshot-missing" => {
+                    material.available_quantity.is_none()
+                        && material.reserved_quantity.is_none()
+                        && material.reserved_by_prior_plans_quantity.is_none()
+                        && material.remaining_quantity.is_none()
+                        && material.inventory_shortage_quantity.is_none()
+                        && material.reservation_conflict_quantity.is_none()
+                        && material.missing_quantity.is_none()
+                        && material.prior_reservation_count == 0
+                        && material.prior_reservations.is_empty()
+                        && material.available_position_count == 0
+                        && material.available_location_count == 0
+                        && material.available_locations.is_empty()
+                }
+                "covered" | "shortage" => match (
+                    material.available_quantity,
+                    material.reserved_quantity,
+                    material.reserved_by_prior_plans_quantity,
+                    material.remaining_quantity,
+                    material.inventory_shortage_quantity,
+                    material.reservation_conflict_quantity,
+                    material.missing_quantity,
+                ) {
+                    (
+                        Some(available),
+                        Some(reserved),
+                        Some(reserved_by_prior),
+                        Some(remaining),
+                        Some(inventory_shortage),
+                        Some(reservation_conflict),
+                        Some(missing),
+                    ) => available.checked_sub(reserved_by_prior).is_some_and(
+                        |available_before_plan| {
+                            reserved == material.quantity.min(available_before_plan)
+                                && available_before_plan.checked_sub(reserved) == Some(remaining)
+                                && material.quantity.checked_sub(reserved) == Some(missing)
+                                && inventory_shortage == material.quantity.saturating_sub(available)
+                                && missing.checked_sub(inventory_shortage)
+                                    == Some(reservation_conflict)
+                                && ((material.availability_state == "covered") == (missing == 0))
+                                && represented_available.is_some_and(|value| value <= available)
+                                && represented_prior.is_some_and(|value| value <= reserved_by_prior)
+                        },
+                    ),
+                    _ => false,
+                },
                 _ => false,
-            },
-            _ => false,
-        };
+            };
         production_id_is_valid(material.type_id)
             && asset_text_is_valid(&material.type_name, 200)
             && production_id_is_valid(material.quantity)
