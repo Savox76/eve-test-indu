@@ -152,6 +152,24 @@ class PublicReleaseNoticeTests(unittest.TestCase):
         self.assertEqual(notice["latestVersion"], "0.0.5-preview.13")
         self.assertFalse(notice["automaticInstall"])
 
+    def test_preview_channel_advances_from_preview_candidate_to_alpha(self) -> None:
+        notice = check_public_releases(
+            "preview",
+            "0.0.5-preview.28",
+            transport=self.transport([
+                release("0.0.5-preview.28"),
+                release("0.2.0-alpha.1"),
+            ]),
+        )
+
+        self.assertEqual(notice["state"], "available")
+        self.assertEqual(notice["latestVersion"], "0.2.0-alpha.1")
+        self.assertEqual(
+            notice["releaseUrl"],
+            "https://github.com/Savox76/eve-test-indu/releases/tag/v0.2.0-alpha.1",
+        )
+        self.assertFalse(notice["automaticInstall"])
+
     def test_stable_channel_ignores_prereleases(self) -> None:
         notice = check_public_releases(
             "stable",

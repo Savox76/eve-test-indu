@@ -35,3 +35,17 @@ Für jeden Punkt genügt `bestanden` oder eine kurze Fehlerbeschreibung. Zusätz
 - Nummer des fehlgeschlagenen Prüfpunkts und sichtbarer Fehlertext
 
 Keine Tokens, Datenbanken, Charakterdetails oder sonstigen echten Nutzdaten mitsenden. Erst wenn alle zehn Punkte bestanden sind und die Pflichtchecks des Kandidaten grün bleiben, darf Paket 22 als abgeschlossen markiert und die erste `0.2.0`-Alpha freigegeben werden.
+
+## Abnahmeergebnis
+
+**Status: bestanden**
+
+- Testgerät: Windows 11 Version 25H2, Betriebssystembuild 26200.9445, x64
+- Testdatum: 13. September 2026
+- Ausgangsstand: bestehende Preview-Installation; die genaue vorherige Versionsanzeige wurde beim Test nicht mehr festgehalten
+- Abnahmekandidat: `v0.0.5-preview.28`
+- Ergebnis: Prüfungen 1 bis 10 einschließlich 5a bestanden; es trat kein sichtbarer Fehler auf
+
+Bestätigt wurden Installation ohne zusätzliches Konsolenfenster, bereiter lokaler Kern und Datenbank, Einzelinstanz, persistente Einstellungen und Fenstergröße, vorhandene Charaktere, Assets, Forschungs- und Produktionspläne, Datenerhalt, automatische Sidecar-Wiederherstellung, sauberes Prozessende, Portable-Betrieb mit eigenem `data`-Ordner sowie die dokumentierte Deinstallation. Die zugehörigen Pflichtläufe für Sicherheitsrichtlinien, Anwendungstests, Windows-Pakete, Defender-Scan, installierten Neustart und Release-Veröffentlichung waren für denselben Kandidaten vollständig grün.
+
+Es wurden keine Tokens, Datenbanken, Charakterdetails, Screenshots oder sonstigen echten Nutzdaten in das Repository übernommen.

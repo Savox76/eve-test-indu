@@ -18,11 +18,35 @@ Keine.
 
 ### Bekannte Einschränkungen
 
-- Paket 22 wartet nach Veröffentlichung des korrigierten Abnahmekandidaten auf das vollständige Windows-A0-Protokoll.
+Keine.
 
 ### Update und Datenbankmigration
 
 Keine.
+
+## 0.2.0-alpha.1 – 13. September 2026
+
+### Neu hinzugefügt
+
+- Die erste `0.2.0`-Alpha bündelt den vollständig abgenommenen lokalen Windows-Kern und die bereits fertiggestellten Fachpakete 23 bis 30.
+- Das reale Windows-A0-Protokoll bestätigt Installer, Einzelinstanz, persistente Einstellungen und Fenstergröße, Update und Datenerhalt, Sidecar-Wiederherstellung, sauberes Beenden, Portable-Ausgabe und Deinstallation.
+
+### Geändert
+
+- Die sichtbare Versionsnummer lautet `v0.2.0-alpha.1`; der erfolgreich geprüfte Stand aus `v0.0.5-preview.28` wird ohne neue Fachlogik als erste Alpha freigegeben.
+
+### Behobene Fehler
+
+- Keine zusätzlichen Fehlerkorrekturen gegenüber `v0.0.5-preview.28`.
+
+### Bekannte Einschränkungen
+
+- Die Alpha ist noch nicht produktiv code-signiert; SmartScreen kann deshalb weiterhin vor einem unbekannten Herausgeber warnen.
+- Bestandszuordnung, Reservierungen sowie belastbare Zeit- und Kostenmodifikatoren folgen in getrennten Fachpaketen.
+
+### Update und Datenbankmigration
+
+- Das Datenbankschema bleibt bei Version 9. Der bestehende `data`-Ordner wird unverändert weiterverwendet.
 
 ## 0.0.5-preview.28 – 12. September 2026
 
