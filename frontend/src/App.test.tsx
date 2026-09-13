@@ -52,7 +52,7 @@ const nativeRuntime = (overrides: Partial<Extract<DesktopRuntimeStatus, { state:
     sidecar: "ready",
     database: "ready",
     databaseLocation: "data/foundry.sqlite3",
-    schemaVersion: 9,
+    schemaVersion: 10,
     errorCode: null,
     data: {
       state: "empty",
@@ -330,17 +330,29 @@ const productionCatalogPage: ProductionCatalogPage = {
 const productionPlanPage: ProductionPlanPage = {
   items: [{ planId: 1, ownerCharacterId: 90_888_001, ownerName: "Builder",
     blueprintTypeId: 100, blueprintName: "Synthetic Hull Blueprint",
+    blueprintItemId: null, blueprintAssignmentState: "unassigned",
+    blueprintKind: null, blueprintMaterialEfficiency: null, blueprintTimeEfficiency: null,
+    blueprintRuns: null, blueprintLocationId: null, blueprintLocationFlag: null,
+    blueprintSnapshotId: 12, blueprintSyncRunId: 13,
+    blueprintObservedAt: "2026-09-11T12:00:00Z", blueprintCandidateCount: 1,
+    blueprintCandidates: [{ itemId: 7_020, kind: "copy", materialEfficiency: 10,
+      timeEfficiency: 20, runs: 2, locationId: 60_003_760, locationFlag: "Hangar",
+      suitable: true, reason: "ready" }], appliedMaterialEfficiency: 0,
     activity: "manufacturing", productTypeId: 101, productName: "Synthetic Hull",
     targetQuantity: 3, priority: 50, note: "Doctrine", state: "ready",
     buildNumber: "synthetic-production-1", steps: [{ sequence: 1,
       blueprintTypeId: 100, blueprintName: "Synthetic Hull Blueprint",
       activity: "manufacturing", productTypeId: 101, productName: "Synthetic Hull",
-      requiredQuantity: 3, outputQuantityPerRun: 2, runs: 2,
+      requiredQuantity: 3, outputQuantityPerRun: 2, runs: 2, unmodifiedRuns: 2,
+      runsSavedByMaterialEfficiency: 0,
       producedQuantity: 4, surplusQuantity: 1, baseTimeSecondsPerRun: 100,
-      totalBaseTimeSeconds: 200, recipeAlternatives: 1,
+      totalBaseTimeSeconds: 200, recipeAlternatives: 1, materialEfficiency: 0,
+      materialEfficiencyApplied: false,
       materials: [{ typeId: 900, typeName: "Synthetic Mineral", quantityPerRun: 5,
-        grossQuantity: 10, producedByPlan: false }] }],
+        unmodifiedGrossQuantity: 10, grossQuantity: 10, materialEfficiency: 0,
+        materialEfficiencySavings: 0, producedByPlan: false }] }],
     grossMaterials: [{ typeId: 900, typeName: "Synthetic Mineral", quantity: 10,
+      unmodifiedQuantity: 10, materialEfficiencySavings: 0,
       availabilityState: "shortage", availableQuantity: 15, reservedQuantity: 8,
       reservedByPriorPlansQuantity: 7, remainingQuantity: 0,
       inventoryShortageQuantity: 0, reservationConflictQuantity: 2, missingQuantity: 2,
@@ -370,7 +382,10 @@ const productionPlanPage: ProductionPlanPage = {
   summary: { ready: 1, "sde-unavailable": 0, "recipe-missing": 0, cycle: 0,
     "complexity-limit": 0 }, buildNumber: "synthetic-production-1",
   inventoryApplied: true, reservationsApplied: true,
-  reservationRule: "priority-desc-created-asc-plan-id-asc", modifiersApplied: false,
+  reservationRule: "priority-desc-created-asc-plan-id-asc",
+  blueprintMaterialEfficiencyApplied: true,
+  materialEfficiencyRule: "max-runs-ceil-base-runs-percent",
+  remainingModifiersApplied: false,
 };
 
 describe("New Eden Foundry design preview", () => {
@@ -744,7 +759,7 @@ describe("New Eden Foundry design preview", () => {
   it("credits Savoxmedia as the app creator next to the version", () => {
     render(<App />);
 
-    expect(screen.getByText("v0.2.0-alpha.3")).toBeInTheDocument();
+    expect(screen.getByText("v0.2.0-alpha.4")).toBeInTheDocument();
     expect(screen.getByText("Savoxmedia")).toBeInTheDocument();
     expect(screen.getByText("Erstellt von", { exact: false })).toBeInTheDocument();
     expect(screen.queryByText("Lokaler Betreiber")).not.toBeInTheDocument();
@@ -924,10 +939,30 @@ describe("New Eden Foundry design preview", () => {
     fireEvent.click(screen.getByRole("button", { name: "Ziel speichern" }));
 
     await waitFor(() => expect(productionPlanSaver).toHaveBeenCalledWith({
-      planId: null, ownerCharacterId: 90_888_001, blueprintTypeId: 100,
+      planId: null, ownerCharacterId: 90_888_001, blueprintTypeId: 100, blueprintItemId: null,
       activity: "manufacturing", productTypeId: 101, targetQuantity: 2,
       priority: 0, note: null,
     }));
+  });
+
+  it("assigns a suitable personal blueprint to a production goal", async () => {
+    const productionPlanSaver = vi.fn().mockResolvedValue({
+      saved: true, planId: 1, ownerCharacterId: 90_888_001, blueprintTypeId: 100,
+      blueprintItemId: 7_020, activity: "manufacturing", productTypeId: 101,
+      targetQuantity: 3, priority: 50, note: "Doctrine",
+    });
+    render(<App runtimeLoader={() => nativeRuntime()}
+      productionPlansLoader={() => Promise.resolve(productionPlanPage)}
+      productionPlanSaver={productionPlanSaver} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Produktion" }));
+    const assignment = await screen.findByRole("combobox", { name: "Persönlicher Blueprint" });
+    fireEvent.change(assignment, { target: { value: "7020" } });
+    fireEvent.click(screen.getByRole("button", { name: "Änderungen speichern" }));
+
+    await waitFor(() => expect(productionPlanSaver).toHaveBeenCalledWith(expect.objectContaining({
+      planId: 1, blueprintItemId: 7_020,
+    })));
   });
 
   it("reveals a newly saved production goal even when persisted filters hid it", async () => {
@@ -980,16 +1015,20 @@ describe("New Eden Foundry design preview", () => {
       requiredQuantity: 4,
       outputQuantityPerRun: 1,
       runs: 4,
+      unmodifiedRuns: 4,
+      runsSavedByMaterialEfficiency: 0,
       producedQuantity: 4,
       surplusQuantity: 0,
       materials: [{ typeId: 901, typeName: "Synthetic Ore", quantityPerRun: 2,
-        grossQuantity: 8, producedByPlan: false }],
+        unmodifiedGrossQuantity: 8, grossQuantity: 8, materialEfficiency: 0,
+        materialEfficiencySavings: 0, producedByPlan: false }],
     };
     const goalStep = {
       ...basePlan.steps[0],
       sequence: 2,
       materials: [{ typeId: 111, typeName: "Synthetic Component", quantityPerRun: 2,
-        grossQuantity: 4, producedByPlan: true }],
+        unmodifiedGrossQuantity: 4, grossQuantity: 4, materialEfficiency: 0,
+        materialEfficiencySavings: 0, producedByPlan: true }],
     };
     const productionPlansLoader = vi.fn().mockResolvedValue({
       ...productionPlanPage,

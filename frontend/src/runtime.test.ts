@@ -84,7 +84,7 @@ function nativeStatus(overrides: Record<string, unknown> = {}) {
     sidecar: "ready",
     database: "ready",
     databaseLocation: "data/foundry.sqlite3",
-    schemaVersion: 9,
+    schemaVersion: 10,
     errorCode: null,
     data: emptyData,
     updater: {
@@ -121,7 +121,7 @@ describe("desktop runtime status", () => {
       sidecar: "ready",
       database: "ready",
       databaseLocation: "data/foundry.sqlite3",
-      schemaVersion: 9,
+      schemaVersion: 10,
       errorCode: null,
       data: emptyData,
       updater: {
@@ -902,21 +902,36 @@ describe("desktop runtime status", () => {
     const plan = {
       planId: 1, ownerCharacterId: 7, ownerName: "Pilot", blueprintTypeId: 100,
       blueprintName: "Synthetic Hull Blueprint", activity: "manufacturing",
+      blueprintItemId: null, blueprintAssignmentState: "unassigned",
+      blueprintKind: null, blueprintMaterialEfficiency: null, blueprintTimeEfficiency: null,
+      blueprintRuns: null, blueprintLocationId: null, blueprintLocationFlag: null,
+      blueprintSnapshotId: 12, blueprintSyncRunId: 13,
+      blueprintObservedAt: "2026-09-11T12:00:00Z", blueprintCandidateCount: 1,
+      blueprintCandidates: [{ itemId: 99, kind: "copy", materialEfficiency: 10,
+        timeEfficiency: 20, runs: 2, locationId: 60_003_760, locationFlag: "Hangar",
+        suitable: true, reason: "ready" }], appliedMaterialEfficiency: 0,
       productTypeId: 101, productName: "Synthetic Hull", targetQuantity: 3,
       priority: 12, note: "main goal", state: "ready", buildNumber: "synthetic-production-1",
       steps: [{ sequence: 1, blueprintTypeId: 110, blueprintName: "Synthetic Component Blueprint",
         activity: "manufacturing", productTypeId: 111, productName: "Synthetic Component",
-        requiredQuantity: 4, outputQuantityPerRun: 1, runs: 4, producedQuantity: 4,
+        requiredQuantity: 4, outputQuantityPerRun: 1, runs: 4, unmodifiedRuns: 4,
+        runsSavedByMaterialEfficiency: 0, producedQuantity: 4,
         surplusQuantity: 0, baseTimeSecondsPerRun: 25, totalBaseTimeSeconds: 100,
-        recipeAlternatives: 1, materials: [{ typeId: 901, typeName: "Synthetic Ore",
-          quantityPerRun: 2, grossQuantity: 8, producedByPlan: false }] },
+        recipeAlternatives: 1, materialEfficiency: 0, materialEfficiencyApplied: false,
+        materials: [{ typeId: 901, typeName: "Synthetic Ore",
+          quantityPerRun: 2, unmodifiedGrossQuantity: 8, grossQuantity: 8,
+          materialEfficiency: 0, materialEfficiencySavings: 0, producedByPlan: false }] },
       { sequence: 2, blueprintTypeId: 100, blueprintName: "Synthetic Hull Blueprint",
         activity: "manufacturing", productTypeId: 101, productName: "Synthetic Hull",
-        requiredQuantity: 3, outputQuantityPerRun: 2, runs: 2, producedQuantity: 4,
+        requiredQuantity: 3, outputQuantityPerRun: 2, runs: 2, unmodifiedRuns: 2,
+        runsSavedByMaterialEfficiency: 0, producedQuantity: 4,
         surplusQuantity: 1, baseTimeSecondsPerRun: 100, totalBaseTimeSeconds: 200,
-        recipeAlternatives: 1, materials: [{ typeId: 111, typeName: "Synthetic Component",
-          quantityPerRun: 2, grossQuantity: 4, producedByPlan: true }] }],
+        recipeAlternatives: 1, materialEfficiency: 0, materialEfficiencyApplied: false,
+        materials: [{ typeId: 111, typeName: "Synthetic Component",
+          quantityPerRun: 2, unmodifiedGrossQuantity: 4, grossQuantity: 4,
+          materialEfficiency: 0, materialEfficiencySavings: 0, producedByPlan: true }] }],
       grossMaterials: [{ typeId: 901, typeName: "Synthetic Ore", quantity: 8,
+        unmodifiedQuantity: 8, materialEfficiencySavings: 0,
         availabilityState: "shortage", availableQuantity: 5, reservedQuantity: 5,
         reservedByPriorPlansQuantity: 0, remainingQuantity: 0,
         inventoryShortageQuantity: 3, reservationConflictQuantity: 0, missingQuantity: 3,
@@ -944,7 +959,10 @@ describe("desktop runtime status", () => {
       summary: { ready: 1, "sde-unavailable": 0, "recipe-missing": 0, cycle: 0,
         "complexity-limit": 0 }, buildNumber: "synthetic-production-1",
       inventoryApplied: true, reservationsApplied: true,
-      reservationRule: "priority-desc-created-asc-plan-id-asc", modifiersApplied: false };
+      reservationRule: "priority-desc-created-asc-plan-id-asc",
+      blueprintMaterialEfficiencyApplied: true,
+      materialEfficiencyRule: "max-runs-ceil-base-runs-percent",
+      remainingModifiersApplied: false };
     invoke.mockResolvedValueOnce(JSON.stringify(page));
     const query = { search: "", ownerCharacterId: null, activity: null, state: null,
       offset: 0, limit: 50, sortBy: "priority", sortDirection: "desc" } as const;
@@ -960,7 +978,15 @@ describe("desktop runtime status", () => {
     await expect(loadProductionPlans(query, { isAvailable: () => true, invoke }))
       .rejects.toThrow("inconsistent production stock evidence");
 
-    const input = { planId: null, ownerCharacterId: 7, blueprintTypeId: 100,
+    const inconsistentBlueprint = JSON.parse(JSON.stringify(page)) as {
+      items: Array<{ blueprintAssignmentState: string }>;
+    };
+    inconsistentBlueprint.items[0].blueprintAssignmentState = "missing";
+    invoke.mockResolvedValueOnce(JSON.stringify(inconsistentBlueprint));
+    await expect(loadProductionPlans(query, { isAvailable: () => true, invoke }))
+      .rejects.toThrow("inconsistent production-plan data");
+
+    const input = { planId: null, ownerCharacterId: 7, blueprintTypeId: 100, blueprintItemId: null,
       activity: "manufacturing", productTypeId: 101, targetQuantity: 3,
       priority: 12, note: "main goal" } as const;
     const saved = { ...input, planId: 1, saved: true };

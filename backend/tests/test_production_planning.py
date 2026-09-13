@@ -103,6 +103,7 @@ def plan_input(**changes: object) -> dict:
         "planId": None,
         "ownerCharacterId": 7,
         "blueprintTypeId": 100,
+        "blueprintItemId": None,
         "activity": "manufacturing",
         "productTypeId": 101,
         "targetQuantity": 3,
@@ -145,6 +146,37 @@ class ProductionPlanningTests(unittest.TestCase):
                 int(run.lastrowid),
                 f"character_assets:{character_id}",
                 json.dumps({"characterId": character_id, "pages": 1, "assets": assets}),
+                observed_at,
+            ),
+        )
+        return int(snapshot.lastrowid), int(run.lastrowid)
+
+    def publish_blueprints(
+        self,
+        character_id: int,
+        blueprints: list[dict[str, object]],
+        observed_at: str,
+        *,
+        status: str = "completed",
+    ) -> tuple[int, int]:
+        run = self.db.execute(
+            "INSERT INTO sync_runs(source,status,started_at,completed_at,data_timestamp,"
+            "character_id) VALUES('character_blueprints',?,?,?,?,?)",
+            (status, observed_at, observed_at, observed_at, character_id),
+        )
+        snapshot = self.db.execute(
+            "INSERT INTO cached_snapshots(sync_run_id,resource,payload_json,observed_at) "
+            "VALUES(?,?,?,?)",
+            (
+                int(run.lastrowid),
+                f"character_blueprints:{character_id}",
+                json.dumps(
+                    {
+                        "characterId": character_id,
+                        "pages": 1,
+                        "blueprints": blueprints,
+                    }
+                ),
                 observed_at,
             ),
         )
@@ -216,7 +248,12 @@ class ProductionPlanningTests(unittest.TestCase):
         self.assertEqual(
             page["reservationRule"], "priority-desc-created-asc-plan-id-asc"
         )
-        self.assertFalse(page["modifiersApplied"])
+        self.assertTrue(page["blueprintMaterialEfficiencyApplied"])
+        self.assertEqual(
+            page["materialEfficiencyRule"],
+            "max-runs-ceil-base-runs-percent",
+        )
+        self.assertFalse(page["remainingModifiersApplied"])
         self.assertEqual(page["summary"]["ready"], 1)
         record = page["items"][0]
         self.assertEqual(record["state"], "ready")
@@ -234,6 +271,8 @@ class ProductionPlanningTests(unittest.TestCase):
         )
         self.assertEqual(record["totalBaseTimeSeconds"], 290)
         self.assertEqual(record["inventoryState"], "snapshot-missing")
+        self.assertEqual(record["blueprintAssignmentState"], "snapshot-missing")
+        self.assertEqual(record["appliedMaterialEfficiency"], 0)
         self.assertIsNone(record["assetSnapshotId"])
         self.assertEqual(
             record["grossMaterials"][0]["availabilityState"], "snapshot-missing"
@@ -256,6 +295,166 @@ class ProductionPlanningTests(unittest.TestCase):
             "selectedBlueprintTypeId": 120,
             "candidateCount": 2,
         }])
+
+    def test_assigned_blueprint_me_changes_chain_with_exact_job_rounding(self) -> None:
+        import_industry_sde(self.db, **bundle())
+        snapshot_id, run_id = self.publish_blueprints(
+            7,
+            [
+                {
+                    "item_id": 1_001,
+                    "type_id": 100,
+                    "quantity": -2,
+                    "material_efficiency": 10,
+                    "time_efficiency": 20,
+                    "runs": 10,
+                    "location_id": 60_003_760,
+                    "location_flag": "Hangar",
+                },
+                {
+                    "item_id": 1_002,
+                    "type_id": 100,
+                    "quantity": -2,
+                    "material_efficiency": 8,
+                    "time_efficiency": 16,
+                    "runs": 9,
+                    "location_id": 60_003_760,
+                    "location_flag": "Hangar",
+                },
+                {
+                    "item_id": 1_003,
+                    "type_id": 100,
+                    "quantity": -1,
+                    "material_efficiency": 5,
+                    "time_efficiency": 10,
+                    "runs": -1,
+                    "location_id": 60_003_760,
+                    "location_flag": "Hangar",
+                },
+            ],
+            "2026-09-13T12:00:00Z",
+        )
+        saved = save_production_plan(
+            self.db,
+            plan_input(
+                blueprintItemId=1_001,
+                targetQuantity=20,
+            ),
+        )
+
+        record = query_production_plans(self.db, query())["items"][0]
+
+        self.assertEqual(saved["blueprintItemId"], 1_001)
+        self.assertEqual(record["blueprintAssignmentState"], "ready")
+        self.assertEqual(record["blueprintItemId"], 1_001)
+        self.assertEqual(record["blueprintKind"], "copy")
+        self.assertEqual(record["blueprintMaterialEfficiency"], 10)
+        self.assertEqual(record["blueprintTimeEfficiency"], 20)
+        self.assertEqual(record["blueprintRuns"], 10)
+        self.assertEqual(record["appliedMaterialEfficiency"], 10)
+        self.assertEqual(record["blueprintSnapshotId"], snapshot_id)
+        self.assertEqual(record["blueprintSyncRunId"], run_id)
+        self.assertEqual(record["blueprintObservedAt"], "2026-09-13T12:00:00Z")
+        self.assertEqual(record["blueprintCandidateCount"], 3)
+        self.assertEqual(
+            [item["itemId"] for item in record["blueprintCandidates"]],
+            [1_001, 1_003, 1_002],
+        )
+        self.assertFalse(record["blueprintCandidates"][2]["suitable"])
+        self.assertEqual(
+            record["blueprintCandidates"][2]["reason"], "runs-insufficient"
+        )
+
+        root = record["steps"][-1]
+        self.assertEqual(root["blueprintTypeId"], 100)
+        self.assertEqual(root["materialEfficiency"], 10)
+        self.assertTrue(root["materialEfficiencyApplied"])
+        self.assertEqual(
+            [
+                (
+                    material["typeId"],
+                    material["quantityPerRun"],
+                    material["unmodifiedGrossQuantity"],
+                    material["grossQuantity"],
+                    material["materialEfficiencySavings"],
+                )
+                for material in root["materials"]
+            ],
+            [(111, 3, 30, 27, 3), (121, 4, 40, 36, 4)],
+        )
+        self.assertEqual(
+            {
+                key: record["grossMaterials"][0][key]
+                for key in (
+                    "typeId",
+                    "quantity",
+                    "unmodifiedQuantity",
+                    "materialEfficiencySavings",
+                )
+            },
+            {
+                "typeId": 900,
+                "quantity": 120,
+                "unmodifiedQuantity": 129,
+                "materialEfficiencySavings": 9,
+            },
+        )
+        self.assertEqual(
+            [(step["productTypeId"], step["runs"]) for step in record["steps"]],
+            [(121, 11), (111, 14), (101, 10)],
+        )
+
+    def test_blueprint_assignment_states_and_duplicate_use_are_fail_closed(self) -> None:
+        import_industry_sde(self.db, **bundle())
+        blueprint = {
+            "item_id": 2_001,
+            "type_id": 100,
+            "quantity": -2,
+            "material_efficiency": 10,
+            "time_efficiency": 20,
+            "runs": 10,
+            "location_id": 60_003_760,
+            "location_flag": "Hangar",
+        }
+        self.publish_blueprints(7, [blueprint], "2026-09-13T12:00:00Z")
+        first = save_production_plan(
+            self.db,
+            plan_input(blueprintItemId=2_001, targetQuantity=20),
+        )
+        with self.assertRaisesRegex(
+            ProductionPlanningError, "production_blueprint_already_assigned"
+        ):
+            save_production_plan(
+                self.db,
+                plan_input(
+                    blueprintItemId=2_001,
+                    targetQuantity=2,
+                    note="duplicate",
+                ),
+            )
+        with self.assertRaisesRegex(
+            ProductionPlanningError, "production_blueprint_runs-insufficient"
+        ):
+            save_production_plan(
+                self.db,
+                plan_input(
+                    planId=first["planId"],
+                    blueprintItemId=2_001,
+                    targetQuantity=22,
+                ),
+            )
+
+        changed = {**blueprint, "type_id": 110}
+        self.publish_blueprints(7, [changed], "2026-09-13T13:00:00Z")
+        mismatch = query_production_plans(self.db, query())["items"][0]
+        self.assertEqual(mismatch["blueprintAssignmentState"], "type-mismatch")
+        self.assertEqual(mismatch["appliedMaterialEfficiency"], 0)
+        self.assertEqual(mismatch["grossMaterials"][0]["quantity"], 129)
+
+        self.publish_blueprints(7, [], "2026-09-13T14:00:00Z")
+        missing = query_production_plans(self.db, query())["items"][0]
+        self.assertEqual(missing["blueprintAssignmentState"], "missing")
+        self.assertEqual(missing["blueprintCandidateCount"], 0)
 
     def test_complete_asset_snapshots_expose_shortage_locations_and_other_owner_stock(self) -> None:
         import_industry_sde(self.db, **bundle())

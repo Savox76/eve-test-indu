@@ -24,6 +24,33 @@ Keine.
 
 Keine.
 
+## 0.2.0-alpha.4 – 13. September 2026
+
+### Neu hinzugefügt
+
+- Paket 33 ordnet einem Produktionsziel optional ein konkretes persönliches BPO oder BPC zu. Kandidaten zeigen Item-ID, ME, TE, Läufe, Standort und vollständigen Snapshot-Beleg.
+- Der belegte ME-Wert verändert die direkten Materialien des Wurzel-Fertigungsschritts nach der dokumentierten ganzzahligen Aufrundung. Unmodifizierter Bedarf und Ersparnis bleiben parallel sichtbar.
+- Fehlende Blueprint-Snapshots, verschwundene oder typfalsche Items und BPCs mit zu wenigen Läufen bleiben ausdrückliche Zustände; dieselbe Item-ID kann nicht zwei Zielen zugleich zugeordnet werden.
+
+### Geändert
+
+- Die sichtbare Versionsnummer lautet `v0.2.0-alpha.4`.
+- Eine veränderte Blueprintzuordnung berechnet Produktionskette, Bruttomaterial, Reservierungen und Fehlmengen unmittelbar neu.
+
+### Behobene Fehler
+
+- Produktionsziele ignorieren den vorhandenen Materialeffizienzwert eines bewusst zugeordneten persönlichen Blueprints nicht mehr.
+
+### Bekannte Einschränkungen
+
+- ME gilt ausschließlich für das zugewiesene Wurzel-Blueprint einer Fertigung. Reaktionen, Zwischen-Blueprints, Skills, Anlagen-/Rigboni, Steuern, Preise und belastbare reale Laufzeiten sind noch nicht eingerechnet.
+- Die Alpha ist noch nicht produktiv code-signiert; SmartScreen kann deshalb weiterhin vor einem unbekannten Herausgeber warnen.
+
+### Update und Datenbankmigration
+
+- Beim ersten Start migriert die App Schema 9 automatisch auf Schema 10 und ergänzt Produktionspläne um eine optionale eindeutige Blueprint-Item-ID. Vorher wird nach der bestehenden Sicherungsregel ein geprüfter Datenbank-Snapshot angelegt.
+- Der bestehende `data`-Ordner mit Charakteren, Einstellungen, Plänen und vollständigen Snapshots muss erhalten bleiben.
+
 ## 0.2.0-alpha.3 – 13. September 2026
 
 ### Neu hinzugefügt

@@ -78,7 +78,7 @@ class SdeTests(unittest.TestCase):
         self.temp.cleanup()
 
     def test_minimal_import_remains_rebuildable_without_app_migration(self) -> None:
-        self.assertEqual(SCHEMA_VERSION, 9)
+        self.assertEqual(SCHEMA_VERSION, 10)
         result = import_minimal_sde(
             self.db,
             build_number="synthetic-sde-minimal-1",

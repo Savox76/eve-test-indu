@@ -17,7 +17,7 @@ from .recovery import (
 
 
 BUSY_TIMEOUT_MILLISECONDS: Final = 5_000
-SCHEMA_VERSION: Final = 9
+SCHEMA_VERSION: Final = 10
 
 MIGRATIONS: Final = (
     (
@@ -301,6 +301,22 @@ MIGRATIONS: Final = (
             """
             CREATE INDEX idx_production_plans_priority
                 ON production_plans(priority DESC, updated_at DESC, id)
+            """,
+        ),
+    ),
+    (
+        10,
+        "production_plan_blueprint_assignment",
+        (
+            """
+            ALTER TABLE production_plans
+                ADD COLUMN blueprint_item_id INTEGER
+                    CHECK(blueprint_item_id IS NULL OR blueprint_item_id > 0)
+            """,
+            """
+            CREATE UNIQUE INDEX idx_production_plans_blueprint_item
+                ON production_plans(blueprint_item_id)
+                WHERE blueprint_item_id IS NOT NULL
             """,
         ),
     ),

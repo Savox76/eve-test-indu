@@ -398,7 +398,7 @@ class SidecarIntegrationTests(unittest.TestCase):
             with opener.open(valid_request, timeout=3) as response:
                 health = json.loads(response.read())
             self.assertEqual(health["state"], "ready")
-            self.assertEqual(health["database"]["schemaVersion"], 9)
+            self.assertEqual(health["database"]["schemaVersion"], 10)
             self.assertEqual(health["database"]["location"], "data/foundry.sqlite3")
             self.assertIsNone(health["database"]["lastMigrationBackup"])
             self.assertEqual(health["data"]["state"], "empty")
@@ -699,7 +699,12 @@ class SidecarIntegrationTests(unittest.TestCase):
                 production_plans["reservationRule"],
                 "priority-desc-created-asc-plan-id-asc",
             )
-            self.assertFalse(production_plans["modifiersApplied"])
+            self.assertTrue(production_plans["blueprintMaterialEfficiencyApplied"])
+            self.assertEqual(
+                production_plans["materialEfficiencyRule"],
+                "max-runs-ceil-base-runs-percent",
+            )
+            self.assertFalse(production_plans["remainingModifiersApplied"])
 
             research_query_request = urllib.request.Request(
                 f"{base_url}/research-plans/query",

@@ -598,6 +598,7 @@ export interface IndustrySlotPage {
 export type ProductionActivity = "manufacturing" | "reaction";
 export type ProductionPlanState = "ready" | "sde-unavailable" | "recipe-missing" | "cycle" | "complexity-limit";
 export type ProductionInventoryState = "covered" | "shortage" | "snapshot-missing" | "not-applicable";
+export type ProductionBlueprintAssignmentState = "ready" | "unassigned" | "snapshot-missing" | "missing" | "type-mismatch" | "runs-insufficient";
 export type ProductionPlanSortField = "priority" | "product" | "owner" | "activity" | "state" | "updated";
 export const productionActivities: readonly ProductionActivity[] = ["manufacturing", "reaction"];
 export const productionPlanStates: readonly ProductionPlanState[] = [
@@ -643,7 +644,10 @@ export interface ProductionStepMaterial {
   typeId: number;
   typeName: string;
   quantityPerRun: number;
+  unmodifiedGrossQuantity: number;
   grossQuantity: number;
+  materialEfficiency: number;
+  materialEfficiencySavings: number;
   producedByPlan: boolean;
 }
 
@@ -657,11 +661,15 @@ export interface ProductionStep {
   requiredQuantity: number;
   outputQuantityPerRun: number;
   runs: number;
+  unmodifiedRuns: number;
+  runsSavedByMaterialEfficiency: number;
   producedQuantity: number;
   surplusQuantity: number;
   baseTimeSecondsPerRun: number;
   totalBaseTimeSeconds: number;
   recipeAlternatives: number;
+  materialEfficiency: number;
+  materialEfficiencyApplied: boolean;
   materials: ProductionStepMaterial[];
 }
 
@@ -669,6 +677,8 @@ export interface ProductionGrossMaterial {
   typeId: number;
   typeName: string;
   quantity: number;
+  unmodifiedQuantity: number;
+  materialEfficiencySavings: number;
   availabilityState: Exclude<ProductionInventoryState, "not-applicable">;
   availableQuantity: number | null;
   reservedQuantity: number | null;
@@ -719,12 +729,38 @@ export interface ProductionWarning {
   candidateCount: number;
 }
 
+export interface ProductionBlueprintCandidate {
+  itemId: number;
+  kind: "original" | "copy";
+  materialEfficiency: number;
+  timeEfficiency: number;
+  runs: number;
+  locationId: number;
+  locationFlag: string;
+  suitable: boolean;
+  reason: "ready" | "runs-insufficient";
+}
+
 export interface ProductionPlanRecord {
   planId: number;
   ownerCharacterId: number;
   ownerName: string;
   blueprintTypeId: number;
   blueprintName: string;
+  blueprintItemId: number | null;
+  blueprintAssignmentState: ProductionBlueprintAssignmentState;
+  blueprintKind: "original" | "copy" | null;
+  blueprintMaterialEfficiency: number | null;
+  blueprintTimeEfficiency: number | null;
+  blueprintRuns: number | null;
+  blueprintLocationId: number | null;
+  blueprintLocationFlag: string | null;
+  blueprintSnapshotId: number | null;
+  blueprintSyncRunId: number | null;
+  blueprintObservedAt: string | null;
+  blueprintCandidateCount: number;
+  blueprintCandidates: ProductionBlueprintCandidate[];
+  appliedMaterialEfficiency: number;
   activity: ProductionActivity;
   productTypeId: number;
   productName: string;
@@ -770,13 +806,16 @@ export interface ProductionPlanPage {
   inventoryApplied: true;
   reservationsApplied: true;
   reservationRule: "priority-desc-created-asc-plan-id-asc";
-  modifiersApplied: false;
+  blueprintMaterialEfficiencyApplied: true;
+  materialEfficiencyRule: "max-runs-ceil-base-runs-percent";
+  remainingModifiersApplied: false;
 }
 
 export interface ProductionPlanInput {
   planId: number | null;
   ownerCharacterId: number;
   blueprintTypeId: number;
+  blueprintItemId: number | null;
   activity: ProductionActivity;
   productTypeId: number;
   targetQuantity: number;
@@ -2812,12 +2851,18 @@ function parseProductionStep(candidate: unknown, index: number): ProductionStep 
     !productionActivities.includes(candidate.activity as ProductionActivity) ||
     !isPositiveSafeInteger(candidate.productTypeId) || !isBoundedText(candidate.productName, 200) ||
     ![candidate.requiredQuantity, candidate.outputQuantityPerRun, candidate.runs,
+      candidate.unmodifiedRuns,
       candidate.producedQuantity, candidate.baseTimeSecondsPerRun, candidate.totalBaseTimeSeconds,
       candidate.recipeAlternatives].every(isPositiveSafeInteger) ||
-    !isNonNegativeSafeInteger(candidate.surplusQuantity) || !Array.isArray(candidate.materials) ||
+    !isNonNegativeSafeInteger(candidate.surplusQuantity) ||
+    !isNonNegativeSafeInteger(candidate.runsSavedByMaterialEfficiency) ||
+    !isNonNegativeSafeInteger(candidate.materialEfficiency) || Number(candidate.materialEfficiency) > 10 ||
+    typeof candidate.materialEfficiencyApplied !== "boolean" || !Array.isArray(candidate.materials) ||
     Number(candidate.outputQuantityPerRun) * Number(candidate.runs) !== Number(candidate.producedQuantity) ||
     Number(candidate.producedQuantity) - Number(candidate.requiredQuantity) !== Number(candidate.surplusQuantity) ||
-    Number(candidate.baseTimeSecondsPerRun) * Number(candidate.runs) !== Number(candidate.totalBaseTimeSeconds)
+    Number(candidate.baseTimeSecondsPerRun) * Number(candidate.runs) !== Number(candidate.totalBaseTimeSeconds) ||
+    Number(candidate.unmodifiedRuns) - Number(candidate.runs) !== Number(candidate.runsSavedByMaterialEfficiency) ||
+    candidate.materialEfficiencyApplied !== (Number(candidate.materialEfficiency) > 0)
   ) {
     throw new Error("The native runtime returned invalid production steps.");
   }
@@ -2825,14 +2870,38 @@ function parseProductionStep(candidate: unknown, index: number): ProductionStep 
     if (
       !isRecord(material) || !isPositiveSafeInteger(material.typeId) ||
       !isBoundedText(material.typeName, 200) || !isPositiveSafeInteger(material.quantityPerRun) ||
-      !isPositiveSafeInteger(material.grossQuantity) || typeof material.producedByPlan !== "boolean" ||
-      Number(material.quantityPerRun) * Number(candidate.runs) !== Number(material.grossQuantity)
+      !isPositiveSafeInteger(material.unmodifiedGrossQuantity) ||
+      !isPositiveSafeInteger(material.grossQuantity) ||
+      !isNonNegativeSafeInteger(material.materialEfficiency) || Number(material.materialEfficiency) > 10 ||
+      !isNonNegativeSafeInteger(material.materialEfficiencySavings) ||
+      typeof material.producedByPlan !== "boolean" ||
+      Number(material.quantityPerRun) * Number(candidate.runs) !== Number(material.unmodifiedGrossQuantity) ||
+      Number(material.unmodifiedGrossQuantity) - Number(material.grossQuantity) !==
+        Number(material.materialEfficiencySavings) ||
+      Number(material.materialEfficiency) !== Number(candidate.materialEfficiency)
     ) {
       throw new Error("The native runtime returned invalid production-step materials.");
     }
     return material as unknown as ProductionStepMaterial;
   });
   return { ...candidate, materials } as unknown as ProductionStep;
+}
+
+function parseProductionBlueprintCandidate(candidate: unknown): ProductionBlueprintCandidate {
+  if (
+    !isRecord(candidate) || !isPositiveSafeInteger(candidate.itemId) ||
+    !["original", "copy"].includes(String(candidate.kind)) ||
+    !isNonNegativeSafeInteger(candidate.materialEfficiency) || Number(candidate.materialEfficiency) > 10 ||
+    !isNonNegativeSafeInteger(candidate.timeEfficiency) || Number(candidate.timeEfficiency) > 20 ||
+    !(candidate.runs === -1 || isNonNegativeSafeInteger(candidate.runs)) ||
+    !isPositiveSafeInteger(candidate.locationId) || !isBoundedText(candidate.locationFlag, 100) ||
+    typeof candidate.suitable !== "boolean" ||
+    !["ready", "runs-insufficient"].includes(String(candidate.reason)) ||
+    candidate.suitable !== (candidate.reason === "ready") ||
+    (candidate.kind === "original" && (candidate.runs !== -1 || !candidate.suitable)) ||
+    (candidate.kind === "copy" && candidate.runs === -1)
+  ) throw new Error("The native runtime returned invalid production blueprint candidates.");
+  return candidate as unknown as ProductionBlueprintCandidate;
 }
 
 function parseProductionStockLocation(candidate: unknown): ProductionStockLocation {
@@ -2868,6 +2937,20 @@ function parseProductionPlanRecord(candidate: unknown): ProductionPlanRecord {
     !isRecord(candidate) || !isPositiveSafeInteger(candidate.planId) ||
     !isPositiveSafeInteger(candidate.ownerCharacterId) || !isBoundedText(candidate.ownerName, 100) ||
     !isPositiveSafeInteger(candidate.blueprintTypeId) || !isBoundedText(candidate.blueprintName, 200) ||
+    !(candidate.blueprintItemId === null || isPositiveSafeInteger(candidate.blueprintItemId)) ||
+    !["ready", "unassigned", "snapshot-missing", "missing", "type-mismatch", "runs-insufficient"]
+      .includes(String(candidate.blueprintAssignmentState)) ||
+    !(candidate.blueprintKind === null || ["original", "copy"].includes(String(candidate.blueprintKind))) ||
+    !(candidate.blueprintMaterialEfficiency === null ||
+      isNonNegativeSafeInteger(candidate.blueprintMaterialEfficiency) && Number(candidate.blueprintMaterialEfficiency) <= 10) ||
+    !(candidate.blueprintTimeEfficiency === null ||
+      isNonNegativeSafeInteger(candidate.blueprintTimeEfficiency) && Number(candidate.blueprintTimeEfficiency) <= 20) ||
+    !(candidate.blueprintRuns === null || candidate.blueprintRuns === -1 || isNonNegativeSafeInteger(candidate.blueprintRuns)) ||
+    !(candidate.blueprintLocationId === null || isPositiveSafeInteger(candidate.blueprintLocationId)) ||
+    !(candidate.blueprintLocationFlag === null || isBoundedText(candidate.blueprintLocationFlag, 100)) ||
+    !isNonNegativeSafeInteger(candidate.blueprintCandidateCount) ||
+    !Array.isArray(candidate.blueprintCandidates) || candidate.blueprintCandidates.length > 50 ||
+    !isNonNegativeSafeInteger(candidate.appliedMaterialEfficiency) || Number(candidate.appliedMaterialEfficiency) > 10 ||
     !productionActivities.includes(candidate.activity as ProductionActivity) ||
     !isPositiveSafeInteger(candidate.productTypeId) || !isBoundedText(candidate.productName, 200) ||
     !isPositiveSafeInteger(candidate.targetQuantity) || !isNonNegativeSafeInteger(candidate.priority) ||
@@ -2887,9 +2970,14 @@ function parseProductionPlanRecord(candidate: unknown): ProductionPlanRecord {
     throw new Error("The native runtime returned invalid production plans.");
   }
   const steps = candidate.steps.map(parseProductionStep);
+  const blueprintCandidates = candidate.blueprintCandidates.map(parseProductionBlueprintCandidate);
   const grossMaterials = candidate.grossMaterials.map((material): ProductionGrossMaterial => {
     if (!isRecord(material) || !isPositiveSafeInteger(material.typeId) ||
       !isBoundedText(material.typeName, 200) || !isPositiveSafeInteger(material.quantity) ||
+      !isPositiveSafeInteger(material.unmodifiedQuantity) ||
+      !isNonNegativeSafeInteger(material.materialEfficiencySavings) ||
+      Number(material.unmodifiedQuantity) - Number(material.quantity) !==
+        Number(material.materialEfficiencySavings) ||
       !productionInventoryStates.slice(0, 3).includes(material.availabilityState as ProductionInventoryState) ||
       !(material.availableQuantity === null || isNonNegativeSafeInteger(material.availableQuantity)) ||
       !(material.reservedQuantity === null || isNonNegativeSafeInteger(material.reservedQuantity)) ||
@@ -2981,6 +3069,17 @@ function parseProductionPlanRecord(candidate: unknown): ProductionPlanRecord {
     throw new Error("The native runtime returned invalid production cycles.");
   }
   const ready = candidate.state === "ready";
+  const blueprintSourceAvailable = candidate.blueprintSnapshotId !== null;
+  const assignmentHasDetails = candidate.blueprintKind !== null;
+  const assignmentState = String(candidate.blueprintAssignmentState);
+  const blueprintSnapshotTupleValid = (candidate.blueprintSnapshotId === null &&
+    candidate.blueprintSyncRunId === null && candidate.blueprintObservedAt === null) ||
+    (isPositiveSafeInteger(candidate.blueprintSnapshotId) &&
+      isPositiveSafeInteger(candidate.blueprintSyncRunId) && isBoundedText(candidate.blueprintObservedAt, 64));
+  const assignedDetailsValid = assignmentHasDetails &&
+    candidate.blueprintItemId !== null && candidate.blueprintMaterialEfficiency !== null &&
+    candidate.blueprintTimeEfficiency !== null && candidate.blueprintRuns !== null &&
+    candidate.blueprintLocationId !== null && candidate.blueprintLocationFlag !== null;
   const ownerSnapshotAvailable = candidate.assetSnapshotId !== null;
   const expectedInventoryState: ProductionInventoryState = !ready
     ? "not-applicable"
@@ -3005,11 +3104,26 @@ function parseProductionPlanRecord(candidate: unknown): ProductionPlanRecord {
     (ownerSnapshotAvailable && grossMaterials.some((material) =>
       material.availabilityState === "snapshot-missing")) ||
     (!ownerSnapshotAvailable && grossMaterials.length > 0 && grossMaterials.some((material) =>
-      material.availabilityState !== "snapshot-missing"))
+      material.availabilityState !== "snapshot-missing")) ||
+    !blueprintSnapshotTupleValid ||
+    Number(candidate.blueprintCandidateCount) < blueprintCandidates.length ||
+    (Number(candidate.blueprintCandidateCount) <= 50 &&
+      Number(candidate.blueprintCandidateCount) !== blueprintCandidates.length) ||
+    new Set(blueprintCandidates.map((item) => item.itemId)).size !== blueprintCandidates.length ||
+    (assignmentState === "snapshot-missing" && blueprintSourceAvailable) ||
+    (assignmentState !== "snapshot-missing" && !blueprintSourceAvailable) ||
+    (assignmentState === "unassigned" && (candidate.blueprintItemId !== null || assignmentHasDetails)) ||
+    (["missing"].includes(assignmentState) && (candidate.blueprintItemId === null || assignmentHasDetails)) ||
+    (["ready", "type-mismatch", "runs-insufficient"].includes(assignmentState) && !assignedDetailsValid) ||
+    (assignmentState === "ready" && Number(candidate.appliedMaterialEfficiency) !==
+      (candidate.activity === "manufacturing" ? Number(candidate.blueprintMaterialEfficiency) : 0)) ||
+    (assignmentState !== "ready" && Number(candidate.appliedMaterialEfficiency) !== 0) ||
+    (ready && steps.at(-1)?.materialEfficiency !== candidate.appliedMaterialEfficiency) ||
+    steps.slice(0, -1).some((step) => step.materialEfficiency !== 0)
   ) {
     throw new Error("The native runtime returned inconsistent production-plan data.");
   }
-  return { ...candidate, steps, grossMaterials, warnings } as unknown as ProductionPlanRecord;
+  return { ...candidate, steps, grossMaterials, warnings, blueprintCandidates } as unknown as ProductionPlanRecord;
 }
 
 function validateProductionPlanQuery(query: ProductionPlanQuery): ProductionPlanQuery {
@@ -3044,7 +3158,9 @@ function parseProductionPlanPage(candidate: unknown): ProductionPlanPage {
     !(candidate.buildNumber === null || isBoundedText(candidate.buildNumber, 80)) ||
     candidate.inventoryApplied !== true || candidate.reservationsApplied !== true ||
     candidate.reservationRule !== "priority-desc-created-asc-plan-id-asc" ||
-    candidate.modifiersApplied !== false
+    candidate.blueprintMaterialEfficiencyApplied !== true ||
+    candidate.materialEfficiencyRule !== "max-runs-ceil-base-runs-percent" ||
+    candidate.remainingModifiersApplied !== false
   ) throw new Error("The native runtime returned invalid production-plan data.");
   const items = candidate.items.map(parseProductionPlanRecord);
   const owners = candidate.owners.map((owner): AssetOwner => {
@@ -3071,7 +3187,9 @@ export async function loadProductionPlans(
     activities: [...productionActivities], states: [...productionPlanStates],
     summary: emptyProductionSummary(), buildNumber: null, inventoryApplied: true,
     reservationsApplied: true, reservationRule: "priority-desc-created-asc-plan-id-asc",
-    modifiersApplied: false,
+    blueprintMaterialEfficiencyApplied: true,
+    materialEfficiencyRule: "max-runs-ceil-base-runs-percent",
+    remainingModifiersApplied: false,
   };
   const page = parseProductionPlanPage(JSON.parse(await adapter.invoke("query_production_plans", {
     search: validated.search, ownerCharacterId: validated.ownerCharacterId,
@@ -3089,6 +3207,7 @@ function validateProductionPlanInput(input: ProductionPlanInput): ProductionPlan
   if (
     !(input.planId === null || isPositiveSafeInteger(input.planId)) ||
     !isPositiveSafeInteger(input.ownerCharacterId) || !isPositiveSafeInteger(input.blueprintTypeId) ||
+    !(input.blueprintItemId === null || isPositiveSafeInteger(input.blueprintItemId)) ||
     !productionActivities.includes(input.activity) || !isPositiveSafeInteger(input.productTypeId) ||
     !isPositiveSafeInteger(input.targetQuantity) || !isNonNegativeSafeInteger(input.priority) ||
     input.priority > 999 || !(note === null || note.length <= 240)
@@ -3104,14 +3223,16 @@ export async function saveProductionPlan(
   const validated = validateProductionPlanInput(input);
   const candidate: unknown = JSON.parse(await adapter.invoke("save_production_plan", {
     planId: validated.planId, ownerCharacterId: validated.ownerCharacterId,
-    blueprintTypeId: validated.blueprintTypeId, activity: validated.activity,
+    blueprintTypeId: validated.blueprintTypeId, blueprintItemId: validated.blueprintItemId,
+    activity: validated.activity,
     productTypeId: validated.productTypeId, targetQuantity: validated.targetQuantity,
     priority: validated.priority, note: validated.note,
   }));
   if (!isRecord(candidate) || candidate.saved !== true || !isPositiveSafeInteger(candidate.planId) ||
     (validated.planId !== null && candidate.planId !== validated.planId) ||
     candidate.ownerCharacterId !== validated.ownerCharacterId ||
-    candidate.blueprintTypeId !== validated.blueprintTypeId || candidate.activity !== validated.activity ||
+    candidate.blueprintTypeId !== validated.blueprintTypeId ||
+    candidate.blueprintItemId !== validated.blueprintItemId || candidate.activity !== validated.activity ||
     candidate.productTypeId !== validated.productTypeId || candidate.targetQuantity !== validated.targetQuantity ||
     candidate.priority !== validated.priority || candidate.note !== validated.note) {
     throw new Error("The native runtime returned an invalid production-plan update.");

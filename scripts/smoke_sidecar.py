@@ -233,7 +233,7 @@ def main() -> int:
             database = health.get("database")
             if not isinstance(database, dict) or database.get("location") != "data/foundry.sqlite3":
                 raise RuntimeError("The sidecar reported an unexpected database location.")
-            if database.get("schemaVersion") != 9 or database.get("integrity") != "ok":
+            if database.get("schemaVersion") != 10 or database.get("integrity") != "ok":
                 raise RuntimeError("The sidecar database health is invalid.")
             if health.get("esiClient", {}).get("compatibilityDate") != "2026-09-09":
                 raise RuntimeError("The health response omitted the ESI compatibility date.")
@@ -353,7 +353,10 @@ def main() -> int:
                 or production_plans.get("reservationsApplied") is not True
                 or production_plans.get("reservationRule")
                 != "priority-desc-created-asc-plan-id-asc"
-                or production_plans.get("modifiersApplied") is not False
+                or production_plans.get("blueprintMaterialEfficiencyApplied") is not True
+                or production_plans.get("materialEfficiencyRule")
+                != "max-runs-ceil-base-runs-percent"
+                or production_plans.get("remainingModifiersApplied") is not False
             ):
                 raise RuntimeError("The packaged production-plan query is invalid.")
 
