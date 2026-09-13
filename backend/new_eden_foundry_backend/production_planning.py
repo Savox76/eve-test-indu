@@ -21,6 +21,8 @@ MAX_PAGE_SIZE = 100
 MAX_CATALOG_PAGE_SIZE = 100
 MAX_PLAN_STEPS = 500
 MAX_INVENTORY_LOCATION_GROUPS = 50
+MAX_RESERVATION_CLAIMS = 50
+RESERVATION_RULE = "priority-desc-created-asc-plan-id-asc"
 PLAN_STATES = (
     "ready",
     "sde-unavailable",
@@ -527,9 +529,11 @@ def _inventory_locations(
 
 def _apply_inventory(
     resolution: dict[str, Any],
-    owner_character_id: int,
+    plan: sqlite3.Row,
     sources: Mapping[int, InventorySource],
+    reservations: dict[tuple[int, int], list[dict[str, Any]]],
 ) -> dict[str, Any]:
+    owner_character_id = int(plan["owner_character_id"])
     if resolution["state"] != "ready":
         return {
             **resolution,
@@ -541,7 +545,11 @@ def _apply_inventory(
     source = sources.get(owner_character_id)
     materials: list[dict[str, Any]] = []
     for material in resolution["grossMaterials"]:
-        available_groups = () if source is None else source.stock.get(material["typeId"], ())
+        material_type_id = int(material["typeId"])
+        required_quantity = int(material["quantity"])
+        reservation_key = (owner_character_id, material_type_id)
+        prior_reservations = tuple(reservations.get(reservation_key, ()))
+        available_groups = () if source is None else source.stock.get(material_type_id, ())
         available_quantity, available_positions, available_locations = _inventory_locations(
             available_groups
         )
@@ -551,7 +559,7 @@ def _apply_inventory(
                 sources.items(), key=lambda item: (item[1].owner_name.casefold(), item[0])
             )
             if character_id != owner_character_id
-            for group in candidate.stock.get(material["typeId"], ())
+            for group in candidate.stock.get(material_type_id, ())
         )
         excluded_quantity, excluded_positions, excluded_locations = _inventory_locations(
             excluded_groups
@@ -559,17 +567,50 @@ def _apply_inventory(
         if source is None:
             availability_state = "snapshot-missing"
             available: int | None = None
+            reserved: int | None = None
+            reserved_by_prior: int | None = None
+            remaining: int | None = None
+            inventory_shortage: int | None = None
+            reservation_conflict: int | None = None
             missing: int | None = None
         else:
             available = available_quantity
-            missing = max(0, int(material["quantity"]) - available)
+            reserved_by_prior = sum(
+                int(claim["quantity"]) for claim in prior_reservations
+            )
+            available_before_plan = max(0, available - reserved_by_prior)
+            reserved = min(required_quantity, available_before_plan)
+            remaining = available_before_plan - reserved
+            missing = required_quantity - reserved
+            inventory_shortage = max(0, required_quantity - available)
+            reservation_conflict = missing - inventory_shortage
             availability_state = "covered" if missing == 0 else "shortage"
+            if reserved > 0:
+                reservations.setdefault(reservation_key, []).append(
+                    {
+                        "planId": int(plan["id"]),
+                        "productTypeId": int(plan["product_type_id"]),
+                        "productName": str(resolution["productName"]),
+                        "priority": int(plan["priority"]),
+                        "quantity": reserved,
+                        "createdAt": str(plan["created_at"]),
+                    }
+                )
         materials.append(
             {
                 **material,
                 "availabilityState": availability_state,
                 "availableQuantity": available,
+                "reservedQuantity": reserved,
+                "reservedByPriorPlansQuantity": reserved_by_prior,
+                "remainingQuantity": remaining,
+                "inventoryShortageQuantity": inventory_shortage,
+                "reservationConflictQuantity": reservation_conflict,
                 "missingQuantity": missing,
+                "priorReservationCount": len(prior_reservations),
+                "priorReservations": list(
+                    prior_reservations[:MAX_RESERVATION_CLAIMS]
+                ),
                 "availablePositionCount": available_positions,
                 "availableLocationCount": len(available_groups),
                 "availableLocations": available_locations,
@@ -893,14 +934,31 @@ def query_production_plans(connection: sqlite3.Connection, raw_query: Any) -> di
     )
     plan_rows = _plan_rows(connection)
     inventory_sources = _load_inventory_sources(connection, plan_rows)
+    resolutions = {
+        int(row["id"]): resolve_production_plan(
+            connection, row, loaded_recipes=loaded_recipes
+        )
+        for row in plan_rows
+    }
+    reservations: dict[tuple[int, int], list[dict[str, Any]]] = {}
+    inventory_resolutions: dict[int, dict[str, Any]] = {}
+    for row in sorted(
+        plan_rows,
+        key=lambda item: (
+            int(item["owner_character_id"]),
+            -int(item["priority"]),
+            str(item["created_at"]),
+            int(item["id"]),
+        ),
+    ):
+        plan_id = int(row["id"])
+        inventory_resolutions[plan_id] = _apply_inventory(
+            resolutions[plan_id], row, inventory_sources, reservations
+        )
     records = [
         _serialize_plan(
             row,
-            _apply_inventory(
-                resolve_production_plan(connection, row, loaded_recipes=loaded_recipes),
-                int(row["owner_character_id"]),
-                inventory_sources,
-            ),
+            inventory_resolutions[int(row["id"])],
         )
         for row in plan_rows
     ]
@@ -922,14 +980,26 @@ def query_production_plans(connection: sqlite3.Connection, raw_query: Any) -> di
     if query["state"] is not None:
         records = [record for record in records if record["state"] == query["state"]]
     sort_keys = {
-        "priority": lambda item: (item["priority"], item["updatedAt"], item["planId"]),
         "product": lambda item: (str(item["productName"]).casefold(), item["productTypeId"], item["planId"]),
         "owner": lambda item: (str(item["ownerName"]).casefold(), item["ownerCharacterId"], item["planId"]),
         "activity": lambda item: (item["activity"], str(item["productName"]).casefold(), item["planId"]),
         "state": lambda item: (PLAN_STATES.index(item["state"]), str(item["productName"]).casefold(), item["planId"]),
         "updated": lambda item: (item["updatedAt"], item["planId"]),
     }
-    records.sort(key=sort_keys[query["sortBy"]], reverse=query["sortDirection"] == "desc")
+    if query["sortBy"] == "priority":
+        direction = -1 if query["sortDirection"] == "desc" else 1
+        records.sort(
+            key=lambda item: (
+                direction * int(item["priority"]),
+                item["createdAt"],
+                item["planId"],
+            )
+        )
+    else:
+        records.sort(
+            key=sort_keys[query["sortBy"]],
+            reverse=query["sortDirection"] == "desc",
+        )
     total = len(records)
     page = records[query["offset"] : query["offset"] + query["limit"]]
     owners = [
@@ -950,6 +1020,8 @@ def query_production_plans(connection: sqlite3.Connection, raw_query: Any) -> di
         "summary": summary,
         "buildNumber": build_number,
         "inventoryApplied": True,
+        "reservationsApplied": True,
+        "reservationRule": RESERVATION_RULE,
         "modifiersApplied": False,
     }
 

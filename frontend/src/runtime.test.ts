@@ -917,7 +917,10 @@ describe("desktop runtime status", () => {
         recipeAlternatives: 1, materials: [{ typeId: 111, typeName: "Synthetic Component",
           quantityPerRun: 2, grossQuantity: 4, producedByPlan: true }] }],
       grossMaterials: [{ typeId: 901, typeName: "Synthetic Ore", quantity: 8,
-        availabilityState: "shortage", availableQuantity: 5, missingQuantity: 3,
+        availabilityState: "shortage", availableQuantity: 5, reservedQuantity: 5,
+        reservedByPriorPlansQuantity: 0, remainingQuantity: 0,
+        inventoryShortageQuantity: 3, reservationConflictQuantity: 0, missingQuantity: 3,
+        priorReservationCount: 0, priorReservations: [],
         availablePositionCount: 1, availableLocationCount: 1,
         availableLocations: [{ ownerCharacterId: 7, ownerName: "Pilot",
           locationId: 60_003_760, locationStatus: "resolved",
@@ -940,7 +943,8 @@ describe("desktop runtime status", () => {
       states: ["ready", "sde-unavailable", "recipe-missing", "cycle", "complexity-limit"],
       summary: { ready: 1, "sde-unavailable": 0, "recipe-missing": 0, cycle: 0,
         "complexity-limit": 0 }, buildNumber: "synthetic-production-1",
-      inventoryApplied: true, modifiersApplied: false };
+      inventoryApplied: true, reservationsApplied: true,
+      reservationRule: "priority-desc-created-asc-plan-id-asc", modifiersApplied: false };
     invoke.mockResolvedValueOnce(JSON.stringify(page));
     const query = { search: "", ownerCharacterId: null, activity: null, state: null,
       offset: 0, limit: 50, sortBy: "priority", sortDirection: "desc" } as const;

@@ -671,7 +671,14 @@ export interface ProductionGrossMaterial {
   quantity: number;
   availabilityState: Exclude<ProductionInventoryState, "not-applicable">;
   availableQuantity: number | null;
+  reservedQuantity: number | null;
+  reservedByPriorPlansQuantity: number | null;
+  remainingQuantity: number | null;
+  inventoryShortageQuantity: number | null;
+  reservationConflictQuantity: number | null;
   missingQuantity: number | null;
+  priorReservationCount: number;
+  priorReservations: ProductionReservationClaim[];
   availablePositionCount: number;
   availableLocationCount: number;
   availableLocations: ProductionStockLocation[];
@@ -679,6 +686,15 @@ export interface ProductionGrossMaterial {
   excludedPositionCount: number;
   excludedLocationCount: number;
   excludedLocations: ProductionStockLocation[];
+}
+
+export interface ProductionReservationClaim {
+  planId: number;
+  productTypeId: number;
+  productName: string;
+  priority: number;
+  quantity: number;
+  createdAt: string;
 }
 
 export interface ProductionStockLocation {
@@ -752,6 +768,8 @@ export interface ProductionPlanPage {
   summary: Record<ProductionPlanState, number>;
   buildNumber: string | null;
   inventoryApplied: true;
+  reservationsApplied: true;
+  reservationRule: "priority-desc-created-asc-plan-id-asc";
   modifiersApplied: false;
 }
 
@@ -2833,6 +2851,18 @@ function parseProductionStockLocation(candidate: unknown): ProductionStockLocati
   return candidate as unknown as ProductionStockLocation;
 }
 
+function parseProductionReservationClaim(candidate: unknown): ProductionReservationClaim {
+  if (
+    !isRecord(candidate) || !isPositiveSafeInteger(candidate.planId) ||
+    !isPositiveSafeInteger(candidate.productTypeId) || !isBoundedText(candidate.productName, 200) ||
+    !isNonNegativeSafeInteger(candidate.priority) || Number(candidate.priority) > 999 ||
+    !isPositiveSafeInteger(candidate.quantity) || !isBoundedText(candidate.createdAt, 64)
+  ) {
+    throw new Error("The native runtime returned invalid production reservations.");
+  }
+  return candidate as unknown as ProductionReservationClaim;
+}
+
 function parseProductionPlanRecord(candidate: unknown): ProductionPlanRecord {
   if (
     !isRecord(candidate) || !isPositiveSafeInteger(candidate.planId) ||
@@ -2862,7 +2892,17 @@ function parseProductionPlanRecord(candidate: unknown): ProductionPlanRecord {
       !isBoundedText(material.typeName, 200) || !isPositiveSafeInteger(material.quantity) ||
       !productionInventoryStates.slice(0, 3).includes(material.availabilityState as ProductionInventoryState) ||
       !(material.availableQuantity === null || isNonNegativeSafeInteger(material.availableQuantity)) ||
+      !(material.reservedQuantity === null || isNonNegativeSafeInteger(material.reservedQuantity)) ||
+      !(material.reservedByPriorPlansQuantity === null ||
+        isNonNegativeSafeInteger(material.reservedByPriorPlansQuantity)) ||
+      !(material.remainingQuantity === null || isNonNegativeSafeInteger(material.remainingQuantity)) ||
+      !(material.inventoryShortageQuantity === null ||
+        isNonNegativeSafeInteger(material.inventoryShortageQuantity)) ||
+      !(material.reservationConflictQuantity === null ||
+        isNonNegativeSafeInteger(material.reservationConflictQuantity)) ||
       !(material.missingQuantity === null || isNonNegativeSafeInteger(material.missingQuantity)) ||
+      !isNonNegativeSafeInteger(material.priorReservationCount) ||
+      !Array.isArray(material.priorReservations) || material.priorReservations.length > 50 ||
       !isNonNegativeSafeInteger(material.availablePositionCount) ||
       !isNonNegativeSafeInteger(material.availableLocationCount) ||
       !Array.isArray(material.availableLocations) || material.availableLocations.length > 50 ||
@@ -2874,31 +2914,59 @@ function parseProductionPlanRecord(candidate: unknown): ProductionPlanRecord {
     }
     const availableLocations = material.availableLocations.map(parseProductionStockLocation);
     const excludedLocations = material.excludedLocations.map(parseProductionStockLocation);
+    const priorReservations = material.priorReservations.map(parseProductionReservationClaim);
     const availableQuantity = material.availableQuantity as number | null;
+    const reservedQuantity = material.reservedQuantity as number | null;
+    const reservedByPrior = material.reservedByPriorPlansQuantity as number | null;
+    const remainingQuantity = material.remainingQuantity as number | null;
+    const inventoryShortage = material.inventoryShortageQuantity as number | null;
+    const reservationConflict = material.reservationConflictQuantity as number | null;
     const missingQuantity = material.missingQuantity as number | null;
     const snapshotMissing = material.availabilityState === "snapshot-missing";
     const representedAvailable = availableLocations.reduce((total, item) => total + item.quantity, 0);
     const representedExcluded = excludedLocations.reduce((total, item) => total + item.quantity, 0);
+    const representedPrior = priorReservations.reduce((total, item) => total + item.quantity, 0);
+    const priorReservationIds = new Set(priorReservations.map((item) => item.planId));
+    const priorCount = Number(material.priorReservationCount);
+    const currentPriority = Number(candidate.priority);
+    const currentCreatedAt = String(candidate.createdAt);
     if (
       Number(material.availableLocationCount) < availableLocations.length ||
       Number(material.excludedLocationCount) < excludedLocations.length ||
       !isNonNegativeSafeInteger(representedAvailable) || !isNonNegativeSafeInteger(representedExcluded) ||
+      !isNonNegativeSafeInteger(representedPrior) || priorReservationIds.size !== priorReservations.length ||
+      priorCount < priorReservations.length ||
+      (priorCount <= 50 ? priorCount !== priorReservations.length : priorReservations.length !== 50) ||
+      priorReservations.some((claim) => claim.planId === candidate.planId ||
+        !(claim.priority > currentPriority || claim.priority === currentPriority &&
+          (claim.createdAt < currentCreatedAt ||
+            claim.createdAt === currentCreatedAt && claim.planId < Number(candidate.planId)))) ||
       Number(material.availablePositionCount) < availableLocations.reduce((total, item) => total + item.positionCount, 0) ||
       Number(material.excludedPositionCount) < excludedLocations.reduce((total, item) => total + item.positionCount, 0) ||
       representedExcluded > Number(material.excludedQuantity) ||
       availableLocations.some((item) => item.ownerCharacterId !== candidate.ownerCharacterId) ||
       excludedLocations.some((item) => item.ownerCharacterId === candidate.ownerCharacterId) ||
-      (snapshotMissing && (availableQuantity !== null || missingQuantity !== null ||
+      (snapshotMissing && (availableQuantity !== null || reservedQuantity !== null ||
+        reservedByPrior !== null || remainingQuantity !== null || inventoryShortage !== null ||
+        reservationConflict !== null || missingQuantity !== null || priorCount !== 0 ||
+        priorReservations.length !== 0 ||
         material.availablePositionCount !== 0 || material.availableLocationCount !== 0 ||
         availableLocations.length !== 0)) ||
-      (!snapshotMissing && (availableQuantity === null || missingQuantity === null ||
+      (!snapshotMissing && (availableQuantity === null || reservedQuantity === null ||
+        reservedByPrior === null || remainingQuantity === null || inventoryShortage === null ||
+        reservationConflict === null || missingQuantity === null ||
         representedAvailable > availableQuantity ||
-        missingQuantity !== Math.max(0, Number(material.quantity) - availableQuantity) ||
+        representedPrior > reservedByPrior || reservedByPrior > availableQuantity ||
+        reservedQuantity !== Math.min(Number(material.quantity), availableQuantity - reservedByPrior) ||
+        remainingQuantity !== availableQuantity - reservedByPrior - reservedQuantity ||
+        missingQuantity !== Number(material.quantity) - reservedQuantity ||
+        inventoryShortage !== Math.max(0, Number(material.quantity) - availableQuantity) ||
+        reservationConflict !== missingQuantity - inventoryShortage ||
         ((material.availabilityState === "covered") !== (missingQuantity === 0))))
     ) {
       throw new Error("The native runtime returned inconsistent production stock evidence.");
     }
-    return { ...material, availableLocations, excludedLocations } as unknown as ProductionGrossMaterial;
+    return { ...material, availableLocations, priorReservations, excludedLocations } as unknown as ProductionGrossMaterial;
   });
   const warnings = candidate.warnings.map((warning): ProductionWarning => {
     if (!isRecord(warning) || warning.code !== "alternative-recipe" ||
@@ -2974,7 +3042,9 @@ function parseProductionPlanPage(candidate: unknown): ProductionPlanPage {
     !productionPlanStates.every((state) => isNonNegativeSafeInteger(
       (candidate.summary as Record<string, unknown>)[state])) ||
     !(candidate.buildNumber === null || isBoundedText(candidate.buildNumber, 80)) ||
-    candidate.inventoryApplied !== true || candidate.modifiersApplied !== false
+    candidate.inventoryApplied !== true || candidate.reservationsApplied !== true ||
+    candidate.reservationRule !== "priority-desc-created-asc-plan-id-asc" ||
+    candidate.modifiersApplied !== false
   ) throw new Error("The native runtime returned invalid production-plan data.");
   const items = candidate.items.map(parseProductionPlanRecord);
   const owners = candidate.owners.map((owner): AssetOwner => {
@@ -2999,7 +3069,9 @@ export async function loadProductionPlans(
   if (!adapter.isAvailable()) return {
     items: [], total: 0, offset: validated.offset, limit: validated.limit, owners: [],
     activities: [...productionActivities], states: [...productionPlanStates],
-    summary: emptyProductionSummary(), buildNumber: null, inventoryApplied: true, modifiersApplied: false,
+    summary: emptyProductionSummary(), buildNumber: null, inventoryApplied: true,
+    reservationsApplied: true, reservationRule: "priority-desc-created-asc-plan-id-asc",
+    modifiersApplied: false,
   };
   const page = parseProductionPlanPage(JSON.parse(await adapter.invoke("query_production_plans", {
     search: validated.search, ownerCharacterId: validated.ownerCharacterId,

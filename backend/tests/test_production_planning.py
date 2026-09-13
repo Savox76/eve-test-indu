@@ -212,6 +212,10 @@ class ProductionPlanningTests(unittest.TestCase):
         self.assertEqual(saved["note"], "main goal")
         self.assertEqual(page["buildNumber"], "synthetic-production-1")
         self.assertTrue(page["inventoryApplied"])
+        self.assertTrue(page["reservationsApplied"])
+        self.assertEqual(
+            page["reservationRule"], "priority-desc-created-asc-plan-id-asc"
+        )
         self.assertFalse(page["modifiersApplied"])
         self.assertEqual(page["summary"]["ready"], 1)
         record = page["items"][0]
@@ -235,7 +239,16 @@ class ProductionPlanningTests(unittest.TestCase):
             record["grossMaterials"][0]["availabilityState"], "snapshot-missing"
         )
         self.assertIsNone(record["grossMaterials"][0]["availableQuantity"])
+        self.assertIsNone(record["grossMaterials"][0]["reservedQuantity"])
+        self.assertIsNone(
+            record["grossMaterials"][0]["reservedByPriorPlansQuantity"]
+        )
+        self.assertIsNone(record["grossMaterials"][0]["remainingQuantity"])
+        self.assertIsNone(record["grossMaterials"][0]["inventoryShortageQuantity"])
+        self.assertIsNone(record["grossMaterials"][0]["reservationConflictQuantity"])
         self.assertIsNone(record["grossMaterials"][0]["missingQuantity"])
+        self.assertEqual(record["grossMaterials"][0]["priorReservationCount"], 0)
+        self.assertEqual(record["grossMaterials"][0]["priorReservations"], [])
         self.assertEqual(record["warnings"], [{
             "code": "alternative-recipe",
             "typeId": 121,
@@ -323,6 +336,13 @@ class ProductionPlanningTests(unittest.TestCase):
         self.assertEqual(material["availablePositionCount"], 2)
         self.assertEqual(material["availableLocationCount"], 1)
         self.assertEqual(material["availableLocations"][0]["quantity"], 23)
+        self.assertEqual(material["reservedQuantity"], 23)
+        self.assertEqual(material["reservedByPriorPlansQuantity"], 0)
+        self.assertEqual(material["remainingQuantity"], 0)
+        self.assertEqual(material["inventoryShortageQuantity"], 4)
+        self.assertEqual(material["reservationConflictQuantity"], 0)
+        self.assertEqual(material["priorReservationCount"], 0)
+        self.assertEqual(material["priorReservations"], [])
         self.assertEqual(
             material["availableLocations"][0]["locationPath"],
             "Synthetic System / Synthetic Station",
@@ -339,6 +359,163 @@ class ProductionPlanningTests(unittest.TestCase):
         covered = query_production_plans(self.db, query())["items"][0]
         self.assertEqual(covered["inventoryState"], "covered")
         self.assertEqual(covered["grossMaterials"][0]["missingQuantity"], 0)
+        self.assertEqual(covered["grossMaterials"][0]["reservedQuantity"], 18)
+        self.assertEqual(covered["grossMaterials"][0]["remainingQuantity"], 5)
+
+    def test_priority_reservations_prevent_cross_goal_double_use(self) -> None:
+        import_industry_sde(self.db, **bundle())
+        self.publish_assets(
+            7,
+            [
+                {
+                    "item_id": 7_001,
+                    "type_id": 901,
+                    "location_id": 60_003_760,
+                    "location_type": "station",
+                    "location_flag": "Hangar",
+                    "quantity": 150,
+                }
+            ],
+            "2026-09-13T10:00:00Z",
+        )
+        first = save_production_plan(
+            self.db,
+            plan_input(
+                blueprintTypeId=200,
+                activity="reaction",
+                productTypeId=201,
+                targetQuantity=200,
+                priority=20,
+                note="first",
+            ),
+        )
+        second = save_production_plan(
+            self.db,
+            plan_input(
+                blueprintTypeId=200,
+                activity="reaction",
+                productTypeId=201,
+                targetQuantity=200,
+                priority=10,
+                note="second",
+            ),
+        )
+
+        page = query_production_plans(self.db, query())
+        records = {item["planId"]: item for item in page["items"]}
+        first_material = records[first["planId"]]["grossMaterials"][0]
+        second_material = records[second["planId"]]["grossMaterials"][0]
+
+        self.assertEqual(
+            (
+                first_material["availableQuantity"],
+                first_material["reservedByPriorPlansQuantity"],
+                first_material["reservedQuantity"],
+                first_material["remainingQuantity"],
+                first_material["missingQuantity"],
+            ),
+            (150, 0, 100, 50, 0),
+        )
+        self.assertEqual(
+            (
+                second_material["availableQuantity"],
+                second_material["reservedByPriorPlansQuantity"],
+                second_material["reservedQuantity"],
+                second_material["remainingQuantity"],
+                second_material["inventoryShortageQuantity"],
+                second_material["reservationConflictQuantity"],
+                second_material["missingQuantity"],
+            ),
+            (150, 100, 50, 0, 0, 50, 50),
+        )
+        self.assertEqual(second_material["priorReservationCount"], 1)
+        self.assertEqual(
+            second_material["priorReservations"],
+            [
+                {
+                    "planId": first["planId"],
+                    "productTypeId": 201,
+                    "productName": "Synthetic Composite",
+                    "priority": 20,
+                    "quantity": 100,
+                    "createdAt": records[first["planId"]]["createdAt"],
+                }
+            ],
+        )
+        filtered = query_production_plans(self.db, query(search="second"))
+        self.assertEqual(filtered["total"], 1)
+        self.assertEqual(
+            filtered["items"][0]["grossMaterials"][0]["priorReservations"][0][
+                "planId"
+            ],
+            first["planId"],
+        )
+
+        save_production_plan(
+            self.db,
+            plan_input(
+                planId=second["planId"],
+                blueprintTypeId=200,
+                activity="reaction",
+                productTypeId=201,
+                targetQuantity=200,
+                priority=30,
+                note="second",
+            ),
+        )
+        reordered = {
+            item["planId"]: item
+            for item in query_production_plans(self.db, query())["items"]
+        }
+        self.assertEqual(
+            reordered[second["planId"]]["grossMaterials"][0]["reservedQuantity"],
+            100,
+        )
+        self.assertEqual(
+            reordered[first["planId"]]["grossMaterials"][0][
+                "reservationConflictQuantity"
+            ],
+            50,
+        )
+        self.assertEqual(
+            reordered[first["planId"]]["grossMaterials"][0]["priorReservations"][
+                0
+            ]["planId"],
+            second["planId"],
+        )
+
+        save_production_plan(
+            self.db,
+            plan_input(
+                planId=second["planId"],
+                blueprintTypeId=200,
+                activity="reaction",
+                productTypeId=201,
+                targetQuantity=200,
+                priority=20,
+                note="second",
+            ),
+        )
+        equal_priority_page = query_production_plans(self.db, query())
+        self.assertEqual(
+            [item["planId"] for item in equal_priority_page["items"]],
+            [first["planId"], second["planId"]],
+        )
+        equal_priority = {
+            item["planId"]: item for item in equal_priority_page["items"]
+        }
+        self.assertEqual(
+            equal_priority[first["planId"]]["grossMaterials"][0][
+                "reservedQuantity"
+            ],
+            100,
+        )
+        self.assertEqual(
+            equal_priority[second["planId"]]["grossMaterials"][0][
+                "reservationConflictQuantity"
+            ],
+            50,
+        )
 
     def test_reaction_catalog_query_and_plan_update_are_bounded(self) -> None:
         import_industry_sde(self.db, **bundle())

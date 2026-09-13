@@ -350,6 +350,9 @@ def main() -> int:
                 production_plans.get("items") != []
                 or production_plans.get("total") != 0
                 or production_plans.get("inventoryApplied") is not True
+                or production_plans.get("reservationsApplied") is not True
+                or production_plans.get("reservationRule")
+                != "priority-desc-created-asc-plan-id-asc"
                 or production_plans.get("modifiersApplied") is not False
             ):
                 raise RuntimeError("The packaged production-plan query is invalid.")
