@@ -2705,7 +2705,9 @@ fn production_plan_record_is_valid(item: &ProductionPlanRecord) -> bool {
                     && material.material_efficiency_savings <= JAVASCRIPT_MAX_SAFE_INTEGER
                     && material.quantity_per_run.checked_mul(step.runs)
                         == Some(material.unmodified_gross_quantity)
-                    && material.unmodified_gross_quantity.checked_sub(material.gross_quantity)
+                    && material
+                        .unmodified_gross_quantity
+                        .checked_sub(material.gross_quantity)
                         == Some(material.material_efficiency_savings)
             })
     });
@@ -2874,7 +2876,9 @@ fn production_plan_record_is_valid(item: &ProductionPlanRecord) -> bool {
         && item
             .blueprint_runs
             .is_some_and(|value| value == -1 || value >= 0)
-        && item.blueprint_location_id.is_some_and(production_id_is_valid)
+        && item
+            .blueprint_location_id
+            .is_some_and(production_id_is_valid)
         && item
             .blueprint_location_flag
             .as_ref()
@@ -2902,8 +2906,7 @@ fn production_plan_record_is_valid(item: &ProductionPlanRecord) -> bool {
             | "missing"
             | "type-mismatch"
             | "runs-insufficient"
-    )
-        && blueprint_source_valid
+    ) && blueprint_source_valid
         && ((item.blueprint_assignment_state == "snapshot-missing") != blueprint_source_available)
         && match item.blueprint_assignment_state.as_str() {
             "snapshot-missing" => item.blueprint_item_id.is_none() && !assignment_has_details,
@@ -2965,9 +2968,10 @@ fn production_plan_record_is_valid(item: &ProductionPlanRecord) -> bool {
             && item.steps.iter().try_fold(0_u64, |total, step| {
                 total.checked_add(step.total_base_time_seconds)
             }) == item.total_base_time_seconds
-            && item.steps.last().is_some_and(|step| {
-                step.material_efficiency == item.applied_material_efficiency
-            })
+            && item
+                .steps
+                .last()
+                .is_some_and(|step| step.material_efficiency == item.applied_material_efficiency)
             && item.steps[..item.steps.len() - 1]
                 .iter()
                 .all(|step| step.material_efficiency == 0)
@@ -5834,10 +5838,9 @@ mod tests {
         IndustryJobSyncCharacterResponse, IndustryJobSyncResponse, IndustrySlotActivity,
         IndustrySlotQueryResponse, IndustrySlotRecord, ProductionBlueprintCandidate,
         ProductionGrossMaterial, ProductionPlanRecord, ProductionReservationClaim, ProductionStep,
-        ProductionStepMaterial,
-        ResearchPlanOwner, ResearchPlanQueryResponse, ResearchPlanRecord, ResearchPlanSummary,
-        RuntimeDataSnapshot, ScopePackageStatus, SsoCharacterIdentity, SsoLoginStatus,
-        WindowSizePreference, ASSET_LOCATION_STATUSES, INDUSTRY_COST_ACTIVITIES,
+        ProductionStepMaterial, ResearchPlanOwner, ResearchPlanQueryResponse, ResearchPlanRecord,
+        ResearchPlanSummary, RuntimeDataSnapshot, ScopePackageStatus, SsoCharacterIdentity,
+        SsoLoginStatus, WindowSizePreference, ASSET_LOCATION_STATUSES, INDUSTRY_COST_ACTIVITIES,
         INDUSTRY_FACILITY_ACCESS_STATES, INDUSTRY_FACILITY_KINDS, INDUSTRY_SECURITY_CLASSES,
         INDUSTRY_SLOT_ACTIVITIES, RESEARCH_PLAN_ACTIVITIES, RESEARCH_PLAN_STATES,
     };
