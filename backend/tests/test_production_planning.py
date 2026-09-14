@@ -253,6 +253,11 @@ class ProductionPlanningTests(unittest.TestCase):
             page["materialEfficiencyRule"],
             "max-runs-ceil-base-runs-percent",
         )
+        self.assertTrue(page["blueprintTimeEfficiencyApplied"])
+        self.assertEqual(
+            page["timeEfficiencyRule"],
+            "max-one-ceil-base-runs-percent",
+        )
         self.assertFalse(page["remainingModifiersApplied"])
         self.assertEqual(page["summary"]["ready"], 1)
         record = page["items"][0]
@@ -270,9 +275,12 @@ class ProductionPlanningTests(unittest.TestCase):
             {"typeId": 900, "typeName": "Synthetic Mineral", "quantity": 27},
         )
         self.assertEqual(record["totalBaseTimeSeconds"], 290)
+        self.assertEqual(record["totalBlueprintTimeSeconds"], 290)
+        self.assertEqual(record["timeEfficiencySavingsSeconds"], 0)
         self.assertEqual(record["inventoryState"], "snapshot-missing")
         self.assertEqual(record["blueprintAssignmentState"], "snapshot-missing")
         self.assertEqual(record["appliedMaterialEfficiency"], 0)
+        self.assertEqual(record["appliedTimeEfficiency"], 0)
         self.assertIsNone(record["assetSnapshotId"])
         self.assertEqual(
             record["grossMaterials"][0]["availabilityState"], "snapshot-missing"
@@ -352,6 +360,7 @@ class ProductionPlanningTests(unittest.TestCase):
         self.assertEqual(record["blueprintTimeEfficiency"], 20)
         self.assertEqual(record["blueprintRuns"], 10)
         self.assertEqual(record["appliedMaterialEfficiency"], 10)
+        self.assertEqual(record["appliedTimeEfficiency"], 20)
         self.assertEqual(record["blueprintSnapshotId"], snapshot_id)
         self.assertEqual(record["blueprintSyncRunId"], run_id)
         self.assertEqual(record["blueprintObservedAt"], "2026-09-13T12:00:00Z")
@@ -369,6 +378,11 @@ class ProductionPlanningTests(unittest.TestCase):
         self.assertEqual(root["blueprintTypeId"], 100)
         self.assertEqual(root["materialEfficiency"], 10)
         self.assertTrue(root["materialEfficiencyApplied"])
+        self.assertEqual(root["timeEfficiency"], 20)
+        self.assertTrue(root["timeEfficiencyApplied"])
+        self.assertEqual(root["totalBaseTimeSeconds"], 1_000)
+        self.assertEqual(root["totalBlueprintTimeSeconds"], 800)
+        self.assertEqual(root["timeEfficiencySavingsSeconds"], 200)
         self.assertEqual(
             [
                 (
@@ -403,6 +417,50 @@ class ProductionPlanningTests(unittest.TestCase):
             [(step["productTypeId"], step["runs"]) for step in record["steps"]],
             [(121, 11), (111, 14), (101, 10)],
         )
+        self.assertTrue(all(
+            step["timeEfficiency"] == 0
+            and not step["timeEfficiencyApplied"]
+            and step["totalBlueprintTimeSeconds"] == step["totalBaseTimeSeconds"]
+            and step["timeEfficiencySavingsSeconds"] == 0
+            for step in record["steps"][:-1]
+        ))
+        self.assertEqual(record["totalBaseTimeSeconds"], 1_390)
+        self.assertEqual(record["totalBlueprintTimeSeconds"], 1_190)
+        self.assertEqual(record["timeEfficiencySavingsSeconds"], 200)
+
+    def test_assigned_blueprint_te_uses_exact_complete_job_ceiling(self) -> None:
+        source = bundle()
+        source["blueprint_activities"][0]["time_seconds"] = 101
+        import_industry_sde(self.db, **source)
+        self.publish_blueprints(
+            7,
+            [{
+                "item_id": 3_001,
+                "type_id": 100,
+                "quantity": -1,
+                "material_efficiency": 0,
+                "time_efficiency": 20,
+                "runs": -1,
+                "location_id": 60_003_760,
+                "location_flag": "Hangar",
+            }],
+            "2026-09-14T10:00:00Z",
+        )
+        save_production_plan(
+            self.db,
+            plan_input(blueprintItemId=3_001, targetQuantity=3),
+        )
+
+        record = query_production_plans(self.db, query())["items"][0]
+        root = record["steps"][-1]
+
+        self.assertEqual(root["runs"], 2)
+        self.assertEqual(root["totalBaseTimeSeconds"], 202)
+        self.assertEqual(root["totalBlueprintTimeSeconds"], 162)
+        self.assertEqual(root["timeEfficiencySavingsSeconds"], 40)
+        self.assertEqual(record["totalBaseTimeSeconds"], 292)
+        self.assertEqual(record["totalBlueprintTimeSeconds"], 252)
+        self.assertEqual(record["timeEfficiencySavingsSeconds"], 40)
 
     def test_blueprint_assignment_states_and_duplicate_use_are_fail_closed(self) -> None:
         import_industry_sde(self.db, **bundle())

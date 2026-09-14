@@ -704,6 +704,11 @@ class SidecarIntegrationTests(unittest.TestCase):
                 production_plans["materialEfficiencyRule"],
                 "max-runs-ceil-base-runs-percent",
             )
+            self.assertTrue(production_plans["blueprintTimeEfficiencyApplied"])
+            self.assertEqual(
+                production_plans["timeEfficiencyRule"],
+                "max-one-ceil-base-runs-percent",
+            )
             self.assertFalse(production_plans["remainingModifiersApplied"])
 
             research_query_request = urllib.request.Request(

@@ -855,6 +855,10 @@ struct ProductionStep {
     surplus_quantity: u64,
     base_time_seconds_per_run: u64,
     total_base_time_seconds: u64,
+    time_efficiency: u8,
+    time_efficiency_applied: bool,
+    total_blueprint_time_seconds: u64,
+    time_efficiency_savings_seconds: u64,
     recipe_alternatives: u64,
     material_efficiency: u8,
     material_efficiency_applied: bool,
@@ -961,6 +965,7 @@ struct ProductionPlanRecord {
     blueprint_candidate_count: u64,
     blueprint_candidates: Vec<ProductionBlueprintCandidate>,
     applied_material_efficiency: u8,
+    applied_time_efficiency: u8,
     activity: String,
     product_type_id: u64,
     product_name: String,
@@ -974,6 +979,8 @@ struct ProductionPlanRecord {
     warnings: Vec<ProductionWarning>,
     cycle_type_ids: Vec<u64>,
     total_base_time_seconds: Option<u64>,
+    total_blueprint_time_seconds: Option<u64>,
+    time_efficiency_savings_seconds: Option<u64>,
     inventory_state: String,
     asset_snapshot_id: Option<u64>,
     asset_sync_run_id: Option<u64>,
@@ -1011,6 +1018,8 @@ struct ProductionPlanQueryResponse {
     reservation_rule: String,
     blueprint_material_efficiency_applied: bool,
     material_efficiency_rule: String,
+    blueprint_time_efficiency_applied: bool,
+    time_efficiency_rule: String,
     remaining_modifiers_applied: bool,
 }
 
@@ -2684,6 +2693,10 @@ fn production_plan_record_is_valid(item: &ProductionPlanRecord) -> bool {
             && step.surplus_quantity <= JAVASCRIPT_MAX_SAFE_INTEGER
             && production_id_is_valid(step.base_time_seconds_per_run)
             && production_id_is_valid(step.total_base_time_seconds)
+            && step.time_efficiency <= 20
+            && step.time_efficiency_applied == (step.time_efficiency > 0)
+            && production_id_is_valid(step.total_blueprint_time_seconds)
+            && step.time_efficiency_savings_seconds <= JAVASCRIPT_MAX_SAFE_INTEGER
             && production_id_is_valid(step.recipe_alternatives)
             && step.material_efficiency <= 10
             && step.material_efficiency_applied == (step.material_efficiency > 0)
@@ -2692,6 +2705,16 @@ fn production_plan_record_is_valid(item: &ProductionPlanRecord) -> bool {
                 == Some(step.surplus_quantity)
             && step.base_time_seconds_per_run.checked_mul(step.runs)
                 == Some(step.total_base_time_seconds)
+            && step
+                .total_base_time_seconds
+                .checked_sub(step.total_blueprint_time_seconds)
+                == Some(step.time_efficiency_savings_seconds)
+            && step
+                .total_base_time_seconds
+                .checked_mul(u64::from(100 - step.time_efficiency))
+                .and_then(|value| value.checked_add(99))
+                .map(|value| value / 100)
+                == Some(step.total_blueprint_time_seconds)
             && step.unmodified_runs.checked_sub(step.runs)
                 == Some(step.runs_saved_by_material_efficiency)
             && step.materials.iter().all(|material| {
@@ -2917,13 +2940,19 @@ fn production_plan_record_is_valid(item: &ProductionPlanRecord) -> bool {
         }
         && if item.blueprint_assignment_state == "ready" {
             item.applied_material_efficiency
-                == if item.activity == "manufacturing" {
+                == (if item.activity == "manufacturing" {
                     item.blueprint_material_efficiency.unwrap_or(0)
                 } else {
                     0
-                }
+                })
+                && item.applied_time_efficiency
+                    == (if item.activity == "manufacturing" {
+                        item.blueprint_time_efficiency.unwrap_or(0)
+                    } else {
+                        0
+                    })
         } else {
-            item.applied_material_efficiency == 0
+            item.applied_material_efficiency == 0 && item.applied_time_efficiency == 0
         };
     let asset_source_valid = match (
         item.asset_snapshot_id,
@@ -2959,6 +2988,8 @@ fn production_plan_record_is_valid(item: &ProductionPlanRecord) -> bool {
             && !item.steps.is_empty()
             && item.cycle_type_ids.is_empty()
             && item.total_base_time_seconds.is_some()
+            && item.total_blueprint_time_seconds.is_some()
+            && item.time_efficiency_savings_seconds.is_some()
             && item.steps.last().is_some_and(|step| {
                 step.blueprint_type_id == item.blueprint_type_id
                     && step.product_type_id == item.product_type_id
@@ -2968,17 +2999,31 @@ fn production_plan_record_is_valid(item: &ProductionPlanRecord) -> bool {
             && item.steps.iter().try_fold(0_u64, |total, step| {
                 total.checked_add(step.total_base_time_seconds)
             }) == item.total_base_time_seconds
+            && item.steps.iter().try_fold(0_u64, |total, step| {
+                total.checked_add(step.total_blueprint_time_seconds)
+            }) == item.total_blueprint_time_seconds
+            && item
+                .total_base_time_seconds
+                .zip(item.total_blueprint_time_seconds)
+                .and_then(|(base, adjusted)| base.checked_sub(adjusted))
+                == item.time_efficiency_savings_seconds
             && item
                 .steps
                 .last()
                 .is_some_and(|step| step.material_efficiency == item.applied_material_efficiency)
+            && item
+                .steps
+                .last()
+                .is_some_and(|step| step.time_efficiency == item.applied_time_efficiency)
             && item.steps[..item.steps.len() - 1]
                 .iter()
-                .all(|step| step.material_efficiency == 0)
+                .all(|step| step.material_efficiency == 0 && step.time_efficiency == 0)
     } else {
         item.steps.is_empty()
             && item.gross_materials.is_empty()
             && item.total_base_time_seconds.is_none()
+            && item.total_blueprint_time_seconds.is_none()
+            && item.time_efficiency_savings_seconds.is_none()
             && ((item.state == "cycle" && !item.cycle_type_ids.is_empty())
                 || (item.state != "cycle" && item.cycle_type_ids.is_empty()))
     };
@@ -2993,6 +3038,7 @@ fn production_plan_record_is_valid(item: &ProductionPlanRecord) -> bool {
             .as_ref()
             .is_none_or(|value| matches!(value.as_str(), "original" | "copy"))
         && item.applied_material_efficiency <= 10
+        && item.applied_time_efficiency <= 20
         && blueprint_candidates_valid
         && assignment_valid
         && PRODUCTION_ACTIVITIES.contains(&item.activity.as_str())
@@ -3016,6 +3062,12 @@ fn production_plan_record_is_valid(item: &ProductionPlanRecord) -> bool {
         && item
             .total_base_time_seconds
             .is_none_or(production_id_is_valid)
+        && item
+            .total_blueprint_time_seconds
+            .is_none_or(production_id_is_valid)
+        && item
+            .time_efficiency_savings_seconds
+            .is_none_or(|value| value <= JAVASCRIPT_MAX_SAFE_INTEGER)
         && PRODUCTION_INVENTORY_STATES.contains(&item.inventory_state.as_str())
         && item.inventory_state == expected_inventory_state
         && asset_source_valid
@@ -3093,6 +3145,8 @@ fn production_plan_query_response_is_valid(response: &ProductionPlanQueryRespons
         && response.reservation_rule == "priority-desc-created-asc-plan-id-asc"
         && response.blueprint_material_efficiency_applied
         && response.material_efficiency_rule == "max-runs-ceil-base-runs-percent"
+        && response.blueprint_time_efficiency_applied
+        && response.time_efficiency_rule == "max-one-ceil-base-runs-percent"
         && !response.remaining_modifiers_applied
 }
 
@@ -6735,6 +6789,7 @@ mod tests {
                 reason: "ready".to_owned(),
             }],
             applied_material_efficiency: 10,
+            applied_time_efficiency: 20,
             activity: "manufacturing".to_owned(),
             product_type_id: 101,
             product_name: "Synthetic Hull".to_owned(),
@@ -6760,6 +6815,10 @@ mod tests {
                     surplus_quantity: 0,
                     base_time_seconds_per_run: 20,
                     total_base_time_seconds: 20,
+                    time_efficiency: 0,
+                    time_efficiency_applied: false,
+                    total_blueprint_time_seconds: 20,
+                    time_efficiency_savings_seconds: 0,
                     recipe_alternatives: 1,
                     material_efficiency: 0,
                     material_efficiency_applied: false,
@@ -6790,6 +6849,10 @@ mod tests {
                     surplus_quantity: 0,
                     base_time_seconds_per_run: 100,
                     total_base_time_seconds: 200,
+                    time_efficiency: 20,
+                    time_efficiency_applied: true,
+                    total_blueprint_time_seconds: 160,
+                    time_efficiency_savings_seconds: 40,
                     recipe_alternatives: 1,
                     material_efficiency: 10,
                     material_efficiency_applied: true,
@@ -6832,6 +6895,8 @@ mod tests {
             warnings: Vec::new(),
             cycle_type_ids: Vec::new(),
             total_base_time_seconds: Some(220),
+            total_blueprint_time_seconds: Some(180),
+            time_efficiency_savings_seconds: Some(40),
             inventory_state: "snapshot-missing".to_owned(),
             asset_snapshot_id: None,
             asset_sync_run_id: None,

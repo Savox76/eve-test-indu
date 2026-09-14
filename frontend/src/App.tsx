@@ -909,7 +909,7 @@ const copy = {
       kicker: "PRODUKTIONSPLANUNG",
       title: "Fertigungs- und Reaktionsziele",
       subtitle: "Persistente Ziele werden in Schritte aufgelöst und konfliktfrei aus dem letzten vollständigen Asset-Snapshot reserviert.",
-      boundary: "Der Bestand des ausführenden Charakters wird lokal und zielübergreifend reserviert. Eine zugewiesene persönliche Blueprint-Kopie oder ein Original wendet die dokumentierte ME-Rundung auf das Ziel an. Skills, Anlagen-/Rigboni, Steuern und Preise folgen später.",
+      boundary: "Der Bestand des ausführenden Charakters wird lokal und zielübergreifend reserviert. Eine zugewiesene persönliche Blueprint-Kopie oder ein Original wendet die dokumentierte ME- und TE-Rundung auf das Ziel an. Skills, Anlagen-/Rigboni, Steuern und Preise folgen später.",
       build: "SDE-Build {build}",
       searchRecipe: "Produkt oder Blueprint suchen",
       activity: "Aktivität",
@@ -934,6 +934,7 @@ const copy = {
       blueprintSource: "Blueprint-Snapshot #{snapshot} · Lauf #{run} · {date}",
       blueprintSnapshotMissing: "Kein vollständiger persönlicher Blueprint-Snapshot vorhanden.",
       materialEfficiencyApplied: "ME {me} wird ausschließlich auf den Fertigungsschritt des Ziel-Blueprints angewendet.",
+      timeEfficiencyApplied: "TE {te} verkürzt ausschließlich die Blueprint-Zeit des Ziel-Fertigungsschritts.",
       materialSaved: "{quantity} durch ME gespart",
       target: "Zielmenge",
       priority: "Priorität",
@@ -968,6 +969,7 @@ const copy = {
       goalStep: "Zielprodukt",
       runs: "{runs} Läufe · {produced} produziert · {surplus} Überschuss",
       baseTime: "SDE-Basiszeit {time}",
+      blueprintTime: "Blueprint-Zeit {time} · TE {te} spart {saved}",
       gross: "Bruttomaterialbedarf",
       inventory: "Bestandsreservierung",
       inventoryLabels: {
@@ -1027,7 +1029,7 @@ const copy = {
     },
     planned: "Geplant",
     previewOnly: "Noch ohne Live-Funktion",
-    footerVersion: "v0.2.0-alpha.4",
+    footerVersion: "v0.2.0-alpha.5",
   },
   en: {
     nav: {
@@ -1708,7 +1710,7 @@ const copy = {
       kicker: "PRODUCTION PLANNING",
       title: "Manufacturing and reaction goals",
       subtitle: "Persistent goals are expanded into steps and reserved conflict-free from the latest complete asset snapshot.",
-      boundary: "Stock owned by the executing character is reserved locally across all goals. An assigned personal blueprint copy or original applies the documented ME rounding to the goal. Skills, facility/rig bonuses, taxes and prices follow later.",
+      boundary: "Stock owned by the executing character is reserved locally across all goals. An assigned personal blueprint copy or original applies the documented ME and TE rounding to the goal. Skills, facility/rig bonuses, taxes and prices follow later.",
       build: "SDE build {build}",
       searchRecipe: "Search product or blueprint",
       activity: "Activity",
@@ -1733,6 +1735,7 @@ const copy = {
       blueprintSource: "Blueprint snapshot #{snapshot} · run #{run} · {date}",
       blueprintSnapshotMissing: "No complete personal blueprint snapshot is available.",
       materialEfficiencyApplied: "ME {me} is applied only to the assigned goal blueprint's manufacturing step.",
+      timeEfficiencyApplied: "TE {te} reduces only the assigned goal blueprint's manufacturing time.",
       materialSaved: "{quantity} saved by ME",
       target: "Target quantity",
       priority: "Priority",
@@ -1767,6 +1770,7 @@ const copy = {
       goalStep: "Goal product",
       runs: "{runs} runs · {produced} produced · {surplus} surplus",
       baseTime: "SDE base time {time}",
+      blueprintTime: "Blueprint time {time} · TE {te} saves {saved}",
       gross: "Gross material demand",
       inventory: "Inventory reservation",
       inventoryLabels: {
@@ -1826,7 +1830,7 @@ const copy = {
     },
     planned: "Planned",
     previewOnly: "No live function yet",
-    footerVersion: "v0.2.0-alpha.4",
+    footerVersion: "v0.2.0-alpha.5",
   },
 } as const;
 
@@ -5229,7 +5233,11 @@ function ProductionWorkspace({
   const formatDuration = (seconds: number) => {
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
-    return hours > 0 ? `${hours} h ${minutes} min` : `${minutes} min`;
+    const remainingSeconds = seconds % 60;
+    if (hours > 0) return `${hours} h ${minutes} min`;
+    if (minutes > 0 && remainingSeconds > 0) return `${minutes} min ${remainingSeconds} s`;
+    if (minutes > 0) return `${minutes} min`;
+    return `${remainingSeconds} s`;
   };
   const planTotal = plans?.total ?? 0;
   const planFrom = planTotal === 0 ? 0 : planOffset + 1;
@@ -5303,10 +5311,10 @@ function ProductionWorkspace({
                   <button type="button" onClick={() => void updateGoal(item)} disabled={busyId !== null}>{busyId === item.planId ? <RefreshCw className="spin" size={14} /> : <Check size={14} />}{t.productionPlanning.save}</button>
                   <button type="button" className="danger-button" onClick={() => void removeGoal(item.planId)} disabled={busyId !== null}><X size={14} />{t.productionPlanning.remove}</button>
                 </div>
-                <div className="production-blueprint-evidence"><strong>{item.blueprintItemId === null ? t.productionPlanning.noBlueprint : t.productionPlanning.blueprintEvidence.replace("{kind}", item.blueprintKind === "original" ? "BPO" : "BPC").replace("{item}", String(item.blueprintItemId)).replace("{me}", String(item.blueprintMaterialEfficiency ?? 0)).replace("{te}", String(item.blueprintTimeEfficiency ?? 0)).replace("{runs}", item.blueprintRuns === -1 ? "∞" : numberFormat.format(item.blueprintRuns ?? 0))}</strong><span>{item.blueprintSnapshotId === null ? t.productionPlanning.blueprintSnapshotMissing : t.productionPlanning.blueprintSource.replace("{snapshot}", String(item.blueprintSnapshotId)).replace("{run}", String(item.blueprintSyncRunId)).replace("{date}", String(item.blueprintObservedAt))}</span>{item.appliedMaterialEfficiency > 0 && <span>{t.productionPlanning.materialEfficiencyApplied.replace("{me}", String(item.appliedMaterialEfficiency))}</span>}</div>
+                <div className="production-blueprint-evidence"><strong>{item.blueprintItemId === null ? t.productionPlanning.noBlueprint : t.productionPlanning.blueprintEvidence.replace("{kind}", item.blueprintKind === "original" ? "BPO" : "BPC").replace("{item}", String(item.blueprintItemId)).replace("{me}", String(item.blueprintMaterialEfficiency ?? 0)).replace("{te}", String(item.blueprintTimeEfficiency ?? 0)).replace("{runs}", item.blueprintRuns === -1 ? "∞" : numberFormat.format(item.blueprintRuns ?? 0))}</strong><span>{item.blueprintSnapshotId === null ? t.productionPlanning.blueprintSnapshotMissing : t.productionPlanning.blueprintSource.replace("{snapshot}", String(item.blueprintSnapshotId)).replace("{run}", String(item.blueprintSyncRunId)).replace("{date}", String(item.blueprintObservedAt))}</span>{item.appliedMaterialEfficiency > 0 && <span>{t.productionPlanning.materialEfficiencyApplied.replace("{me}", String(item.appliedMaterialEfficiency))}</span>}{item.appliedTimeEfficiency > 0 && <span>{t.productionPlanning.timeEfficiencyApplied.replace("{te}", String(item.appliedTimeEfficiency))}</span>}</div>
                 {item.warnings.map((warning) => <div className="production-warning" key={`${warning.typeId}:${warning.selectedBlueprintTypeId}`}><AlertTriangle size={14} />{t.productionPlanning.alternatives.replace("{type}", warning.typeName).replace("{count}", String(warning.candidateCount)).replace("{blueprint}", String(warning.selectedBlueprintTypeId))}</div>)}
                 {item.state === "ready" && <div className="production-resolution">
-                  <details open><summary>{t.productionPlanning.steps} · {item.steps.length}</summary><p className="production-sequence-hint">{t.productionPlanning.sequenceHint}</p><ol>{item.steps.map((step, index) => { const isGoal = index === item.steps.length - 1; return <li className={isGoal ? "production-step--goal" : ""} key={`${step.sequence}:${step.productTypeId}`}><div><strong>{t.productionPlanning.step.replace("{sequence}", String(step.sequence))} · {isGoal ? t.productionPlanning.goalStep : t.productionPlanning.intermediateStep}: {step.productName}</strong><span>{step.blueprintName} · {t.productionPlanning.activityLabels[step.activity]}</span></div><div><strong>{t.productionPlanning.runs.replace("{runs}", numberFormat.format(step.runs)).replace("{produced}", numberFormat.format(step.producedQuantity)).replace("{surplus}", numberFormat.format(step.surplusQuantity))}</strong><span>{t.productionPlanning.baseTime.replace("{time}", formatDuration(step.totalBaseTimeSeconds))}</span></div></li>; })}</ol></details>
+                  <details open><summary>{t.productionPlanning.steps} · {item.steps.length}</summary><p className="production-sequence-hint">{t.productionPlanning.sequenceHint}</p><ol>{item.steps.map((step, index) => { const isGoal = index === item.steps.length - 1; return <li className={isGoal ? "production-step--goal" : ""} key={`${step.sequence}:${step.productTypeId}`}><div><strong>{t.productionPlanning.step.replace("{sequence}", String(step.sequence))} · {isGoal ? t.productionPlanning.goalStep : t.productionPlanning.intermediateStep}: {step.productName}</strong><span>{step.blueprintName} · {t.productionPlanning.activityLabels[step.activity]}</span></div><div><strong>{t.productionPlanning.runs.replace("{runs}", numberFormat.format(step.runs)).replace("{produced}", numberFormat.format(step.producedQuantity)).replace("{surplus}", numberFormat.format(step.surplusQuantity))}</strong><span>{step.timeEfficiencySavingsSeconds > 0 ? t.productionPlanning.blueprintTime.replace("{time}", formatDuration(step.totalBlueprintTimeSeconds)).replace("{te}", String(step.timeEfficiency)).replace("{saved}", formatDuration(step.timeEfficiencySavingsSeconds)) : t.productionPlanning.baseTime.replace("{time}", formatDuration(step.totalBaseTimeSeconds))}</span></div></li>; })}</ol></details>
                   <details open><summary>{t.productionPlanning.inventory} · {item.grossMaterials.length}</summary>{item.grossMaterials.length === 0 ? <p>{t.productionPlanning.noGross}</p> : <ul className="production-material-list">{item.grossMaterials.map((material) => <li key={material.typeId}>
                     <div className="production-material-heading"><span><strong>{material.typeName}</strong><small>Type #{material.typeId}</small></span><span className={`status-pill status-pill--${material.availabilityState === "covered" ? "good" : "warn"}`}>{t.productionPlanning.inventoryLabels[material.availabilityState]}</span></div>
                     <div className="production-material-metrics"><span><small>{t.productionPlanning.required}</small><strong>{numberFormat.format(material.quantity)}</strong>{material.materialEfficiencySavings > 0 && <small>{t.productionPlanning.materialSaved.replace("{quantity}", numberFormat.format(material.materialEfficiencySavings))}</small>}</span><span><small>{t.productionPlanning.available}</small><strong>{material.availableQuantity === null ? "—" : numberFormat.format(material.availableQuantity)}</strong></span><span><small>{t.productionPlanning.reserved}</small><strong>{material.reservedQuantity === null ? "—" : numberFormat.format(material.reservedQuantity)}</strong></span><span><small>{t.productionPlanning.remaining}</small><strong>{material.remainingQuantity === null ? "—" : numberFormat.format(material.remainingQuantity)}</strong></span><span className={material.missingQuantity !== null && material.missingQuantity > 0 ? "is-shortage" : ""}><small>{t.productionPlanning.missing}</small><strong>{material.missingQuantity === null ? "—" : numberFormat.format(material.missingQuantity)}</strong></span></div>

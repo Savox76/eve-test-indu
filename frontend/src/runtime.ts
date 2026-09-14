@@ -667,6 +667,10 @@ export interface ProductionStep {
   surplusQuantity: number;
   baseTimeSecondsPerRun: number;
   totalBaseTimeSeconds: number;
+  timeEfficiency: number;
+  timeEfficiencyApplied: boolean;
+  totalBlueprintTimeSeconds: number;
+  timeEfficiencySavingsSeconds: number;
   recipeAlternatives: number;
   materialEfficiency: number;
   materialEfficiencyApplied: boolean;
@@ -761,6 +765,7 @@ export interface ProductionPlanRecord {
   blueprintCandidateCount: number;
   blueprintCandidates: ProductionBlueprintCandidate[];
   appliedMaterialEfficiency: number;
+  appliedTimeEfficiency: number;
   activity: ProductionActivity;
   productTypeId: number;
   productName: string;
@@ -774,6 +779,8 @@ export interface ProductionPlanRecord {
   warnings: ProductionWarning[];
   cycleTypeIds: number[];
   totalBaseTimeSeconds: number | null;
+  totalBlueprintTimeSeconds: number | null;
+  timeEfficiencySavingsSeconds: number | null;
   inventoryState: ProductionInventoryState;
   assetSnapshotId: number | null;
   assetSyncRunId: number | null;
@@ -808,6 +815,8 @@ export interface ProductionPlanPage {
   reservationRule: "priority-desc-created-asc-plan-id-asc";
   blueprintMaterialEfficiencyApplied: true;
   materialEfficiencyRule: "max-runs-ceil-base-runs-percent";
+  blueprintTimeEfficiencyApplied: true;
+  timeEfficiencyRule: "max-one-ceil-base-runs-percent";
   remainingModifiersApplied: false;
 }
 
@@ -2853,16 +2862,25 @@ function parseProductionStep(candidate: unknown, index: number): ProductionStep 
     ![candidate.requiredQuantity, candidate.outputQuantityPerRun, candidate.runs,
       candidate.unmodifiedRuns,
       candidate.producedQuantity, candidate.baseTimeSecondsPerRun, candidate.totalBaseTimeSeconds,
-      candidate.recipeAlternatives].every(isPositiveSafeInteger) ||
+      candidate.totalBlueprintTimeSeconds, candidate.recipeAlternatives].every(isPositiveSafeInteger) ||
     !isNonNegativeSafeInteger(candidate.surplusQuantity) ||
     !isNonNegativeSafeInteger(candidate.runsSavedByMaterialEfficiency) ||
     !isNonNegativeSafeInteger(candidate.materialEfficiency) || Number(candidate.materialEfficiency) > 10 ||
+    !isNonNegativeSafeInteger(candidate.timeEfficiency) || Number(candidate.timeEfficiency) > 20 ||
+    !isNonNegativeSafeInteger(candidate.timeEfficiencySavingsSeconds) ||
+    typeof candidate.timeEfficiencyApplied !== "boolean" ||
     typeof candidate.materialEfficiencyApplied !== "boolean" || !Array.isArray(candidate.materials) ||
     Number(candidate.outputQuantityPerRun) * Number(candidate.runs) !== Number(candidate.producedQuantity) ||
     Number(candidate.producedQuantity) - Number(candidate.requiredQuantity) !== Number(candidate.surplusQuantity) ||
     Number(candidate.baseTimeSecondsPerRun) * Number(candidate.runs) !== Number(candidate.totalBaseTimeSeconds) ||
+    Number(candidate.totalBaseTimeSeconds) - Number(candidate.totalBlueprintTimeSeconds) !==
+      Number(candidate.timeEfficiencySavingsSeconds) ||
+    Number(candidate.totalBlueprintTimeSeconds) !== Number(
+      (BigInt(candidate.totalBaseTimeSeconds as number) *
+        BigInt(100 - Number(candidate.timeEfficiency)) + 99n) / 100n) ||
     Number(candidate.unmodifiedRuns) - Number(candidate.runs) !== Number(candidate.runsSavedByMaterialEfficiency) ||
-    candidate.materialEfficiencyApplied !== (Number(candidate.materialEfficiency) > 0)
+    candidate.materialEfficiencyApplied !== (Number(candidate.materialEfficiency) > 0) ||
+    candidate.timeEfficiencyApplied !== (Number(candidate.timeEfficiency) > 0)
   ) {
     throw new Error("The native runtime returned invalid production steps.");
   }
@@ -2951,6 +2969,7 @@ function parseProductionPlanRecord(candidate: unknown): ProductionPlanRecord {
     !isNonNegativeSafeInteger(candidate.blueprintCandidateCount) ||
     !Array.isArray(candidate.blueprintCandidates) || candidate.blueprintCandidates.length > 50 ||
     !isNonNegativeSafeInteger(candidate.appliedMaterialEfficiency) || Number(candidate.appliedMaterialEfficiency) > 10 ||
+    !isNonNegativeSafeInteger(candidate.appliedTimeEfficiency) || Number(candidate.appliedTimeEfficiency) > 20 ||
     !productionActivities.includes(candidate.activity as ProductionActivity) ||
     !isPositiveSafeInteger(candidate.productTypeId) || !isBoundedText(candidate.productName, 200) ||
     !isPositiveSafeInteger(candidate.targetQuantity) || !isNonNegativeSafeInteger(candidate.priority) ||
@@ -2960,6 +2979,9 @@ function parseProductionPlanRecord(candidate: unknown): ProductionPlanRecord {
     !Array.isArray(candidate.steps) || !Array.isArray(candidate.grossMaterials) ||
     !Array.isArray(candidate.warnings) || !Array.isArray(candidate.cycleTypeIds) ||
     !(candidate.totalBaseTimeSeconds === null || isPositiveSafeInteger(candidate.totalBaseTimeSeconds)) ||
+    !(candidate.totalBlueprintTimeSeconds === null || isPositiveSafeInteger(candidate.totalBlueprintTimeSeconds)) ||
+    !(candidate.timeEfficiencySavingsSeconds === null ||
+      isNonNegativeSafeInteger(candidate.timeEfficiencySavingsSeconds)) ||
     !productionInventoryStates.includes(candidate.inventoryState as ProductionInventoryState) ||
     !((candidate.assetSnapshotId === null && candidate.assetSyncRunId === null &&
       candidate.assetObservedAt === null) ||
@@ -3091,13 +3113,19 @@ function parseProductionPlanRecord(candidate: unknown): ProductionPlanRecord {
           ? "shortage"
           : "covered";
   if (
-    ready !== (steps.length > 0 && candidate.totalBaseTimeSeconds !== null) ||
+    ready !== (steps.length > 0 && candidate.totalBaseTimeSeconds !== null &&
+      candidate.totalBlueprintTimeSeconds !== null && candidate.timeEfficiencySavingsSeconds !== null) ||
     (ready && (candidate.buildNumber === null || candidate.cycleTypeIds.length !== 0 ||
       steps.at(-1)?.blueprintTypeId !== candidate.blueprintTypeId ||
       steps.at(-1)?.productTypeId !== candidate.productTypeId ||
       steps.at(-1)?.activity !== candidate.activity || steps.at(-1)?.requiredQuantity !== candidate.targetQuantity ||
-      steps.reduce((total, step) => total + step.totalBaseTimeSeconds, 0) !== candidate.totalBaseTimeSeconds)) ||
-    (!ready && (grossMaterials.length !== 0 || candidate.totalBaseTimeSeconds !== null)) ||
+      steps.reduce((total, step) => total + step.totalBaseTimeSeconds, 0) !== candidate.totalBaseTimeSeconds ||
+      steps.reduce((total, step) => total + step.totalBlueprintTimeSeconds, 0) !==
+        candidate.totalBlueprintTimeSeconds ||
+      Number(candidate.totalBaseTimeSeconds) - Number(candidate.totalBlueprintTimeSeconds) !==
+        Number(candidate.timeEfficiencySavingsSeconds))) ||
+    (!ready && (grossMaterials.length !== 0 || candidate.totalBaseTimeSeconds !== null ||
+      candidate.totalBlueprintTimeSeconds !== null || candidate.timeEfficiencySavingsSeconds !== null)) ||
     ((candidate.state === "cycle") !== (candidate.cycleTypeIds.length > 0)) ||
     candidate.inventoryState !== expectedInventoryState ||
     (!ready && ownerSnapshotAvailable) ||
@@ -3117,9 +3145,13 @@ function parseProductionPlanRecord(candidate: unknown): ProductionPlanRecord {
     (["ready", "type-mismatch", "runs-insufficient"].includes(assignmentState) && !assignedDetailsValid) ||
     (assignmentState === "ready" && Number(candidate.appliedMaterialEfficiency) !==
       (candidate.activity === "manufacturing" ? Number(candidate.blueprintMaterialEfficiency) : 0)) ||
+    (assignmentState === "ready" && Number(candidate.appliedTimeEfficiency) !==
+      (candidate.activity === "manufacturing" ? Number(candidate.blueprintTimeEfficiency) : 0)) ||
     (assignmentState !== "ready" && Number(candidate.appliedMaterialEfficiency) !== 0) ||
+    (assignmentState !== "ready" && Number(candidate.appliedTimeEfficiency) !== 0) ||
     (ready && steps.at(-1)?.materialEfficiency !== candidate.appliedMaterialEfficiency) ||
-    steps.slice(0, -1).some((step) => step.materialEfficiency !== 0)
+    (ready && steps.at(-1)?.timeEfficiency !== candidate.appliedTimeEfficiency) ||
+    steps.slice(0, -1).some((step) => step.materialEfficiency !== 0 || step.timeEfficiency !== 0)
   ) {
     throw new Error("The native runtime returned inconsistent production-plan data.");
   }
@@ -3160,6 +3192,8 @@ function parseProductionPlanPage(candidate: unknown): ProductionPlanPage {
     candidate.reservationRule !== "priority-desc-created-asc-plan-id-asc" ||
     candidate.blueprintMaterialEfficiencyApplied !== true ||
     candidate.materialEfficiencyRule !== "max-runs-ceil-base-runs-percent" ||
+    candidate.blueprintTimeEfficiencyApplied !== true ||
+    candidate.timeEfficiencyRule !== "max-one-ceil-base-runs-percent" ||
     candidate.remainingModifiersApplied !== false
   ) throw new Error("The native runtime returned invalid production-plan data.");
   const items = candidate.items.map(parseProductionPlanRecord);
@@ -3189,6 +3223,8 @@ export async function loadProductionPlans(
     reservationsApplied: true, reservationRule: "priority-desc-created-asc-plan-id-asc",
     blueprintMaterialEfficiencyApplied: true,
     materialEfficiencyRule: "max-runs-ceil-base-runs-percent",
+    blueprintTimeEfficiencyApplied: true,
+    timeEfficiencyRule: "max-one-ceil-base-runs-percent",
     remainingModifiersApplied: false,
   };
   const page = parseProductionPlanPage(JSON.parse(await adapter.invoke("query_production_plans", {
