@@ -2926,9 +2926,7 @@ fn production_facility_evidence_is_valid(evidence: &ProductionFacilityEvidence) 
             .facility_name
             .as_ref()
             .is_none_or(|value| asset_text_is_valid(value, 200))
-        && evidence
-            .solar_system_id
-            .is_none_or(production_id_is_valid)
+        && evidence.solar_system_id.is_none_or(production_id_is_valid)
         && evidence
             .solar_system_name
             .as_ref()
