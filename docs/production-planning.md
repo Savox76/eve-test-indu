@@ -1,6 +1,6 @@
 # Produktionsplanung
 
-Paket 30 ergänzt lokale, updatefeste Fertigungs- und Reaktionsziele. Paket 31 gleicht deren äußeren Materialbedarf mit vollständigen persönlichen Asset-Snapshots ab. Paket 32 reserviert denselben Bestand konfliktfrei zwischen allen Zielen eines Charakters. Paket 33 ordnet einem Ziel optional ein konkretes persönliches Blueprint-Item zu und wendet dessen belegten ME-Wert auf den Wurzel-Fertigungsschritt an. Paket 34 bezieht zusätzlich dessen belegten TE-Wert in die Blueprint-Zeit des Zielschritts ein. Paket 35 wendet die aktuell wirksamen Industrie- und Reaktions-Skills des ausführenden Charakters auf jeden passenden Schritt an. Die Planung verwendet ausschließlich vollständige, belegte Snapshots, verändert keine Daten in EVE und startet keine Industrieaufträge.
+Paket 30 ergänzt lokale, updatefeste Fertigungs- und Reaktionsziele. Paket 31 gleicht deren äußeren Materialbedarf mit vollständigen persönlichen Asset-Snapshots ab. Paket 32 reserviert denselben Bestand konfliktfrei zwischen allen Zielen eines Charakters. Paket 33 ordnet einem Ziel optional ein konkretes persönliches Blueprint-Item zu und wendet dessen belegten ME-Wert auf den Wurzel-Fertigungsschritt an. Paket 34 bezieht zusätzlich dessen belegten TE-Wert in die Blueprint-Zeit des Zielschritts ein. Paket 35 wendet die aktuell wirksamen Industrie- und Reaktions-Skills des ausführenden Charakters auf jeden passenden Schritt an. Paket 36 erweitert die persönliche Blueprintzuordnung und ihre ME-/TE-Wirkung auf jeden Fertigungsschritt der Kette. Die Planung verwendet ausschließlich vollständige, belegte Snapshots, verändert keine Daten in EVE und startet keine Industrieaufträge.
 
 ## Persistentes Ziel
 
@@ -8,28 +8,29 @@ Ein Ziel enthält:
 
 - den ausführenden Charakter,
 - das exakte Blueprint-/Aktivitäts-/Produkt-Rezept,
-- optional die Item-ID eines persönlichen BPO oder BPC,
+- optional die Item-ID eines persönlichen BPO oder BPC für das Zielrezept,
+- optional je Fertigungs-Vorproduktschritt die Item-ID eines persönlichen BPO oder BPC,
 - eine positive Zielmenge,
 - eine Priorität von 0 bis 999,
 - eine optionale Notiz bis 240 Zeichen.
 
-Die Tabelle `production_plans` gehört ab Schema 9 zum Anwendungskern. Schema 10 ergänzt die optionale `blueprint_item_id`. Eine konkrete Item-ID darf höchstens einem Produktionsziel zugeordnet sein. Beim vollständigen Löschen des Charakters werden dessen Ziele über den Fremdschlüssel mitgelöscht. Ein späterer SDE-Neuaufbau löscht die Ziele dagegen nicht: fehlt danach der Aktivitätsstand oder das gespeicherte Rezept, bleibt das Ziel mit einem ausdrücklichen Fehlerzustand sichtbar.
+Die Tabelle `production_plans` gehört ab Schema 9 zum Anwendungskern. Schema 10 ergänzt die optionale `blueprint_item_id` des Zielrezepts. Schema 11 ergänzt `production_plan_step_blueprints` für die expliziten Zuordnungen der Fertigungs-Vorproduktschritte. Eine konkrete physische Item-ID darf innerhalb eines Ziels und zielübergreifend höchstens einmal zugeordnet sein. Beim Löschen eines Ziels oder vollständigen Löschen des Charakters werden die Schrittzuordnungen über Fremdschlüssel mitgelöscht. Ein späterer SDE-Neuaufbau löscht die Ziele dagegen nicht: fehlt danach der Aktivitätsstand oder das gespeicherte Rezept, bleibt das Ziel mit einem ausdrücklichen Fehlerzustand sichtbar.
 
 ## Persönliche Blueprintzuordnung, ME und TE
 
-Die Kandidaten stammen ausschließlich aus dem letzten vollständig abgeschlossenen persönlichen Blueprint-Snapshot des ausführenden Charakters und müssen exakt zum Blueprint-Typ des Zielrezepts passen. BPOs sind stets laufgeeignet; ein BPC ist nur geeignet, wenn seine verbleibenden Läufe mindestens die benötigten Wurzelläufe decken. Geeignete und ungeeignete Kandidaten bleiben mit Item-ID, BPO/BPC, ME, TE, Läufen, Standort sowie Snapshot-, Lauf- und Zeitbeleg sichtbar. Eine verschwundene oder typfalsche gespeicherte Zuordnung wird nicht stillschweigend ersetzt.
+Die Kandidaten stammen ausschließlich aus dem letzten vollständig abgeschlossenen persönlichen Blueprint-Snapshot des ausführenden Charakters und müssen exakt zum Blueprint-Typ des jeweiligen Rezepts passen. BPOs sind stets laufgeeignet; ein BPC ist nur geeignet, wenn seine verbleibenden Läufe mindestens die für diesen Schritt benötigten Läufe decken. Geeignete und ungeeignete Kandidaten bleiben je Schritt mit Item-ID, BPO/BPC, ME, TE, Läufen, Standort sowie Snapshot-, Lauf- und Zeitbeleg sichtbar. Eine verschwundene, typfalsche oder nach einer Mengenänderung nicht mehr laufgeeignete gespeicherte Zuordnung wird nicht stillschweigend ersetzt. Beim Speichern wird die vollständige Liste atomar ersetzt und gegen die aktuell aufgelöste Kette geprüft.
 
-Für jedes direkte Material des zugewiesenen Wurzel-Fertigungsschritts gilt mit ganzzahlig exakter Rechnung:
+Für jedes direkte Material eines zugewiesenen Fertigungsschritts gilt mit ganzzahlig exakter Rechnung:
 
 $$q_{ME}=\max\left(r,\left\lceil\frac{q_{Basis}\cdot r\cdot(100-ME)}{100}\right\rceil\right)$$
 
-Dabei ist $r$ die Laufzahl und $q_{Basis}$ die SDE-Materialmenge je Lauf. Die Untergrenze von einer Einheit je Material und Lauf wird damit vor einer unzulässigen Abrundung geschützt. Diese Einzelmaterialrundung erfolgt vor der erneuten Auflösung veränderter Zwischenproduktmengen. Unmodifizierter Bedarf, wirksamer Bedarf und Ersparnis werden parallel ausgegeben. ME wird nicht auf Reaktionen oder automatisch ausgewählte Zwischen-Blueprints übertragen.
+Dabei ist $r$ die Laufzahl des konkreten Schritts und $q_{Basis}$ die SDE-Materialmenge je Lauf. Die Untergrenze von einer Einheit je Material und Lauf wird damit vor einer unzulässigen Abrundung geschützt. Diese Einzelmaterialrundung erfolgt vor der erneuten Auflösung veränderter Zwischenproduktmengen. Unmodifizierter Bedarf, wirksamer Bedarf und Ersparnis werden parallel ausgegeben. ME wird weder auf Reaktionen noch auf einen anderen Schritt übertragen; ohne explizite Zuordnung bleibt der jeweilige Schritt bei ME 0.
 
-Für die Blueprint-Zeit des zugewiesenen Wurzel-Fertigungsschritts gilt:
+Für die Blueprint-Zeit jedes zugewiesenen Fertigungsschritts gilt:
 
 $$t_{TE}=\max\left(1,\left\lceil\frac{t_{Basis}\cdot r\cdot(100-TE)}{100}\right\rceil\right)$$
 
-$t_{Basis}$ ist die unveränderte SDE-Zeit je Lauf. Die TE-Berechnung wird einmal auf den vollständigen Job angewendet und auf eine volle Sekunde aufgerundet. Jeder Schritt nennt unveränderte SDE-Basiszeit, Blueprint-Zeit und Ersparnis; automatisch ausgewählte Zwischenschritte bleiben bei TE 0. Reaktionen erhalten ebenfalls keinen Blueprint-TE-Modifikator.
+$t_{Basis}$ ist die unveränderte SDE-Zeit je Lauf. Die TE-Berechnung wird einmal auf den vollständigen Job des konkreten Schritts angewendet und auf eine volle Sekunde aufgerundet. Jeder Schritt nennt unveränderte SDE-Basiszeit, Blueprint-Zeit und Ersparnis. Nicht zugewiesene Schritte bleiben bei TE 0; Reaktionen erhalten weiterhin keinen Blueprint-TE-Modifikator.
 
 ## Persönliche Charakter-Skillzeit
 
@@ -111,13 +112,13 @@ Neue Ziele mit Zyklus oder überschrittener Komplexitätsgrenze werden nicht ges
 
 ## Bewusste Berechnungsgrenze
 
-Paket 35 berechnet Bruttobedarf einschließlich belegtem Wurzel-Blueprint-ME, die mit belegtem Wurzel-Blueprint-TE veränderte Blueprint-Zeit, die persönliche Skillzeit, persönlichen Bestand und konfliktfreie zielbezogene Reservierungen. Noch nicht einbezogen werden:
+Paket 36 berechnet Bruttobedarf einschließlich des belegten Blueprint-ME jedes zugewiesenen Fertigungsschritts, die mit dessen belegtem TE veränderte Blueprint-Zeit, die persönliche Skillzeit, persönlichen Bestand und konfliktfreie zielbezogene Reservierungen. Noch nicht einbezogen werden:
 
-- ME, TE oder Zuordnungen für automatisch ausgewählte Zwischen-Blueprints,
+- persönliche Blueprint-ME-/TE-Modifikatoren für Reaktionen,
 - Anlagen-, Service- und Rigboni,
 - Systemkosten, Steuern und Preise.
 
-Die API bestätigt die aktiven Verträge mit `inventoryApplied: true`, `reservationsApplied: true`, `reservationRule: priority-desc-created-asc-plan-id-asc`, `blueprintMaterialEfficiencyApplied: true`, `materialEfficiencyRule: max-runs-ceil-base-runs-percent`, `blueprintTimeEfficiencyApplied: true`, `timeEfficiencyRule: max-one-ceil-base-runs-percent`, `characterSkillTimeApplied: true` und `characterSkillTimeRule: job-wide-ceil-industry-4-advanced-industry-3-reactions-4-active-levels`. Die verbleibende Modifikatorgrenze bleibt `remainingModifiersApplied: false`. Auch die ausgewiesene persönliche Skillzeit darf ohne Anlagen-/Rigboni weiterhin nicht als reale Fertigstellungszeit oder Kostenprognose verstanden werden.
+Die API bestätigt die aktiven Verträge mit `inventoryApplied: true`, `reservationsApplied: true`, `reservationRule: priority-desc-created-asc-plan-id-asc`, `blueprintMaterialEfficiencyApplied: true`, `materialEfficiencyRule: max-runs-ceil-base-runs-percent`, `blueprintTimeEfficiencyApplied: true`, `timeEfficiencyRule: max-one-ceil-base-runs-percent`, `blueprintChainAssignmentsApplied: true`, `blueprintChainAssignmentRule: explicit-per-recipe-unique-item`, `characterSkillTimeApplied: true` und `characterSkillTimeRule: job-wide-ceil-industry-4-advanced-industry-3-reactions-4-active-levels`. Die verbleibende Modifikatorgrenze bleibt `remainingModifiersApplied: false`. Auch die ausgewiesene persönliche Skillzeit darf ohne Anlagen-/Rigboni weiterhin nicht als reale Fertigstellungszeit oder Kostenprognose verstanden werden.
 
 ## Arbeitsvorrat und Bedienung
 

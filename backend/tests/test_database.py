@@ -113,6 +113,7 @@ class DatabaseFoundationTests(unittest.TestCase):
                 "app_settings",
                 "research_plans",
                 "production_plans",
+                "production_plan_step_blueprints",
             }
             <= tables
         )
@@ -166,6 +167,12 @@ class DatabaseFoundationTests(unittest.TestCase):
             production_indexes = {
                 row["name"] for row in migrated.execute("PRAGMA index_list(production_plans)")
             }
+            step_blueprint_indexes = {
+                row["name"]
+                for row in migrated.execute(
+                    "PRAGMA index_list(production_plan_step_blueprints)"
+                )
+            }
         self.assertEqual(record["filename"], backup_path.name)
         self.assertEqual(record["source_schema_version"], previous_version)
         self.assertEqual(record["target_schema_version"], SCHEMA_VERSION)
@@ -175,6 +182,9 @@ class DatabaseFoundationTests(unittest.TestCase):
         self.assertIn("alias", character_columns)
         self.assertIn("blueprint_item_id", production_columns)
         self.assertIn("idx_production_plans_blueprint_item", production_indexes)
+        self.assertIn(
+            "idx_production_plan_step_blueprints_plan", step_blueprint_indexes
+        )
         verify_database_backup(
             backup_path,
             expected_schema_version=previous_version,

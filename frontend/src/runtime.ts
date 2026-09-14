@@ -686,6 +686,7 @@ export interface ProductionStep {
   recipeAlternatives: number;
   materialEfficiency: number;
   materialEfficiencyApplied: boolean;
+  blueprintAssignment: ProductionStepBlueprintAssignment;
   materials: ProductionStepMaterial[];
 }
 
@@ -755,6 +756,29 @@ export interface ProductionBlueprintCandidate {
   locationFlag: string;
   suitable: boolean;
   reason: "ready" | "runs-insufficient";
+}
+
+export interface ProductionStepBlueprintAssignment {
+  blueprintAssignmentState: ProductionBlueprintAssignmentState;
+  blueprintItemId: number | null;
+  blueprintKind: "original" | "copy" | null;
+  blueprintMaterialEfficiency: number | null;
+  blueprintTimeEfficiency: number | null;
+  blueprintRuns: number | null;
+  blueprintLocationId: number | null;
+  blueprintLocationFlag: string | null;
+  blueprintSnapshotId: number | null;
+  blueprintSyncRunId: number | null;
+  blueprintObservedAt: string | null;
+  blueprintCandidateCount: number;
+  blueprintCandidates: ProductionBlueprintCandidate[];
+}
+
+export interface ProductionStepBlueprintInput {
+  blueprintTypeId: number;
+  activity: ProductionActivity;
+  productTypeId: number;
+  blueprintItemId: number;
 }
 
 export interface ProductionPlanRecord {
@@ -835,6 +859,8 @@ export interface ProductionPlanPage {
   materialEfficiencyRule: "max-runs-ceil-base-runs-percent";
   blueprintTimeEfficiencyApplied: true;
   timeEfficiencyRule: "max-one-ceil-base-runs-percent";
+  blueprintChainAssignmentsApplied: true;
+  blueprintChainAssignmentRule: "explicit-per-recipe-unique-item";
   characterSkillTimeApplied: true;
   characterSkillTimeRule: "job-wide-ceil-industry-4-advanced-industry-3-reactions-4-active-levels";
   remainingModifiersApplied: false;
@@ -845,6 +871,7 @@ export interface ProductionPlanInput {
   ownerCharacterId: number;
   blueprintTypeId: number;
   blueprintItemId: number | null;
+  stepBlueprintAssignments: readonly ProductionStepBlueprintInput[];
   activity: ProductionActivity;
   productTypeId: number;
   targetQuantity: number;
@@ -2979,7 +3006,29 @@ function parseProductionStep(candidate: unknown, index: number): ProductionStep 
     }
     return material as unknown as ProductionStepMaterial;
   });
-  return { ...candidate, timeSkills, materials } as unknown as ProductionStep;
+  const blueprintAssignment = parseProductionStepBlueprintAssignment(
+    candidate.blueprintAssignment,
+  );
+  const assignmentEfficiency = blueprintAssignment.blueprintAssignmentState === "ready" &&
+    candidate.activity === "manufacturing"
+    ? blueprintAssignment
+    : null;
+  if (
+    Number(candidate.materialEfficiency) !== Number(
+      assignmentEfficiency?.blueprintMaterialEfficiency ?? 0,
+    ) ||
+    Number(candidate.timeEfficiency) !== Number(
+      assignmentEfficiency?.blueprintTimeEfficiency ?? 0,
+    )
+  ) {
+    throw new Error("The native runtime returned inconsistent step blueprint data.");
+  }
+  return {
+    ...candidate,
+    timeSkills,
+    materials,
+    blueprintAssignment,
+  } as unknown as ProductionStep;
 }
 
 function parseProductionBlueprintCandidate(candidate: unknown): ProductionBlueprintCandidate {
@@ -2997,6 +3046,61 @@ function parseProductionBlueprintCandidate(candidate: unknown): ProductionBluepr
     (candidate.kind === "copy" && candidate.runs === -1)
   ) throw new Error("The native runtime returned invalid production blueprint candidates.");
   return candidate as unknown as ProductionBlueprintCandidate;
+}
+
+function parseProductionStepBlueprintAssignment(
+  candidate: unknown,
+): ProductionStepBlueprintAssignment {
+  if (
+    !isRecord(candidate) ||
+    !["ready", "unassigned", "snapshot-missing", "missing", "type-mismatch", "runs-insufficient"]
+      .includes(String(candidate.blueprintAssignmentState)) ||
+    !(candidate.blueprintItemId === null || isPositiveSafeInteger(candidate.blueprintItemId)) ||
+    !(candidate.blueprintKind === null || ["original", "copy"].includes(String(candidate.blueprintKind))) ||
+    !(candidate.blueprintMaterialEfficiency === null ||
+      isNonNegativeSafeInteger(candidate.blueprintMaterialEfficiency) &&
+      Number(candidate.blueprintMaterialEfficiency) <= 10) ||
+    !(candidate.blueprintTimeEfficiency === null ||
+      isNonNegativeSafeInteger(candidate.blueprintTimeEfficiency) &&
+      Number(candidate.blueprintTimeEfficiency) <= 20) ||
+    !(candidate.blueprintRuns === null || candidate.blueprintRuns === -1 ||
+      isNonNegativeSafeInteger(candidate.blueprintRuns)) ||
+    !(candidate.blueprintLocationId === null || isPositiveSafeInteger(candidate.blueprintLocationId)) ||
+    !(candidate.blueprintLocationFlag === null || isBoundedText(candidate.blueprintLocationFlag, 100)) ||
+    !(candidate.blueprintSnapshotId === null || isPositiveSafeInteger(candidate.blueprintSnapshotId)) ||
+    !(candidate.blueprintSyncRunId === null || isPositiveSafeInteger(candidate.blueprintSyncRunId)) ||
+    !(candidate.blueprintObservedAt === null || isBoundedText(candidate.blueprintObservedAt, 64)) ||
+    !isNonNegativeSafeInteger(candidate.blueprintCandidateCount) ||
+    !Array.isArray(candidate.blueprintCandidates) || candidate.blueprintCandidates.length > 50
+  ) {
+    throw new Error("The native runtime returned invalid step blueprint evidence.");
+  }
+  const blueprintCandidates = candidate.blueprintCandidates.map(parseProductionBlueprintCandidate);
+  const state = String(candidate.blueprintAssignmentState);
+  const hasDetails = candidate.blueprintKind !== null;
+  const detailsComplete = candidate.blueprintItemId !== null &&
+    candidate.blueprintMaterialEfficiency !== null && candidate.blueprintTimeEfficiency !== null &&
+    candidate.blueprintRuns !== null && candidate.blueprintLocationId !== null &&
+    candidate.blueprintLocationFlag !== null;
+  const sourceTupleComplete = candidate.blueprintSnapshotId !== null &&
+    candidate.blueprintSyncRunId !== null && candidate.blueprintObservedAt !== null;
+  const sourceTupleEmpty = candidate.blueprintSnapshotId === null &&
+    candidate.blueprintSyncRunId === null && candidate.blueprintObservedAt === null;
+  if (
+    (!sourceTupleComplete && !sourceTupleEmpty) ||
+    (state === "snapshot-missing") !== sourceTupleEmpty ||
+    (state === "unassigned" && (candidate.blueprintItemId !== null || hasDetails)) ||
+    (state === "missing" && (candidate.blueprintItemId === null || hasDetails)) ||
+    (["ready", "type-mismatch", "runs-insufficient"].includes(state) &&
+      (!hasDetails || !detailsComplete)) ||
+    Number(candidate.blueprintCandidateCount) < blueprintCandidates.length ||
+    (Number(candidate.blueprintCandidateCount) <= 50 &&
+      Number(candidate.blueprintCandidateCount) !== blueprintCandidates.length) ||
+    new Set(blueprintCandidates.map((item) => item.itemId)).size !== blueprintCandidates.length
+  ) {
+    throw new Error("The native runtime returned inconsistent step blueprint evidence.");
+  }
+  return { ...candidate, blueprintCandidates } as unknown as ProductionStepBlueprintAssignment;
 }
 
 function parseProductionStockLocation(candidate: unknown): ProductionStockLocation {
@@ -3190,6 +3294,25 @@ function parseProductionPlanRecord(candidate: unknown): ProductionPlanRecord {
     candidate.blueprintLocationId !== null && candidate.blueprintLocationFlag !== null;
   const ownerSnapshotAvailable = candidate.assetSnapshotId !== null;
   const skillSnapshotAvailable = candidate.skillSnapshotId !== null;
+  const assignedStepBlueprintIds = steps.flatMap((step) =>
+    step.blueprintAssignment.blueprintItemId === null
+      ? []
+      : [step.blueprintAssignment.blueprintItemId]);
+  const rootStepAssignment = steps.at(-1)?.blueprintAssignment;
+  const rootAssignmentMatches = !ready || rootStepAssignment !== undefined &&
+    rootStepAssignment.blueprintAssignmentState === candidate.blueprintAssignmentState &&
+    rootStepAssignment.blueprintItemId === candidate.blueprintItemId &&
+    rootStepAssignment.blueprintKind === candidate.blueprintKind &&
+    rootStepAssignment.blueprintMaterialEfficiency === candidate.blueprintMaterialEfficiency &&
+    rootStepAssignment.blueprintTimeEfficiency === candidate.blueprintTimeEfficiency &&
+    rootStepAssignment.blueprintRuns === candidate.blueprintRuns &&
+    rootStepAssignment.blueprintLocationId === candidate.blueprintLocationId &&
+    rootStepAssignment.blueprintLocationFlag === candidate.blueprintLocationFlag &&
+    rootStepAssignment.blueprintSnapshotId === candidate.blueprintSnapshotId &&
+    rootStepAssignment.blueprintSyncRunId === candidate.blueprintSyncRunId &&
+    rootStepAssignment.blueprintObservedAt === candidate.blueprintObservedAt &&
+    rootStepAssignment.blueprintCandidateCount === candidate.blueprintCandidateCount &&
+    JSON.stringify(rootStepAssignment.blueprintCandidates) === JSON.stringify(blueprintCandidates);
   const expectedInventoryState: ProductionInventoryState = !ready
     ? "not-applicable"
     : grossMaterials.length === 0
@@ -3254,9 +3377,10 @@ function parseProductionPlanRecord(candidate: unknown): ProductionPlanRecord {
       (candidate.activity === "manufacturing" ? Number(candidate.blueprintTimeEfficiency) : 0)) ||
     (assignmentState !== "ready" && Number(candidate.appliedMaterialEfficiency) !== 0) ||
     (assignmentState !== "ready" && Number(candidate.appliedTimeEfficiency) !== 0) ||
+    new Set(assignedStepBlueprintIds).size !== assignedStepBlueprintIds.length ||
+    !rootAssignmentMatches ||
     (ready && steps.at(-1)?.materialEfficiency !== candidate.appliedMaterialEfficiency) ||
-    (ready && steps.at(-1)?.timeEfficiency !== candidate.appliedTimeEfficiency) ||
-    steps.slice(0, -1).some((step) => step.materialEfficiency !== 0 || step.timeEfficiency !== 0)
+    (ready && steps.at(-1)?.timeEfficiency !== candidate.appliedTimeEfficiency)
   ) {
     throw new Error("The native runtime returned inconsistent production-plan data.");
   }
@@ -3299,12 +3423,18 @@ function parseProductionPlanPage(candidate: unknown): ProductionPlanPage {
     candidate.materialEfficiencyRule !== "max-runs-ceil-base-runs-percent" ||
     candidate.blueprintTimeEfficiencyApplied !== true ||
     candidate.timeEfficiencyRule !== "max-one-ceil-base-runs-percent" ||
+    candidate.blueprintChainAssignmentsApplied !== true ||
+    candidate.blueprintChainAssignmentRule !== "explicit-per-recipe-unique-item" ||
     candidate.characterSkillTimeApplied !== true ||
     candidate.characterSkillTimeRule !==
       "job-wide-ceil-industry-4-advanced-industry-3-reactions-4-active-levels" ||
     candidate.remainingModifiersApplied !== false
   ) throw new Error("The native runtime returned invalid production-plan data.");
   const items = candidate.items.map(parseProductionPlanRecord);
+  const assignedBlueprintIds = items.flatMap((item) => item.steps.flatMap((step) =>
+    step.blueprintAssignment.blueprintItemId === null
+      ? []
+      : [step.blueprintAssignment.blueprintItemId]));
   const owners = candidate.owners.map((owner): AssetOwner => {
     if (!isRecord(owner) || !isPositiveSafeInteger(owner.characterId) || !isBoundedText(owner.name, 100)) {
       throw new Error("The native runtime returned invalid production-plan owners.");
@@ -3313,6 +3443,7 @@ function parseProductionPlanPage(candidate: unknown): ProductionPlanPage {
   });
   if (items.length > Number(candidate.limit) || items.length > Number(candidate.total) ||
     new Set(items.map((item) => item.planId)).size !== items.length ||
+    new Set(assignedBlueprintIds).size !== assignedBlueprintIds.length ||
     new Set(owners.map((owner) => owner.characterId)).size !== owners.length) {
     throw new Error("The native runtime returned inconsistent production-plan metadata.");
   }
@@ -3333,6 +3464,8 @@ export async function loadProductionPlans(
     materialEfficiencyRule: "max-runs-ceil-base-runs-percent",
     blueprintTimeEfficiencyApplied: true,
     timeEfficiencyRule: "max-one-ceil-base-runs-percent",
+    blueprintChainAssignmentsApplied: true,
+    blueprintChainAssignmentRule: "explicit-per-recipe-unique-item",
     characterSkillTimeApplied: true,
     characterSkillTimeRule:
       "job-wide-ceil-industry-4-advanced-industry-3-reactions-4-active-levels",
@@ -3351,15 +3484,34 @@ export async function loadProductionPlans(
 
 function validateProductionPlanInput(input: ProductionPlanInput): ProductionPlanInput {
   const note = input.note === null ? null : input.note.trim().replace(/\s+/g, " ") || null;
+  const rootKey = `${input.blueprintTypeId}:${input.activity}:${input.productTypeId}`;
+  const assignmentKeys = new Set<string>();
+  const itemIds = new Set<number>();
   if (
     !(input.planId === null || isPositiveSafeInteger(input.planId)) ||
     !isPositiveSafeInteger(input.ownerCharacterId) || !isPositiveSafeInteger(input.blueprintTypeId) ||
     !(input.blueprintItemId === null || isPositiveSafeInteger(input.blueprintItemId)) ||
     !productionActivities.includes(input.activity) || !isPositiveSafeInteger(input.productTypeId) ||
     !isPositiveSafeInteger(input.targetQuantity) || !isNonNegativeSafeInteger(input.priority) ||
-    input.priority > 999 || !(note === null || note.length <= 240)
+    input.priority > 999 || !(note === null || note.length <= 240) ||
+    !Array.isArray(input.stepBlueprintAssignments) || input.stepBlueprintAssignments.length > 499
   ) throw new Error("The production plan is invalid.");
-  return { ...input, note };
+  if (input.blueprintItemId !== null) itemIds.add(input.blueprintItemId);
+  const stepBlueprintAssignments = input.stepBlueprintAssignments.map((assignment) => {
+    const key = `${assignment.blueprintTypeId}:${assignment.activity}:${assignment.productTypeId}`;
+    if (
+      !isPositiveSafeInteger(assignment.blueprintTypeId) ||
+      assignment.activity !== "manufacturing" ||
+      !isPositiveSafeInteger(assignment.productTypeId) ||
+      !isPositiveSafeInteger(assignment.blueprintItemId) ||
+      key === rootKey || assignmentKeys.has(key) || itemIds.has(assignment.blueprintItemId)
+    ) throw new Error("The production plan contains invalid step blueprints.");
+    assignmentKeys.add(key);
+    itemIds.add(assignment.blueprintItemId);
+    return assignment;
+  }).sort((left, right) => left.productTypeId - right.productTypeId ||
+    left.activity.localeCompare(right.activity) || left.blueprintTypeId - right.blueprintTypeId);
+  return { ...input, note, stepBlueprintAssignments };
 }
 
 export async function saveProductionPlan(
@@ -3371,6 +3523,7 @@ export async function saveProductionPlan(
   const candidate: unknown = JSON.parse(await adapter.invoke("save_production_plan", {
     planId: validated.planId, ownerCharacterId: validated.ownerCharacterId,
     blueprintTypeId: validated.blueprintTypeId, blueprintItemId: validated.blueprintItemId,
+    stepBlueprintAssignments: validated.stepBlueprintAssignments,
     activity: validated.activity,
     productTypeId: validated.productTypeId, targetQuantity: validated.targetQuantity,
     priority: validated.priority, note: validated.note,
@@ -3380,6 +3533,8 @@ export async function saveProductionPlan(
     candidate.ownerCharacterId !== validated.ownerCharacterId ||
     candidate.blueprintTypeId !== validated.blueprintTypeId ||
     candidate.blueprintItemId !== validated.blueprintItemId || candidate.activity !== validated.activity ||
+    !Array.isArray(candidate.stepBlueprintAssignments) ||
+    JSON.stringify(candidate.stepBlueprintAssignments) !== JSON.stringify(validated.stepBlueprintAssignments) ||
     candidate.productTypeId !== validated.productTypeId || candidate.targetQuantity !== validated.targetQuantity ||
     candidate.priority !== validated.priority || candidate.note !== validated.note) {
     throw new Error("The native runtime returned an invalid production-plan update.");

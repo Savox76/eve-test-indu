@@ -52,7 +52,7 @@ const nativeRuntime = (overrides: Partial<Extract<DesktopRuntimeStatus, { state:
     sidecar: "ready",
     database: "ready",
     databaseLocation: "data/foundry.sqlite3",
-    schemaVersion: 10,
+    schemaVersion: 11,
     errorCode: null,
     data: {
       state: "empty",
@@ -357,6 +357,17 @@ const productionPlanPage: ProductionPlanPage = {
       characterSkillTimeSavingsSeconds: 42,
       recipeAlternatives: 1, materialEfficiency: 0,
       materialEfficiencyApplied: false,
+      blueprintAssignment: {
+        blueprintAssignmentState: "unassigned", blueprintItemId: null,
+        blueprintKind: null, blueprintMaterialEfficiency: null,
+        blueprintTimeEfficiency: null, blueprintRuns: null,
+        blueprintLocationId: null, blueprintLocationFlag: null,
+        blueprintSnapshotId: 12, blueprintSyncRunId: 13,
+        blueprintObservedAt: "2026-09-11T12:00:00Z", blueprintCandidateCount: 1,
+        blueprintCandidates: [{ itemId: 7_020, kind: "copy", materialEfficiency: 10,
+          timeEfficiency: 20, runs: 2, locationId: 60_003_760, locationFlag: "Hangar",
+          suitable: true, reason: "ready" }],
+      },
       materials: [{ typeId: 900, typeName: "Synthetic Mineral", quantityPerRun: 5,
         unmodifiedGrossQuantity: 10, grossQuantity: 10, materialEfficiency: 0,
         materialEfficiencySavings: 0, producedByPlan: false }] }],
@@ -400,6 +411,8 @@ const productionPlanPage: ProductionPlanPage = {
   materialEfficiencyRule: "max-runs-ceil-base-runs-percent",
   blueprintTimeEfficiencyApplied: true,
   timeEfficiencyRule: "max-one-ceil-base-runs-percent",
+  blueprintChainAssignmentsApplied: true,
+  blueprintChainAssignmentRule: "explicit-per-recipe-unique-item",
   characterSkillTimeApplied: true,
   characterSkillTimeRule: "job-wide-ceil-industry-4-advanced-industry-3-reactions-4-active-levels",
   remainingModifiersApplied: false,
@@ -776,7 +789,7 @@ describe("New Eden Foundry design preview", () => {
   it("credits Savoxmedia as the app creator next to the version", () => {
     render(<App />);
 
-    expect(screen.getByText("v0.2.0-alpha.6")).toBeInTheDocument();
+    expect(screen.getByText("v0.2.0-alpha.7")).toBeInTheDocument();
     expect(screen.getByText("Savoxmedia")).toBeInTheDocument();
     expect(screen.getByText("Erstellt von", { exact: false })).toBeInTheDocument();
     expect(screen.queryByText("Lokaler Betreiber")).not.toBeInTheDocument();
@@ -957,6 +970,7 @@ describe("New Eden Foundry design preview", () => {
 
     await waitFor(() => expect(productionPlanSaver).toHaveBeenCalledWith({
       planId: null, ownerCharacterId: 90_888_001, blueprintTypeId: 100, blueprintItemId: null,
+      stepBlueprintAssignments: [],
       activity: "manufacturing", productTypeId: 101, targetQuantity: 2,
       priority: 0, note: null,
     }));
@@ -978,7 +992,7 @@ describe("New Eden Foundry design preview", () => {
     fireEvent.click(screen.getByRole("button", { name: "Änderungen speichern" }));
 
     await waitFor(() => expect(productionPlanSaver).toHaveBeenCalledWith(expect.objectContaining({
-      planId: 1, blueprintItemId: 7_020,
+      planId: 1, blueprintItemId: 7_020, stepBlueprintAssignments: [],
     })));
   });
 
@@ -1013,6 +1027,17 @@ describe("New Eden Foundry design preview", () => {
           timeEfficiencySavingsSeconds: 40,
           totalCharacterTimeSeconds: 127,
           characterSkillTimeSavingsSeconds: 33,
+          blueprintAssignment: {
+            ...root.blueprintAssignment,
+            blueprintAssignmentState: "ready",
+            blueprintItemId: 7_020,
+            blueprintKind: "copy",
+            blueprintMaterialEfficiency: 10,
+            blueprintTimeEfficiency: 20,
+            blueprintRuns: 2,
+            blueprintLocationId: 60_003_760,
+            blueprintLocationFlag: "Hangar",
+          },
         }],
       }],
     };
@@ -1021,7 +1046,7 @@ describe("New Eden Foundry design preview", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Produktion" }));
 
-    expect(await screen.findByText(/TE 20 verkürzt ausschließlich/)).toBeInTheDocument();
+    expect(await screen.findByText(/TE 20 verkürzt die Blueprint-Zeit/)).toBeInTheDocument();
     expect(screen.getByText("Blueprint-Zeit 2 min 40 s · TE 20 spart 40 s")).toBeInTheDocument();
     expect(screen.getByText("Skill-Zeit verfügbar")).toBeInTheDocument();
     expect(screen.getByText("Zeit nach Skills 2 min 7 s · 33 s gegenüber Blueprint-Zeit gespart")).toBeInTheDocument();
@@ -1068,6 +1093,14 @@ describe("New Eden Foundry design preview", () => {
 
   it("renders component steps before the selected production goal", async () => {
     const basePlan = productionPlanPage.items[0];
+    const productionPlanSaver = vi.fn().mockResolvedValue({
+      saved: true, planId: 1, ownerCharacterId: 90_888_001,
+      blueprintTypeId: 100, blueprintItemId: null,
+      stepBlueprintAssignments: [{ blueprintTypeId: 110, activity: "manufacturing",
+        productTypeId: 111, blueprintItemId: 7_010 }],
+      activity: "manufacturing", productTypeId: 101, targetQuantity: 3,
+      priority: 50, note: "Doctrine",
+    });
     const componentStep = {
       ...basePlan.steps[0],
       sequence: 1,
@@ -1082,6 +1115,14 @@ describe("New Eden Foundry design preview", () => {
       runsSavedByMaterialEfficiency: 0,
       producedQuantity: 4,
       surplusQuantity: 0,
+      blueprintAssignment: {
+        ...basePlan.steps[0].blueprintAssignment,
+        blueprintCandidateCount: 1,
+        blueprintCandidates: [{ itemId: 7_010, kind: "original" as const,
+          materialEfficiency: 8, timeEfficiency: 16, runs: -1,
+          locationId: 60_003_760, locationFlag: "Hangar", suitable: true,
+          reason: "ready" as const }],
+      },
       materials: [{ typeId: 901, typeName: "Synthetic Ore", quantityPerRun: 2,
         unmodifiedGrossQuantity: 8, grossQuantity: 8, materialEfficiency: 0,
         materialEfficiencySavings: 0, producedByPlan: false }],
@@ -1098,7 +1139,8 @@ describe("New Eden Foundry design preview", () => {
       items: [{ ...basePlan, steps: [componentStep, goalStep] }],
     } satisfies ProductionPlanPage);
     render(<App runtimeLoader={() => nativeRuntime()}
-      productionPlansLoader={productionPlansLoader} />);
+      productionPlansLoader={productionPlansLoader}
+      productionPlanSaver={productionPlanSaver} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Produktion" }));
     const component = await screen.findByText(/Schritt 1 · Vorprodukt: Synthetic Component/);
@@ -1106,6 +1148,13 @@ describe("New Eden Foundry design preview", () => {
     expect(component.closest("li")).not.toHaveClass("production-step--goal");
     expect(goal.closest("li")).toHaveClass("production-step--goal");
     expect(component.compareDocumentPosition(goal) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    fireEvent.change(screen.getByRole("combobox", { name: /Blueprint für diesen Schritt/ }),
+      { target: { value: "7010" } });
+    fireEvent.click(screen.getByRole("button", { name: "Änderungen speichern" }));
+    await waitFor(() => expect(productionPlanSaver).toHaveBeenCalledWith(expect.objectContaining({
+      stepBlueprintAssignments: [{ blueprintTypeId: 110, activity: "manufacturing",
+        productTypeId: 111, blueprintItemId: 7_010 }],
+    })));
   });
 
   it("starts and cancels one-character-at-a-time PKCE login with selected scopes", async () => {

@@ -104,6 +104,7 @@ def plan_input(**changes: object) -> dict:
         "ownerCharacterId": 7,
         "blueprintTypeId": 100,
         "blueprintItemId": None,
+        "stepBlueprintAssignments": [],
         "activity": "manufacturing",
         "productTypeId": 101,
         "targetQuantity": 3,
@@ -531,6 +532,178 @@ class ProductionPlanningTests(unittest.TestCase):
         self.assertEqual(root["characterSkillTimeSavingsSeconds"], 52)
         self.assertEqual(record["totalCharacterTimeSeconds"], 172)
         self.assertEqual(record["characterSkillTimeSavingsSeconds"], 80)
+
+    def test_personal_blueprints_apply_me_and_te_to_every_assigned_chain_step(self) -> None:
+        import_industry_sde(self.db, **bundle())
+        self.publish_blueprints(
+            7,
+            [
+                {
+                    "item_id": 4_001,
+                    "type_id": 100,
+                    "quantity": -1,
+                    "material_efficiency": 10,
+                    "time_efficiency": 20,
+                    "runs": -1,
+                    "location_id": 60_003_760,
+                    "location_flag": "Hangar",
+                },
+                {
+                    "item_id": 4_002,
+                    "type_id": 110,
+                    "quantity": -2,
+                    "material_efficiency": 10,
+                    "time_efficiency": 20,
+                    "runs": 14,
+                    "location_id": 60_003_760,
+                    "location_flag": "Hangar",
+                },
+                {
+                    "item_id": 4_003,
+                    "type_id": 120,
+                    "quantity": -1,
+                    "material_efficiency": 10,
+                    "time_efficiency": 20,
+                    "runs": -1,
+                    "location_id": 60_003_760,
+                    "location_flag": "Hangar",
+                },
+            ],
+            "2026-09-14T15:00:00Z",
+        )
+        saved = save_production_plan(
+            self.db,
+            plan_input(
+                blueprintItemId=4_001,
+                targetQuantity=20,
+                stepBlueprintAssignments=[
+                    {
+                        "blueprintTypeId": 110,
+                        "activity": "manufacturing",
+                        "productTypeId": 111,
+                        "blueprintItemId": 4_002,
+                    },
+                    {
+                        "blueprintTypeId": 120,
+                        "activity": "manufacturing",
+                        "productTypeId": 121,
+                        "blueprintItemId": 4_003,
+                    },
+                ],
+            ),
+        )
+
+        record = query_production_plans(self.db, query())["items"][0]
+
+        self.assertEqual(
+            [step["blueprintAssignment"]["blueprintItemId"] for step in record["steps"]],
+            [4_003, 4_002, 4_001],
+        )
+        self.assertEqual(
+            [(step["materialEfficiency"], step["timeEfficiency"]) for step in record["steps"]],
+            [(10, 20), (10, 20), (10, 20)],
+        )
+        self.assertEqual(
+            [(step["productTypeId"], step["runs"]) for step in record["steps"]],
+            [(121, 10), (111, 14), (101, 10)],
+        )
+        self.assertEqual(record["grossMaterials"][0]["quantity"], 107)
+        self.assertEqual(record["totalBaseTimeSeconds"], 1_380)
+        self.assertEqual(record["totalBlueprintTimeSeconds"], 1_104)
+        persisted = list(
+            self.db.execute(
+                "SELECT blueprint_item_id FROM production_plan_step_blueprints "
+                "WHERE plan_id=? ORDER BY product_type_id",
+                (saved["planId"],),
+            )
+        )
+        self.assertEqual([int(row[0]) for row in persisted], [4_002, 4_003])
+
+    def test_step_blueprint_assignments_reject_wrong_steps_runs_and_reuse(self) -> None:
+        import_industry_sde(self.db, **bundle())
+        self.publish_blueprints(
+            7,
+            [
+                {
+                    "item_id": 5_001,
+                    "type_id": 110,
+                    "quantity": -2,
+                    "material_efficiency": 10,
+                    "time_efficiency": 20,
+                    "runs": 1,
+                    "location_id": 60_003_760,
+                    "location_flag": "Hangar",
+                },
+                {
+                    "item_id": 5_002,
+                    "type_id": 110,
+                    "quantity": -1,
+                    "material_efficiency": 8,
+                    "time_efficiency": 16,
+                    "runs": -1,
+                    "location_id": 60_003_760,
+                    "location_flag": "Hangar",
+                },
+            ],
+            "2026-09-14T15:30:00Z",
+        )
+        with self.assertRaisesRegex(
+            ProductionPlanningError, "production_blueprint_runs-insufficient"
+        ):
+            save_production_plan(
+                self.db,
+                plan_input(stepBlueprintAssignments=[{
+                    "blueprintTypeId": 110,
+                    "activity": "manufacturing",
+                    "productTypeId": 111,
+                    "blueprintItemId": 5_001,
+                }]),
+            )
+        save_production_plan(
+            self.db,
+            plan_input(stepBlueprintAssignments=[{
+                "blueprintTypeId": 110,
+                "activity": "manufacturing",
+                "productTypeId": 111,
+                "blueprintItemId": 5_002,
+            }]),
+        )
+        with self.assertRaisesRegex(
+            ProductionPlanningError, "production_blueprint_already_assigned"
+        ):
+            save_production_plan(
+                self.db,
+                plan_input(stepBlueprintAssignments=[{
+                    "blueprintTypeId": 110,
+                    "activity": "manufacturing",
+                    "productTypeId": 111,
+                    "blueprintItemId": 5_002,
+                }]),
+            )
+        with self.assertRaisesRegex(
+            ProductionPlanningError, "production_blueprint_step_missing"
+        ):
+            save_production_plan(
+                self.db,
+                plan_input(stepBlueprintAssignments=[{
+                    "blueprintTypeId": 110,
+                    "activity": "manufacturing",
+                    "productTypeId": 999,
+                    "blueprintItemId": 5_001,
+                }]),
+            )
+        with self.assertRaisesRegex(
+            ProductionPlanningError, "production_plan_input_invalid"
+        ):
+            save_production_plan(
+                self.db,
+                plan_input(stepBlueprintAssignments=[{
+                    "blueprintTypeId": 110,
+                    "activity": "reaction",
+                    "productTypeId": 111,
+                    "blueprintItemId": 5_001,
+                }]),
+            )
 
     def test_active_character_skills_apply_to_every_matching_step(self) -> None:
         import_industry_sde(self.db, **bundle())

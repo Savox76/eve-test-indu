@@ -878,6 +878,7 @@ struct ProductionStep {
     recipe_alternatives: u64,
     material_efficiency: u8,
     material_efficiency_applied: bool,
+    blueprint_assignment: ProductionStepBlueprintAssignment,
     materials: Vec<ProductionStepMaterial>,
 }
 
@@ -945,7 +946,7 @@ struct ProductionWarning {
     candidate_count: u64,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ProductionBlueprintCandidate {
     item_id: u64,
@@ -957,6 +958,33 @@ struct ProductionBlueprintCandidate {
     location_flag: String,
     suitable: bool,
     reason: String,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ProductionStepBlueprintAssignment {
+    blueprint_assignment_state: String,
+    blueprint_item_id: Option<u64>,
+    blueprint_kind: Option<String>,
+    blueprint_material_efficiency: Option<u8>,
+    blueprint_time_efficiency: Option<u8>,
+    blueprint_runs: Option<i64>,
+    blueprint_location_id: Option<u64>,
+    blueprint_location_flag: Option<String>,
+    blueprint_snapshot_id: Option<u64>,
+    blueprint_sync_run_id: Option<u64>,
+    blueprint_observed_at: Option<String>,
+    blueprint_candidate_count: u64,
+    blueprint_candidates: Vec<ProductionBlueprintCandidate>,
+}
+
+#[derive(Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ProductionStepBlueprintInput {
+    blueprint_type_id: u64,
+    activity: String,
+    product_type_id: u64,
+    blueprint_item_id: u64,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -1042,6 +1070,8 @@ struct ProductionPlanQueryResponse {
     material_efficiency_rule: String,
     blueprint_time_efficiency_applied: bool,
     time_efficiency_rule: String,
+    blueprint_chain_assignments_applied: bool,
+    blueprint_chain_assignment_rule: String,
     character_skill_time_applied: bool,
     character_skill_time_rule: String,
     remaining_modifiers_applied: bool,
@@ -1055,6 +1085,7 @@ struct ProductionPlanMutationResponse {
     owner_character_id: u64,
     blueprint_type_id: u64,
     blueprint_item_id: Option<u64>,
+    step_blueprint_assignments: Vec<ProductionStepBlueprintInput>,
     activity: String,
     product_type_id: u64,
     target_quantity: u64,
@@ -2700,6 +2731,81 @@ fn production_blueprint_candidate_is_valid(candidate: &ProductionBlueprintCandid
         && (candidate.kind != "copy" || candidate.runs != -1)
 }
 
+fn production_step_blueprint_assignment_is_valid(
+    assignment: &ProductionStepBlueprintAssignment,
+) -> bool {
+    let source_complete = match (
+        assignment.blueprint_snapshot_id,
+        assignment.blueprint_sync_run_id,
+        assignment.blueprint_observed_at.as_ref(),
+    ) {
+        (None, None, None) => false,
+        (Some(snapshot_id), Some(sync_run_id), Some(observed_at)) => {
+            production_id_is_valid(snapshot_id)
+                && production_id_is_valid(sync_run_id)
+                && asset_text_is_valid(observed_at, 64)
+        }
+        _ => return false,
+    };
+    let has_details = assignment.blueprint_kind.is_some();
+    let details_valid = has_details
+        && assignment
+            .blueprint_item_id
+            .is_some_and(production_id_is_valid)
+        && assignment
+            .blueprint_kind
+            .as_ref()
+            .is_some_and(|value| matches!(value.as_str(), "original" | "copy"))
+        && assignment
+            .blueprint_material_efficiency
+            .is_some_and(|value| value <= 10)
+        && assignment
+            .blueprint_time_efficiency
+            .is_some_and(|value| value <= 20)
+        && assignment
+            .blueprint_runs
+            .is_some_and(|value| value == -1 || value >= 0)
+        && assignment
+            .blueprint_location_id
+            .is_some_and(production_id_is_valid)
+        && assignment
+            .blueprint_location_flag
+            .as_ref()
+            .is_some_and(|value| asset_text_is_valid(value, 100));
+    let candidate_ids = assignment
+        .blueprint_candidates
+        .iter()
+        .map(|candidate| candidate.item_id)
+        .collect::<HashSet<_>>();
+    matches!(
+        assignment.blueprint_assignment_state.as_str(),
+        "ready"
+            | "unassigned"
+            | "snapshot-missing"
+            | "missing"
+            | "type-mismatch"
+            | "runs-insufficient"
+    ) && ((assignment.blueprint_assignment_state == "snapshot-missing") != source_complete)
+        && match assignment.blueprint_assignment_state.as_str() {
+            "snapshot-missing" | "unassigned" => {
+                assignment.blueprint_item_id.is_none() && !has_details
+            }
+            "missing" => assignment.blueprint_item_id.is_some() && !has_details,
+            "ready" | "type-mismatch" | "runs-insufficient" => details_valid,
+            _ => false,
+        }
+        && assignment.blueprint_candidate_count <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && assignment.blueprint_candidates.len() <= 50
+        && assignment.blueprint_candidate_count >= assignment.blueprint_candidates.len() as u64
+        && (assignment.blueprint_candidate_count > 50
+            || assignment.blueprint_candidate_count == assignment.blueprint_candidates.len() as u64)
+        && candidate_ids.len() == assignment.blueprint_candidates.len()
+        && assignment
+            .blueprint_candidates
+            .iter()
+            .all(production_blueprint_candidate_is_valid)
+}
+
 fn production_time_skills_are_valid(step: &ProductionStep) -> bool {
     let expected: &[(u64, &str, u8)] = if step.activity == "manufacturing" {
         &[
@@ -2779,6 +2885,23 @@ fn production_plan_record_is_valid(item: &ProductionPlanRecord) -> bool {
             && production_id_is_valid(step.recipe_alternatives)
             && step.material_efficiency <= 10
             && step.material_efficiency_applied == (step.material_efficiency > 0)
+            && production_step_blueprint_assignment_is_valid(&step.blueprint_assignment)
+            && if step.blueprint_assignment.blueprint_assignment_state == "ready"
+                && step.activity == "manufacturing"
+            {
+                step.material_efficiency
+                    == step
+                        .blueprint_assignment
+                        .blueprint_material_efficiency
+                        .unwrap_or_default()
+                    && step.time_efficiency
+                        == step
+                            .blueprint_assignment
+                            .blueprint_time_efficiency
+                            .unwrap_or_default()
+            } else {
+                step.material_efficiency == 0 && step.time_efficiency == 0
+            }
             && step.output_quantity_per_run.checked_mul(step.runs) == Some(step.produced_quantity)
             && step.produced_quantity.checked_sub(step.required_quantity)
                 == Some(step.surplus_quantity)
@@ -2951,6 +3074,16 @@ fn production_plan_record_is_valid(item: &ProductionPlanRecord) -> bool {
             && warning.candidate_count >= 2
             && warning.candidate_count <= JAVASCRIPT_MAX_SAFE_INTEGER
     });
+    let assigned_step_blueprint_ids = item
+        .steps
+        .iter()
+        .filter_map(|step| step.blueprint_assignment.blueprint_item_id)
+        .collect::<Vec<_>>();
+    let assigned_step_blueprint_id_count = assigned_step_blueprint_ids
+        .iter()
+        .copied()
+        .collect::<HashSet<_>>()
+        .len();
     let ready = item.state == "ready";
     let blueprint_source_valid = match (
         item.blueprint_snapshot_id,
@@ -3088,6 +3221,32 @@ fn production_plan_record_is_valid(item: &ProductionPlanRecord) -> bool {
                     && step.product_type_id == item.product_type_id
                     && step.activity == item.activity
                     && step.required_quantity == item.target_quantity
+                    && step.blueprint_assignment.blueprint_assignment_state
+                        == item.blueprint_assignment_state
+                    && step.blueprint_assignment.blueprint_item_id == item.blueprint_item_id
+                    && step.blueprint_assignment.blueprint_kind == item.blueprint_kind
+                    && step.blueprint_assignment.blueprint_material_efficiency
+                        == item.blueprint_material_efficiency
+                    && step.blueprint_assignment.blueprint_time_efficiency
+                        == item.blueprint_time_efficiency
+                    && step.blueprint_assignment.blueprint_runs == item.blueprint_runs
+                    && step.blueprint_assignment.blueprint_location_id == item.blueprint_location_id
+                    && step.blueprint_assignment.blueprint_location_flag
+                        == item.blueprint_location_flag
+                    && step.blueprint_assignment.blueprint_snapshot_id == item.blueprint_snapshot_id
+                    && step.blueprint_assignment.blueprint_sync_run_id == item.blueprint_sync_run_id
+                    && step.blueprint_assignment.blueprint_observed_at == item.blueprint_observed_at
+                    && step.blueprint_assignment.blueprint_candidate_count
+                        == item.blueprint_candidate_count
+                    && step
+                        .blueprint_assignment
+                        .blueprint_candidates
+                        .eq(&item.blueprint_candidates)
+            })
+            && item.steps.iter().all(|step| {
+                step.blueprint_assignment.blueprint_snapshot_id == item.blueprint_snapshot_id
+                    && step.blueprint_assignment.blueprint_sync_run_id == item.blueprint_sync_run_id
+                    && step.blueprint_assignment.blueprint_observed_at == item.blueprint_observed_at
             })
             && item.steps.iter().try_fold(0_u64, |total, step| {
                 total.checked_add(step.total_base_time_seconds)
@@ -3140,9 +3299,6 @@ fn production_plan_record_is_valid(item: &ProductionPlanRecord) -> bool {
                 .steps
                 .last()
                 .is_some_and(|step| step.time_efficiency == item.applied_time_efficiency)
-            && item.steps[..item.steps.len() - 1]
-                .iter()
-                .all(|step| step.material_efficiency == 0 && step.time_efficiency == 0)
     } else {
         item.steps.is_empty()
             && item.gross_materials.is_empty()
@@ -3224,6 +3380,7 @@ fn production_plan_record_is_valid(item: &ProductionPlanRecord) -> bool {
                 .all(|material| material.availability_state == "snapshot-missing"))
         && asset_text_is_valid(&item.created_at, 64)
         && asset_text_is_valid(&item.updated_at, 64)
+        && assigned_step_blueprint_id_count == assigned_step_blueprint_ids.len()
         && steps_valid
         && gross_valid
         && warnings_valid
@@ -3241,6 +3398,17 @@ fn production_plan_query_response_is_valid(response: &ProductionPlanQueryRespons
         .iter()
         .map(|owner| owner.character_id)
         .collect::<HashSet<_>>();
+    let assigned_blueprint_ids = response
+        .items
+        .iter()
+        .flat_map(|item| item.steps.iter())
+        .filter_map(|step| step.blueprint_assignment.blueprint_item_id)
+        .collect::<Vec<_>>();
+    let assigned_blueprint_id_count = assigned_blueprint_ids
+        .iter()
+        .copied()
+        .collect::<HashSet<_>>()
+        .len();
     let summary = [
         response.summary.ready,
         response.summary.sde_unavailable,
@@ -3255,6 +3423,7 @@ fn production_plan_query_response_is_valid(response: &ProductionPlanQueryRespons
         && response.items.len() as u64 <= response.limit
         && response.items.len() as u64 <= response.total
         && ids.len() == response.items.len()
+        && assigned_blueprint_id_count == assigned_blueprint_ids.len()
         && owner_ids.len() == response.owners.len()
         && response.items.iter().all(production_plan_record_is_valid)
         && response.owners.iter().all(|owner| {
@@ -3286,6 +3455,8 @@ fn production_plan_query_response_is_valid(response: &ProductionPlanQueryRespons
         && response.material_efficiency_rule == "max-runs-ceil-base-runs-percent"
         && response.blueprint_time_efficiency_applied
         && response.time_efficiency_rule == "max-one-ceil-base-runs-percent"
+        && response.blueprint_chain_assignments_applied
+        && response.blueprint_chain_assignment_rule == "explicit-per-recipe-unique-item"
         && response.character_skill_time_applied
         && response.character_skill_time_rule
             == "job-wide-ceil-industry-4-advanced-industry-3-reactions-4-active-levels"
@@ -3293,11 +3464,49 @@ fn production_plan_query_response_is_valid(response: &ProductionPlanQueryRespons
 }
 
 fn production_plan_mutation_is_valid(item: &ProductionPlanMutationResponse) -> bool {
+    let root_key = (
+        item.blueprint_type_id,
+        item.activity.as_str(),
+        item.product_type_id,
+    );
+    let keys = item
+        .step_blueprint_assignments
+        .iter()
+        .map(|assignment| {
+            (
+                assignment.blueprint_type_id,
+                assignment.activity.as_str(),
+                assignment.product_type_id,
+            )
+        })
+        .collect::<HashSet<_>>();
+    let item_ids = item
+        .step_blueprint_assignments
+        .iter()
+        .map(|assignment| assignment.blueprint_item_id)
+        .collect::<HashSet<_>>();
     item.saved
         && production_id_is_valid(item.plan_id)
         && production_id_is_valid(item.owner_character_id)
         && production_id_is_valid(item.blueprint_type_id)
         && item.blueprint_item_id.is_none_or(production_id_is_valid)
+        && item.step_blueprint_assignments.len() <= 499
+        && keys.len() == item.step_blueprint_assignments.len()
+        && item_ids.len() == item.step_blueprint_assignments.len()
+        && item
+            .blueprint_item_id
+            .is_none_or(|root_item_id| !item_ids.contains(&root_item_id))
+        && item.step_blueprint_assignments.iter().all(|assignment| {
+            production_id_is_valid(assignment.blueprint_type_id)
+                && assignment.activity == "manufacturing"
+                && production_id_is_valid(assignment.product_type_id)
+                && production_id_is_valid(assignment.blueprint_item_id)
+                && (
+                    assignment.blueprint_type_id,
+                    assignment.activity.as_str(),
+                    assignment.product_type_id,
+                ) != root_key
+        })
         && PRODUCTION_ACTIVITIES.contains(&item.activity.as_str())
         && production_id_is_valid(item.product_type_id)
         && production_id_is_valid(item.target_quantity)
@@ -5052,6 +5261,7 @@ fn save_production_plan(
     owner_character_id: u64,
     blueprint_type_id: u64,
     blueprint_item_id: Option<u64>,
+    mut step_blueprint_assignments: Vec<ProductionStepBlueprintInput>,
     activity: String,
     product_type_id: u64,
     target_quantity: u64,
@@ -5059,12 +5269,48 @@ fn save_production_plan(
     note: Option<String>,
     state: State<'_, RuntimeState>,
 ) -> Result<String, String> {
+    step_blueprint_assignments.sort_by(|left, right| {
+        left.product_type_id
+            .cmp(&right.product_type_id)
+            .then_with(|| left.activity.cmp(&right.activity))
+            .then_with(|| left.blueprint_type_id.cmp(&right.blueprint_type_id))
+    });
+    let root_key = (blueprint_type_id, activity.as_str(), product_type_id);
+    let step_keys = step_blueprint_assignments
+        .iter()
+        .map(|assignment| {
+            (
+                assignment.blueprint_type_id,
+                assignment.activity.as_str(),
+                assignment.product_type_id,
+            )
+        })
+        .collect::<HashSet<_>>();
+    let step_item_ids = step_blueprint_assignments
+        .iter()
+        .map(|assignment| assignment.blueprint_item_id)
+        .collect::<HashSet<_>>();
     if plan_id == Some(0)
         || plan_id.is_some_and(|value| value > JAVASCRIPT_MAX_SAFE_INTEGER)
         || !production_id_is_valid(owner_character_id)
         || !production_id_is_valid(blueprint_type_id)
         || blueprint_item_id == Some(0)
         || blueprint_item_id.is_some_and(|value| value > JAVASCRIPT_MAX_SAFE_INTEGER)
+        || step_blueprint_assignments.len() > 499
+        || step_keys.len() != step_blueprint_assignments.len()
+        || step_item_ids.len() != step_blueprint_assignments.len()
+        || blueprint_item_id.is_some_and(|value| step_item_ids.contains(&value))
+        || step_blueprint_assignments.iter().any(|assignment| {
+            !production_id_is_valid(assignment.blueprint_type_id)
+                || assignment.activity != "manufacturing"
+                || !production_id_is_valid(assignment.product_type_id)
+                || !production_id_is_valid(assignment.blueprint_item_id)
+                || (
+                    assignment.blueprint_type_id,
+                    assignment.activity.as_str(),
+                    assignment.product_type_id,
+                ) == root_key
+        })
         || !PRODUCTION_ACTIVITIES.contains(&activity.as_str())
         || !production_id_is_valid(product_type_id)
         || !production_id_is_valid(target_quantity)
@@ -5081,6 +5327,7 @@ fn save_production_plan(
         "ownerCharacterId": owner_character_id,
         "blueprintTypeId": blueprint_type_id,
         "blueprintItemId": blueprint_item_id,
+        "stepBlueprintAssignments": step_blueprint_assignments,
         "activity": activity,
         "productTypeId": product_type_id,
         "targetQuantity": target_quantity,
@@ -5106,6 +5353,7 @@ fn save_production_plan(
         || saved.owner_character_id != owner_character_id
         || saved.blueprint_type_id != blueprint_type_id
         || saved.blueprint_item_id != blueprint_item_id
+        || saved.step_blueprint_assignments != step_blueprint_assignments
         || saved.activity != activity
         || saved.product_type_id != product_type_id
         || saved.target_quantity != target_quantity
@@ -6982,6 +7230,21 @@ mod tests {
                     recipe_alternatives: 1,
                     material_efficiency: 0,
                     material_efficiency_applied: false,
+                    blueprint_assignment: super::ProductionStepBlueprintAssignment {
+                        blueprint_assignment_state: "unassigned".to_owned(),
+                        blueprint_item_id: None,
+                        blueprint_kind: None,
+                        blueprint_material_efficiency: None,
+                        blueprint_time_efficiency: None,
+                        blueprint_runs: None,
+                        blueprint_location_id: None,
+                        blueprint_location_flag: None,
+                        blueprint_snapshot_id: Some(12),
+                        blueprint_sync_run_id: Some(13),
+                        blueprint_observed_at: Some("2026-09-12T10:00:00Z".to_owned()),
+                        blueprint_candidate_count: 0,
+                        blueprint_candidates: Vec::new(),
+                    },
                     materials: vec![ProductionStepMaterial {
                         type_id: 900,
                         type_name: "Synthetic Mineral".to_owned(),
@@ -7033,6 +7296,31 @@ mod tests {
                     recipe_alternatives: 1,
                     material_efficiency: 10,
                     material_efficiency_applied: true,
+                    blueprint_assignment: super::ProductionStepBlueprintAssignment {
+                        blueprint_assignment_state: "ready".to_owned(),
+                        blueprint_item_id: Some(7_001),
+                        blueprint_kind: Some("copy".to_owned()),
+                        blueprint_material_efficiency: Some(10),
+                        blueprint_time_efficiency: Some(20),
+                        blueprint_runs: Some(2),
+                        blueprint_location_id: Some(60_003_760),
+                        blueprint_location_flag: Some("Hangar".to_owned()),
+                        blueprint_snapshot_id: Some(12),
+                        blueprint_sync_run_id: Some(13),
+                        blueprint_observed_at: Some("2026-09-12T10:00:00Z".to_owned()),
+                        blueprint_candidate_count: 1,
+                        blueprint_candidates: vec![ProductionBlueprintCandidate {
+                            item_id: 7_001,
+                            kind: "copy".to_owned(),
+                            material_efficiency: 10,
+                            time_efficiency: 20,
+                            runs: 2,
+                            location_id: 60_003_760,
+                            location_flag: "Hangar".to_owned(),
+                            suitable: true,
+                            reason: "ready".to_owned(),
+                        }],
+                    },
                     materials: vec![ProductionStepMaterial {
                         type_id: 111,
                         type_name: "Synthetic Frame".to_owned(),
