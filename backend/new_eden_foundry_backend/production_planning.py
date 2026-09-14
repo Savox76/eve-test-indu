@@ -24,9 +24,11 @@ MAX_PLAN_STEPS = 500
 MAX_INVENTORY_LOCATION_GROUPS = 50
 MAX_RESERVATION_CLAIMS = 50
 MAX_BLUEPRINT_CANDIDATES = 50
+MAX_STEP_BLUEPRINT_ASSIGNMENTS = MAX_PLAN_STEPS - 1
 RESERVATION_RULE = "priority-desc-created-asc-plan-id-asc"
 MATERIAL_EFFICIENCY_RULE = "max-runs-ceil-base-runs-percent"
 TIME_EFFICIENCY_RULE = "max-one-ceil-base-runs-percent"
+CHAIN_BLUEPRINT_ASSIGNMENT_RULE = "explicit-per-recipe-unique-item"
 CHARACTER_SKILL_TIME_RULE = (
     "job-wide-ceil-industry-4-advanced-industry-3-reactions-4-active-levels"
 )
@@ -203,6 +205,7 @@ def validate_production_plan_input(payload: Any) -> dict[str, Any]:
         "ownerCharacterId",
         "blueprintTypeId",
         "blueprintItemId",
+        "stepBlueprintAssignments",
         "activity",
         "productTypeId",
         "targetQuantity",
@@ -213,6 +216,7 @@ def validate_production_plan_input(payload: Any) -> dict[str, Any]:
         raise ProductionPlanningError("production_plan_input_invalid")
     plan_id = payload["planId"]
     blueprint_item_id = payload["blueprintItemId"]
+    raw_step_assignments = payload["stepBlueprintAssignments"]
     note = payload["note"]
     if note is not None:
         try:
@@ -224,6 +228,8 @@ def validate_production_plan_input(payload: Any) -> dict[str, Any]:
         and not _positive_int(plan_id)
         or blueprint_item_id is not None
         and not _positive_int(blueprint_item_id)
+        or not isinstance(raw_step_assignments, list)
+        or len(raw_step_assignments) > MAX_STEP_BLUEPRINT_ASSIGNMENTS
         or not _positive_int(payload["ownerCharacterId"])
         or not _positive_int(payload["blueprintTypeId"])
         or payload["activity"] not in SUPPORTED_BLUEPRINT_ACTIVITIES
@@ -233,7 +239,57 @@ def validate_production_plan_input(payload: Any) -> dict[str, Any]:
         or payload["priority"] > 999
     ):
         raise ProductionPlanningError("production_plan_input_invalid")
-    return {**payload, "note": note}
+    step_assignments: list[dict[str, Any]] = []
+    assignment_keys: set[tuple[int, str, int]] = set()
+    assigned_item_ids: set[int] = set()
+    root_key = (
+        int(payload["blueprintTypeId"]),
+        str(payload["activity"]),
+        int(payload["productTypeId"]),
+    )
+    for assignment in raw_step_assignments:
+        if not isinstance(assignment, Mapping) or set(assignment) != {
+            "blueprintTypeId",
+            "activity",
+            "productTypeId",
+            "blueprintItemId",
+        }:
+            raise ProductionPlanningError("production_plan_input_invalid")
+        key = (
+            assignment["blueprintTypeId"],
+            assignment["activity"],
+            assignment["productTypeId"],
+        )
+        item_id = assignment["blueprintItemId"]
+        if (
+            not _positive_int(key[0])
+            or key[1] != "manufacturing"
+            or not _positive_int(key[2])
+            or not _positive_int(item_id)
+            or key == root_key
+            or key in assignment_keys
+            or item_id in assigned_item_ids
+            or item_id == blueprint_item_id
+        ):
+            raise ProductionPlanningError("production_plan_input_invalid")
+        assignment_keys.add(key)
+        assigned_item_ids.add(int(item_id))
+        step_assignments.append(
+            {
+                "blueprintTypeId": int(key[0]),
+                "activity": str(key[1]),
+                "productTypeId": int(key[2]),
+                "blueprintItemId": int(item_id),
+            }
+        )
+    step_assignments.sort(
+        key=lambda value: (
+            value["productTypeId"],
+            value["activity"],
+            value["blueprintTypeId"],
+        )
+    )
+    return {**payload, "note": note, "stepBlueprintAssignments": step_assignments}
 
 
 def validate_production_plan_delete(payload: Any) -> int:
@@ -550,13 +606,12 @@ def _blueprint_candidate(item: BlueprintItem, required_runs: int) -> dict[str, A
     }
 
 
-def _blueprint_assignment(
-    plan: Mapping[str, Any],
+def _blueprint_assignment_for_recipe(
+    blueprint_type_id: int,
+    assigned_id: int | None,
     source: BlueprintSource | None,
     required_runs: int,
 ) -> dict[str, Any]:
-    assigned_id = plan["blueprint_item_id"] if "blueprint_item_id" in plan.keys() else None
-    blueprint_type_id = int(plan["blueprint_type_id"])
     matching = [] if source is None else [
         item for item in source.items.values() if item.type_id == blueprint_type_id
     ]
@@ -603,6 +658,55 @@ def _blueprint_assignment(
             _blueprint_candidate(item, required_runs) for item in candidates
         ],
     }
+
+
+def _blueprint_assignment(
+    plan: Mapping[str, Any],
+    source: BlueprintSource | None,
+    required_runs: int,
+) -> dict[str, Any]:
+    assigned_id = (
+        plan["blueprint_item_id"] if "blueprint_item_id" in plan.keys() else None
+    )
+    return _blueprint_assignment_for_recipe(
+        int(plan["blueprint_type_id"]),
+        None if assigned_id is None else int(assigned_id),
+        source,
+        required_runs,
+    )
+
+
+def _step_blueprint_assignments(
+    connection: sqlite3.Connection, plan_id: int
+) -> dict[tuple[int, str, int], int]:
+    if not _positive_int(plan_id):
+        raise ProductionPlanningError("production_plan_input_invalid")
+    return {
+        (int(row[0]), str(row[1]), int(row[2])): int(row[3])
+        for row in connection.execute(
+            "SELECT blueprint_type_id,activity,product_type_id,blueprint_item_id "
+            "FROM production_plan_step_blueprints WHERE plan_id=? "
+            "ORDER BY product_type_id,activity,blueprint_type_id",
+            (plan_id,),
+        )
+    }
+
+
+def _load_step_blueprint_assignments(
+    connection: sqlite3.Connection,
+) -> dict[int, dict[tuple[int, str, int], int]]:
+    result: dict[int, dict[tuple[int, str, int], int]] = defaultdict(dict)
+    for row in connection.execute(
+        "SELECT plan_id,blueprint_type_id,activity,product_type_id,blueprint_item_id "
+        "FROM production_plan_step_blueprints "
+        "ORDER BY plan_id,product_type_id,activity,blueprint_type_id"
+    ):
+        plan_id = int(row[0])
+        key = (int(row[1]), str(row[2]), int(row[3]))
+        if key in result[plan_id]:
+            raise ProductionPlanningError("production_blueprint_assignment_invalid")
+        result[plan_id][key] = int(row[4])
+    return dict(result)
 
 
 def _load_recipes(connection: sqlite3.Connection) -> tuple[
@@ -1054,6 +1158,7 @@ def resolve_production_plan(
     | None = None,
     blueprint_source: BlueprintSource | None = None,
     skill_source: SkillSource | None | object = _SKILL_SOURCE_UNSET,
+    step_blueprint_assignments: Mapping[tuple[int, str, int], int] | None = None,
 ) -> dict[str, Any]:
     """Resolve one goal with a stable recipe tie-break and exact integer rounding."""
 
@@ -1073,6 +1178,22 @@ def resolve_production_plan(
         )
     if skill_source is not None and not isinstance(skill_source, SkillSource):
         raise ProductionPlanningError("production_skill_snapshot_invalid")
+    if step_blueprint_assignments is None:
+        step_blueprint_assignments = (
+            _step_blueprint_assignments(connection, int(plan["id"]))
+            if "id" in plan.keys() and plan["id"] is not None
+            else {}
+        )
+    if any(
+        not isinstance(key, tuple)
+        or len(key) != 3
+        or not _positive_int(key[0])
+        or key[1] not in SUPPORTED_BLUEPRINT_ACTIVITIES
+        or not _positive_int(key[2])
+        or not _positive_int(item_id)
+        for key, item_id in step_blueprint_assignments.items()
+    ):
+        raise ProductionPlanningError("production_blueprint_assignment_invalid")
     initial_assignment = _blueprint_assignment(plan, blueprint_source, 1)
     skill_evidence = _skill_evidence(skill_source)
     if build_number is None or not _sde_tables_available(connection):
@@ -1210,18 +1331,32 @@ def resolve_production_plan(
             unmodified_quantity_needed + recipe.output_quantity - 1
         ) // recipe.output_quantity
         produced_quantity = _checked_multiply(runs, recipe.output_quantity)
+        recipe_key = (
+            recipe.blueprint_type_id,
+            recipe.activity,
+            recipe.product_type_id,
+        )
+        is_root = recipe_key == root_key
+        step_assignment = (
+            assignment
+            if is_root
+            else _blueprint_assignment_for_recipe(
+                recipe.blueprint_type_id,
+                step_blueprint_assignments.get(recipe_key),
+                blueprint_source,
+                runs,
+            )
+        )
         material_efficiency = (
-            applied_material_efficiency
-            if recipe.blueprint_type_id == root.blueprint_type_id
-            and recipe.activity == root.activity
-            and recipe.product_type_id == root.product_type_id
+            int(step_assignment["blueprintMaterialEfficiency"])
+            if step_assignment["blueprintAssignmentState"] == "ready"
+            and recipe.activity == "manufacturing"
             else 0
         )
         time_efficiency = (
-            applied_time_efficiency
-            if recipe.blueprint_type_id == root.blueprint_type_id
-            and recipe.activity == root.activity
-            and recipe.product_type_id == root.product_type_id
+            int(step_assignment["blueprintTimeEfficiency"])
+            if step_assignment["blueprintAssignmentState"] == "ready"
+            and recipe.activity == "manufacturing"
             else 0
         )
         direct_materials: list[dict[str, Any]] = []
@@ -1322,6 +1457,7 @@ def resolve_production_plan(
                 "recipeAlternatives": len(by_product.get(product_type_id, [])),
                 "materialEfficiency": material_efficiency,
                 "materialEfficiencyApplied": material_efficiency > 0,
+                "blueprintAssignment": step_assignment,
                 "materials": direct_materials,
             }
         )
@@ -1508,6 +1644,7 @@ def query_production_plans(connection: sqlite3.Connection, raw_query: Any) -> di
     )
     plan_rows = _plan_rows(connection)
     blueprint_sources = _load_blueprint_sources(connection, plan_rows)
+    step_blueprint_assignments = _load_step_blueprint_assignments(connection)
     skill_sources = _load_skill_sources(connection, plan_rows)
     inventory_sources = _load_inventory_sources(connection, plan_rows)
     resolutions = {
@@ -1517,6 +1654,9 @@ def query_production_plans(connection: sqlite3.Connection, raw_query: Any) -> di
             loaded_recipes=loaded_recipes,
             blueprint_source=blueprint_sources.get(int(row["owner_character_id"])),
             skill_source=skill_sources.get(int(row["owner_character_id"])),
+            step_blueprint_assignments=step_blueprint_assignments.get(
+                int(row["id"]), {}
+            ),
         )
         for row in plan_rows
     }
@@ -1606,6 +1746,8 @@ def query_production_plans(connection: sqlite3.Connection, raw_query: Any) -> di
         "materialEfficiencyRule": MATERIAL_EFFICIENCY_RULE,
         "blueprintTimeEfficiencyApplied": True,
         "timeEfficiencyRule": TIME_EFFICIENCY_RULE,
+        "blueprintChainAssignmentsApplied": True,
+        "blueprintChainAssignmentRule": CHAIN_BLUEPRINT_ASSIGNMENT_RULE,
         "characterSkillTimeApplied": True,
         "characterSkillTimeRule": CHARACTER_SKILL_TIME_RULE,
         "remainingModifiersApplied": False,
@@ -1675,7 +1817,19 @@ def save_production_plan(connection: sqlite3.Connection, raw_input: Any) -> dict
         "product_type_id": value["productTypeId"],
         "target_quantity": value["targetQuantity"],
     }
-    resolved = resolve_production_plan(connection, candidate)
+    step_assignments = {
+        (
+            int(assignment["blueprintTypeId"]),
+            str(assignment["activity"]),
+            int(assignment["productTypeId"]),
+        ): int(assignment["blueprintItemId"])
+        for assignment in value["stepBlueprintAssignments"]
+    }
+    resolved = resolve_production_plan(
+        connection,
+        candidate,
+        step_blueprint_assignments=step_assignments,
+    )
     if resolved["state"] in {"cycle", "complexity-limit"}:
         raise ProductionPlanningError(f"production_plan_{resolved['state']}")
     if (
@@ -1685,8 +1839,43 @@ def save_production_plan(connection: sqlite3.Connection, raw_input: Any) -> dict
         raise ProductionPlanningError(
             f"production_blueprint_{resolved['blueprintAssignmentState']}"
         )
+    resolved_steps = {
+        (
+            int(step["blueprintTypeId"]),
+            str(step["activity"]),
+            int(step["productTypeId"]),
+        ): step
+        for step in resolved["steps"]
+    }
+    for key in step_assignments:
+        step = resolved_steps.get(key)
+        if step is None:
+            raise ProductionPlanningError("production_blueprint_step_missing")
+        assignment = step["blueprintAssignment"]
+        if assignment["blueprintAssignmentState"] != "ready":
+            raise ProductionPlanningError(
+                f"production_blueprint_{assignment['blueprintAssignmentState']}"
+            )
     try:
         connection.execute("BEGIN IMMEDIATE")
+        assigned_item_ids = [
+            *(
+                []
+                if value["blueprintItemId"] is None
+                else [int(value["blueprintItemId"])]
+            ),
+            *step_assignments.values(),
+        ]
+        excluded_plan_id = -1 if value["planId"] is None else int(value["planId"])
+        for item_id in assigned_item_ids:
+            conflict = connection.execute(
+                "SELECT 1 FROM production_plans WHERE blueprint_item_id=? AND id<>? "
+                "UNION ALL SELECT 1 FROM production_plan_step_blueprints "
+                "WHERE blueprint_item_id=? AND plan_id<>? LIMIT 1",
+                (item_id, excluded_plan_id, item_id, excluded_plan_id),
+            ).fetchone()
+            if conflict is not None:
+                raise ProductionPlanningError("production_blueprint_already_assigned")
         if value["planId"] is None:
             cursor = connection.execute(
                 "INSERT INTO production_plans(owner_character_id,blueprint_type_id,blueprint_item_id,activity,"
@@ -1711,10 +1900,29 @@ def save_production_plan(connection: sqlite3.Connection, raw_input: Any) -> dict
             if cursor.rowcount != 1:
                 raise ProductionPlanningError("production_plan_missing")
             plan_id = int(value["planId"])
+        connection.execute(
+            "DELETE FROM production_plan_step_blueprints WHERE plan_id=?",
+            (plan_id,),
+        )
+        connection.executemany(
+            "INSERT INTO production_plan_step_blueprints("
+            "plan_id,blueprint_type_id,activity,product_type_id,blueprint_item_id"
+            ") VALUES (?,?,?,?,?)",
+            [
+                (
+                    plan_id,
+                    assignment["blueprintTypeId"],
+                    assignment["activity"],
+                    assignment["productTypeId"],
+                    assignment["blueprintItemId"],
+                )
+                for assignment in value["stepBlueprintAssignments"]
+            ],
+        )
         connection.commit()
     except sqlite3.IntegrityError as error:
         connection.rollback()
-        if "production_plans.blueprint_item_id" in str(error):
+        if "blueprint_item_id" in str(error):
             raise ProductionPlanningError("production_blueprint_already_assigned") from error
         raise
     except Exception:
@@ -1726,6 +1934,7 @@ def save_production_plan(connection: sqlite3.Connection, raw_input: Any) -> dict
         "ownerCharacterId": value["ownerCharacterId"],
         "blueprintTypeId": value["blueprintTypeId"],
         "blueprintItemId": value["blueprintItemId"],
+        "stepBlueprintAssignments": value["stepBlueprintAssignments"],
         "activity": value["activity"],
         "productTypeId": value["productTypeId"],
         "targetQuantity": value["targetQuantity"],

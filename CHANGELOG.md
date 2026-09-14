@@ -24,6 +24,33 @@ Keine.
 
 Keine.
 
+## 0.2.0-alpha.7 – 14. September 2026
+
+### Neu hinzugefügt
+
+- Paket 36 erlaubt für jeden Fertigungs-Vorproduktschritt einer Produktionskette die bewusste Zuordnung eines vorhandenen persönlichen BPO oder laufgeeigneten BPC.
+- Jeder Schritt zeigt Zuordnungszustand, Kandidaten, Item-ID, ME, TE, Läufe, Standort und den verwendeten Blueprint-Snapshot als Beleg.
+- Belegte ME- und TE-Werte verändern Materialbedarf und Blueprint-Zeit genau des zugehörigen Fertigungsschritts; nachgelagerte Laufzahlen, Bruttomaterial, Reservierungen und Fehlmengen werden daraus vollständig neu berechnet.
+
+### Geändert
+
+- Die sichtbare Versionsnummer lautet `v0.2.0-alpha.7`.
+- Ein physisches Blueprint-Item darf innerhalb eines Ziels und zielübergreifend weiterhin nur einmal zugeordnet sein. Ungeeignete BPCs bleiben sichtbar, können aber nicht gespeichert werden.
+
+### Behobene Fehler
+
+- Persönliche ME-/TE-Werte wirkten bisher nur auf das Wurzel-Blueprint des Zielprodukts; vorhandene Zwischen-Blueprints konnten nicht in die Produktionskette einbezogen werden.
+
+### Bekannte Einschränkungen
+
+- Reaktionen erhalten weiterhin keinen persönlichen Blueprint-ME-/TE-Modifikator.
+- Anlagen-, Service- und Rigboni fehlen weiterhin. Die persönliche Skillzeit ist deshalb noch keine belastbare reale Fertigstellungszeit.
+- Die Alpha ist noch nicht produktiv code-signiert; SmartScreen kann deshalb weiterhin vor einem unbekannten Herausgeber warnen.
+
+### Update und Datenbankmigration
+
+- Beim ersten Start migriert die App Schema 10 automatisch auf Schema 11 und ergänzt die updatefesten Blueprintzuordnungen für Fertigungs-Vorproduktschritte. Zuvor wird ein geprüfter Datenbank-Snapshot unter `data/backups` angelegt; bei einem Fehler wird der vorherige Stand automatisch wiederhergestellt.
+
 ## 0.2.0-alpha.6 – 14. September 2026
 
 ### Neu hinzugefügt

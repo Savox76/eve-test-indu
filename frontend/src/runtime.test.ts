@@ -926,6 +926,12 @@ describe("desktop runtime status", () => {
         ], characterSkillTimeApplied: false, totalCharacterTimeSeconds: null,
         characterSkillTimeSavingsSeconds: null,
         recipeAlternatives: 1, materialEfficiency: 0, materialEfficiencyApplied: false,
+        blueprintAssignment: { blueprintAssignmentState: "unassigned", blueprintItemId: null,
+          blueprintKind: null, blueprintMaterialEfficiency: null, blueprintTimeEfficiency: null,
+          blueprintRuns: null, blueprintLocationId: null, blueprintLocationFlag: null,
+          blueprintSnapshotId: 12, blueprintSyncRunId: 13,
+          blueprintObservedAt: "2026-09-11T12:00:00Z", blueprintCandidateCount: 0,
+          blueprintCandidates: [] },
         materials: [{ typeId: 901, typeName: "Synthetic Ore",
           quantityPerRun: 2, unmodifiedGrossQuantity: 8, grossQuantity: 8,
           materialEfficiency: 0, materialEfficiencySavings: 0, producedByPlan: false }] },
@@ -942,6 +948,14 @@ describe("desktop runtime status", () => {
         ], characterSkillTimeApplied: false, totalCharacterTimeSeconds: null,
         characterSkillTimeSavingsSeconds: null,
         recipeAlternatives: 1, materialEfficiency: 0, materialEfficiencyApplied: false,
+        blueprintAssignment: { blueprintAssignmentState: "unassigned", blueprintItemId: null,
+          blueprintKind: null, blueprintMaterialEfficiency: null, blueprintTimeEfficiency: null,
+          blueprintRuns: null, blueprintLocationId: null, blueprintLocationFlag: null,
+          blueprintSnapshotId: 12, blueprintSyncRunId: 13,
+          blueprintObservedAt: "2026-09-11T12:00:00Z", blueprintCandidateCount: 1,
+          blueprintCandidates: [{ itemId: 99, kind: "copy", materialEfficiency: 10,
+            timeEfficiency: 20, runs: 2, locationId: 60_003_760, locationFlag: "Hangar",
+            suitable: true, reason: "ready" }] },
         materials: [{ typeId: 111, typeName: "Synthetic Component",
           quantityPerRun: 2, unmodifiedGrossQuantity: 4, grossQuantity: 4,
           materialEfficiency: 0, materialEfficiencySavings: 0, producedByPlan: true }] }],
@@ -983,6 +997,8 @@ describe("desktop runtime status", () => {
       materialEfficiencyRule: "max-runs-ceil-base-runs-percent",
       blueprintTimeEfficiencyApplied: true,
       timeEfficiencyRule: "max-one-ceil-base-runs-percent",
+      blueprintChainAssignmentsApplied: true,
+      blueprintChainAssignmentRule: "explicit-per-recipe-unique-item",
       characterSkillTimeApplied: true,
       characterSkillTimeRule: "job-wide-ceil-industry-4-advanced-industry-3-reactions-4-active-levels",
       remainingModifiersApplied: false };
@@ -995,7 +1011,25 @@ describe("desktop runtime status", () => {
     }));
     const assignedTime = JSON.parse(JSON.stringify(page)) as typeof page;
     const assignedPlan = assignedTime.items[0];
+    const assignedIntermediate = assignedPlan.steps[0];
     const assignedRoot = assignedPlan.steps[assignedPlan.steps.length - 1];
+    Object.assign(assignedIntermediate, {
+      blueprintAssignment: {
+        ...assignedIntermediate.blueprintAssignment,
+        blueprintAssignmentState: "ready",
+        blueprintItemId: 98,
+        blueprintKind: "original",
+        blueprintMaterialEfficiency: 0,
+        blueprintTimeEfficiency: 0,
+        blueprintRuns: -1,
+        blueprintLocationId: 60_003_760,
+        blueprintLocationFlag: "Hangar",
+        blueprintCandidateCount: 1,
+        blueprintCandidates: [{ itemId: 98, kind: "original", materialEfficiency: 0,
+          timeEfficiency: 0, runs: -1, locationId: 60_003_760,
+          locationFlag: "Hangar", suitable: true, reason: "ready" }],
+      },
+    });
     Object.assign(assignedPlan, {
       blueprintItemId: 99,
       blueprintAssignmentState: "ready",
@@ -1014,6 +1048,17 @@ describe("desktop runtime status", () => {
       timeEfficiencyApplied: true,
       totalBlueprintTimeSeconds: 160,
       timeEfficiencySavingsSeconds: 40,
+      blueprintAssignment: {
+        ...assignedRoot.blueprintAssignment,
+        blueprintAssignmentState: "ready",
+        blueprintItemId: 99,
+        blueprintKind: "copy",
+        blueprintMaterialEfficiency: 0,
+        blueprintTimeEfficiency: 20,
+        blueprintRuns: 2,
+        blueprintLocationId: 60_003_760,
+        blueprintLocationFlag: "Hangar",
+      },
     });
     invoke.mockResolvedValueOnce(JSON.stringify(assignedTime));
     await expect(loadProductionPlans(query, { isAvailable: () => true, invoke }))
@@ -1083,6 +1128,7 @@ describe("desktop runtime status", () => {
       .rejects.toThrow("invalid production steps");
 
     const input = { planId: null, ownerCharacterId: 7, blueprintTypeId: 100, blueprintItemId: null,
+      stepBlueprintAssignments: [],
       activity: "manufacturing", productTypeId: 101, targetQuantity: 3,
       priority: 12, note: "main goal" } as const;
     const saved = { ...input, planId: 1, saved: true };

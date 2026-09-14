@@ -17,7 +17,7 @@ from .recovery import (
 
 
 BUSY_TIMEOUT_MILLISECONDS: Final = 5_000
-SCHEMA_VERSION: Final = 10
+SCHEMA_VERSION: Final = 11
 
 MIGRATIONS: Final = (
     (
@@ -317,6 +317,36 @@ MIGRATIONS: Final = (
             CREATE UNIQUE INDEX idx_production_plans_blueprint_item
                 ON production_plans(blueprint_item_id)
                 WHERE blueprint_item_id IS NOT NULL
+            """,
+        ),
+    ),
+    (
+        11,
+        "production_plan_step_blueprints",
+        (
+            """
+            CREATE TABLE production_plan_step_blueprints (
+                plan_id INTEGER NOT NULL
+                    REFERENCES production_plans(id) ON DELETE CASCADE,
+                blueprint_type_id INTEGER NOT NULL CHECK(blueprint_type_id > 0),
+                activity TEXT NOT NULL CHECK(activity = 'manufacturing'),
+                product_type_id INTEGER NOT NULL CHECK(product_type_id > 0),
+                blueprint_item_id INTEGER NOT NULL UNIQUE
+                    CHECK(blueprint_item_id > 0),
+                created_at TEXT NOT NULL DEFAULT (
+                    strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                ),
+                updated_at TEXT NOT NULL DEFAULT (
+                    strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                ),
+                PRIMARY KEY (
+                    plan_id, blueprint_type_id, activity, product_type_id
+                )
+            )
+            """,
+            """
+            CREATE INDEX idx_production_plan_step_blueprints_plan
+                ON production_plan_step_blueprints(plan_id, product_type_id)
             """,
         ),
     ),

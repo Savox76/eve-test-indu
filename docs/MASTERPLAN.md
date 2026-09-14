@@ -1,10 +1,10 @@
 # Masterplan – New Eden Foundry
 
-**Fassung:** 3.9 (lebendes Repository-Dokument)
+**Fassung:** 4.0 (lebendes Repository-Dokument)
 
 **Stand:** 14. September 2026
 
-**Status:** Paket 35 – persönliche Charakter-Skillzeit technisch abgeschlossen
+**Status:** Paket 36 – persönliche Blueprintzuordnung für Fertigungsketten technisch abgeschlossen
 
 **Geltungsbereich:** `Savox76/eve-test-indu`
 
@@ -200,6 +200,8 @@ Die Reihenfolge ist verbindlicher als eine Kalenderangabe.
 | 32 | Bestandsreservierungen | Bestände werden zielbezogen und konfliktfest reserviert; Priorität und eindeutige Regeln verhindern eine unbemerkte Doppelverwendung zwischen Produktionszielen |
 | 33 | Blueprintzuordnung und ME-Materialbedarf | Ein Produktionsziel kann eine vorhandene persönliche Blueprintkopie nachvollziehbar zuordnen; deren ME-Wert verändert den Materialbedarf nach den belegten EVE-Rundungsregeln, während fehlende oder ungeeignete Kopien sichtbar bleiben |
 | 34 | Blueprint-TE und Zeitbasis | Der TE-Wert des zugeordneten persönlichen Blueprints verändert die Zeitbasis des Wurzel-Fertigungsschritts mit exakter jobweiter Aufrundung; Basiszeit, Blueprint-Zeit und Ersparnis bleiben getrennt nachvollziehbar |
+| 35 | Persönliche Charakter-Skillzeit | Aktive Industry-, Advanced-Industry- und Reactions-Level verändern jeden passenden Produktionsschritt aus einem vollständig belegten Skill-Snapshot |
+| 36 | Blueprintzuordnung für Fertigungsketten | Jeder Fertigungsschritt kann ein persönliches BPO oder laufgeeignetes BPC eindeutig zuordnen; dessen ME/TE wirkt schrittgenau und berechnet die Kette neu |
 
 ### Aktueller Stand
 
@@ -237,6 +239,7 @@ Die Reihenfolge ist verbindlicher als eine Kalenderangabe.
 - **Abgeschlossen:** 33 – Produktionsziele können genau ein vorhandenes persönliches BPO oder BPC zuordnen. Der belegte ME-Wert verändert ausschließlich direkte Materialien des Wurzel-Fertigungsschritts mit ganzzahliger Aufrundung und einer Einheit Mindestbedarf je Material und Lauf; daraus veränderte Zwischenproduktläufe werden erneut deterministisch aufgelöst. Unmodifizierter Bedarf und Ersparnis bleiben parallel sichtbar. Fehlende Snapshots, verschwundene oder typfalsche Items und zu wenige BPC-Läufe bleiben nachvollziehbare Zustände. Schema 10 speichert die eindeutige optionale Item-ID.
 - **Abgeschlossen:** 34 – Der belegte TE-Wert des zugeordneten persönlichen BPO oder BPC verändert ausschließlich die Blueprint-Zeit des Wurzel-Fertigungsschritts. Die Berechnung erfolgt jobweit mit exakter Ganzzahlarithmetik und Aufrundung auf volle Sekunden; SDE-Basiszeit, Blueprint-Zeit und Ersparnis bleiben je Schritt und als Summe parallel sichtbar. Reaktionen und automatisch ausgewählte Zwischen-Blueprints bleiben unverändert.
 - **Abgeschlossen:** 35 – Der letzte vollständig abgeschlossene Skill-Snapshot des ausführenden Charakters liefert die aktuell wirksamen Stufen für Industry, Advanced Industry und Reactions. Fertigung wendet 4 % Industry und 3 % Advanced Industry je Stufe, Reaktionen 4 % Reactions je Stufe multiplikativ auf die ungerundete vollständige Jobzeit an; auf volle Sekunden wird erst am Ende aufgerundet. Jeder passende Schritt und die Gesamtsicht weisen Blueprint-Zeit, persönliche Skillzeit, Ersparnis, Skillwerte sowie Snapshot-, Lauf- und Zeitbeleg aus. Fehlt ein vollständiger Skill-Snapshot, bleibt die persönliche Zeit ausdrücklich unbekannt; fehlgeschlagene neuere Läufe verdrängen keinen gültigen Stand.
+- **Abgeschlossen:** 36 – Jeder Fertigungs-Vorproduktschritt eines Produktionsziels kann ein persönliches BPO oder laufgeeignetes BPC aus dem letzten vollständigen Blueprint-Snapshot des ausführenden Charakters zuordnen. ME und TE wirken ausschließlich auf das exakte zugehörige Rezept; geänderte Zwischenbedarfe, Laufzahlen, Zeiten, Bruttomaterialien, Reservierungen und Fehlmengen werden deterministisch neu berechnet. Jede physische Item-ID bleibt innerhalb eines Ziels und zielübergreifend eindeutig. Schema 11 speichert die Zuordnungen updatefest und löscht sie mit dem Ziel.
 - **Als Nächstes:** Das nächste Fachpaket wird separat festgelegt. Anlagen-/Service-/Rigboni, Steuern, Preise und belastbare reale Fertigstellungszeiten bleiben bis zu eigenen Fachverträgen ausgeschlossen.
 - Architektur-Gate A0 ist vollständig erfüllt; `v0.2.0-alpha.1` bildet die erste freigegebene Alpha-Grundlage für die folgenden Produktionspakete.
 

@@ -398,7 +398,7 @@ class SidecarIntegrationTests(unittest.TestCase):
             with opener.open(valid_request, timeout=3) as response:
                 health = json.loads(response.read())
             self.assertEqual(health["state"], "ready")
-            self.assertEqual(health["database"]["schemaVersion"], 10)
+            self.assertEqual(health["database"]["schemaVersion"], 11)
             self.assertEqual(health["database"]["location"], "data/foundry.sqlite3")
             self.assertIsNone(health["database"]["lastMigrationBackup"])
             self.assertEqual(health["data"]["state"], "empty")
@@ -708,6 +708,11 @@ class SidecarIntegrationTests(unittest.TestCase):
             self.assertEqual(
                 production_plans["timeEfficiencyRule"],
                 "max-one-ceil-base-runs-percent",
+            )
+            self.assertTrue(production_plans["blueprintChainAssignmentsApplied"])
+            self.assertEqual(
+                production_plans["blueprintChainAssignmentRule"],
+                "explicit-per-recipe-unique-item",
             )
             self.assertTrue(production_plans["characterSkillTimeApplied"])
             self.assertEqual(

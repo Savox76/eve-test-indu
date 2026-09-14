@@ -674,6 +674,21 @@ select:focus-visible {
   color: #bfe4dc;
 }
 
+.production-step-blueprint {
+  display: grid;
+  gap: 4px;
+  margin-top: 5px;
+}
+
+.production-step-blueprint select {
+  width: min(100%, 430px);
+  min-height: 34px;
+  border: 1px solid #465249;
+  border-radius: 5px;
+  background: #121713;
+  color: #d7dfd8;
+}
+
 .production-material-list > li {
   display: grid;
   gap: 10px;
