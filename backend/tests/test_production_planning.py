@@ -115,6 +115,35 @@ def plan_input(**changes: object) -> dict:
     return result
 
 
+def industry_job(**changes: object) -> dict:
+    result = {
+        "activity_id": 1,
+        "blueprint_id": 8_001,
+        "blueprint_location_id": 60_003_760,
+        "blueprint_type_id": 100,
+        "completed_character_id": None,
+        "completed_date": None,
+        "cost": 1_234.5,
+        "duration": 1_000,
+        "end_date": "2026-09-14T14:30:00Z",
+        "facility_id": 60_003_760,
+        "installer_id": 7,
+        "job_id": 9_001,
+        "licensed_runs": 0,
+        "output_location_id": 60_003_760,
+        "pause_date": None,
+        "probability": 1.0,
+        "product_type_id": 101,
+        "runs": 2,
+        "start_date": "2026-09-14T14:00:00Z",
+        "station_id": 60_003_760,
+        "status": "active",
+        "successful_runs": None,
+    }
+    result.update(changes)
+    return result
+
+
 class ProductionPlanningTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temp = tempfile.TemporaryDirectory()
@@ -226,6 +255,82 @@ class ProductionPlanningTests(unittest.TestCase):
         )
         return int(snapshot.lastrowid), int(run.lastrowid)
 
+    def publish_jobs(
+        self,
+        character_id: int,
+        jobs: list[dict[str, object]],
+        observed_at: str,
+    ) -> tuple[int, int]:
+        run = self.db.execute(
+            "INSERT INTO sync_runs(source,status,started_at,completed_at,data_timestamp,"
+            "character_id) VALUES('character_industry_jobs','completed',?,?,?,?)",
+            (observed_at, observed_at, observed_at, character_id),
+        )
+        snapshot = self.db.execute(
+            "INSERT INTO cached_snapshots(sync_run_id,resource,payload_json,observed_at) "
+            "VALUES(?,?,?,?)",
+            (
+                int(run.lastrowid),
+                f"character_industry_jobs:{character_id}",
+                json.dumps(
+                    {
+                        "characterId": character_id,
+                        "includeCompleted": True,
+                        "jobs": jobs,
+                    }
+                ),
+                observed_at,
+            ),
+        )
+        return int(snapshot.lastrowid), int(run.lastrowid)
+
+    def publish_facilities(self, observed_at: str) -> tuple[int, int]:
+        run = self.db.execute(
+            "INSERT INTO sync_runs(source,status,started_at,completed_at,data_timestamp) "
+            "VALUES('industry_facilities','completed',?,?,?)",
+            (observed_at, observed_at, observed_at),
+        )
+        snapshot = self.db.execute(
+            "INSERT INTO cached_snapshots(sync_run_id,resource,payload_json,observed_at) "
+            "VALUES(?,'industry_facilities',?,?)",
+            (
+                int(run.lastrowid),
+                json.dumps(
+                    {
+                        "facilities": [
+                            {
+                                "facility_id": 60_003_760,
+                                "owner_id": 1_000_001,
+                                "region_id": 10_000_002,
+                                "solar_system_id": 30_000_142,
+                                "tax": None,
+                                "type_id": 1_928,
+                            }
+                        ],
+                        "names": [
+                            {"category": "corporation", "id": 1_000_001, "name": "Synthetic Owner"},
+                            {"category": "inventory_type", "id": 1_928, "name": "Synthetic Factory"},
+                            {"category": "region", "id": 10_000_002, "name": "Synthetic Region"},
+                            {"category": "solar_system", "id": 30_000_142, "name": "Synthetic System"},
+                            {"category": "station", "id": 60_003_760, "name": "Synthetic Station"},
+                        ],
+                        "structures": [],
+                        "systems": [
+                            {
+                                "solar_system_id": 30_000_142,
+                                "cost_indices": [
+                                    {"activity": "manufacturing", "cost_index": 0.0125},
+                                    {"activity": "reaction", "cost_index": 0.0042},
+                                ],
+                            }
+                        ],
+                    }
+                ),
+                observed_at,
+            ),
+        )
+        return int(snapshot.lastrowid), int(run.lastrowid)
+
     def publish_locations(
         self,
         character_id: int,
@@ -307,6 +412,11 @@ class ProductionPlanningTests(unittest.TestCase):
             page["characterSkillTimeRule"],
             "job-wide-ceil-industry-4-advanced-industry-3-reactions-4-active-levels",
         )
+        self.assertTrue(page["facilityEvidenceApplied"])
+        self.assertEqual(
+            page["facilityEvidenceRule"],
+            "assigned-blueprint-before-active-before-latest-owner-job",
+        )
         self.assertFalse(page["remainingModifiersApplied"])
         self.assertEqual(page["summary"]["ready"], 1)
         record = page["items"][0]
@@ -332,6 +442,11 @@ class ProductionPlanningTests(unittest.TestCase):
         self.assertIsNone(record["skillObservedAt"])
         self.assertIsNone(record["totalCharacterTimeSeconds"])
         self.assertIsNone(record["characterSkillTimeSavingsSeconds"])
+        self.assertEqual(record["facilityState"], "missing")
+        self.assertTrue(all(
+            step["facilityEvidence"]["state"] == "job-snapshot-missing"
+            for step in record["steps"]
+        ))
         self.assertTrue(all(
             step["totalCharacterTimeSeconds"] is None
             and step["characterSkillTimeSavingsSeconds"] is None
@@ -704,6 +819,87 @@ class ProductionPlanningTests(unittest.TestCase):
                     "blueprintItemId": 5_001,
                 }]),
             )
+
+    def test_personal_jobs_add_step_exact_facility_evidence_without_guessing_bonuses(self) -> None:
+        import_industry_sde(self.db, **bundle())
+        self.publish_blueprints(
+            7,
+            [{
+                "item_id": 4_001,
+                "type_id": 100,
+                "quantity": -1,
+                "material_efficiency": 10,
+                "time_efficiency": 20,
+                "runs": -1,
+                "location_id": 60_003_760,
+                "location_flag": "Hangar",
+            }],
+            "2026-09-14T13:00:00Z",
+        )
+        job_snapshot, job_run = self.publish_jobs(
+            7,
+            [
+                industry_job(
+                    blueprint_id=4_001,
+                    job_id=9_000,
+                    status="delivered",
+                    completed_date="2026-09-14T14:31:00Z",
+                ),
+                industry_job(
+                    blueprint_id=8_002,
+                    job_id=9_001,
+                    start_date="2026-09-14T15:00:00Z",
+                    end_date="2026-09-14T15:30:00Z",
+                ),
+                industry_job(
+                    blueprint_id=8_003,
+                    blueprint_type_id=120,
+                    product_type_id=121,
+                    job_id=9_002,
+                    start_date="2026-09-14T16:00:00Z",
+                    end_date="2026-09-14T16:30:00Z",
+                ),
+            ],
+            "2026-09-14T16:05:00Z",
+        )
+        save_production_plan(self.db, plan_input(blueprintItemId=4_001))
+
+        without_facilities = query_production_plans(self.db, query())["items"][0]
+        self.assertEqual(without_facilities["facilityState"], "missing")
+        self.assertEqual(
+            without_facilities["steps"][-1]["facilityEvidence"]["state"],
+            "facility-snapshot-missing",
+        )
+
+        facility_snapshot, facility_run = self.publish_facilities(
+            "2026-09-14T16:10:00Z"
+        )
+        record = query_production_plans(self.db, query())["items"][0]
+        evidence_by_type = {
+            step["blueprintTypeId"]: step["facilityEvidence"]
+            for step in record["steps"]
+        }
+
+        self.assertEqual(record["facilityState"], "partial")
+        self.assertEqual(evidence_by_type[110]["state"], "job-missing")
+        self.assertEqual(evidence_by_type[120]["evidence"], "active-blueprint-type-job")
+        root = evidence_by_type[100]
+        self.assertEqual(root["state"], "ready")
+        self.assertEqual(root["evidence"], "assigned-blueprint-job")
+        self.assertEqual(root["jobId"], 9_000)
+        self.assertEqual(root["jobStatus"], "delivered")
+        self.assertEqual(root["facilityId"], 60_003_760)
+        self.assertEqual(root["facilityName"], "Synthetic Station")
+        self.assertEqual(root["facilityKind"], "station")
+        self.assertEqual(root["facilityAccess"], "public")
+        self.assertEqual(root["solarSystemName"], "Synthetic System")
+        self.assertEqual(root["securityClass"], "unknown")
+        self.assertEqual(root["systemCostIndex"], 0.0125)
+        self.assertEqual((root["jobSnapshotId"], root["jobSyncRunId"]), (job_snapshot, job_run))
+        self.assertEqual(
+            (root["facilitySnapshotId"], root["facilitySyncRunId"]),
+            (facility_snapshot, facility_run),
+        )
 
     def test_active_character_skills_apply_to_every_matching_step(self) -> None:
         import_industry_sde(self.db, **bundle())

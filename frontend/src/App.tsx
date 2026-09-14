@@ -909,7 +909,7 @@ const copy = {
       kicker: "PRODUKTIONSPLANUNG",
       title: "Fertigungs- und Reaktionsziele",
       subtitle: "Persistente Ziele werden in Schritte aufgelöst und konfliktfrei aus dem letzten vollständigen Asset-Snapshot reserviert.",
-      boundary: "Der Bestand des ausführenden Charakters wird lokal und zielübergreifend reserviert. Persönliche Blueprints können jedem Fertigungsschritt zugeordnet werden; ihre ME/TE und aktive Charakter-Skills werden mit belegten Snapshots angewendet. Anlagen-/Rigboni, Steuern und Preise folgen später.",
+      boundary: "Der Bestand des ausführenden Charakters wird lokal und zielübergreifend reserviert. Persönliche Blueprints, ME/TE und aktive Charakter-Skills werden schrittgenau angewendet. Persönliche Jobs belegen die zuletzt verwendete Anlage und den Systemkostenindex; Anlagen-/Rigboni, Steuern und Preise folgen später.",
       build: "SDE-Build {build}",
       searchRecipe: "Produkt oder Blueprint suchen",
       activity: "Aktivität",
@@ -944,6 +944,16 @@ const copy = {
       characterTime: "Persönliche Zeit {time} · {skills} · Skills sparen {saved}",
       characterTimeUnchanged: "Persönliche Zeit {time} · {skills}",
       characterTimeUnknown: "Persönliche Zeit unbekannt · Skill-Snapshot aktualisieren",
+      facilityStateLabels: { ready: "Anlagen belegt", partial: "Anlagen teilweise belegt", missing: "Anlagenbeleg fehlt", "not-applicable": "Nicht anwendbar" },
+      facilityEvidenceLabels: {
+        ready: "Anlage belegt", "job-snapshot-missing": "Job-Snapshot fehlt",
+        "job-missing": "Kein passender Job", "facility-snapshot-missing": "Anlagen-Snapshot fehlt",
+        "facility-missing": "Anlage nicht im Snapshot", "facility-unavailable": "Anlage nicht auflösbar",
+      },
+      facilityJob: "Job #{job} · {status}",
+      facilityDetails: "{facility} · {system} · Systemkostenindex {cost}",
+      facilitySources: "Job-Snapshot #{jobSnapshot} · Anlagen-Snapshot #{facilitySnapshot}",
+      facilityUnknownCost: "unbekannt",
       materialSaved: "{quantity} durch ME gespart",
       target: "Zielmenge",
       priority: "Priorität",
@@ -1038,7 +1048,7 @@ const copy = {
     },
     planned: "Geplant",
     previewOnly: "Noch ohne Live-Funktion",
-    footerVersion: "v0.2.0-alpha.7",
+    footerVersion: "v0.2.0-alpha.8",
   },
   en: {
     nav: {
@@ -1719,7 +1729,7 @@ const copy = {
       kicker: "PRODUCTION PLANNING",
       title: "Manufacturing and reaction goals",
       subtitle: "Persistent goals are expanded into steps and reserved conflict-free from the latest complete asset snapshot.",
-      boundary: "Stock owned by the executing character is reserved locally across all goals. Personal blueprints can be assigned to every manufacturing step; their ME/TE and active character skills are applied from evidenced snapshots. Facility/rig bonuses, taxes and prices follow later.",
+      boundary: "Stock owned by the executing character is reserved locally across all goals. Personal blueprints, ME/TE and active character skills are applied per step. Personal jobs evidence the last used facility and system cost index; facility/rig bonuses, taxes and prices follow later.",
       build: "SDE build {build}",
       searchRecipe: "Search product or blueprint",
       activity: "Activity",
@@ -1754,6 +1764,16 @@ const copy = {
       characterTime: "Personal time {time} · {skills} · skills save {saved}",
       characterTimeUnchanged: "Personal time {time} · {skills}",
       characterTimeUnknown: "Personal time unknown · refresh the skill snapshot",
+      facilityStateLabels: { ready: "Facilities evidenced", partial: "Facilities partly evidenced", missing: "Facility evidence missing", "not-applicable": "Not applicable" },
+      facilityEvidenceLabels: {
+        ready: "Facility evidenced", "job-snapshot-missing": "Job snapshot missing",
+        "job-missing": "No matching job", "facility-snapshot-missing": "Facility snapshot missing",
+        "facility-missing": "Facility absent from snapshot", "facility-unavailable": "Facility cannot be resolved",
+      },
+      facilityJob: "Job #{job} · {status}",
+      facilityDetails: "{facility} · {system} · system cost index {cost}",
+      facilitySources: "Job snapshot #{jobSnapshot} · facility snapshot #{facilitySnapshot}",
+      facilityUnknownCost: "unknown",
       materialSaved: "{quantity} saved by ME",
       target: "Target quantity",
       priority: "Priority",
@@ -1848,7 +1868,7 @@ const copy = {
     },
     planned: "Planned",
     previewOnly: "No live function yet",
-    footerVersion: "v0.2.0-alpha.7",
+    footerVersion: "v0.2.0-alpha.8",
   },
 } as const;
 
@@ -4134,7 +4154,6 @@ function BlueprintWorkspace({
     owners: number; locations: number; minMe: number; maxMe: number; minTe: number; maxTe: number;
   }>>([]);
   const numberFormat = useMemo(() => new Intl.NumberFormat(locale === "de" ? "de-DE" : "en-US"), [locale]);
-
   useEffect(() => {
     const timer = window.setTimeout(() => {
       setAppliedSearch(search.trim().replace(/\s+/g, " "));
@@ -5112,6 +5131,12 @@ function ProductionWorkspace({
   const [mutationState, setMutationState] = useState<"saved" | "deleted" | "error" | null>(null);
   const [drafts, setDrafts] = useState<Record<number, { owner: number; blueprintItemId: number | null; stepBlueprintItemIds: Record<string, number | null>; quantity: number; priority: number; note: string }>>({});
   const numberFormat = useMemo(() => new Intl.NumberFormat(locale === "de" ? "de-DE" : "en-US"), [locale]);
+  const percentFormat = useMemo(
+    () => new Intl.NumberFormat(locale === "de" ? "de-DE" : "en-US", {
+      style: "percent", maximumFractionDigits: 4,
+    }),
+    [locale],
+  );
   const productionOwners = useMemo(() => {
     const owners = new Map<number, { characterId: number; name: string }>();
     characters.filter((character) => character.enabled).forEach((character) =>
@@ -5335,7 +5360,7 @@ function ProductionWorkspace({
               const draft = drafts[item.planId] ?? { owner: item.ownerCharacterId, blueprintItemId: item.blueprintItemId, stepBlueprintItemIds: Object.fromEntries(item.steps.slice(0, -1).map((step) => [`${step.blueprintTypeId}:${step.activity}:${step.productTypeId}`, step.blueprintAssignment.blueprintItemId])), quantity: item.targetQuantity, priority: item.priority, note: item.note ?? "" };
               const blueprintCandidates = draft.owner === item.ownerCharacterId ? item.blueprintCandidates : [];
               return <article className="production-plan-card" key={item.planId}>
-                <header><div><div className="production-plan-statuses"><span className={`status-pill status-pill--${item.state === "ready" ? "good" : "warn"}`}>{t.productionPlanning.stateLabels[item.state]}</span><span className={`status-pill status-pill--${item.inventoryState === "covered" ? "good" : "warn"}`}>{t.productionPlanning.inventoryLabels[item.inventoryState]}</span><span className={`status-pill status-pill--${item.blueprintAssignmentState === "ready" ? "good" : "warn"}`}>{t.productionPlanning.blueprintStateLabels[item.blueprintAssignmentState]}</span><span className={`status-pill status-pill--${item.characterSkillState === "ready" ? "good" : "warn"}`}>{t.productionPlanning.skillStateLabels[item.characterSkillState]}</span></div><h2>{item.productName}</h2><p>{item.blueprintName} · {t.productionPlanning.activityLabels[item.activity]} · #{item.blueprintTypeId}</p></div><strong>{t.productionPlanning.goalQuantity.replace("{quantity}", numberFormat.format(item.targetQuantity))}</strong></header>
+                <header><div><div className="production-plan-statuses"><span className={`status-pill status-pill--${item.state === "ready" ? "good" : "warn"}`}>{t.productionPlanning.stateLabels[item.state]}</span><span className={`status-pill status-pill--${item.inventoryState === "covered" ? "good" : "warn"}`}>{t.productionPlanning.inventoryLabels[item.inventoryState]}</span><span className={`status-pill status-pill--${item.blueprintAssignmentState === "ready" ? "good" : "warn"}`}>{t.productionPlanning.blueprintStateLabels[item.blueprintAssignmentState]}</span><span className={`status-pill status-pill--${item.characterSkillState === "ready" ? "good" : "warn"}`}>{t.productionPlanning.skillStateLabels[item.characterSkillState]}</span><span className={`status-pill status-pill--${item.facilityState === "ready" ? "good" : item.facilityState === "partial" ? "info" : "warn"}`}>{t.productionPlanning.facilityStateLabels[item.facilityState]}</span></div><h2>{item.productName}</h2><p>{item.blueprintName} · {t.productionPlanning.activityLabels[item.activity]} · #{item.blueprintTypeId}</p></div><strong>{t.productionPlanning.goalQuantity.replace("{quantity}", numberFormat.format(item.targetQuantity))}</strong></header>
                 <div className="production-plan-editor">
                   <label><span>{t.productionPlanning.owner}</span><select value={draft.owner} onChange={(event) => setDrafts((current) => ({ ...current, [item.planId]: { ...draft, owner: Number(event.target.value), blueprintItemId: null, stepBlueprintItemIds: {} } }))}>{!productionOwners.some((owner) => owner.characterId === draft.owner) && <option value={draft.owner}>{item.ownerName}</option>}{productionOwners.map((owner) => <option key={owner.characterId} value={owner.characterId}>{owner.name}</option>)}</select></label>
                   <label><span>{t.productionPlanning.blueprintAssignment}</span><select value={draft.blueprintItemId ?? ""} onChange={(event) => setDrafts((current) => ({ ...current, [item.planId]: { ...draft, blueprintItemId: event.target.value ? Number(event.target.value) : null } }))}><option value="">{t.productionPlanning.noBlueprint}</option>{blueprintCandidates.map((candidate) => <option key={candidate.itemId} value={candidate.itemId} disabled={!candidate.suitable}>{t.productionPlanning.blueprintOption.replace("{kind}", candidate.kind === "original" ? "BPO" : "BPC").replace("{item}", String(candidate.itemId)).replace("{me}", String(candidate.materialEfficiency)).replace("{te}", String(candidate.timeEfficiency)).replace("{runs}", candidate.runs === -1 ? "∞" : numberFormat.format(candidate.runs))}{candidate.suitable ? "" : ` · ${t.productionPlanning.blueprintRunsInsufficient}`}</option>)}</select></label>
@@ -5364,9 +5389,18 @@ function ProductionWorkspace({
                     const stepBlueprintItemId = isGoal
                       ? draft.blueprintItemId
                       : draft.stepBlueprintItemIds[stepKey] ?? null;
+                    const facility = step.facilityEvidence;
+                    const facilityDetails = facility.facilityId === null
+                      ? t.productionPlanning.facilityEvidenceLabels[facility.state]
+                      : t.productionPlanning.facilityDetails
+                        .replace("{facility}", facility.facilityName ?? `#${facility.facilityId}`)
+                        .replace("{system}", facility.solarSystemName ?? t.productionPlanning.facilityEvidenceLabels[facility.state])
+                        .replace("{cost}", facility.systemCostIndex === null
+                          ? t.productionPlanning.facilityUnknownCost
+                          : percentFormat.format(facility.systemCostIndex));
                     return <li className={isGoal ? "production-step--goal" : ""} key={`${step.sequence}:${step.productTypeId}`}>
                       <div><strong>{t.productionPlanning.step.replace("{sequence}", String(step.sequence))} · {isGoal ? t.productionPlanning.goalStep : t.productionPlanning.intermediateStep}: {step.productName}</strong><span>{step.blueprintName} · {t.productionPlanning.activityLabels[step.activity]}</span>{!isGoal && step.activity === "manufacturing" && <label className="production-step-blueprint"><span>{t.productionPlanning.stepBlueprintAssignment}</span><select value={stepBlueprintItemId ?? ""} onChange={(event) => setDrafts((current) => ({ ...current, [item.planId]: { ...draft, stepBlueprintItemIds: { ...draft.stepBlueprintItemIds, [stepKey]: event.target.value ? Number(event.target.value) : null } } }))}><option value="">{t.productionPlanning.noBlueprint}</option>{stepCandidates.map((candidate) => <option key={candidate.itemId} value={candidate.itemId} disabled={!candidate.suitable}>{t.productionPlanning.blueprintOption.replace("{kind}", candidate.kind === "original" ? "BPO" : "BPC").replace("{item}", String(candidate.itemId)).replace("{me}", String(candidate.materialEfficiency)).replace("{te}", String(candidate.timeEfficiency)).replace("{runs}", candidate.runs === -1 ? "∞" : numberFormat.format(candidate.runs))}{candidate.suitable ? "" : ` · ${t.productionPlanning.blueprintRunsInsufficient}`}</option>)}</select></label>}</div>
-                      <div>{step.activity === "manufacturing" && <span className={`status-pill status-pill--${stepAssignment.blueprintAssignmentState === "ready" ? "good" : "warn"}`}>{t.productionPlanning.blueprintStateLabels[stepAssignment.blueprintAssignmentState]}</span>}<strong>{t.productionPlanning.runs.replace("{runs}", numberFormat.format(step.runs)).replace("{produced}", numberFormat.format(step.producedQuantity)).replace("{surplus}", numberFormat.format(step.surplusQuantity))}</strong><span>{step.timeEfficiencySavingsSeconds > 0 ? t.productionPlanning.blueprintTime.replace("{time}", formatDuration(step.totalBlueprintTimeSeconds)).replace("{te}", String(step.timeEfficiency)).replace("{saved}", formatDuration(step.timeEfficiencySavingsSeconds)) : t.productionPlanning.baseTime.replace("{time}", formatDuration(step.totalBaseTimeSeconds))}</span><span>{skillTime}</span></div>
+                      <div>{step.activity === "manufacturing" && <span className={`status-pill status-pill--${stepAssignment.blueprintAssignmentState === "ready" ? "good" : "warn"}`}>{t.productionPlanning.blueprintStateLabels[stepAssignment.blueprintAssignmentState]}</span>}<strong>{t.productionPlanning.runs.replace("{runs}", numberFormat.format(step.runs)).replace("{produced}", numberFormat.format(step.producedQuantity)).replace("{surplus}", numberFormat.format(step.surplusQuantity))}</strong><span>{step.timeEfficiencySavingsSeconds > 0 ? t.productionPlanning.blueprintTime.replace("{time}", formatDuration(step.totalBlueprintTimeSeconds)).replace("{te}", String(step.timeEfficiency)).replace("{saved}", formatDuration(step.timeEfficiencySavingsSeconds)) : t.productionPlanning.baseTime.replace("{time}", formatDuration(step.totalBaseTimeSeconds))}</span><span>{skillTime}</span><span className={`production-facility-evidence production-facility-evidence--${facility.state === "ready" ? "ready" : "missing"}`}><strong>{t.productionPlanning.facilityEvidenceLabels[facility.state]}</strong> · {facilityDetails}{facility.jobId !== null && facility.jobStatus !== null ? ` · ${t.productionPlanning.facilityJob.replace("{job}", String(facility.jobId)).replace("{status}", t.blueprints.jobs.statusLabels[facility.jobStatus])}` : ""}{facility.jobSnapshotId !== null && facility.facilitySnapshotId !== null ? ` · ${t.productionPlanning.facilitySources.replace("{jobSnapshot}", String(facility.jobSnapshotId)).replace("{facilitySnapshot}", String(facility.facilitySnapshotId))}` : ""}</span></div>
                     </li>;
                   })}</ol></details>
                   <details open><summary>{t.productionPlanning.inventory} · {item.grossMaterials.length}</summary>{item.grossMaterials.length === 0 ? <p>{t.productionPlanning.noGross}</p> : <ul className="production-material-list">{item.grossMaterials.map((material) => <li key={material.typeId}>

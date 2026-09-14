@@ -689,6 +689,22 @@ select:focus-visible {
   color: #d7dfd8;
 }
 
+.production-resolution .production-facility-evidence {
+  display: block;
+  max-width: 560px;
+  margin-top: 3px;
+  color: #aeb9b1;
+  line-height: 1.45;
+}
+
+.production-resolution .production-facility-evidence strong {
+  color: #d2a85f;
+}
+
+.production-resolution .production-facility-evidence--ready strong {
+  color: #67c6bc;
+}
+
 .production-material-list > li {
   display: grid;
   gap: 10px;

@@ -133,6 +133,21 @@ const PRODUCTION_PLAN_STATES: [&str; 5] = [
 ];
 const PRODUCTION_INVENTORY_STATES: [&str; 4] =
     ["covered", "shortage", "snapshot-missing", "not-applicable"];
+const PRODUCTION_FACILITY_STATES: [&str; 4] = ["ready", "partial", "missing", "not-applicable"];
+const PRODUCTION_STEP_FACILITY_STATES: [&str; 6] = [
+    "ready",
+    "job-snapshot-missing",
+    "job-missing",
+    "facility-snapshot-missing",
+    "facility-missing",
+    "facility-unavailable",
+];
+const PRODUCTION_FACILITY_EVIDENCE: [&str; 4] = [
+    "none",
+    "assigned-blueprint-job",
+    "active-blueprint-type-job",
+    "latest-blueprint-type-job",
+];
 const PRODUCTION_PLAN_SORT_FIELDS: [&str; 6] = [
     "priority", "product", "owner", "activity", "state", "updated",
 ];
@@ -851,6 +866,30 @@ struct ProductionTimeSkill {
 
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
+struct ProductionFacilityEvidence {
+    state: String,
+    evidence: String,
+    job_id: Option<u64>,
+    job_status: Option<String>,
+    facility_id: Option<u64>,
+    facility_name: Option<String>,
+    facility_kind: Option<String>,
+    facility_access: Option<String>,
+    solar_system_id: Option<u64>,
+    solar_system_name: Option<String>,
+    security_status: Option<f64>,
+    security_class: Option<String>,
+    system_cost_index: Option<f64>,
+    job_snapshot_id: Option<u64>,
+    job_sync_run_id: Option<u64>,
+    job_observed_at: Option<String>,
+    facility_snapshot_id: Option<u64>,
+    facility_sync_run_id: Option<u64>,
+    facility_observed_at: Option<String>,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct ProductionStep {
     sequence: u64,
     blueprint_type_id: u64,
@@ -879,6 +918,7 @@ struct ProductionStep {
     material_efficiency: u8,
     material_efficiency_applied: bool,
     blueprint_assignment: ProductionStepBlueprintAssignment,
+    facility_evidence: ProductionFacilityEvidence,
     materials: Vec<ProductionStepMaterial>,
 }
 
@@ -1031,6 +1071,7 @@ struct ProductionPlanRecord {
     skill_snapshot_id: Option<u64>,
     skill_sync_run_id: Option<u64>,
     skill_observed_at: Option<String>,
+    facility_state: String,
     inventory_state: String,
     asset_snapshot_id: Option<u64>,
     asset_sync_run_id: Option<u64>,
@@ -1074,6 +1115,8 @@ struct ProductionPlanQueryResponse {
     blueprint_chain_assignment_rule: String,
     character_skill_time_applied: bool,
     character_skill_time_rule: String,
+    facility_evidence_applied: bool,
+    facility_evidence_rule: String,
     remaining_modifiers_applied: bool,
 }
 
@@ -2806,6 +2849,107 @@ fn production_step_blueprint_assignment_is_valid(
             .all(production_blueprint_candidate_is_valid)
 }
 
+fn production_facility_evidence_is_valid(evidence: &ProductionFacilityEvidence) -> bool {
+    let job_source_complete = match (
+        evidence.job_snapshot_id,
+        evidence.job_sync_run_id,
+        evidence.job_observed_at.as_ref(),
+    ) {
+        (None, None, None) => false,
+        (Some(snapshot_id), Some(sync_run_id), Some(observed_at)) => {
+            production_id_is_valid(snapshot_id)
+                && production_id_is_valid(sync_run_id)
+                && asset_text_is_valid(observed_at, 64)
+        }
+        _ => return false,
+    };
+    let facility_source_complete = match (
+        evidence.facility_snapshot_id,
+        evidence.facility_sync_run_id,
+        evidence.facility_observed_at.as_ref(),
+    ) {
+        (None, None, None) => false,
+        (Some(snapshot_id), Some(sync_run_id), Some(observed_at)) => {
+            production_id_is_valid(snapshot_id)
+                && production_id_is_valid(sync_run_id)
+                && asset_text_is_valid(observed_at, 64)
+        }
+        _ => return false,
+    };
+    let has_job = evidence.evidence != "none";
+    let job_details_complete = evidence.job_id.is_some_and(production_id_is_valid)
+        && evidence
+            .job_status
+            .as_ref()
+            .is_some_and(|value| INDUSTRY_JOB_STATUSES.contains(&value.as_str()))
+        && evidence.facility_id.is_some_and(production_id_is_valid);
+    let job_details_empty = evidence.job_id.is_none()
+        && evidence.job_status.is_none()
+        && evidence.facility_id.is_none();
+    let expects_job = !matches!(
+        evidence.state.as_str(),
+        "job-snapshot-missing" | "job-missing"
+    );
+    let has_facility = matches!(evidence.state.as_str(), "ready" | "facility-unavailable");
+    let facility_details_complete = evidence
+        .facility_kind
+        .as_ref()
+        .is_some_and(|value| INDUSTRY_FACILITY_KINDS.contains(&value.as_str()))
+        && evidence
+            .facility_access
+            .as_ref()
+            .is_some_and(|value| INDUSTRY_FACILITY_ACCESS_STATES.contains(&value.as_str()))
+        && evidence
+            .security_class
+            .as_ref()
+            .is_some_and(|value| INDUSTRY_SECURITY_CLASSES.contains(&value.as_str()));
+    let facility_details_empty = evidence.facility_name.is_none()
+        && evidence.facility_kind.is_none()
+        && evidence.facility_access.is_none()
+        && evidence.solar_system_id.is_none()
+        && evidence.solar_system_name.is_none()
+        && evidence.security_status.is_none()
+        && evidence.security_class.is_none()
+        && evidence.system_cost_index.is_none();
+    PRODUCTION_STEP_FACILITY_STATES.contains(&evidence.state.as_str())
+        && PRODUCTION_FACILITY_EVIDENCE.contains(&evidence.evidence.as_str())
+        && ((evidence.state == "job-snapshot-missing") != job_source_complete)
+        && (if has_job {
+            job_details_complete
+        } else {
+            job_details_empty
+        })
+        && has_job == expects_job
+        && has_facility == facility_source_complete
+        && has_facility == facility_details_complete
+        && evidence
+            .facility_name
+            .as_ref()
+            .is_none_or(|value| asset_text_is_valid(value, 200))
+        && evidence.solar_system_id.is_none_or(production_id_is_valid)
+        && evidence
+            .solar_system_name
+            .as_ref()
+            .is_none_or(|value| asset_text_is_valid(value, 200))
+        && evidence
+            .security_status
+            .is_none_or(|value| value.is_finite() && (-1.0..=1.0).contains(&value))
+        && evidence
+            .system_cost_index
+            .is_none_or(|value| value.is_finite() && (0.0..=1.0).contains(&value))
+        && (evidence.state != "ready"
+            || evidence
+                .facility_access
+                .as_ref()
+                .is_some_and(|value| matches!(value.as_str(), "public" | "available")))
+        && (evidence.state != "facility-unavailable"
+            || evidence
+                .facility_access
+                .as_ref()
+                .is_some_and(|value| !matches!(value.as_str(), "public" | "available")))
+        && (has_facility || facility_details_empty)
+}
+
 fn production_time_skills_are_valid(step: &ProductionStep) -> bool {
     let expected: &[(u64, &str, u8)] = if step.activity == "manufacturing" {
         &[
@@ -2886,6 +3030,7 @@ fn production_plan_record_is_valid(item: &ProductionPlanRecord) -> bool {
             && step.material_efficiency <= 10
             && step.material_efficiency_applied == (step.material_efficiency > 0)
             && production_step_blueprint_assignment_is_valid(&step.blueprint_assignment)
+            && production_facility_evidence_is_valid(&step.facility_evidence)
             && if step.blueprint_assignment.blueprint_assignment_state == "ready"
                 && step.activity == "manufacturing"
             {
@@ -3194,6 +3339,20 @@ fn production_plan_record_is_valid(item: &ProductionPlanRecord) -> bool {
         _ => false,
     };
     let skill_source_available = item.skill_snapshot_id.is_some();
+    let ready_facility_steps = item
+        .steps
+        .iter()
+        .filter(|step| step.facility_evidence.state == "ready")
+        .count();
+    let expected_facility_state = if !ready {
+        "not-applicable"
+    } else if ready_facility_steps == item.steps.len() {
+        "ready"
+    } else if ready_facility_steps > 0 {
+        "partial"
+    } else {
+        "missing"
+    };
     let expected_inventory_state = if !ready {
         "not-applicable"
     } else if item.gross_materials.is_empty() {
@@ -3363,6 +3522,8 @@ fn production_plan_record_is_valid(item: &ProductionPlanRecord) -> bool {
         )
         && ((item.character_skill_state == "ready") == skill_source_available)
         && skill_source_valid
+        && PRODUCTION_FACILITY_STATES.contains(&item.facility_state.as_str())
+        && item.facility_state == expected_facility_state
         && PRODUCTION_INVENTORY_STATES.contains(&item.inventory_state.as_str())
         && item.inventory_state == expected_inventory_state
         && asset_source_valid
@@ -3460,6 +3621,9 @@ fn production_plan_query_response_is_valid(response: &ProductionPlanQueryRespons
         && response.character_skill_time_applied
         && response.character_skill_time_rule
             == "job-wide-ceil-industry-4-advanced-industry-3-reactions-4-active-levels"
+        && response.facility_evidence_applied
+        && response.facility_evidence_rule
+            == "assigned-blueprint-before-active-before-latest-owner-job"
         && !response.remaining_modifiers_applied
 }
 
@@ -6281,13 +6445,14 @@ mod tests {
         IndustryFacilitySyncResponse, IndustryJobQueryResponse, IndustryJobRecord,
         IndustryJobSyncCharacterResponse, IndustryJobSyncResponse, IndustrySlotActivity,
         IndustrySlotQueryResponse, IndustrySlotRecord, ProductionBlueprintCandidate,
-        ProductionGrossMaterial, ProductionPlanRecord, ProductionReservationClaim, ProductionStep,
-        ProductionStepMaterial, ProductionTimeSkill, ResearchPlanOwner, ResearchPlanQueryResponse,
-        ResearchPlanRecord, ResearchPlanSummary, RuntimeDataSnapshot, ScopePackageStatus,
-        SsoCharacterIdentity, SsoLoginStatus, WindowSizePreference, ADVANCED_INDUSTRY_SKILL_ID,
-        ASSET_LOCATION_STATUSES, INDUSTRY_COST_ACTIVITIES, INDUSTRY_FACILITY_ACCESS_STATES,
-        INDUSTRY_FACILITY_KINDS, INDUSTRY_SECURITY_CLASSES, INDUSTRY_SKILL_ID,
-        INDUSTRY_SLOT_ACTIVITIES, RESEARCH_PLAN_ACTIVITIES, RESEARCH_PLAN_STATES,
+        ProductionFacilityEvidence, ProductionGrossMaterial, ProductionPlanRecord,
+        ProductionReservationClaim, ProductionStep, ProductionStepMaterial, ProductionTimeSkill,
+        ResearchPlanOwner, ResearchPlanQueryResponse, ResearchPlanRecord, ResearchPlanSummary,
+        RuntimeDataSnapshot, ScopePackageStatus, SsoCharacterIdentity, SsoLoginStatus,
+        WindowSizePreference, ADVANCED_INDUSTRY_SKILL_ID, ASSET_LOCATION_STATUSES,
+        INDUSTRY_COST_ACTIVITIES, INDUSTRY_FACILITY_ACCESS_STATES, INDUSTRY_FACILITY_KINDS,
+        INDUSTRY_SECURITY_CLASSES, INDUSTRY_SKILL_ID, INDUSTRY_SLOT_ACTIVITIES,
+        RESEARCH_PLAN_ACTIVITIES, RESEARCH_PLAN_STATES,
     };
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -7148,6 +7313,30 @@ mod tests {
         assert!(!research_plan_query_response_is_valid(&page));
     }
 
+    fn missing_production_facility_evidence() -> ProductionFacilityEvidence {
+        ProductionFacilityEvidence {
+            state: "job-snapshot-missing".to_owned(),
+            evidence: "none".to_owned(),
+            job_id: None,
+            job_status: None,
+            facility_id: None,
+            facility_name: None,
+            facility_kind: None,
+            facility_access: None,
+            solar_system_id: None,
+            solar_system_name: None,
+            security_status: None,
+            security_class: None,
+            system_cost_index: None,
+            job_snapshot_id: None,
+            job_sync_run_id: None,
+            job_observed_at: None,
+            facility_snapshot_id: None,
+            facility_sync_run_id: None,
+            facility_observed_at: None,
+        }
+    }
+
     #[test]
     fn validates_multi_step_production_goal_at_end_of_execution_order() {
         let mut plan = ProductionPlanRecord {
@@ -7245,6 +7434,7 @@ mod tests {
                         blueprint_candidate_count: 0,
                         blueprint_candidates: Vec::new(),
                     },
+                    facility_evidence: missing_production_facility_evidence(),
                     materials: vec![ProductionStepMaterial {
                         type_id: 900,
                         type_name: "Synthetic Mineral".to_owned(),
@@ -7321,6 +7511,7 @@ mod tests {
                             reason: "ready".to_owned(),
                         }],
                     },
+                    facility_evidence: missing_production_facility_evidence(),
                     materials: vec![ProductionStepMaterial {
                         type_id: 111,
                         type_name: "Synthetic Frame".to_owned(),
@@ -7368,6 +7559,7 @@ mod tests {
             skill_snapshot_id: Some(14),
             skill_sync_run_id: Some(15),
             skill_observed_at: Some("2026-09-12T10:01:00Z".to_owned()),
+            facility_state: "missing".to_owned(),
             inventory_state: "snapshot-missing".to_owned(),
             asset_snapshot_id: None,
             asset_sync_run_id: None,
@@ -7377,6 +7569,33 @@ mod tests {
         };
 
         assert!(production_plan_record_is_valid(&plan));
+
+        plan.steps[0].facility_evidence = ProductionFacilityEvidence {
+            state: "ready".to_owned(),
+            evidence: "active-blueprint-type-job".to_owned(),
+            job_id: Some(9_001),
+            job_status: Some("active".to_owned()),
+            facility_id: Some(60_003_760),
+            facility_name: Some("Synthetic Station".to_owned()),
+            facility_kind: Some("station".to_owned()),
+            facility_access: Some("public".to_owned()),
+            solar_system_id: Some(30_000_142),
+            solar_system_name: Some("Synthetic System".to_owned()),
+            security_status: Some(0.9),
+            security_class: Some("highsec".to_owned()),
+            system_cost_index: Some(0.0125),
+            job_snapshot_id: Some(16),
+            job_sync_run_id: Some(17),
+            job_observed_at: Some("2026-09-12T10:02:00Z".to_owned()),
+            facility_snapshot_id: Some(18),
+            facility_sync_run_id: Some(19),
+            facility_observed_at: Some("2026-09-12T10:03:00Z".to_owned()),
+        };
+        plan.facility_state = "partial".to_owned();
+        assert!(production_plan_record_is_valid(&plan));
+        plan.steps[0].facility_evidence.facility_access = Some("restricted".to_owned());
+        assert!(!production_plan_record_is_valid(&plan));
+        plan.steps[0].facility_evidence.facility_access = Some("public".to_owned());
 
         plan.inventory_state = "covered".to_owned();
         plan.asset_snapshot_id = Some(8);

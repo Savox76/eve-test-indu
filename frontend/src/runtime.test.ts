@@ -38,6 +38,9 @@ import {
   syncIndustryJobs,
   syncIndustryFacilities,
   updateEveCharacter,
+  type ProductionFacilityEvidence,
+  type ProductionPlanPage,
+  type ProductionPlanRecord,
   type RuntimeAdapter,
 } from "./runtime";
 
@@ -899,7 +902,15 @@ describe("desktop runtime status", () => {
       .resolves.toEqual(catalog);
     expect(invoke).toHaveBeenCalledWith("query_production_catalog", catalogQuery);
 
-    const plan = {
+    const missingFacilityEvidence: ProductionFacilityEvidence = {
+      state: "job-snapshot-missing", evidence: "none", jobId: null, jobStatus: null,
+      facilityId: null, facilityName: null, facilityKind: null, facilityAccess: null,
+      solarSystemId: null, solarSystemName: null, securityStatus: null, securityClass: null,
+      systemCostIndex: null, jobSnapshotId: null, jobSyncRunId: null, jobObservedAt: null,
+      facilitySnapshotId: null, facilitySyncRunId: null, facilityObservedAt: null,
+    };
+
+    const plan: ProductionPlanRecord = {
       planId: 1, ownerCharacterId: 7, ownerName: "Pilot", blueprintTypeId: 100,
       blueprintName: "Synthetic Hull Blueprint", activity: "manufacturing",
       blueprintItemId: null, blueprintAssignmentState: "unassigned",
@@ -932,6 +943,7 @@ describe("desktop runtime status", () => {
           blueprintSnapshotId: 12, blueprintSyncRunId: 13,
           blueprintObservedAt: "2026-09-11T12:00:00Z", blueprintCandidateCount: 0,
           blueprintCandidates: [] },
+        facilityEvidence: missingFacilityEvidence,
         materials: [{ typeId: 901, typeName: "Synthetic Ore",
           quantityPerRun: 2, unmodifiedGrossQuantity: 8, grossQuantity: 8,
           materialEfficiency: 0, materialEfficiencySavings: 0, producedByPlan: false }] },
@@ -956,6 +968,7 @@ describe("desktop runtime status", () => {
           blueprintCandidates: [{ itemId: 99, kind: "copy", materialEfficiency: 10,
             timeEfficiency: 20, runs: 2, locationId: 60_003_760, locationFlag: "Hangar",
             suitable: true, reason: "ready" }] },
+        facilityEvidence: missingFacilityEvidence,
         materials: [{ typeId: 111, typeName: "Synthetic Component",
           quantityPerRun: 2, unmodifiedGrossQuantity: 4, grossQuantity: 4,
           materialEfficiency: 0, materialEfficiencySavings: 0, producedByPlan: true }] }],
@@ -981,12 +994,12 @@ describe("desktop runtime status", () => {
       totalBlueprintTimeSeconds: 300, timeEfficiencySavingsSeconds: 0,
       totalCharacterTimeSeconds: null, characterSkillTimeSavingsSeconds: null,
       characterSkillState: "snapshot-missing", skillSnapshotId: null, skillSyncRunId: null,
-      skillObservedAt: null,
+      skillObservedAt: null, facilityState: "missing",
       inventoryState: "shortage", assetSnapshotId: 8, assetSyncRunId: 9,
       assetObservedAt: "2026-09-11T12:00:00Z",
       createdAt: "2026-09-11T12:00:00Z", updatedAt: "2026-09-11T12:00:00Z",
     };
-    const page = { items: [plan], total: 1, offset: 0, limit: 50,
+    const page: ProductionPlanPage = { items: [plan], total: 1, offset: 0, limit: 50,
       owners: [{ characterId: 7, name: "Pilot" }], activities: ["manufacturing", "reaction"],
       states: ["ready", "sde-unavailable", "recipe-missing", "cycle", "complexity-limit"],
       summary: { ready: 1, "sde-unavailable": 0, "recipe-missing": 0, cycle: 0,
@@ -1001,6 +1014,8 @@ describe("desktop runtime status", () => {
       blueprintChainAssignmentRule: "explicit-per-recipe-unique-item",
       characterSkillTimeApplied: true,
       characterSkillTimeRule: "job-wide-ceil-industry-4-advanced-industry-3-reactions-4-active-levels",
+      facilityEvidenceApplied: true,
+      facilityEvidenceRule: "assigned-blueprint-before-active-before-latest-owner-job",
       remainingModifiersApplied: false };
     invoke.mockResolvedValueOnce(JSON.stringify(page));
     const query = { search: "", ownerCharacterId: null, activity: null, state: null,
@@ -1009,6 +1024,27 @@ describe("desktop runtime status", () => {
     expect(invoke).toHaveBeenLastCalledWith("query_production_plans", expect.objectContaining({
       planState: null, sortBy: "priority",
     }));
+    const withFacility = JSON.parse(JSON.stringify(page)) as typeof page;
+    withFacility.items[0].facilityState = "partial";
+    withFacility.items[0].steps[1].facilityEvidence = {
+      state: "ready", evidence: "active-blueprint-type-job", jobId: 9_001,
+      jobStatus: "active", facilityId: 60_003_760, facilityName: "Synthetic Station",
+      facilityKind: "station", facilityAccess: "public", solarSystemId: 30_000_142,
+      solarSystemName: "Synthetic System", securityStatus: 0.9, securityClass: "highsec",
+      systemCostIndex: 0.0125, jobSnapshotId: 16, jobSyncRunId: 17,
+      jobObservedAt: "2026-09-11T12:02:00Z", facilitySnapshotId: 18,
+      facilitySyncRunId: 19, facilityObservedAt: "2026-09-11T12:03:00Z",
+    };
+    invoke.mockResolvedValueOnce(JSON.stringify(withFacility));
+    await expect(loadProductionPlans(query, { isAvailable: () => true, invoke }))
+      .resolves.toEqual(withFacility);
+
+    const inconsistentFacility = JSON.parse(JSON.stringify(withFacility)) as typeof withFacility;
+    inconsistentFacility.items[0].steps[1].facilityEvidence.facilityAccess = "restricted";
+    invoke.mockResolvedValueOnce(JSON.stringify(inconsistentFacility));
+    await expect(loadProductionPlans(query, { isAvailable: () => true, invoke }))
+      .rejects.toThrow("inconsistent production facility evidence");
+
     const assignedTime = JSON.parse(JSON.stringify(page)) as typeof page;
     const assignedPlan = assignedTime.items[0];
     const assignedIntermediate = assignedPlan.steps[0];
