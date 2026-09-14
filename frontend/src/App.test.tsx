@@ -52,7 +52,7 @@ const nativeRuntime = (overrides: Partial<Extract<DesktopRuntimeStatus, { state:
     sidecar: "ready",
     database: "ready",
     databaseLocation: "data/foundry.sqlite3",
-    schemaVersion: 10,
+    schemaVersion: 11,
     errorCode: null,
     data: {
       state: "empty",

@@ -84,7 +84,7 @@ function nativeStatus(overrides: Record<string, unknown> = {}) {
     sidecar: "ready",
     database: "ready",
     databaseLocation: "data/foundry.sqlite3",
-    schemaVersion: 10,
+    schemaVersion: 11,
     errorCode: null,
     data: emptyData,
     updater: {
@@ -121,7 +121,7 @@ describe("desktop runtime status", () => {
       sidecar: "ready",
       database: "ready",
       databaseLocation: "data/foundry.sqlite3",
-      schemaVersion: 10,
+      schemaVersion: 11,
       errorCode: null,
       data: emptyData,
       updater: {

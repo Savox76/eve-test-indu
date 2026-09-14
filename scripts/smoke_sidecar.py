@@ -459,8 +459,8 @@ def main() -> int:
             with contextlib.closing(sqlite3.connect(database_path)) as connection:
                 if connection.execute("PRAGMA quick_check").fetchone()[0] != "ok":
                     raise RuntimeError("The created SQLite database failed quick_check.")
-                if connection.execute("PRAGMA user_version").fetchone()[0] != 10:
-                    raise RuntimeError("The packaged sidecar did not migrate to schema 9.")
+                if connection.execute("PRAGMA user_version").fetchone()[0] != 11:
+                    raise RuntimeError("The packaged sidecar did not migrate to schema 11.")
                 marker = connection.execute(
                     "SELECT value FROM app_metadata WHERE key = 'smoke-marker'"
                 ).fetchone()[0]
