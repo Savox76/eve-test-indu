@@ -11,6 +11,15 @@ from datetime import datetime
 from typing import Any, Mapping
 
 from .character_skill_sync import CharacterSkillSyncError, validate_character_skills
+from .industry_facility_view import (
+    IndustryFacilityViewError,
+    industry_facility_index,
+)
+from .industry_job_evidence import (
+    IndustryJobEvidenceError,
+    load_latest_job_snapshots,
+    parse_timestamp,
+)
 from .sde import (
     MAX_SAFE_INTEGER,
     SUPPORTED_BLUEPRINT_ACTIVITIES,
@@ -32,10 +41,12 @@ CHAIN_BLUEPRINT_ASSIGNMENT_RULE = "explicit-per-recipe-unique-item"
 CHARACTER_SKILL_TIME_RULE = (
     "job-wide-ceil-industry-4-advanced-industry-3-reactions-4-active-levels"
 )
+FACILITY_EVIDENCE_RULE = "assigned-blueprint-before-active-before-latest-owner-job"
 INDUSTRY_SKILL_ID = 3380
 ADVANCED_INDUSTRY_SKILL_ID = 3388
 REACTIONS_SKILL_ID = 45746
 _SKILL_SOURCE_UNSET = object()
+_JOB_SOURCE_UNSET = object()
 PLAN_STATES = (
     "ready",
     "sde-unavailable",
@@ -55,6 +66,20 @@ BLUEPRINT_ASSIGNMENT_STATES = (
     "runs-insufficient",
 )
 ASSET_LOCATION_STATUSES = ("resolved", "restricted", "unresolved", "cycle", "pending")
+FACILITY_STATES = (
+    "ready",
+    "job-snapshot-missing",
+    "job-missing",
+    "facility-snapshot-missing",
+    "facility-missing",
+    "facility-unavailable",
+)
+PLAN_FACILITY_STATES = ("ready", "partial", "missing", "not-applicable")
+ACTIVE_JOB_STATUSES = ("active", "paused", "ready")
+PRODUCTION_JOB_ACTIVITY_IDS = {
+    "manufacturing": (1,),
+    "reaction": (9, 11),
+}
 
 
 class ProductionPlanningError(RuntimeError):
@@ -504,6 +529,139 @@ def _skill_evidence(source: SkillSource | None) -> dict[str, Any]:
         "skillSnapshotId": None if source is None else source.snapshot_id,
         "skillSyncRunId": None if source is None else source.sync_run_id,
         "skillObservedAt": None if source is None else source.observed_at,
+    }
+
+
+def _load_production_job_sources(
+    connection: sqlite3.Connection,
+) -> dict[int, dict[str, Any]]:
+    try:
+        return load_latest_job_snapshots(connection)
+    except IndustryJobEvidenceError as error:
+        raise ProductionPlanningError("production_job_snapshot_invalid") from error
+
+
+def _load_production_facilities(
+    connection: sqlite3.Connection,
+) -> tuple[bool, dict[int, dict[str, Any]]]:
+    snapshot_available = connection.execute(
+        "SELECT 1 FROM cached_snapshots JOIN sync_runs "
+        "ON sync_runs.id=cached_snapshots.sync_run_id "
+        "WHERE cached_snapshots.resource='industry_facilities' "
+        "AND sync_runs.source='industry_facilities' "
+        "AND sync_runs.status='completed' LIMIT 1"
+    ).fetchone() is not None
+    try:
+        return snapshot_available, industry_facility_index(connection)
+    except IndustryFacilityViewError as error:
+        raise ProductionPlanningError("production_facility_snapshot_invalid") from error
+
+
+def _empty_facility_evidence(
+    state: str,
+    job_source: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    if state not in FACILITY_STATES:
+        raise ProductionPlanningError("production_facility_evidence_invalid")
+    return {
+        "state": state,
+        "evidence": "none",
+        "jobId": None,
+        "jobStatus": None,
+        "facilityId": None,
+        "facilityName": None,
+        "facilityKind": None,
+        "facilityAccess": None,
+        "solarSystemId": None,
+        "solarSystemName": None,
+        "securityStatus": None,
+        "securityClass": None,
+        "systemCostIndex": None,
+        "jobSnapshotId": None if job_source is None else int(job_source["snapshotId"]),
+        "jobSyncRunId": None if job_source is None else int(job_source["syncRunId"]),
+        "jobObservedAt": None if job_source is None else str(job_source["observedAt"]),
+        "facilitySnapshotId": None,
+        "facilitySyncRunId": None,
+        "facilityObservedAt": None,
+    }
+
+
+def _facility_evidence(
+    recipe: Recipe,
+    blueprint_item_id: int | None,
+    job_source: Mapping[str, Any] | None,
+    facility_snapshot_available: bool,
+    facilities: Mapping[int, Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Resolve the strongest personal-job facility evidence for one recipe step."""
+
+    if job_source is None:
+        return _empty_facility_evidence("job-snapshot-missing", None)
+    matching_jobs = [
+        job
+        for job in job_source["jobs"]
+        if int(job["blueprint_type_id"]) == recipe.blueprint_type_id
+        and int(job["activity_id"]) in PRODUCTION_JOB_ACTIVITY_IDS[recipe.activity]
+    ]
+    if not matching_jobs:
+        return _empty_facility_evidence("job-missing", job_source)
+
+    def rank(job: Mapping[str, Any]) -> tuple[bool, bool, datetime, int]:
+        return (
+            blueprint_item_id is not None
+            and int(job["blueprint_id"]) == blueprint_item_id,
+            str(job["status"]) in ACTIVE_JOB_STATUSES,
+            parse_timestamp(job["start_date"]),
+            int(job["job_id"]),
+        )
+
+    job = max(matching_jobs, key=rank)
+    exact_blueprint = (
+        blueprint_item_id is not None
+        and int(job["blueprint_id"]) == blueprint_item_id
+    )
+    active = str(job["status"]) in ACTIVE_JOB_STATUSES
+    evidence = (
+        "assigned-blueprint-job"
+        if exact_blueprint
+        else "active-blueprint-type-job"
+        if active
+        else "latest-blueprint-type-job"
+    )
+    base = {
+        **_empty_facility_evidence(
+            "facility-snapshot-missing"
+            if not facility_snapshot_available
+            else "facility-missing",
+            job_source,
+        ),
+        "evidence": evidence,
+        "jobId": int(job["job_id"]),
+        "jobStatus": str(job["status"]),
+        "facilityId": int(job["facility_id"]),
+    }
+    facility = facilities.get(int(job["facility_id"]))
+    if facility is None:
+        return base
+    state = (
+        "ready"
+        if facility["access"] in {"public", "available"}
+        else "facility-unavailable"
+    )
+    return {
+        **base,
+        "state": state,
+        "facilityName": facility["facilityName"],
+        "facilityKind": facility["kind"],
+        "facilityAccess": facility["access"],
+        "solarSystemId": facility["solarSystemId"],
+        "solarSystemName": facility["solarSystemName"],
+        "securityStatus": facility["securityStatus"],
+        "securityClass": facility["securityClass"],
+        "systemCostIndex": facility["costIndices"].get(recipe.activity),
+        "facilitySnapshotId": int(facility["snapshotId"]),
+        "facilitySyncRunId": int(facility["syncRunId"]),
+        "facilityObservedAt": str(facility["observedAt"]),
     }
 
 
@@ -1147,6 +1305,7 @@ def _empty_resolution(
         "timeEfficiencySavingsSeconds": None,
         "totalCharacterTimeSeconds": None,
         "characterSkillTimeSavingsSeconds": None,
+        "facilityState": "not-applicable",
     }
 
 
@@ -1158,6 +1317,8 @@ def resolve_production_plan(
     | None = None,
     blueprint_source: BlueprintSource | None = None,
     skill_source: SkillSource | None | object = _SKILL_SOURCE_UNSET,
+    job_source: Mapping[str, Any] | None | object = _JOB_SOURCE_UNSET,
+    facility_context: tuple[bool, Mapping[int, Mapping[str, Any]]] | None = None,
     step_blueprint_assignments: Mapping[tuple[int, str, int], int] | None = None,
 ) -> dict[str, Any]:
     """Resolve one goal with a stable recipe tie-break and exact integer rounding."""
@@ -1178,6 +1339,17 @@ def resolve_production_plan(
         )
     if skill_source is not None and not isinstance(skill_source, SkillSource):
         raise ProductionPlanningError("production_skill_snapshot_invalid")
+    if job_source is _JOB_SOURCE_UNSET:
+        job_source = (
+            _load_production_job_sources(connection).get(owner_character_id)
+            if owner_character_id is not None
+            else None
+        )
+    if job_source is not None and not isinstance(job_source, Mapping):
+        raise ProductionPlanningError("production_job_snapshot_invalid")
+    if facility_context is None:
+        facility_context = _load_production_facilities(connection)
+    facility_snapshot_available, facilities = facility_context
     if step_blueprint_assignments is None:
         step_blueprint_assignments = (
             _step_blueprint_assignments(connection, int(plan["id"]))
@@ -1414,6 +1586,13 @@ def resolve_production_plan(
                 skill_source.active_levels,
             )
         )
+        step_facility_evidence = _facility_evidence(
+            recipe,
+            step_assignment["blueprintItemId"],
+            job_source,
+            facility_snapshot_available,
+            facilities,
+        )
         total_base_time = _checked_add(total_base_time, step_time)
         total_blueprint_time = _checked_add(
             total_blueprint_time, step_blueprint_time
@@ -1458,6 +1637,7 @@ def resolve_production_plan(
                 "materialEfficiency": material_efficiency,
                 "materialEfficiencyApplied": material_efficiency > 0,
                 "blueprintAssignment": step_assignment,
+                "facilityEvidence": step_facility_evidence,
                 "materials": direct_materials,
             }
         )
@@ -1465,6 +1645,16 @@ def resolve_production_plan(
         {**step, "sequence": sequence}
         for sequence, step in enumerate(reversed(steps), start=1)
     ]
+    ready_facilities = sum(
+        step["facilityEvidence"]["state"] == "ready" for step in execution_steps
+    )
+    facility_state = (
+        "ready"
+        if ready_facilities == len(execution_steps)
+        else "partial"
+        if ready_facilities > 0
+        else "missing"
+    )
     return {
         "state": "ready",
         "buildNumber": build_number,
@@ -1495,6 +1685,7 @@ def resolve_production_plan(
             if total_character_time is None
             else total_blueprint_time - total_character_time
         ),
+        "facilityState": facility_state,
         **assignment,
         **skill_evidence,
         "appliedMaterialEfficiency": applied_material_efficiency,
@@ -1625,6 +1816,7 @@ def _serialize_plan(row: sqlite3.Row, resolution: Mapping[str, Any]) -> dict[str
         "skillSnapshotId": resolution["skillSnapshotId"],
         "skillSyncRunId": resolution["skillSyncRunId"],
         "skillObservedAt": resolution["skillObservedAt"],
+        "facilityState": resolution["facilityState"],
         "inventoryState": resolution["inventoryState"],
         "assetSnapshotId": resolution["assetSnapshotId"],
         "assetSyncRunId": resolution["assetSyncRunId"],
@@ -1646,6 +1838,8 @@ def query_production_plans(connection: sqlite3.Connection, raw_query: Any) -> di
     blueprint_sources = _load_blueprint_sources(connection, plan_rows)
     step_blueprint_assignments = _load_step_blueprint_assignments(connection)
     skill_sources = _load_skill_sources(connection, plan_rows)
+    job_sources = _load_production_job_sources(connection)
+    facility_context = _load_production_facilities(connection)
     inventory_sources = _load_inventory_sources(connection, plan_rows)
     resolutions = {
         int(row["id"]): resolve_production_plan(
@@ -1654,6 +1848,8 @@ def query_production_plans(connection: sqlite3.Connection, raw_query: Any) -> di
             loaded_recipes=loaded_recipes,
             blueprint_source=blueprint_sources.get(int(row["owner_character_id"])),
             skill_source=skill_sources.get(int(row["owner_character_id"])),
+            job_source=job_sources.get(int(row["owner_character_id"])),
+            facility_context=facility_context,
             step_blueprint_assignments=step_blueprint_assignments.get(
                 int(row["id"]), {}
             ),
@@ -1750,6 +1946,8 @@ def query_production_plans(connection: sqlite3.Connection, raw_query: Any) -> di
         "blueprintChainAssignmentRule": CHAIN_BLUEPRINT_ASSIGNMENT_RULE,
         "characterSkillTimeApplied": True,
         "characterSkillTimeRule": CHARACTER_SKILL_TIME_RULE,
+        "facilityEvidenceApplied": True,
+        "facilityEvidenceRule": FACILITY_EVIDENCE_RULE,
         "remainingModifiersApplied": False,
     }
 

@@ -1,6 +1,6 @@
 # Produktionsplanung
 
-Paket 30 ergänzt lokale, updatefeste Fertigungs- und Reaktionsziele. Paket 31 gleicht deren äußeren Materialbedarf mit vollständigen persönlichen Asset-Snapshots ab. Paket 32 reserviert denselben Bestand konfliktfrei zwischen allen Zielen eines Charakters. Paket 33 ordnet einem Ziel optional ein konkretes persönliches Blueprint-Item zu und wendet dessen belegten ME-Wert auf den Wurzel-Fertigungsschritt an. Paket 34 bezieht zusätzlich dessen belegten TE-Wert in die Blueprint-Zeit des Zielschritts ein. Paket 35 wendet die aktuell wirksamen Industrie- und Reaktions-Skills des ausführenden Charakters auf jeden passenden Schritt an. Paket 36 erweitert die persönliche Blueprintzuordnung und ihre ME-/TE-Wirkung auf jeden Fertigungsschritt der Kette. Die Planung verwendet ausschließlich vollständige, belegte Snapshots, verändert keine Daten in EVE und startet keine Industrieaufträge.
+Paket 30 ergänzt lokale, updatefeste Fertigungs- und Reaktionsziele. Paket 31 gleicht deren äußeren Materialbedarf mit vollständigen persönlichen Asset-Snapshots ab. Paket 32 reserviert denselben Bestand konfliktfrei zwischen allen Zielen eines Charakters. Paket 33 ordnet einem Ziel optional ein konkretes persönliches Blueprint-Item zu und wendet dessen belegten ME-Wert auf den Wurzel-Fertigungsschritt an. Paket 34 bezieht zusätzlich dessen belegten TE-Wert in die Blueprint-Zeit des Zielschritts ein. Paket 35 wendet die aktuell wirksamen Industrie- und Reaktions-Skills des ausführenden Charakters auf jeden passenden Schritt an. Paket 36 erweitert die persönliche Blueprintzuordnung und ihre ME-/TE-Wirkung auf jeden Fertigungsschritt der Kette. Paket 37 verbindet jeden Schritt mit einem belegten persönlichen Job und dessen Anlagenstand. Die Planung verwendet ausschließlich vollständige, belegte Snapshots, verändert keine Daten in EVE und startet keine Industrieaufträge.
 
 ## Persistentes Ziel
 
@@ -66,6 +66,18 @@ Existieren Alternativen, zeigt die Oberfläche Anzahl und ausgewähltes Blueprin
 
 Jeder Schritt nennt Rezept, Aktivität, benötigte Menge, Ausgabemenge je Lauf, Läufe, produzierte Menge, Überschuss, unveränderte SDE-Basiszeit und direkte Materialien. Die sichtbare Herstellungsreihenfolge beginnt bei den tiefsten Vorprodukten und endet bewusst mit dem ausgewählten Zielprodukt. Backend und Frontend prüfen deshalb den letzten Schritt als gewähltes Wurzelziel. Das Ziel wird zusätzlich hervorgehoben; die Nummern sind damit als ausführbare Reihenfolge und nicht als Abhängigkeitsbaum zu lesen. Alle Mengen und Zeiten bleiben innerhalb der verlustfrei in JavaScript darstellbaren Ganzzahlgrenze; Überläufe werden abgewiesen.
 
+## Persönlicher Job- und Anlagenbeleg
+
+Paket 37 verwendet pro ausführendem Charakter ausschließlich den letzten vollständig abgeschlossenen persönlichen Industriejob-Snapshot. Für jeden Produktionsschritt werden nur Jobs mit passender Blueprint-Typ-ID und Aktivität berücksichtigt. Die Auswahl ist stabil:
+
+1. ein Job mit der explizit zugeordneten Blueprint-Item-ID,
+2. danach ein aktiver, pausierter oder abholbereiter Job desselben Blueprint-Typs,
+3. danach der jüngste typgleiche Job nach Startzeit und Job-ID.
+
+Der gewählte Job belegt Job-ID, Status und Anlagen-ID. Diese Anlage wird ausschließlich im letzten vollständig abgeschlossenen globalen Anlagen-Snapshot nachgeschlagen. Ist sie dort vorhanden, zeigt der Schritt Anlagenname und -art, Zugriffszustand, Sonnensystem, Sicherheitsraum, den für Fertigung oder Reaktion passenden Systemkostenindex sowie Snapshot-, Sync-Lauf- und Zeitbelege beider Quellen. Die Zustände `job-snapshot-missing`, `job-missing`, `facility-snapshot-missing`, `facility-missing` und `facility-unavailable` unterscheiden fehlende Quellen und eingeschränkte Strukturen ausdrücklich. Auf Zielebene bedeutet `ready`, dass alle Schritte eine verfügbare Anlage belegen; `partial` gilt bei mindestens einem belegten Schritt, `missing` bei keinem und `not-applicable` bei einer nicht auflösbaren Rezeptkette.
+
+Ein historischer oder aktiver Job ist ein nachvollziehbarer persönlicher Anlagenbeleg, aber keine automatische Auswahl für einen künftigen Auftrag. Der Systemkostenindex wird als belegte Eingabe angezeigt und noch nicht in Zeit oder Kosten eingerechnet.
+
 ## Bruttomaterial und Zustände
 
 `grossMaterials` enthält nur die äußeren Materialien, für die innerhalb der ausgewählten Kette kein Rezept verwendet wird. Zwischenprodukte erscheinen stattdessen als eigene Schritte.
@@ -112,13 +124,13 @@ Neue Ziele mit Zyklus oder überschrittener Komplexitätsgrenze werden nicht ges
 
 ## Bewusste Berechnungsgrenze
 
-Paket 36 berechnet Bruttobedarf einschließlich des belegten Blueprint-ME jedes zugewiesenen Fertigungsschritts, die mit dessen belegtem TE veränderte Blueprint-Zeit, die persönliche Skillzeit, persönlichen Bestand und konfliktfreie zielbezogene Reservierungen. Noch nicht einbezogen werden:
+Paket 37 berechnet Bruttobedarf einschließlich des belegten Blueprint-ME jedes zugewiesenen Fertigungsschritts, die mit dessen belegtem TE veränderte Blueprint-Zeit, die persönliche Skillzeit, persönlichen Bestand und konfliktfreie zielbezogene Reservierungen. Zusätzlich werden passende persönliche Job- und Anlagenbelege samt aktivitätsspezifischem Systemkostenindex dargestellt. Noch nicht einbezogen werden:
 
 - persönliche Blueprint-ME-/TE-Modifikatoren für Reaktionen,
 - Anlagen-, Service- und Rigboni,
 - Systemkosten, Steuern und Preise.
 
-Die API bestätigt die aktiven Verträge mit `inventoryApplied: true`, `reservationsApplied: true`, `reservationRule: priority-desc-created-asc-plan-id-asc`, `blueprintMaterialEfficiencyApplied: true`, `materialEfficiencyRule: max-runs-ceil-base-runs-percent`, `blueprintTimeEfficiencyApplied: true`, `timeEfficiencyRule: max-one-ceil-base-runs-percent`, `blueprintChainAssignmentsApplied: true`, `blueprintChainAssignmentRule: explicit-per-recipe-unique-item`, `characterSkillTimeApplied: true` und `characterSkillTimeRule: job-wide-ceil-industry-4-advanced-industry-3-reactions-4-active-levels`. Die verbleibende Modifikatorgrenze bleibt `remainingModifiersApplied: false`. Auch die ausgewiesene persönliche Skillzeit darf ohne Anlagen-/Rigboni weiterhin nicht als reale Fertigstellungszeit oder Kostenprognose verstanden werden.
+Die API bestätigt die aktiven Verträge mit `inventoryApplied: true`, `reservationsApplied: true`, `reservationRule: priority-desc-created-asc-plan-id-asc`, `blueprintMaterialEfficiencyApplied: true`, `materialEfficiencyRule: max-runs-ceil-base-runs-percent`, `blueprintTimeEfficiencyApplied: true`, `timeEfficiencyRule: max-one-ceil-base-runs-percent`, `blueprintChainAssignmentsApplied: true`, `blueprintChainAssignmentRule: explicit-per-recipe-unique-item`, `characterSkillTimeApplied: true`, `characterSkillTimeRule: job-wide-ceil-industry-4-advanced-industry-3-reactions-4-active-levels`, `facilityEvidenceApplied: true` und `facilityEvidenceRule: assigned-blueprint-before-active-before-latest-owner-job`. Die verbleibende Modifikatorgrenze bleibt `remainingModifiersApplied: false`. Auch die ausgewiesene persönliche Skillzeit darf ohne Anlagen-/Rigboni weiterhin nicht als reale Fertigstellungszeit oder Kostenprognose verstanden werden.
 
 ## Arbeitsvorrat und Bedienung
 

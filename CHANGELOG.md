@@ -24,6 +24,33 @@ Keine.
 
 Keine.
 
+## 0.2.0-alpha.8 – 14. September 2026
+
+### Neu hinzugefügt
+
+- Paket 37 verbindet jeden aufgelösten Produktionsschritt mit dem stärksten passenden persönlichen Industriejob und dessen Anlage aus den letzten vollständigen Snapshots.
+- Anlage, Zugriffsstatus, Sonnensystem, Sicherheitsraum, aktivitätsspezifischer Systemkostenindex, Jobstatus und beide Quellenstände werden schrittgenau angezeigt.
+- Fehlende Job- oder Anlagen-Snapshots, ein fehlender passender Job, eine nicht im Anlagenstand enthaltene Anlage und eine nicht verfügbare Spielerstruktur bleiben unterscheidbare Zustände.
+
+### Geändert
+
+- Die sichtbare Versionsnummer lautet `v0.2.0-alpha.8`.
+- Ein Job mit exakt zugeordnetem Blueprint-Item hat Vorrang vor einem aktiven und danach vor dem jüngsten typgleichen persönlichen Job.
+
+### Behobene Fehler
+
+- Bereits synchronisierte persönliche Jobs und Anlagen konnten bisher nicht direkt an den einzelnen Schritten einer Produktionskette nachvollzogen werden.
+
+### Bekannte Einschränkungen
+
+- Der belegte Job beschreibt eine bisherige oder laufende persönliche Nutzung und wählt keine Anlage für einen künftigen Auftrag automatisch aus.
+- Systemkostenindex, Anlagen-, Service- und Rigboni, Steuern und Preise werden noch nicht in Zeit oder Kosten eingerechnet.
+- Die Alpha ist noch nicht produktiv code-signiert; SmartScreen kann deshalb weiterhin vor einem unbekannten Herausgeber warnen.
+
+### Update und Datenbankmigration
+
+- Das Datenbankschema bleibt bei Version 11; beim Update ist keine neue Migration erforderlich. Die bestehenden automatischen Sicherungs- und Wiederherstellungsprüfungen bleiben aktiv.
+
 ## 0.2.0-alpha.7 – 14. September 2026
 
 ### Neu hinzugefügt

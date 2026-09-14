@@ -368,6 +368,16 @@ const productionPlanPage: ProductionPlanPage = {
           timeEfficiency: 20, runs: 2, locationId: 60_003_760, locationFlag: "Hangar",
           suitable: true, reason: "ready" }],
       },
+      facilityEvidence: {
+        state: "ready", evidence: "active-blueprint-type-job", jobId: 9_001,
+        jobStatus: "active", facilityId: 60_003_760,
+        facilityName: "Jita IV - Moon 4", facilityKind: "station", facilityAccess: "public",
+        solarSystemId: 30_000_142, solarSystemName: "Jita", securityStatus: 0.9,
+        securityClass: "highsec", systemCostIndex: 0.0125, jobSnapshotId: 16,
+        jobSyncRunId: 17, jobObservedAt: "2026-09-11T12:02:00Z",
+        facilitySnapshotId: 18, facilitySyncRunId: 19,
+        facilityObservedAt: "2026-09-11T12:03:00Z",
+      },
       materials: [{ typeId: 900, typeName: "Synthetic Mineral", quantityPerRun: 5,
         unmodifiedGrossQuantity: 10, grossQuantity: 10, materialEfficiency: 0,
         materialEfficiencySavings: 0, producedByPlan: false }] }],
@@ -396,6 +406,7 @@ const productionPlanPage: ProductionPlanPage = {
     totalCharacterTimeSeconds: 158, characterSkillTimeSavingsSeconds: 42,
     characterSkillState: "ready", skillSnapshotId: 14, skillSyncRunId: 15,
     skillObservedAt: "2026-09-11T12:01:00Z",
+    facilityState: "ready",
     inventoryState: "shortage", assetSnapshotId: 8, assetSyncRunId: 9,
     assetObservedAt: "2026-09-11T12:00:00Z",
     createdAt: "2026-09-11T12:00:00Z", updatedAt: "2026-09-11T12:00:00Z" }],
@@ -415,6 +426,8 @@ const productionPlanPage: ProductionPlanPage = {
   blueprintChainAssignmentRule: "explicit-per-recipe-unique-item",
   characterSkillTimeApplied: true,
   characterSkillTimeRule: "job-wide-ceil-industry-4-advanced-industry-3-reactions-4-active-levels",
+  facilityEvidenceApplied: true,
+  facilityEvidenceRule: "assigned-blueprint-before-active-before-latest-owner-job",
   remainingModifiersApplied: false,
 };
 
@@ -789,7 +802,7 @@ describe("New Eden Foundry design preview", () => {
   it("credits Savoxmedia as the app creator next to the version", () => {
     render(<App />);
 
-    expect(screen.getByText("v0.2.0-alpha.7")).toBeInTheDocument();
+    expect(screen.getByText("v0.2.0-alpha.8")).toBeInTheDocument();
     expect(screen.getByText("Savoxmedia")).toBeInTheDocument();
     expect(screen.getByText("Erstellt von", { exact: false })).toBeInTheDocument();
     expect(screen.queryByText("Lokaler Betreiber")).not.toBeInTheDocument();
@@ -955,6 +968,11 @@ describe("New Eden Foundry design preview", () => {
     fireEvent.click(screen.getByRole("button", { name: "Produktion" }));
 
     expect(await screen.findByText("Synthetic Mineral")).toBeInTheDocument();
+    expect(screen.getByText("Anlagen belegt")).toBeInTheDocument();
+    expect(screen.getByText("Anlage belegt")).toBeInTheDocument();
+    expect(screen.getByText(/Jita IV - Moon 4 · Jita · Systemkostenindex 1,25 %/))
+      .toBeInTheDocument();
+    expect(screen.getByText(/Job #9001 · Läuft/)).toBeInTheDocument();
     expect(screen.getByText(/Bestand des ausführenden Charakters/)).toBeInTheDocument();
     expect(screen.getAllByText("Fehlmenge")).toHaveLength(2);
     expect(screen.getByText("Bestand")).toBeInTheDocument();

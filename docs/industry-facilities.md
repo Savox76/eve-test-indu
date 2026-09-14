@@ -32,6 +32,8 @@ Suche, Anlagenart, Zugriffszustand, Sicherheitsraum, Kostenaktivität, der Filte
 
 Der Sicherheitsstatus wird aus dem mitgelieferten offiziellen SDE-Ausschnitt gelesen. Bei einem Update wird die abgeleitete SDE-Tabelle atomar um die neue Spalte ergänzt und bei gleicher Buildnummer genau einmal neu befüllt; Charaktere, Einstellungen, Pläne und Snapshots in `foundry.sqlite3` werden dabei nicht ersetzt.
 
+Seit Paket 37 verwendet die Produktionsplanung denselben letzten vollständigen Anlagen-Snapshot als schrittgenauen Beleg. Ein passender persönlicher Industriejob liefert die Anlagen-ID; angezeigt werden der aufgelöste Zugriffszustand, das System, der Sicherheitsraum, der aktivitätsspezifische Systemkostenindex und die Quellen-IDs. Diese Verknüpfung belegt eine persönlich verwendete Anlage, wählt aber keine künftige Anlage automatisch aus und wendet keinen Anlagenmodifikator an.
+
 ## Bewusste Kostengrenze
 
 Der Systemkostenindex ist nur eine einzelne belegte Eingabe für spätere Jobkosten und kein fertiger Baupreis. Der öffentliche Anlagenendpunkt liefert derzeit keine verlässliche Anlagensteuer für die zurückgegebenen Stationen; die Strukturroute liefert weder Service-Modul- noch Rigboni. Paket 26 speichert und zeigt solche Werte deshalb als unbekannt, statt sie zu erraten oder aus Community-Diensten zu übernehmen.

@@ -600,6 +600,9 @@ export type ProductionPlanState = "ready" | "sde-unavailable" | "recipe-missing"
 export type ProductionInventoryState = "covered" | "shortage" | "snapshot-missing" | "not-applicable";
 export type ProductionBlueprintAssignmentState = "ready" | "unassigned" | "snapshot-missing" | "missing" | "type-mismatch" | "runs-insufficient";
 export type ProductionCharacterSkillState = "ready" | "snapshot-missing";
+export type ProductionFacilityState = "ready" | "partial" | "missing" | "not-applicable";
+export type ProductionStepFacilityState = "ready" | "job-snapshot-missing" | "job-missing" | "facility-snapshot-missing" | "facility-missing" | "facility-unavailable";
+export type ProductionFacilityEvidenceKind = "none" | "assigned-blueprint-job" | "active-blueprint-type-job" | "latest-blueprint-type-job";
 export type ProductionPlanSortField = "priority" | "product" | "owner" | "activity" | "state" | "updated";
 export const productionActivities: readonly ProductionActivity[] = ["manufacturing", "reaction"];
 export const productionPlanStates: readonly ProductionPlanState[] = [
@@ -659,6 +662,28 @@ export interface ProductionTimeSkill {
   percentPerLevel: 3 | 4;
 }
 
+export interface ProductionFacilityEvidence {
+  state: ProductionStepFacilityState;
+  evidence: ProductionFacilityEvidenceKind;
+  jobId: number | null;
+  jobStatus: IndustryJobStatus | null;
+  facilityId: number | null;
+  facilityName: string | null;
+  facilityKind: IndustryFacilityKind | null;
+  facilityAccess: IndustryFacilityAccess | null;
+  solarSystemId: number | null;
+  solarSystemName: string | null;
+  securityStatus: number | null;
+  securityClass: IndustrySecurityClass | null;
+  systemCostIndex: number | null;
+  jobSnapshotId: number | null;
+  jobSyncRunId: number | null;
+  jobObservedAt: string | null;
+  facilitySnapshotId: number | null;
+  facilitySyncRunId: number | null;
+  facilityObservedAt: string | null;
+}
+
 export interface ProductionStep {
   sequence: number;
   blueprintTypeId: number;
@@ -687,6 +712,7 @@ export interface ProductionStep {
   materialEfficiency: number;
   materialEfficiencyApplied: boolean;
   blueprintAssignment: ProductionStepBlueprintAssignment;
+  facilityEvidence: ProductionFacilityEvidence;
   materials: ProductionStepMaterial[];
 }
 
@@ -823,6 +849,7 @@ export interface ProductionPlanRecord {
   skillSnapshotId: number | null;
   skillSyncRunId: number | null;
   skillObservedAt: string | null;
+  facilityState: ProductionFacilityState;
   inventoryState: ProductionInventoryState;
   assetSnapshotId: number | null;
   assetSyncRunId: number | null;
@@ -863,6 +890,8 @@ export interface ProductionPlanPage {
   blueprintChainAssignmentRule: "explicit-per-recipe-unique-item";
   characterSkillTimeApplied: true;
   characterSkillTimeRule: "job-wide-ceil-industry-4-advanced-industry-3-reactions-4-active-levels";
+  facilityEvidenceApplied: true;
+  facilityEvidenceRule: "assigned-blueprint-before-active-before-latest-owner-job";
   remainingModifiersApplied: false;
 }
 
@@ -2914,6 +2943,63 @@ const productionTimeSkillDefinitions: Record<ProductionActivity, readonly {
   ],
 };
 
+function parseProductionFacilityEvidence(candidate: unknown): ProductionFacilityEvidence {
+  if (
+    !isRecord(candidate) ||
+    !["ready", "job-snapshot-missing", "job-missing", "facility-snapshot-missing",
+      "facility-missing", "facility-unavailable"].includes(String(candidate.state)) ||
+    !["none", "assigned-blueprint-job", "active-blueprint-type-job",
+      "latest-blueprint-type-job"].includes(String(candidate.evidence)) ||
+    !(candidate.jobId === null || isPositiveSafeInteger(candidate.jobId)) ||
+    !(candidate.jobStatus === null || industryJobStatuses.includes(candidate.jobStatus as IndustryJobStatus)) ||
+    !(candidate.facilityId === null || isPositiveSafeInteger(candidate.facilityId)) ||
+    !(candidate.facilityName === null || isBoundedText(candidate.facilityName, 200)) ||
+    !(candidate.facilityKind === null || industryFacilityKinds.includes(candidate.facilityKind as IndustryFacilityKind)) ||
+    !(candidate.facilityAccess === null || industryFacilityAccessStates.includes(
+      candidate.facilityAccess as IndustryFacilityAccess)) ||
+    !(candidate.solarSystemId === null || isPositiveSafeInteger(candidate.solarSystemId)) ||
+    !(candidate.solarSystemName === null || isBoundedText(candidate.solarSystemName, 200)) ||
+    !(candidate.securityStatus === null || typeof candidate.securityStatus === "number" &&
+      Number.isFinite(candidate.securityStatus) && candidate.securityStatus >= -1 && candidate.securityStatus <= 1) ||
+    !(candidate.securityClass === null || industrySecurityClasses.includes(
+      candidate.securityClass as IndustrySecurityClass)) ||
+    !(candidate.systemCostIndex === null || typeof candidate.systemCostIndex === "number" &&
+      Number.isFinite(candidate.systemCostIndex) && candidate.systemCostIndex >= 0 &&
+      candidate.systemCostIndex <= 1)
+  ) throw new Error("The native runtime returned invalid production facility evidence.");
+  const jobSourceComplete = isPositiveSafeInteger(candidate.jobSnapshotId) &&
+    isPositiveSafeInteger(candidate.jobSyncRunId) && isBoundedText(candidate.jobObservedAt, 64);
+  const jobSourceEmpty = candidate.jobSnapshotId === null && candidate.jobSyncRunId === null &&
+    candidate.jobObservedAt === null;
+  const facilitySourceComplete = isPositiveSafeInteger(candidate.facilitySnapshotId) &&
+    isPositiveSafeInteger(candidate.facilitySyncRunId) && isBoundedText(candidate.facilityObservedAt, 64);
+  const facilitySourceEmpty = candidate.facilitySnapshotId === null &&
+    candidate.facilitySyncRunId === null && candidate.facilityObservedAt === null;
+  const hasJob = candidate.evidence !== "none";
+  const jobDetailsComplete = candidate.jobId !== null && candidate.jobStatus !== null &&
+    candidate.facilityId !== null;
+  const jobDetailsEmpty = candidate.jobId === null && candidate.jobStatus === null &&
+    candidate.facilityId === null;
+  const expectsJob = !["job-snapshot-missing", "job-missing"].includes(String(candidate.state));
+  const hasFacility = candidate.state === "ready" || candidate.state === "facility-unavailable";
+  if (
+    (!jobSourceComplete && !jobSourceEmpty) || (!facilitySourceComplete && !facilitySourceEmpty) ||
+    (candidate.state === "job-snapshot-missing") !== jobSourceEmpty ||
+    (hasJob ? !jobDetailsComplete : !jobDetailsEmpty) || hasJob !== expectsJob ||
+    (hasFacility !== facilitySourceComplete) ||
+    (hasFacility !== (candidate.facilityKind !== null && candidate.facilityAccess !== null &&
+      candidate.securityClass !== null)) ||
+    (candidate.state === "ready" && !["public", "available"].includes(String(candidate.facilityAccess))) ||
+    (candidate.state === "facility-unavailable" && ["public", "available"].includes(
+      String(candidate.facilityAccess))) ||
+    (!hasFacility && (candidate.facilityName !== null || candidate.facilityKind !== null ||
+      candidate.facilityAccess !== null || candidate.solarSystemId !== null ||
+      candidate.solarSystemName !== null || candidate.securityStatus !== null ||
+      candidate.securityClass !== null || candidate.systemCostIndex !== null))
+  ) throw new Error("The native runtime returned inconsistent production facility evidence.");
+  return candidate as unknown as ProductionFacilityEvidence;
+}
+
 function parseProductionStep(candidate: unknown, index: number): ProductionStep {
   if (
     !isRecord(candidate) || candidate.sequence !== index + 1 ||
@@ -3009,6 +3095,7 @@ function parseProductionStep(candidate: unknown, index: number): ProductionStep 
   const blueprintAssignment = parseProductionStepBlueprintAssignment(
     candidate.blueprintAssignment,
   );
+  const facilityEvidence = parseProductionFacilityEvidence(candidate.facilityEvidence);
   const assignmentEfficiency = blueprintAssignment.blueprintAssignmentState === "ready" &&
     candidate.activity === "manufacturing"
     ? blueprintAssignment
@@ -3028,6 +3115,7 @@ function parseProductionStep(candidate: unknown, index: number): ProductionStep 
     timeSkills,
     materials,
     blueprintAssignment,
+    facilityEvidence,
   } as unknown as ProductionStep;
 }
 
@@ -3172,6 +3260,7 @@ function parseProductionPlanRecord(candidate: unknown): ProductionPlanRecord {
       candidate.skillObservedAt === null) ||
       (isPositiveSafeInteger(candidate.skillSnapshotId) && isPositiveSafeInteger(candidate.skillSyncRunId) &&
         isBoundedText(candidate.skillObservedAt, 64))) ||
+    !["ready", "partial", "missing", "not-applicable"].includes(String(candidate.facilityState)) ||
     !productionInventoryStates.includes(candidate.inventoryState as ProductionInventoryState) ||
     !((candidate.assetSnapshotId === null && candidate.assetSyncRunId === null &&
       candidate.assetObservedAt === null) ||
@@ -3322,6 +3411,14 @@ function parseProductionPlanRecord(candidate: unknown): ProductionPlanRecord {
         : grossMaterials.some((material) => Number(material.missingQuantity) > 0)
           ? "shortage"
           : "covered";
+  const readyFacilitySteps = steps.filter((step) => step.facilityEvidence.state === "ready").length;
+  const expectedFacilityState: ProductionFacilityState = !ready
+    ? "not-applicable"
+    : readyFacilitySteps === steps.length
+      ? "ready"
+      : readyFacilitySteps > 0
+        ? "partial"
+        : "missing";
   if (
     ready !== (steps.length > 0 && candidate.totalBaseTimeSeconds !== null &&
       candidate.totalBlueprintTimeSeconds !== null && candidate.timeEfficiencySavingsSeconds !== null) ||
@@ -3355,6 +3452,7 @@ function parseProductionPlanRecord(candidate: unknown): ProductionPlanRecord {
       candidate.totalCharacterTimeSeconds !== null || candidate.characterSkillTimeSavingsSeconds !== null)) ||
     ((candidate.state === "cycle") !== (candidate.cycleTypeIds.length > 0)) ||
     candidate.inventoryState !== expectedInventoryState ||
+    candidate.facilityState !== expectedFacilityState ||
     (!ready && ownerSnapshotAvailable) ||
     (ownerSnapshotAvailable && grossMaterials.some((material) =>
       material.availabilityState === "snapshot-missing")) ||
@@ -3428,6 +3526,9 @@ function parseProductionPlanPage(candidate: unknown): ProductionPlanPage {
     candidate.characterSkillTimeApplied !== true ||
     candidate.characterSkillTimeRule !==
       "job-wide-ceil-industry-4-advanced-industry-3-reactions-4-active-levels" ||
+    candidate.facilityEvidenceApplied !== true ||
+    candidate.facilityEvidenceRule !==
+      "assigned-blueprint-before-active-before-latest-owner-job" ||
     candidate.remainingModifiersApplied !== false
   ) throw new Error("The native runtime returned invalid production-plan data.");
   const items = candidate.items.map(parseProductionPlanRecord);
@@ -3469,6 +3570,8 @@ export async function loadProductionPlans(
     characterSkillTimeApplied: true,
     characterSkillTimeRule:
       "job-wide-ceil-industry-4-advanced-industry-3-reactions-4-active-levels",
+    facilityEvidenceApplied: true,
+    facilityEvidenceRule: "assigned-blueprint-before-active-before-latest-owner-job",
     remainingModifiersApplied: false,
   };
   const page = parseProductionPlanPage(JSON.parse(await adapter.invoke("query_production_plans", {
