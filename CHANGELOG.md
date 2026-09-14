@@ -24,6 +24,33 @@ Keine.
 
 Keine.
 
+## 0.2.0-alpha.6 – 14. September 2026
+
+### Neu hinzugefügt
+
+- Paket 35 wendet die aktuell wirksamen Stufen von Industry, Advanced Industry und Reactions aus dem letzten vollständigen Skill-Snapshot des ausführenden Charakters auf jeden passenden Produktionsschritt an.
+- Jeder Schritt zeigt die verwendeten Skillnamen und aktiven Level sowie Blueprint-Zeit, persönliche Skillzeit und die zusätzliche Zeitersparnis. Die Gesamtsicht führt Skill-Snapshot, Sync-Lauf und Beobachtungszeit als Beleg.
+- Die Faktoren werden mit exakter Ganzzahlarithmetik multiplikativ auf die vollständige ungerundete Jobzeit angewendet und erst am Ende auf volle Sekunden aufgerundet.
+
+### Geändert
+
+- Die sichtbare Versionsnummer lautet `v0.2.0-alpha.6`.
+- Die Produktionsansicht kennzeichnet sofort, ob eine belegte persönliche Skillzeit verfügbar ist. Ohne vollständigen Skill-Snapshot bleibt die Zeit ausdrücklich unbekannt.
+
+### Behobene Fehler
+
+- Bereits synchronisierte aktive Industrie- und Reaktions-Skills wurden in der Produktionsplanung bisher angezeigt, aber bei der Zeitberechnung nicht berücksichtigt.
+
+### Bekannte Einschränkungen
+
+- Anlagen-, Service- und Rigboni fehlen weiterhin. Die persönliche Skillzeit ist deshalb noch keine belastbare reale Fertigstellungszeit.
+- ME und TE gelten weiterhin ausschließlich für das zugewiesene Wurzel-Blueprint einer Fertigung. Automatisch ausgewählte Zwischen-Blueprints besitzen noch keine persönliche Blueprintzuordnung.
+- Die Alpha ist noch nicht produktiv code-signiert; SmartScreen kann deshalb weiterhin vor einem unbekannten Herausgeber warnen.
+
+### Update und Datenbankmigration
+
+- Das Datenbankschema bleibt bei Version 10. Der bestehende `data`-Ordner mit Charakteren, Einstellungen, Plänen und vollständigen Snapshots wird unverändert weiterverwendet.
+
 ## 0.2.0-alpha.5 – 14. September 2026
 
 ### Neu hinzugefügt

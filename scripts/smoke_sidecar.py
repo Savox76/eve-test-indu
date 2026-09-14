@@ -359,6 +359,9 @@ def main() -> int:
                 or production_plans.get("blueprintTimeEfficiencyApplied") is not True
                 or production_plans.get("timeEfficiencyRule")
                 != "max-one-ceil-base-runs-percent"
+                or production_plans.get("characterSkillTimeApplied") is not True
+                or production_plans.get("characterSkillTimeRule")
+                != "job-wide-ceil-industry-4-advanced-industry-3-reactions-4-active-levels"
                 or production_plans.get("remainingModifiersApplied") is not False
             ):
                 raise RuntimeError("The packaged production-plan query is invalid.")

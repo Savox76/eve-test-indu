@@ -349,6 +349,12 @@ const productionPlanPage: ProductionPlanPage = {
       producedQuantity: 4, surplusQuantity: 1, baseTimeSecondsPerRun: 100,
       totalBaseTimeSeconds: 200, timeEfficiency: 0, timeEfficiencyApplied: false,
       totalBlueprintTimeSeconds: 200, timeEfficiencySavingsSeconds: 0,
+      timeSkills: [
+        { skillId: 3380, skillName: "Industry", activeLevel: 4, percentPerLevel: 4 },
+        { skillId: 3388, skillName: "Advanced Industry", activeLevel: 2, percentPerLevel: 3 },
+      ],
+      characterSkillTimeApplied: true, totalCharacterTimeSeconds: 158,
+      characterSkillTimeSavingsSeconds: 42,
       recipeAlternatives: 1, materialEfficiency: 0,
       materialEfficiencyApplied: false,
       materials: [{ typeId: 900, typeName: "Synthetic Mineral", quantityPerRun: 5,
@@ -376,6 +382,9 @@ const productionPlanPage: ProductionPlanPage = {
         assetObservedAt: "2026-09-11T11:59:00Z" }] }],
     warnings: [], cycleTypeIds: [], totalBaseTimeSeconds: 200,
     totalBlueprintTimeSeconds: 200, timeEfficiencySavingsSeconds: 0,
+    totalCharacterTimeSeconds: 158, characterSkillTimeSavingsSeconds: 42,
+    characterSkillState: "ready", skillSnapshotId: 14, skillSyncRunId: 15,
+    skillObservedAt: "2026-09-11T12:01:00Z",
     inventoryState: "shortage", assetSnapshotId: 8, assetSyncRunId: 9,
     assetObservedAt: "2026-09-11T12:00:00Z",
     createdAt: "2026-09-11T12:00:00Z", updatedAt: "2026-09-11T12:00:00Z" }],
@@ -391,6 +400,8 @@ const productionPlanPage: ProductionPlanPage = {
   materialEfficiencyRule: "max-runs-ceil-base-runs-percent",
   blueprintTimeEfficiencyApplied: true,
   timeEfficiencyRule: "max-one-ceil-base-runs-percent",
+  characterSkillTimeApplied: true,
+  characterSkillTimeRule: "job-wide-ceil-industry-4-advanced-industry-3-reactions-4-active-levels",
   remainingModifiersApplied: false,
 };
 
@@ -765,7 +776,7 @@ describe("New Eden Foundry design preview", () => {
   it("credits Savoxmedia as the app creator next to the version", () => {
     render(<App />);
 
-    expect(screen.getByText("v0.2.0-alpha.5")).toBeInTheDocument();
+    expect(screen.getByText("v0.2.0-alpha.6")).toBeInTheDocument();
     expect(screen.getByText("Savoxmedia")).toBeInTheDocument();
     expect(screen.getByText("Erstellt von", { exact: false })).toBeInTheDocument();
     expect(screen.queryByText("Lokaler Betreiber")).not.toBeInTheDocument();
@@ -990,6 +1001,8 @@ describe("New Eden Foundry design preview", () => {
         appliedTimeEfficiency: 20,
         totalBlueprintTimeSeconds: 160,
         timeEfficiencySavingsSeconds: 40,
+        totalCharacterTimeSeconds: 127,
+        characterSkillTimeSavingsSeconds: 33,
         steps: [{
           ...root,
           materialEfficiency: 10,
@@ -998,6 +1011,8 @@ describe("New Eden Foundry design preview", () => {
           timeEfficiencyApplied: true,
           totalBlueprintTimeSeconds: 160,
           timeEfficiencySavingsSeconds: 40,
+          totalCharacterTimeSeconds: 127,
+          characterSkillTimeSavingsSeconds: 33,
         }],
       }],
     };
@@ -1008,6 +1023,9 @@ describe("New Eden Foundry design preview", () => {
 
     expect(await screen.findByText(/TE 20 verkürzt ausschließlich/)).toBeInTheDocument();
     expect(screen.getByText("Blueprint-Zeit 2 min 40 s · TE 20 spart 40 s")).toBeInTheDocument();
+    expect(screen.getByText("Skill-Zeit verfügbar")).toBeInTheDocument();
+    expect(screen.getByText("Zeit nach Skills 2 min 7 s · 33 s gegenüber Blueprint-Zeit gespart")).toBeInTheDocument();
+    expect(screen.getByText("Persönliche Zeit 2 min 7 s · Industry 4 · Advanced Industry 2 · Skills sparen 33 s")).toBeInTheDocument();
   });
 
   it("reveals a newly saved production goal even when persisted filters hid it", async () => {

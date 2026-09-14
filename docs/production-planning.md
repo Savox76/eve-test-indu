@@ -1,6 +1,6 @@
 # Produktionsplanung
 
-Paket 30 ergänzt lokale, updatefeste Fertigungs- und Reaktionsziele. Paket 31 gleicht deren äußeren Materialbedarf mit vollständigen persönlichen Asset-Snapshots ab. Paket 32 reserviert denselben Bestand konfliktfrei zwischen allen Zielen eines Charakters. Paket 33 ordnet einem Ziel optional ein konkretes persönliches Blueprint-Item zu und wendet dessen belegten ME-Wert auf den Wurzel-Fertigungsschritt an. Paket 34 bezieht zusätzlich dessen belegten TE-Wert in die Blueprint-Zeit des Zielschritts ein. Die Planung verwendet ausschließlich die vollständig importierte Blueprint-Aktivitätsbasis aus Paket 29, verändert keine Daten in EVE und startet keine Industrieaufträge.
+Paket 30 ergänzt lokale, updatefeste Fertigungs- und Reaktionsziele. Paket 31 gleicht deren äußeren Materialbedarf mit vollständigen persönlichen Asset-Snapshots ab. Paket 32 reserviert denselben Bestand konfliktfrei zwischen allen Zielen eines Charakters. Paket 33 ordnet einem Ziel optional ein konkretes persönliches Blueprint-Item zu und wendet dessen belegten ME-Wert auf den Wurzel-Fertigungsschritt an. Paket 34 bezieht zusätzlich dessen belegten TE-Wert in die Blueprint-Zeit des Zielschritts ein. Paket 35 wendet die aktuell wirksamen Industrie- und Reaktions-Skills des ausführenden Charakters auf jeden passenden Schritt an. Die Planung verwendet ausschließlich vollständige, belegte Snapshots, verändert keine Daten in EVE und startet keine Industrieaufträge.
 
 ## Persistentes Ziel
 
@@ -30,6 +30,20 @@ Für die Blueprint-Zeit des zugewiesenen Wurzel-Fertigungsschritts gilt:
 $$t_{TE}=\max\left(1,\left\lceil\frac{t_{Basis}\cdot r\cdot(100-TE)}{100}\right\rceil\right)$$
 
 $t_{Basis}$ ist die unveränderte SDE-Zeit je Lauf. Die TE-Berechnung wird einmal auf den vollständigen Job angewendet und auf eine volle Sekunde aufgerundet. Jeder Schritt nennt unveränderte SDE-Basiszeit, Blueprint-Zeit und Ersparnis; automatisch ausgewählte Zwischenschritte bleiben bei TE 0. Reaktionen erhalten ebenfalls keinen Blueprint-TE-Modifikator.
+
+## Persönliche Charakter-Skillzeit
+
+Paket 35 liest ausschließlich den letzten vollständig abgeschlossenen Skill-Snapshot des ausführenden Charakters. Ein neuerer fehlgeschlagener oder unvollständiger Lauf ersetzt ihn nicht. Verwendet wird das von ESI gemeldete **aktive** Level; dadurch werden zeitweise begrenzte Skillstufen nicht mit dem bloß trainierten Level verwechselt. Ein in einem vollständigen Snapshot fehlender Skill gilt als aktive Stufe 0. Fehlt der vollständige Snapshot selbst, bleibt die persönliche Zeit `null` und die Oberfläche zeigt `Skill-Snapshot fehlt`, statt Stufe 0 zu erfinden.
+
+Für einen Fertigungsschritt gilt jobweit:
+
+$$t_{Char}=\max\left(1,\left\lceil t_{Basis}\cdot r\cdot\frac{100-TE}{100}\cdot\frac{100-4I}{100}\cdot\frac{100-3A}{100}\right\rceil\right)$$
+
+$I$ ist das aktive Level von **Industry** (Type 3380), $A$ das aktive Level von **Advanced Industry** (Type 3388). Für eine Reaktion gilt ohne Blueprint-TE:
+
+$$t_{Char}=\max\left(1,\left\lceil t_{Basis}\cdot r\cdot\frac{100-4R}{100}\right\rceil\right)$$
+
+$R$ ist das aktive Level von **Reactions** (Type 45746). Die Faktoren werden multiplikativ auf die ungerundete vollständige Jobzeit angewendet und erst am Ende auf volle Sekunden aufgerundet. Dadurch entsteht kein zusätzlicher Rundungsfehler durch eine vorzeitig gerundete Blueprint-Zeit. Jeder Schritt nennt die wirksamen Skill-IDs, Namen, aktiven Level und Prozentwerte sowie Blueprint-Zeit, persönliche Skillzeit und Skill-Ersparnis. Snapshot-ID, Sync-Lauf und Beobachtungszeit belegen die verwendete Charakterquelle.
 
 | Zuordnungszustand | Bedeutung |
 | --- | --- |
@@ -97,14 +111,13 @@ Neue Ziele mit Zyklus oder überschrittener Komplexitätsgrenze werden nicht ges
 
 ## Bewusste Berechnungsgrenze
 
-Paket 34 berechnet Bruttobedarf einschließlich belegtem Wurzel-Blueprint-ME, die mit belegtem Wurzel-Blueprint-TE veränderte Blueprint-Zeit, persönlichen Bestand und konfliktfreie zielbezogene Reservierungen. Noch nicht einbezogen werden:
+Paket 35 berechnet Bruttobedarf einschließlich belegtem Wurzel-Blueprint-ME, die mit belegtem Wurzel-Blueprint-TE veränderte Blueprint-Zeit, die persönliche Skillzeit, persönlichen Bestand und konfliktfreie zielbezogene Reservierungen. Noch nicht einbezogen werden:
 
 - ME, TE oder Zuordnungen für automatisch ausgewählte Zwischen-Blueprints,
-- Charakter-Skills,
 - Anlagen-, Service- und Rigboni,
 - Systemkosten, Steuern und Preise.
 
-Die API bestätigt die aktiven Verträge mit `inventoryApplied: true`, `reservationsApplied: true`, `reservationRule: priority-desc-created-asc-plan-id-asc`, `blueprintMaterialEfficiencyApplied: true`, `materialEfficiencyRule: max-runs-ceil-base-runs-percent`, `blueprintTimeEfficiencyApplied: true` und `timeEfficiencyRule: max-one-ceil-base-runs-percent`. Die verbleibende Modifikatorgrenze bleibt `remainingModifiersApplied: false`. Auch die ausgewiesene Blueprint-Zeit darf ohne Charakter-Skills und Anlagen-/Rigboni weiterhin nicht als reale Fertigstellungszeit oder Kostenprognose verstanden werden.
+Die API bestätigt die aktiven Verträge mit `inventoryApplied: true`, `reservationsApplied: true`, `reservationRule: priority-desc-created-asc-plan-id-asc`, `blueprintMaterialEfficiencyApplied: true`, `materialEfficiencyRule: max-runs-ceil-base-runs-percent`, `blueprintTimeEfficiencyApplied: true`, `timeEfficiencyRule: max-one-ceil-base-runs-percent`, `characterSkillTimeApplied: true` und `characterSkillTimeRule: job-wide-ceil-industry-4-advanced-industry-3-reactions-4-active-levels`. Die verbleibende Modifikatorgrenze bleibt `remainingModifiersApplied: false`. Auch die ausgewiesene persönliche Skillzeit darf ohne Anlagen-/Rigboni weiterhin nicht als reale Fertigstellungszeit oder Kostenprognose verstanden werden.
 
 ## Arbeitsvorrat und Bedienung
 
@@ -117,5 +130,7 @@ Die authentifizierten internen Routen `/production-plans/catalog`, `/production-
 ## Quelle
 
 Rezepte, Mengen und Basiszeiten stammen aus dem offiziellen [EVE Static Data Export](https://developers.eveonline.com/docs/services/static-data/). Jede aufgelöste Planung nennt die gemeinsam verwendete SDE-Buildnummer.
+
+Die Skill-IDs und ihre Zeitboni sind in `types.jsonl` desselben festgeschriebenen offiziellen SDE-Builds 3503375 beschrieben. Die persönlichen aktiven Level stammen aus dem vollständigen charakterbezogenen ESI-Skill-Snapshot.
 
 Die Windows-Ausgaben ab `v0.0.5-preview.14` liefern den geprüften Produktionsausschnitt des festgelegten offiziellen SDE-Builds mit. Er wird beim ersten Start automatisch installiert. Bei identischer Buildnummer wird er nur dann erneut verarbeitet, wenn eine neue abgeleitete Spalte – beispielsweise der Sicherheitsstatus ab `.18` – noch nicht befüllt ist. Die Produkt- und Blueprintsuche benötigt deshalb keinen manuellen Vorbereitungsschritt.
