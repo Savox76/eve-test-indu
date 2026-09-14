@@ -6034,10 +6034,11 @@ mod tests {
         IndustryJobSyncCharacterResponse, IndustryJobSyncResponse, IndustrySlotActivity,
         IndustrySlotQueryResponse, IndustrySlotRecord, ProductionBlueprintCandidate,
         ProductionGrossMaterial, ProductionPlanRecord, ProductionReservationClaim, ProductionStep,
-        ProductionStepMaterial, ResearchPlanOwner, ResearchPlanQueryResponse, ResearchPlanRecord,
-        ResearchPlanSummary, RuntimeDataSnapshot, ScopePackageStatus, SsoCharacterIdentity,
-        SsoLoginStatus, WindowSizePreference, ASSET_LOCATION_STATUSES, INDUSTRY_COST_ACTIVITIES,
-        INDUSTRY_FACILITY_ACCESS_STATES, INDUSTRY_FACILITY_KINDS, INDUSTRY_SECURITY_CLASSES,
+        ProductionStepMaterial, ProductionTimeSkill, ResearchPlanOwner, ResearchPlanQueryResponse,
+        ResearchPlanRecord, ResearchPlanSummary, RuntimeDataSnapshot, ScopePackageStatus,
+        SsoCharacterIdentity, SsoLoginStatus, WindowSizePreference, ADVANCED_INDUSTRY_SKILL_ID,
+        ASSET_LOCATION_STATUSES, INDUSTRY_COST_ACTIVITIES, INDUSTRY_FACILITY_ACCESS_STATES,
+        INDUSTRY_FACILITY_KINDS, INDUSTRY_SECURITY_CLASSES, INDUSTRY_SKILL_ID,
         INDUSTRY_SLOT_ACTIVITIES, RESEARCH_PLAN_ACTIVITIES, RESEARCH_PLAN_STATES,
     };
     use std::fs;
