@@ -182,6 +182,49 @@ class ProductionPlanningTests(unittest.TestCase):
         )
         return int(snapshot.lastrowid), int(run.lastrowid)
 
+    def publish_skills(
+        self,
+        character_id: int,
+        levels: dict[int, int],
+        observed_at: str,
+        *,
+        status: str = "completed",
+    ) -> tuple[int, int]:
+        run = self.db.execute(
+            "INSERT INTO sync_runs(source,status,started_at,completed_at,data_timestamp,"
+            "character_id) VALUES('character_skills',?,?,?,?,?)",
+            (status, observed_at, observed_at, observed_at, character_id),
+        )
+        skills = [
+            {
+                "active_skill_level": level,
+                "skill_id": skill_id,
+                "skillpoints_in_skill": (index + 1) * 1_000,
+                "trained_skill_level": level,
+            }
+            for index, (skill_id, level) in enumerate(sorted(levels.items()))
+        ]
+        snapshot = self.db.execute(
+            "INSERT INTO cached_snapshots(sync_run_id,resource,payload_json,observed_at) "
+            "VALUES(?,?,?,?)",
+            (
+                int(run.lastrowid),
+                f"character_skills:{character_id}",
+                json.dumps(
+                    {
+                        "characterId": character_id,
+                        "skills": skills,
+                        "total_sp": sum(
+                            int(skill["skillpoints_in_skill"]) for skill in skills
+                        ),
+                        "unallocated_sp": 0,
+                    }
+                ),
+                observed_at,
+            ),
+        )
+        return int(snapshot.lastrowid), int(run.lastrowid)
+
     def publish_locations(
         self,
         character_id: int,
@@ -258,6 +301,11 @@ class ProductionPlanningTests(unittest.TestCase):
             page["timeEfficiencyRule"],
             "max-one-ceil-base-runs-percent",
         )
+        self.assertTrue(page["characterSkillTimeApplied"])
+        self.assertEqual(
+            page["characterSkillTimeRule"],
+            "job-wide-ceil-industry-4-advanced-industry-3-reactions-4-active-levels",
+        )
         self.assertFalse(page["remainingModifiersApplied"])
         self.assertEqual(page["summary"]["ready"], 1)
         record = page["items"][0]
@@ -277,6 +325,19 @@ class ProductionPlanningTests(unittest.TestCase):
         self.assertEqual(record["totalBaseTimeSeconds"], 290)
         self.assertEqual(record["totalBlueprintTimeSeconds"], 290)
         self.assertEqual(record["timeEfficiencySavingsSeconds"], 0)
+        self.assertEqual(record["characterSkillState"], "snapshot-missing")
+        self.assertIsNone(record["skillSnapshotId"])
+        self.assertIsNone(record["skillSyncRunId"])
+        self.assertIsNone(record["skillObservedAt"])
+        self.assertIsNone(record["totalCharacterTimeSeconds"])
+        self.assertIsNone(record["characterSkillTimeSavingsSeconds"])
+        self.assertTrue(all(
+            step["totalCharacterTimeSeconds"] is None
+            and step["characterSkillTimeSavingsSeconds"] is None
+            and not step["characterSkillTimeApplied"]
+            and all(skill["activeLevel"] is None for skill in step["timeSkills"])
+            for step in record["steps"]
+        ))
         self.assertEqual(record["inventoryState"], "snapshot-missing")
         self.assertEqual(record["blueprintAssignmentState"], "snapshot-missing")
         self.assertEqual(record["appliedMaterialEfficiency"], 0)
@@ -446,6 +507,11 @@ class ProductionPlanningTests(unittest.TestCase):
             }],
             "2026-09-14T10:00:00Z",
         )
+        self.publish_skills(
+            7,
+            {3380: 5, 3388: 5, 45746: 3},
+            "2026-09-14T10:01:00Z",
+        )
         save_production_plan(
             self.db,
             plan_input(blueprintItemId=3_001, targetQuantity=3),
@@ -461,6 +527,138 @@ class ProductionPlanningTests(unittest.TestCase):
         self.assertEqual(record["totalBaseTimeSeconds"], 292)
         self.assertEqual(record["totalBlueprintTimeSeconds"], 252)
         self.assertEqual(record["timeEfficiencySavingsSeconds"], 40)
+        self.assertEqual(root["totalCharacterTimeSeconds"], 110)
+        self.assertEqual(root["characterSkillTimeSavingsSeconds"], 52)
+        self.assertEqual(record["totalCharacterTimeSeconds"], 172)
+        self.assertEqual(record["characterSkillTimeSavingsSeconds"], 80)
+
+    def test_active_character_skills_apply_to_every_matching_step(self) -> None:
+        import_industry_sde(self.db, **bundle())
+        snapshot_id, run_id = self.publish_skills(
+            7,
+            {3380: 5, 3388: 5, 45746: 2},
+            "2026-09-14T11:00:00Z",
+        )
+        save_production_plan(self.db, plan_input())
+
+        record = query_production_plans(self.db, query())["items"][0]
+
+        self.assertEqual(record["characterSkillState"], "ready")
+        self.assertEqual(record["skillSnapshotId"], snapshot_id)
+        self.assertEqual(record["skillSyncRunId"], run_id)
+        self.assertEqual(record["skillObservedAt"], "2026-09-14T11:00:00Z")
+        self.assertEqual(
+            [step["totalCharacterTimeSeconds"] for step in record["steps"]],
+            [21, 41, 136],
+        )
+        self.assertTrue(all(
+            step["characterSkillTimeApplied"] for step in record["steps"]
+        ))
+        self.assertEqual(
+            record["steps"][0]["timeSkills"],
+            [
+                {
+                    "skillId": 3380,
+                    "skillName": "Industry",
+                    "activeLevel": 5,
+                    "percentPerLevel": 4,
+                },
+                {
+                    "skillId": 3388,
+                    "skillName": "Advanced Industry",
+                    "activeLevel": 5,
+                    "percentPerLevel": 3,
+                },
+            ],
+        )
+        self.assertEqual(record["totalCharacterTimeSeconds"], 198)
+        self.assertEqual(record["characterSkillTimeSavingsSeconds"], 92)
+
+    def test_reactions_use_only_the_active_reactions_skill(self) -> None:
+        import_industry_sde(self.db, **bundle())
+        self.publish_skills(
+            7,
+            {3380: 5, 3388: 5, 45746: 5},
+            "2026-09-14T11:30:00Z",
+        )
+        save_production_plan(
+            self.db,
+            plan_input(
+                blueprintTypeId=200,
+                activity="reaction",
+                productTypeId=201,
+                targetQuantity=200,
+            ),
+        )
+
+        record = query_production_plans(self.db, query())["items"][0]
+        step = record["steps"][0]
+
+        self.assertEqual(step["timeSkills"], [{
+            "skillId": 45746,
+            "skillName": "Reactions",
+            "activeLevel": 5,
+            "percentPerLevel": 4,
+        }])
+        self.assertEqual(step["totalBlueprintTimeSeconds"], 60)
+        self.assertEqual(step["totalCharacterTimeSeconds"], 48)
+        self.assertEqual(step["characterSkillTimeSavingsSeconds"], 12)
+        self.assertEqual(record["totalCharacterTimeSeconds"], 48)
+
+    def test_newer_failed_skill_sync_does_not_replace_complete_evidence(self) -> None:
+        import_industry_sde(self.db, **bundle())
+        snapshot_id, run_id = self.publish_skills(
+            7,
+            {3380: 4, 3388: 2},
+            "2026-09-14T12:00:00Z",
+        )
+        self.publish_skills(
+            7,
+            {3380: 5, 3388: 5},
+            "2026-09-14T12:05:00Z",
+            status="failed",
+        )
+        save_production_plan(self.db, plan_input())
+
+        record = query_production_plans(self.db, query())["items"][0]
+
+        self.assertEqual(record["skillSnapshotId"], snapshot_id)
+        self.assertEqual(record["skillSyncRunId"], run_id)
+        self.assertEqual(
+            [skill["activeLevel"] for skill in record["steps"][0]["timeSkills"]],
+            [4, 2],
+        )
+
+    def test_invalid_complete_skill_snapshot_fails_closed(self) -> None:
+        import_industry_sde(self.db, **bundle())
+        snapshot_id, _ = self.publish_skills(
+            7,
+            {3380: 5, 3388: 5},
+            "2026-09-14T12:30:00Z",
+        )
+        save_production_plan(self.db, plan_input())
+        self.db.execute(
+            "UPDATE cached_snapshots SET payload_json=? WHERE id=?",
+            (
+                json.dumps({
+                    "characterId": 7,
+                    "skills": [{
+                        "active_skill_level": 6,
+                        "skill_id": 3380,
+                        "skillpoints_in_skill": 1_000,
+                        "trained_skill_level": 5,
+                    }],
+                    "total_sp": 1_000,
+                    "unallocated_sp": 0,
+                }),
+                snapshot_id,
+            ),
+        )
+
+        with self.assertRaisesRegex(
+            ProductionPlanningError, "production_skill_snapshot_invalid"
+        ):
+            query_production_plans(self.db, query())
 
     def test_blueprint_assignment_states_and_duplicate_use_are_fail_closed(self) -> None:
         import_industry_sde(self.db, **bundle())

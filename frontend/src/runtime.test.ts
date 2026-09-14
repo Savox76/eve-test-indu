@@ -920,6 +920,11 @@ describe("desktop runtime status", () => {
         surplusQuantity: 0, baseTimeSecondsPerRun: 25, totalBaseTimeSeconds: 100,
         timeEfficiency: 0, timeEfficiencyApplied: false,
         totalBlueprintTimeSeconds: 100, timeEfficiencySavingsSeconds: 0,
+        timeSkills: [
+          { skillId: 3380, skillName: "Industry", activeLevel: null, percentPerLevel: 4 },
+          { skillId: 3388, skillName: "Advanced Industry", activeLevel: null, percentPerLevel: 3 },
+        ], characterSkillTimeApplied: false, totalCharacterTimeSeconds: null,
+        characterSkillTimeSavingsSeconds: null,
         recipeAlternatives: 1, materialEfficiency: 0, materialEfficiencyApplied: false,
         materials: [{ typeId: 901, typeName: "Synthetic Ore",
           quantityPerRun: 2, unmodifiedGrossQuantity: 8, grossQuantity: 8,
@@ -931,6 +936,11 @@ describe("desktop runtime status", () => {
         surplusQuantity: 1, baseTimeSecondsPerRun: 100, totalBaseTimeSeconds: 200,
         timeEfficiency: 0, timeEfficiencyApplied: false,
         totalBlueprintTimeSeconds: 200, timeEfficiencySavingsSeconds: 0,
+        timeSkills: [
+          { skillId: 3380, skillName: "Industry", activeLevel: null, percentPerLevel: 4 },
+          { skillId: 3388, skillName: "Advanced Industry", activeLevel: null, percentPerLevel: 3 },
+        ], characterSkillTimeApplied: false, totalCharacterTimeSeconds: null,
+        characterSkillTimeSavingsSeconds: null,
         recipeAlternatives: 1, materialEfficiency: 0, materialEfficiencyApplied: false,
         materials: [{ typeId: 111, typeName: "Synthetic Component",
           quantityPerRun: 2, unmodifiedGrossQuantity: 4, grossQuantity: 4,
@@ -955,6 +965,9 @@ describe("desktop runtime status", () => {
           assetObservedAt: "2026-09-11T11:59:00Z" }] }],
       warnings: [], cycleTypeIds: [], totalBaseTimeSeconds: 300,
       totalBlueprintTimeSeconds: 300, timeEfficiencySavingsSeconds: 0,
+      totalCharacterTimeSeconds: null, characterSkillTimeSavingsSeconds: null,
+      characterSkillState: "snapshot-missing", skillSnapshotId: null, skillSyncRunId: null,
+      skillObservedAt: null,
       inventoryState: "shortage", assetSnapshotId: 8, assetSyncRunId: 9,
       assetObservedAt: "2026-09-11T12:00:00Z",
       createdAt: "2026-09-11T12:00:00Z", updatedAt: "2026-09-11T12:00:00Z",
@@ -970,6 +983,8 @@ describe("desktop runtime status", () => {
       materialEfficiencyRule: "max-runs-ceil-base-runs-percent",
       blueprintTimeEfficiencyApplied: true,
       timeEfficiencyRule: "max-one-ceil-base-runs-percent",
+      characterSkillTimeApplied: true,
+      characterSkillTimeRule: "job-wide-ceil-industry-4-advanced-industry-3-reactions-4-active-levels",
       remainingModifiersApplied: false };
     invoke.mockResolvedValueOnce(JSON.stringify(page));
     const query = { search: "", ownerCharacterId: null, activity: null, state: null,
@@ -1003,6 +1018,45 @@ describe("desktop runtime status", () => {
     invoke.mockResolvedValueOnce(JSON.stringify(assignedTime));
     await expect(loadProductionPlans(query, { isAvailable: () => true, invoke }))
       .resolves.toEqual(assignedTime);
+
+    const skilled = JSON.parse(JSON.stringify(page)) as typeof page;
+    Object.assign(skilled.items[0], {
+      characterSkillState: "ready",
+      skillSnapshotId: 14,
+      skillSyncRunId: 15,
+      skillObservedAt: "2026-09-11T12:01:00Z",
+      totalCharacterTimeSeconds: 204,
+      characterSkillTimeSavingsSeconds: 96,
+    });
+    Object.assign(skilled.items[0].steps[0], {
+      timeSkills: [
+        { skillId: 3380, skillName: "Industry", activeLevel: 5, percentPerLevel: 4 },
+        { skillId: 3388, skillName: "Advanced Industry", activeLevel: 5, percentPerLevel: 3 },
+      ],
+      characterSkillTimeApplied: true,
+      totalCharacterTimeSeconds: 68,
+      characterSkillTimeSavingsSeconds: 32,
+    });
+    Object.assign(skilled.items[0].steps[1], {
+      timeSkills: [
+        { skillId: 3380, skillName: "Industry", activeLevel: 5, percentPerLevel: 4 },
+        { skillId: 3388, skillName: "Advanced Industry", activeLevel: 5, percentPerLevel: 3 },
+      ],
+      characterSkillTimeApplied: true,
+      totalCharacterTimeSeconds: 136,
+      characterSkillTimeSavingsSeconds: 64,
+    });
+    invoke.mockResolvedValueOnce(JSON.stringify(skilled));
+    await expect(loadProductionPlans(query, { isAvailable: () => true, invoke }))
+      .resolves.toEqual(skilled);
+
+    const inconsistentSkillTime = JSON.parse(JSON.stringify(skilled)) as {
+      items: Array<{ steps: Array<{ totalCharacterTimeSeconds: number }> }>;
+    };
+    inconsistentSkillTime.items[0].steps[0].totalCharacterTimeSeconds = 69;
+    invoke.mockResolvedValueOnce(JSON.stringify(inconsistentSkillTime));
+    await expect(loadProductionPlans(query, { isAvailable: () => true, invoke }))
+      .rejects.toThrow("inconsistent character skill time");
 
     const inconsistentInventory = JSON.parse(JSON.stringify(page)) as {
       items: Array<{ grossMaterials: Array<{ missingQuantity: number }> }>;

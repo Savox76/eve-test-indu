@@ -599,6 +599,7 @@ export type ProductionActivity = "manufacturing" | "reaction";
 export type ProductionPlanState = "ready" | "sde-unavailable" | "recipe-missing" | "cycle" | "complexity-limit";
 export type ProductionInventoryState = "covered" | "shortage" | "snapshot-missing" | "not-applicable";
 export type ProductionBlueprintAssignmentState = "ready" | "unassigned" | "snapshot-missing" | "missing" | "type-mismatch" | "runs-insufficient";
+export type ProductionCharacterSkillState = "ready" | "snapshot-missing";
 export type ProductionPlanSortField = "priority" | "product" | "owner" | "activity" | "state" | "updated";
 export const productionActivities: readonly ProductionActivity[] = ["manufacturing", "reaction"];
 export const productionPlanStates: readonly ProductionPlanState[] = [
@@ -651,6 +652,13 @@ export interface ProductionStepMaterial {
   producedByPlan: boolean;
 }
 
+export interface ProductionTimeSkill {
+  skillId: 3380 | 3388 | 45746;
+  skillName: "Industry" | "Advanced Industry" | "Reactions";
+  activeLevel: number | null;
+  percentPerLevel: 3 | 4;
+}
+
 export interface ProductionStep {
   sequence: number;
   blueprintTypeId: number;
@@ -671,6 +679,10 @@ export interface ProductionStep {
   timeEfficiencyApplied: boolean;
   totalBlueprintTimeSeconds: number;
   timeEfficiencySavingsSeconds: number;
+  timeSkills: ProductionTimeSkill[];
+  characterSkillTimeApplied: boolean;
+  totalCharacterTimeSeconds: number | null;
+  characterSkillTimeSavingsSeconds: number | null;
   recipeAlternatives: number;
   materialEfficiency: number;
   materialEfficiencyApplied: boolean;
@@ -781,6 +793,12 @@ export interface ProductionPlanRecord {
   totalBaseTimeSeconds: number | null;
   totalBlueprintTimeSeconds: number | null;
   timeEfficiencySavingsSeconds: number | null;
+  totalCharacterTimeSeconds: number | null;
+  characterSkillTimeSavingsSeconds: number | null;
+  characterSkillState: ProductionCharacterSkillState;
+  skillSnapshotId: number | null;
+  skillSyncRunId: number | null;
+  skillObservedAt: string | null;
   inventoryState: ProductionInventoryState;
   assetSnapshotId: number | null;
   assetSyncRunId: number | null;
@@ -817,6 +835,8 @@ export interface ProductionPlanPage {
   materialEfficiencyRule: "max-runs-ceil-base-runs-percent";
   blueprintTimeEfficiencyApplied: true;
   timeEfficiencyRule: "max-one-ceil-base-runs-percent";
+  characterSkillTimeApplied: true;
+  characterSkillTimeRule: "job-wide-ceil-industry-4-advanced-industry-3-reactions-4-active-levels";
   remainingModifiersApplied: false;
 }
 
@@ -2853,6 +2873,20 @@ export async function loadProductionCatalog(
   return page;
 }
 
+const productionTimeSkillDefinitions: Record<ProductionActivity, readonly {
+  skillId: ProductionTimeSkill["skillId"];
+  skillName: ProductionTimeSkill["skillName"];
+  percentPerLevel: ProductionTimeSkill["percentPerLevel"];
+}[]> = {
+  manufacturing: [
+    { skillId: 3380, skillName: "Industry", percentPerLevel: 4 },
+    { skillId: 3388, skillName: "Advanced Industry", percentPerLevel: 3 },
+  ],
+  reaction: [
+    { skillId: 45746, skillName: "Reactions", percentPerLevel: 4 },
+  ],
+};
+
 function parseProductionStep(candidate: unknown, index: number): ProductionStep {
   if (
     !isRecord(candidate) || candidate.sequence !== index + 1 ||
@@ -2869,7 +2903,12 @@ function parseProductionStep(candidate: unknown, index: number): ProductionStep 
     !isNonNegativeSafeInteger(candidate.timeEfficiency) || Number(candidate.timeEfficiency) > 20 ||
     !isNonNegativeSafeInteger(candidate.timeEfficiencySavingsSeconds) ||
     typeof candidate.timeEfficiencyApplied !== "boolean" ||
-    typeof candidate.materialEfficiencyApplied !== "boolean" || !Array.isArray(candidate.materials) ||
+    typeof candidate.materialEfficiencyApplied !== "boolean" ||
+    typeof candidate.characterSkillTimeApplied !== "boolean" ||
+    !(candidate.totalCharacterTimeSeconds === null || isPositiveSafeInteger(candidate.totalCharacterTimeSeconds)) ||
+    !(candidate.characterSkillTimeSavingsSeconds === null ||
+      isNonNegativeSafeInteger(candidate.characterSkillTimeSavingsSeconds)) ||
+    !Array.isArray(candidate.timeSkills) || !Array.isArray(candidate.materials) ||
     Number(candidate.outputQuantityPerRun) * Number(candidate.runs) !== Number(candidate.producedQuantity) ||
     Number(candidate.producedQuantity) - Number(candidate.requiredQuantity) !== Number(candidate.surplusQuantity) ||
     Number(candidate.baseTimeSecondsPerRun) * Number(candidate.runs) !== Number(candidate.totalBaseTimeSeconds) ||
@@ -2883,6 +2922,44 @@ function parseProductionStep(candidate: unknown, index: number): ProductionStep 
     candidate.timeEfficiencyApplied !== (Number(candidate.timeEfficiency) > 0)
   ) {
     throw new Error("The native runtime returned invalid production steps.");
+  }
+  const expectedSkills = productionTimeSkillDefinitions[candidate.activity as ProductionActivity];
+  const timeSkills = candidate.timeSkills.map((skill, skillIndex): ProductionTimeSkill => {
+    const expected = expectedSkills[skillIndex];
+    if (
+      expected === undefined || !isRecord(skill) || skill.skillId !== expected.skillId ||
+      skill.skillName !== expected.skillName || skill.percentPerLevel !== expected.percentPerLevel ||
+      !(skill.activeLevel === null || isNonNegativeSafeInteger(skill.activeLevel) &&
+        Number(skill.activeLevel) <= 5)
+    ) throw new Error("The native runtime returned invalid production time skills.");
+    return skill as unknown as ProductionTimeSkill;
+  });
+  const levelsMissing = timeSkills.every((skill) => skill.activeLevel === null);
+  const levelsAvailable = timeSkills.every((skill) => skill.activeLevel !== null);
+  if (timeSkills.length !== expectedSkills.length || (!levelsMissing && !levelsAvailable)) {
+    throw new Error("The native runtime returned inconsistent production time skills.");
+  }
+  if (levelsMissing) {
+    if (candidate.totalCharacterTimeSeconds !== null ||
+      candidate.characterSkillTimeSavingsSeconds !== null || candidate.characterSkillTimeApplied) {
+      throw new Error("The native runtime returned character time without skill evidence.");
+    }
+  } else {
+    let numerator = BigInt(candidate.totalBaseTimeSeconds as number) *
+      BigInt(100 - Number(candidate.timeEfficiency));
+    let denominator = 100n;
+    for (const skill of timeSkills) {
+      numerator *= BigInt(100 - skill.percentPerLevel * Number(skill.activeLevel));
+      denominator *= 100n;
+    }
+    const expectedCharacterTime = Number((numerator + denominator - 1n) / denominator);
+    if (
+      candidate.totalCharacterTimeSeconds !== expectedCharacterTime ||
+      Number(candidate.totalBlueprintTimeSeconds) - expectedCharacterTime !==
+        Number(candidate.characterSkillTimeSavingsSeconds) ||
+      candidate.characterSkillTimeApplied !==
+        (expectedCharacterTime < Number(candidate.totalBlueprintTimeSeconds))
+    ) throw new Error("The native runtime returned inconsistent character skill time.");
   }
   const materials = candidate.materials.map((material): ProductionStepMaterial => {
     if (
@@ -2902,7 +2979,7 @@ function parseProductionStep(candidate: unknown, index: number): ProductionStep 
     }
     return material as unknown as ProductionStepMaterial;
   });
-  return { ...candidate, materials } as unknown as ProductionStep;
+  return { ...candidate, timeSkills, materials } as unknown as ProductionStep;
 }
 
 function parseProductionBlueprintCandidate(candidate: unknown): ProductionBlueprintCandidate {
@@ -2982,6 +3059,15 @@ function parseProductionPlanRecord(candidate: unknown): ProductionPlanRecord {
     !(candidate.totalBlueprintTimeSeconds === null || isPositiveSafeInteger(candidate.totalBlueprintTimeSeconds)) ||
     !(candidate.timeEfficiencySavingsSeconds === null ||
       isNonNegativeSafeInteger(candidate.timeEfficiencySavingsSeconds)) ||
+    !(candidate.totalCharacterTimeSeconds === null ||
+      isPositiveSafeInteger(candidate.totalCharacterTimeSeconds)) ||
+    !(candidate.characterSkillTimeSavingsSeconds === null ||
+      isNonNegativeSafeInteger(candidate.characterSkillTimeSavingsSeconds)) ||
+    !["ready", "snapshot-missing"].includes(String(candidate.characterSkillState)) ||
+    !((candidate.skillSnapshotId === null && candidate.skillSyncRunId === null &&
+      candidate.skillObservedAt === null) ||
+      (isPositiveSafeInteger(candidate.skillSnapshotId) && isPositiveSafeInteger(candidate.skillSyncRunId) &&
+        isBoundedText(candidate.skillObservedAt, 64))) ||
     !productionInventoryStates.includes(candidate.inventoryState as ProductionInventoryState) ||
     !((candidate.assetSnapshotId === null && candidate.assetSyncRunId === null &&
       candidate.assetObservedAt === null) ||
@@ -3103,6 +3189,7 @@ function parseProductionPlanRecord(candidate: unknown): ProductionPlanRecord {
     candidate.blueprintTimeEfficiency !== null && candidate.blueprintRuns !== null &&
     candidate.blueprintLocationId !== null && candidate.blueprintLocationFlag !== null;
   const ownerSnapshotAvailable = candidate.assetSnapshotId !== null;
+  const skillSnapshotAvailable = candidate.skillSnapshotId !== null;
   const expectedInventoryState: ProductionInventoryState = !ready
     ? "not-applicable"
     : grossMaterials.length === 0
@@ -3123,9 +3210,26 @@ function parseProductionPlanRecord(candidate: unknown): ProductionPlanRecord {
       steps.reduce((total, step) => total + step.totalBlueprintTimeSeconds, 0) !==
         candidate.totalBlueprintTimeSeconds ||
       Number(candidate.totalBaseTimeSeconds) - Number(candidate.totalBlueprintTimeSeconds) !==
-        Number(candidate.timeEfficiencySavingsSeconds))) ||
+        Number(candidate.timeEfficiencySavingsSeconds) ||
+      (skillSnapshotAvailable && (
+        candidate.totalCharacterTimeSeconds === null ||
+        candidate.characterSkillTimeSavingsSeconds === null ||
+        steps.some((step) => step.totalCharacterTimeSeconds === null ||
+          step.characterSkillTimeSavingsSeconds === null ||
+          step.timeSkills.some((skill) => skill.activeLevel === null)) ||
+        steps.reduce((total, step) => total + Number(step.totalCharacterTimeSeconds), 0) !==
+          candidate.totalCharacterTimeSeconds ||
+        Number(candidate.totalBlueprintTimeSeconds) - Number(candidate.totalCharacterTimeSeconds) !==
+          Number(candidate.characterSkillTimeSavingsSeconds))) ||
+      (!skillSnapshotAvailable && (
+        candidate.totalCharacterTimeSeconds !== null ||
+        candidate.characterSkillTimeSavingsSeconds !== null ||
+        steps.some((step) => step.totalCharacterTimeSeconds !== null ||
+          step.characterSkillTimeSavingsSeconds !== null || step.characterSkillTimeApplied ||
+          step.timeSkills.some((skill) => skill.activeLevel !== null)))))) ||
     (!ready && (grossMaterials.length !== 0 || candidate.totalBaseTimeSeconds !== null ||
-      candidate.totalBlueprintTimeSeconds !== null || candidate.timeEfficiencySavingsSeconds !== null)) ||
+      candidate.totalBlueprintTimeSeconds !== null || candidate.timeEfficiencySavingsSeconds !== null ||
+      candidate.totalCharacterTimeSeconds !== null || candidate.characterSkillTimeSavingsSeconds !== null)) ||
     ((candidate.state === "cycle") !== (candidate.cycleTypeIds.length > 0)) ||
     candidate.inventoryState !== expectedInventoryState ||
     (!ready && ownerSnapshotAvailable) ||
@@ -3134,6 +3238,7 @@ function parseProductionPlanRecord(candidate: unknown): ProductionPlanRecord {
     (!ownerSnapshotAvailable && grossMaterials.length > 0 && grossMaterials.some((material) =>
       material.availabilityState !== "snapshot-missing")) ||
     !blueprintSnapshotTupleValid ||
+    (candidate.characterSkillState === "ready") !== skillSnapshotAvailable ||
     Number(candidate.blueprintCandidateCount) < blueprintCandidates.length ||
     (Number(candidate.blueprintCandidateCount) <= 50 &&
       Number(candidate.blueprintCandidateCount) !== blueprintCandidates.length) ||
@@ -3194,6 +3299,9 @@ function parseProductionPlanPage(candidate: unknown): ProductionPlanPage {
     candidate.materialEfficiencyRule !== "max-runs-ceil-base-runs-percent" ||
     candidate.blueprintTimeEfficiencyApplied !== true ||
     candidate.timeEfficiencyRule !== "max-one-ceil-base-runs-percent" ||
+    candidate.characterSkillTimeApplied !== true ||
+    candidate.characterSkillTimeRule !==
+      "job-wide-ceil-industry-4-advanced-industry-3-reactions-4-active-levels" ||
     candidate.remainingModifiersApplied !== false
   ) throw new Error("The native runtime returned invalid production-plan data.");
   const items = candidate.items.map(parseProductionPlanRecord);
@@ -3225,6 +3333,9 @@ export async function loadProductionPlans(
     materialEfficiencyRule: "max-runs-ceil-base-runs-percent",
     blueprintTimeEfficiencyApplied: true,
     timeEfficiencyRule: "max-one-ceil-base-runs-percent",
+    characterSkillTimeApplied: true,
+    characterSkillTimeRule:
+      "job-wide-ceil-industry-4-advanced-industry-3-reactions-4-active-levels",
     remainingModifiersApplied: false,
   };
   const page = parseProductionPlanPage(JSON.parse(await adapter.invoke("query_production_plans", {

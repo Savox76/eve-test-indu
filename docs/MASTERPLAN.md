@@ -1,10 +1,10 @@
 # Masterplan – New Eden Foundry
 
-**Fassung:** 3.8 (lebendes Repository-Dokument)
+**Fassung:** 3.9 (lebendes Repository-Dokument)
 
 **Stand:** 14. September 2026
 
-**Status:** Paket 34 – persönliche Blueprint-TE-Zeitbasis technisch abgeschlossen
+**Status:** Paket 35 – persönliche Charakter-Skillzeit technisch abgeschlossen
 
 **Geltungsbereich:** `Savox76/eve-test-indu`
 
@@ -236,7 +236,8 @@ Die Reihenfolge ist verbindlicher als eine Kalenderangabe.
 - **Abgeschlossen:** 32 – der bekannte persönliche Bestand wird je Charakter und Material über alle auflösbaren Ziele konfliktfrei reserviert. Die stabile Reihenfolge ist höhere Priorität, älteres Erstellungsdatum und kleinere Ziel-ID. Jedes Ziel zeigt physischen Bestand, vorrangig reservierte Menge, eigene Reservierung, danach freien Bestand sowie getrennte physische und reservierungsbedingte Fehlmengen. Suche, Filter, Sortierung und Seitenauswahl verändern die globale Reservierung nicht; ein neuer Snapshot oder eine Zieländerung berechnet sie unmittelbar neu. Das Schema bleibt bei Version 9.
 - **Abgeschlossen:** 33 – Produktionsziele können genau ein vorhandenes persönliches BPO oder BPC zuordnen. Der belegte ME-Wert verändert ausschließlich direkte Materialien des Wurzel-Fertigungsschritts mit ganzzahliger Aufrundung und einer Einheit Mindestbedarf je Material und Lauf; daraus veränderte Zwischenproduktläufe werden erneut deterministisch aufgelöst. Unmodifizierter Bedarf und Ersparnis bleiben parallel sichtbar. Fehlende Snapshots, verschwundene oder typfalsche Items und zu wenige BPC-Läufe bleiben nachvollziehbare Zustände. Schema 10 speichert die eindeutige optionale Item-ID.
 - **Abgeschlossen:** 34 – Der belegte TE-Wert des zugeordneten persönlichen BPO oder BPC verändert ausschließlich die Blueprint-Zeit des Wurzel-Fertigungsschritts. Die Berechnung erfolgt jobweit mit exakter Ganzzahlarithmetik und Aufrundung auf volle Sekunden; SDE-Basiszeit, Blueprint-Zeit und Ersparnis bleiben je Schritt und als Summe parallel sichtbar. Reaktionen und automatisch ausgewählte Zwischen-Blueprints bleiben unverändert.
-- **Als Nächstes:** Das nächste Fachpaket wird separat festgelegt. Charakter-Skills, Anlagen-/Rigboni, Steuern, Preise und belastbare reale Fertigstellungszeiten bleiben bis zu eigenen Fachverträgen ausgeschlossen.
+- **Abgeschlossen:** 35 – Der letzte vollständig abgeschlossene Skill-Snapshot des ausführenden Charakters liefert die aktuell wirksamen Stufen für Industry, Advanced Industry und Reactions. Fertigung wendet 4 % Industry und 3 % Advanced Industry je Stufe, Reaktionen 4 % Reactions je Stufe multiplikativ auf die ungerundete vollständige Jobzeit an; auf volle Sekunden wird erst am Ende aufgerundet. Jeder passende Schritt und die Gesamtsicht weisen Blueprint-Zeit, persönliche Skillzeit, Ersparnis, Skillwerte sowie Snapshot-, Lauf- und Zeitbeleg aus. Fehlt ein vollständiger Skill-Snapshot, bleibt die persönliche Zeit ausdrücklich unbekannt; fehlgeschlagene neuere Läufe verdrängen keinen gültigen Stand.
+- **Als Nächstes:** Das nächste Fachpaket wird separat festgelegt. Anlagen-/Service-/Rigboni, Steuern, Preise und belastbare reale Fertigstellungszeiten bleiben bis zu eigenen Fachverträgen ausgeschlossen.
 - Architektur-Gate A0 ist vollständig erfüllt; `v0.2.0-alpha.1` bildet die erste freigegebene Alpha-Grundlage für die folgenden Produktionspakete.
 
 ## 13. Entscheidungs- und Quellenrang

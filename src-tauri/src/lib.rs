@@ -121,6 +121,9 @@ const RESEARCH_PLAN_ACTIVITIES: [&str; 2] = ["material", "time"];
 const RESEARCH_ACTIVE_JOB_STATUSES: [&str; 3] = ["active", "paused", "ready"];
 const RESEARCH_FACILITY_EVIDENCE: [&str; 3] = ["none", "active-job", "last-owner-job"];
 const PRODUCTION_ACTIVITIES: [&str; 2] = ["manufacturing", "reaction"];
+const INDUSTRY_SKILL_ID: u64 = 3380;
+const ADVANCED_INDUSTRY_SKILL_ID: u64 = 3388;
+const REACTIONS_SKILL_ID: u64 = 45746;
 const PRODUCTION_PLAN_STATES: [&str; 5] = [
     "ready",
     "sde-unavailable",
@@ -839,6 +842,15 @@ struct ProductionStepMaterial {
 
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
+struct ProductionTimeSkill {
+    skill_id: u64,
+    skill_name: String,
+    active_level: Option<u8>,
+    percent_per_level: u8,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct ProductionStep {
     sequence: u64,
     blueprint_type_id: u64,
@@ -859,6 +871,10 @@ struct ProductionStep {
     time_efficiency_applied: bool,
     total_blueprint_time_seconds: u64,
     time_efficiency_savings_seconds: u64,
+    time_skills: Vec<ProductionTimeSkill>,
+    character_skill_time_applied: bool,
+    total_character_time_seconds: Option<u64>,
+    character_skill_time_savings_seconds: Option<u64>,
     recipe_alternatives: u64,
     material_efficiency: u8,
     material_efficiency_applied: bool,
@@ -981,6 +997,12 @@ struct ProductionPlanRecord {
     total_base_time_seconds: Option<u64>,
     total_blueprint_time_seconds: Option<u64>,
     time_efficiency_savings_seconds: Option<u64>,
+    total_character_time_seconds: Option<u64>,
+    character_skill_time_savings_seconds: Option<u64>,
+    character_skill_state: String,
+    skill_snapshot_id: Option<u64>,
+    skill_sync_run_id: Option<u64>,
+    skill_observed_at: Option<String>,
     inventory_state: String,
     asset_snapshot_id: Option<u64>,
     asset_sync_run_id: Option<u64>,
@@ -1020,6 +1042,8 @@ struct ProductionPlanQueryResponse {
     material_efficiency_rule: String,
     blueprint_time_efficiency_applied: bool,
     time_efficiency_rule: String,
+    character_skill_time_applied: bool,
+    character_skill_time_rule: String,
     remaining_modifiers_applied: bool,
 }
 
@@ -2676,6 +2700,60 @@ fn production_blueprint_candidate_is_valid(candidate: &ProductionBlueprintCandid
         && (candidate.kind != "copy" || candidate.runs != -1)
 }
 
+fn production_time_skills_are_valid(step: &ProductionStep) -> bool {
+    let expected: &[(u64, &str, u8)] = if step.activity == "manufacturing" {
+        &[
+            (INDUSTRY_SKILL_ID, "Industry", 4),
+            (ADVANCED_INDUSTRY_SKILL_ID, "Advanced Industry", 3),
+        ]
+    } else {
+        &[(REACTIONS_SKILL_ID, "Reactions", 4)]
+    };
+    if step.time_skills.len() != expected.len()
+        || !step.time_skills.iter().zip(expected).all(|(skill, rule)| {
+            skill.skill_id == rule.0
+                && skill.skill_name == rule.1
+                && skill.percent_per_level == rule.2
+                && skill.active_level.is_none_or(|level| level <= 5)
+        })
+    {
+        return false;
+    }
+    let levels_missing = step
+        .time_skills
+        .iter()
+        .all(|skill| skill.active_level.is_none());
+    let levels_available = step
+        .time_skills
+        .iter()
+        .all(|skill| skill.active_level.is_some());
+    if levels_missing {
+        return step.total_character_time_seconds.is_none()
+            && step.character_skill_time_savings_seconds.is_none()
+            && !step.character_skill_time_applied;
+    }
+    if !levels_available {
+        return false;
+    }
+    let mut numerator =
+        u128::from(step.total_base_time_seconds) * u128::from(100 - step.time_efficiency);
+    let mut denominator = 100_u128;
+    for skill in &step.time_skills {
+        numerator *=
+            u128::from(100 - skill.percent_per_level * skill.active_level.unwrap_or_default());
+        denominator *= 100;
+    }
+    let adjusted = (numerator + denominator - 1) / denominator;
+    let Ok(adjusted) = u64::try_from(adjusted) else {
+        return false;
+    };
+    production_id_is_valid(adjusted)
+        && step.total_character_time_seconds == Some(adjusted)
+        && step.total_blueprint_time_seconds.checked_sub(adjusted)
+            == step.character_skill_time_savings_seconds
+        && step.character_skill_time_applied == (adjusted < step.total_blueprint_time_seconds)
+}
+
 fn production_plan_record_is_valid(item: &ProductionPlanRecord) -> bool {
     let steps_valid = item.steps.iter().enumerate().all(|(index, step)| {
         step.sequence == index as u64 + 1
@@ -2697,6 +2775,7 @@ fn production_plan_record_is_valid(item: &ProductionPlanRecord) -> bool {
             && step.time_efficiency_applied == (step.time_efficiency > 0)
             && production_id_is_valid(step.total_blueprint_time_seconds)
             && step.time_efficiency_savings_seconds <= JAVASCRIPT_MAX_SAFE_INTEGER
+            && production_time_skills_are_valid(step)
             && production_id_is_valid(step.recipe_alternatives)
             && step.material_efficiency <= 10
             && step.material_efficiency_applied == (step.material_efficiency > 0)
@@ -2968,6 +3047,20 @@ fn production_plan_record_is_valid(item: &ProductionPlanRecord) -> bool {
         _ => false,
     };
     let owner_snapshot_available = item.asset_snapshot_id.is_some();
+    let skill_source_valid = match (
+        item.skill_snapshot_id,
+        item.skill_sync_run_id,
+        item.skill_observed_at.as_ref(),
+    ) {
+        (None, None, None) => true,
+        (Some(snapshot_id), Some(sync_run_id), Some(observed_at)) => {
+            production_id_is_valid(snapshot_id)
+                && production_id_is_valid(sync_run_id)
+                && asset_text_is_valid(observed_at, 64)
+        }
+        _ => false,
+    };
+    let skill_source_available = item.skill_snapshot_id.is_some();
     let expected_inventory_state = if !ready {
         "not-applicable"
     } else if item.gross_materials.is_empty() {
@@ -3007,6 +3100,38 @@ fn production_plan_record_is_valid(item: &ProductionPlanRecord) -> bool {
                 .zip(item.total_blueprint_time_seconds)
                 .and_then(|(base, adjusted)| base.checked_sub(adjusted))
                 == item.time_efficiency_savings_seconds
+            && if skill_source_available {
+                item.total_character_time_seconds.is_some()
+                    && item.character_skill_time_savings_seconds.is_some()
+                    && item.steps.iter().all(|step| {
+                        step.total_character_time_seconds.is_some()
+                            && step.character_skill_time_savings_seconds.is_some()
+                            && step
+                                .time_skills
+                                .iter()
+                                .all(|skill| skill.active_level.is_some())
+                    })
+                    && item.steps.iter().try_fold(0_u64, |total, step| {
+                        total.checked_add(step.total_character_time_seconds?)
+                    }) == item.total_character_time_seconds
+                    && item
+                        .total_blueprint_time_seconds
+                        .zip(item.total_character_time_seconds)
+                        .and_then(|(blueprint, character)| blueprint.checked_sub(character))
+                        == item.character_skill_time_savings_seconds
+            } else {
+                item.total_character_time_seconds.is_none()
+                    && item.character_skill_time_savings_seconds.is_none()
+                    && item.steps.iter().all(|step| {
+                        step.total_character_time_seconds.is_none()
+                            && step.character_skill_time_savings_seconds.is_none()
+                            && !step.character_skill_time_applied
+                            && step
+                                .time_skills
+                                .iter()
+                                .all(|skill| skill.active_level.is_none())
+                    })
+            }
             && item
                 .steps
                 .last()
@@ -3024,6 +3149,8 @@ fn production_plan_record_is_valid(item: &ProductionPlanRecord) -> bool {
             && item.total_base_time_seconds.is_none()
             && item.total_blueprint_time_seconds.is_none()
             && item.time_efficiency_savings_seconds.is_none()
+            && item.total_character_time_seconds.is_none()
+            && item.character_skill_time_savings_seconds.is_none()
             && ((item.state == "cycle" && !item.cycle_type_ids.is_empty())
                 || (item.state != "cycle" && item.cycle_type_ids.is_empty()))
     };
@@ -3068,6 +3195,18 @@ fn production_plan_record_is_valid(item: &ProductionPlanRecord) -> bool {
         && item
             .time_efficiency_savings_seconds
             .is_none_or(|value| value <= JAVASCRIPT_MAX_SAFE_INTEGER)
+        && item
+            .total_character_time_seconds
+            .is_none_or(production_id_is_valid)
+        && item
+            .character_skill_time_savings_seconds
+            .is_none_or(|value| value <= JAVASCRIPT_MAX_SAFE_INTEGER)
+        && matches!(
+            item.character_skill_state.as_str(),
+            "ready" | "snapshot-missing"
+        )
+        && ((item.character_skill_state == "ready") == skill_source_available)
+        && skill_source_valid
         && PRODUCTION_INVENTORY_STATES.contains(&item.inventory_state.as_str())
         && item.inventory_state == expected_inventory_state
         && asset_source_valid
@@ -3147,6 +3286,9 @@ fn production_plan_query_response_is_valid(response: &ProductionPlanQueryRespons
         && response.material_efficiency_rule == "max-runs-ceil-base-runs-percent"
         && response.blueprint_time_efficiency_applied
         && response.time_efficiency_rule == "max-one-ceil-base-runs-percent"
+        && response.character_skill_time_applied
+        && response.character_skill_time_rule
+            == "job-wide-ceil-industry-4-advanced-industry-3-reactions-4-active-levels"
         && !response.remaining_modifiers_applied
 }
 
@@ -5892,10 +6034,11 @@ mod tests {
         IndustryJobSyncCharacterResponse, IndustryJobSyncResponse, IndustrySlotActivity,
         IndustrySlotQueryResponse, IndustrySlotRecord, ProductionBlueprintCandidate,
         ProductionGrossMaterial, ProductionPlanRecord, ProductionReservationClaim, ProductionStep,
-        ProductionStepMaterial, ResearchPlanOwner, ResearchPlanQueryResponse, ResearchPlanRecord,
-        ResearchPlanSummary, RuntimeDataSnapshot, ScopePackageStatus, SsoCharacterIdentity,
-        SsoLoginStatus, WindowSizePreference, ASSET_LOCATION_STATUSES, INDUSTRY_COST_ACTIVITIES,
-        INDUSTRY_FACILITY_ACCESS_STATES, INDUSTRY_FACILITY_KINDS, INDUSTRY_SECURITY_CLASSES,
+        ProductionStepMaterial, ProductionTimeSkill, ResearchPlanOwner, ResearchPlanQueryResponse,
+        ResearchPlanRecord, ResearchPlanSummary, RuntimeDataSnapshot, ScopePackageStatus,
+        SsoCharacterIdentity, SsoLoginStatus, WindowSizePreference, ADVANCED_INDUSTRY_SKILL_ID,
+        ASSET_LOCATION_STATUSES, INDUSTRY_COST_ACTIVITIES, INDUSTRY_FACILITY_ACCESS_STATES,
+        INDUSTRY_FACILITY_KINDS, INDUSTRY_SECURITY_CLASSES, INDUSTRY_SKILL_ID,
         INDUSTRY_SLOT_ACTIVITIES, RESEARCH_PLAN_ACTIVITIES, RESEARCH_PLAN_STATES,
     };
     use std::fs;
@@ -6819,6 +6962,23 @@ mod tests {
                     time_efficiency_applied: false,
                     total_blueprint_time_seconds: 20,
                     time_efficiency_savings_seconds: 0,
+                    time_skills: vec![
+                        ProductionTimeSkill {
+                            skill_id: INDUSTRY_SKILL_ID,
+                            skill_name: "Industry".to_owned(),
+                            active_level: Some(5),
+                            percent_per_level: 4,
+                        },
+                        ProductionTimeSkill {
+                            skill_id: ADVANCED_INDUSTRY_SKILL_ID,
+                            skill_name: "Advanced Industry".to_owned(),
+                            active_level: Some(5),
+                            percent_per_level: 3,
+                        },
+                    ],
+                    character_skill_time_applied: true,
+                    total_character_time_seconds: Some(14),
+                    character_skill_time_savings_seconds: Some(6),
                     recipe_alternatives: 1,
                     material_efficiency: 0,
                     material_efficiency_applied: false,
@@ -6853,6 +7013,23 @@ mod tests {
                     time_efficiency_applied: true,
                     total_blueprint_time_seconds: 160,
                     time_efficiency_savings_seconds: 40,
+                    time_skills: vec![
+                        ProductionTimeSkill {
+                            skill_id: INDUSTRY_SKILL_ID,
+                            skill_name: "Industry".to_owned(),
+                            active_level: Some(5),
+                            percent_per_level: 4,
+                        },
+                        ProductionTimeSkill {
+                            skill_id: ADVANCED_INDUSTRY_SKILL_ID,
+                            skill_name: "Advanced Industry".to_owned(),
+                            active_level: Some(5),
+                            percent_per_level: 3,
+                        },
+                    ],
+                    character_skill_time_applied: true,
+                    total_character_time_seconds: Some(109),
+                    character_skill_time_savings_seconds: Some(51),
                     recipe_alternatives: 1,
                     material_efficiency: 10,
                     material_efficiency_applied: true,
@@ -6897,6 +7074,12 @@ mod tests {
             total_base_time_seconds: Some(220),
             total_blueprint_time_seconds: Some(180),
             time_efficiency_savings_seconds: Some(40),
+            total_character_time_seconds: Some(123),
+            character_skill_time_savings_seconds: Some(57),
+            character_skill_state: "ready".to_owned(),
+            skill_snapshot_id: Some(14),
+            skill_sync_run_id: Some(15),
+            skill_observed_at: Some("2026-09-12T10:01:00Z".to_owned()),
             inventory_state: "snapshot-missing".to_owned(),
             asset_snapshot_id: None,
             asset_sync_run_id: None,

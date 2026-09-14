@@ -585,6 +585,10 @@ select:focus-visible {
   color: #cfd8d0;
 }
 
+.production-skill-evidence {
+  padding-bottom: 10px;
+}
+
 .production-plan-editor button {
   display: inline-flex;
   align-items: center;

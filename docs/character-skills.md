@@ -26,6 +26,8 @@ Suche, Besitzer-, Level- und Aktivzustandsfilter sowie die Sortierung werden vor
 
 Damit bleibt die Datenbasis für spätere Machbarkeits- und Skill-Lückenprüfungen ehrlich: Ein dauerhaft trainierter Wert wird nicht automatisch als aktuell wirksam angenommen.
 
+Seit Paket 35 verwendet auch die Produktionsplanung genau diese aktiven Level: Industry und Advanced Industry für Fertigungsschritte, Reactions für Reaktionsschritte. Die Berechnung verweist auf Snapshot-ID, Sync-Lauf und Beobachtungszeit. Fehlt ein vollständiger Snapshot, bleibt die persönliche Zeit unbekannt; ein neuerer fehlgeschlagener Lauf verdrängt keinen gültigen Stand. Formel, Rundung und verbleibende Grenzen sind in der [Produktionsplanung](production-planning.md) festgelegt.
+
 ## Bekannte ESI-Grenze
 
 Die ESI-Endpunktbeschreibung weist darauf hin, dass die Antwort nach abgeschlossenen Einträgen in der Skill-Warteschlange veraltet sein kann, solange der Charakter danach nicht im Spiel angemeldet war. Paket 25 speichert deshalb den beobachteten Zeitpunkt und behauptet keine Echtzeitgenauigkeit. Eine spätere Warteschlangenüberlagerung muss den eigenen Scope, die Ablaufzeiten und dieselben vollständigen Snapshot-Regeln verwenden.

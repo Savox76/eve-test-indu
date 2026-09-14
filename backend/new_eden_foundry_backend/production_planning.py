@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Mapping
 
+from .character_skill_sync import CharacterSkillSyncError, validate_character_skills
 from .sde import (
     MAX_SAFE_INTEGER,
     SUPPORTED_BLUEPRINT_ACTIVITIES,
@@ -26,6 +27,13 @@ MAX_BLUEPRINT_CANDIDATES = 50
 RESERVATION_RULE = "priority-desc-created-asc-plan-id-asc"
 MATERIAL_EFFICIENCY_RULE = "max-runs-ceil-base-runs-percent"
 TIME_EFFICIENCY_RULE = "max-one-ceil-base-runs-percent"
+CHARACTER_SKILL_TIME_RULE = (
+    "job-wide-ceil-industry-4-advanced-industry-3-reactions-4-active-levels"
+)
+INDUSTRY_SKILL_ID = 3380
+ADVANCED_INDUSTRY_SKILL_ID = 3388
+REACTIONS_SKILL_ID = 45746
+_SKILL_SOURCE_UNSET = object()
 PLAN_STATES = (
     "ready",
     "sde-unavailable",
@@ -93,6 +101,15 @@ class BlueprintSource:
     sync_run_id: int
     observed_at: str
     items: dict[int, BlueprintItem]
+
+
+@dataclass(frozen=True, slots=True)
+class SkillSource:
+    character_id: int
+    snapshot_id: int
+    sync_run_id: int
+    observed_at: str
+    active_levels: dict[int, int]
 
 
 def _positive_int(value: Any) -> bool:
@@ -294,6 +311,144 @@ def _blueprint_time_seconds(
     whole_seconds = _checked_multiply(base_total // 100, factor)
     partial_seconds = ((base_total % 100) * factor + 99) // 100
     return max(1, _checked_add(whole_seconds, partial_seconds))
+
+
+def _character_time_seconds(
+    base_time_seconds: int,
+    runs: int,
+    time_efficiency: int,
+    activity: str,
+    active_levels: Mapping[int, int],
+) -> int:
+    """Apply blueprint TE and active character skills once to a complete job."""
+
+    if (
+        not _positive_int(base_time_seconds)
+        or not _positive_int(runs)
+        or not _non_negative_int(time_efficiency)
+        or time_efficiency > 20
+        or activity not in SUPPORTED_BLUEPRINT_ACTIVITIES
+    ):
+        raise ProductionPlanningError("production_character_time_invalid")
+    levels = {
+        skill_id: active_levels.get(skill_id, 0)
+        for skill_id in (
+            INDUSTRY_SKILL_ID,
+            ADVANCED_INDUSTRY_SKILL_ID,
+            REACTIONS_SKILL_ID,
+        )
+    }
+    if any(
+        not _non_negative_int(level) or level > 5 for level in levels.values()
+    ):
+        raise ProductionPlanningError("production_character_time_invalid")
+    factors = [100 - time_efficiency]
+    if activity == "manufacturing":
+        factors.extend(
+            (
+                100 - 4 * levels[INDUSTRY_SKILL_ID],
+                100 - 3 * levels[ADVANCED_INDUSTRY_SKILL_ID],
+            )
+        )
+    else:
+        factors.append(100 - 4 * levels[REACTIONS_SKILL_ID])
+    numerator = _checked_multiply(base_time_seconds, runs)
+    denominator = 1
+    for factor in factors:
+        numerator *= factor
+        denominator *= 100
+    return max(1, (numerator + denominator - 1) // denominator)
+
+
+def _time_skills(
+    activity: str, source: SkillSource | None
+) -> list[dict[str, Any]]:
+    definitions = (
+        (
+            (INDUSTRY_SKILL_ID, "Industry", 4),
+            (ADVANCED_INDUSTRY_SKILL_ID, "Advanced Industry", 3),
+        )
+        if activity == "manufacturing"
+        else ((REACTIONS_SKILL_ID, "Reactions", 4),)
+    )
+    return [
+        {
+            "skillId": skill_id,
+            "skillName": name,
+            "activeLevel": (
+                None if source is None else source.active_levels.get(skill_id, 0)
+            ),
+            "percentPerLevel": percent,
+        }
+        for skill_id, name, percent in definitions
+    ]
+
+
+def _skill_source(
+    connection: sqlite3.Connection, character_id: int
+) -> SkillSource | None:
+    row = connection.execute(
+        "SELECT cached_snapshots.id,cached_snapshots.sync_run_id,"
+        "cached_snapshots.payload_json,cached_snapshots.observed_at "
+        "FROM cached_snapshots JOIN sync_runs "
+        "ON sync_runs.id=cached_snapshots.sync_run_id "
+        "WHERE cached_snapshots.resource=? AND sync_runs.source='character_skills' "
+        "AND sync_runs.status='completed' "
+        "ORDER BY cached_snapshots.observed_at DESC,cached_snapshots.id DESC LIMIT 1",
+        (f"character_skills:{character_id}",),
+    ).fetchone()
+    if row is None:
+        return None
+    try:
+        payload = json.loads(str(row[2]))
+        if (
+            not isinstance(payload, Mapping)
+            or payload.get("characterId") != character_id
+            or not isinstance(row[3], str)
+            or not str(row[3]).strip()
+            or len(str(row[3])) > 64
+        ):
+            raise ProductionPlanningError("production_skill_snapshot_invalid")
+        validated = validate_character_skills(
+            {key: value for key, value in payload.items() if key != "characterId"}
+        )
+    except (
+        TypeError,
+        ValueError,
+        json.JSONDecodeError,
+        CharacterSkillSyncError,
+    ) as error:
+        raise ProductionPlanningError("production_skill_snapshot_invalid") from error
+    return SkillSource(
+        character_id=character_id,
+        snapshot_id=int(row[0]),
+        sync_run_id=int(row[1]),
+        observed_at=str(row[3]),
+        active_levels={
+            int(skill["skill_id"]): int(skill["active_skill_level"])
+            for skill in validated["skills"]
+        },
+    )
+
+
+def _load_skill_sources(
+    connection: sqlite3.Connection, plan_rows: list[sqlite3.Row]
+) -> dict[int, SkillSource | None]:
+    return {
+        character_id: _skill_source(connection, character_id)
+        for character_id in sorted(
+            {int(row["owner_character_id"]) for row in plan_rows}
+        )
+    }
+
+
+def _skill_evidence(source: SkillSource | None) -> dict[str, Any]:
+    return {
+        "characterSkillState": "snapshot-missing" if source is None else "ready",
+        "skillSnapshotId": None if source is None else source.snapshot_id,
+        "skillSyncRunId": None if source is None else source.sync_run_id,
+        "skillObservedAt": None if source is None else source.observed_at,
+    }
 
 
 def _blueprint_source(
@@ -886,6 +1041,8 @@ def _empty_resolution(
         "totalBaseTimeSeconds": None,
         "totalBlueprintTimeSeconds": None,
         "timeEfficiencySavingsSeconds": None,
+        "totalCharacterTimeSeconds": None,
+        "characterSkillTimeSavingsSeconds": None,
     }
 
 
@@ -896,6 +1053,7 @@ def resolve_production_plan(
     loaded_recipes: tuple[dict[int, list[Recipe]], dict[tuple[int, str, int], Recipe]]
     | None = None,
     blueprint_source: BlueprintSource | None = None,
+    skill_source: SkillSource | None | object = _SKILL_SOURCE_UNSET,
 ) -> dict[str, Any]:
     """Resolve one goal with a stable recipe tie-break and exact integer rounding."""
 
@@ -907,11 +1065,21 @@ def resolve_production_plan(
     )
     if blueprint_source is None and owner_character_id is not None:
         blueprint_source = _blueprint_source(connection, owner_character_id)
+    if skill_source is _SKILL_SOURCE_UNSET:
+        skill_source = (
+            _skill_source(connection, owner_character_id)
+            if owner_character_id is not None
+            else None
+        )
+    if skill_source is not None and not isinstance(skill_source, SkillSource):
+        raise ProductionPlanningError("production_skill_snapshot_invalid")
     initial_assignment = _blueprint_assignment(plan, blueprint_source, 1)
+    skill_evidence = _skill_evidence(skill_source)
     if build_number is None or not _sde_tables_available(connection):
         return {
             **_empty_resolution(connection, plan, "sde-unavailable", build_number),
             **initial_assignment,
+            **skill_evidence,
             "appliedMaterialEfficiency": 0,
             "appliedTimeEfficiency": 0,
         }
@@ -926,6 +1094,7 @@ def resolve_production_plan(
         return {
             **_empty_resolution(connection, plan, "recipe-missing", build_number),
             **initial_assignment,
+            **skill_evidence,
             "appliedMaterialEfficiency": 0,
             "appliedTimeEfficiency": 0,
         }
@@ -981,6 +1150,7 @@ def resolve_production_plan(
                 return {
                     **result,
                     **assignment,
+                    **skill_evidence,
                     "appliedMaterialEfficiency": 0,
                     "appliedTimeEfficiency": 0,
                 }
@@ -1016,6 +1186,7 @@ def resolve_production_plan(
         return {
             **result,
             **assignment,
+            **skill_evidence,
             "appliedMaterialEfficiency": 0,
             "appliedTimeEfficiency": 0,
         }
@@ -1029,6 +1200,7 @@ def resolve_production_plan(
     steps: list[dict[str, Any]] = []
     total_base_time = 0
     total_blueprint_time = 0
+    total_character_time: int | None = 0 if skill_source is not None else None
     for sequence, product_type_id in enumerate(ordered, start=1):
         recipe = selected[product_type_id]
         quantity_needed = required[product_type_id]
@@ -1096,10 +1268,25 @@ def resolve_production_plan(
         step_blueprint_time = _blueprint_time_seconds(
             recipe.base_time_seconds, runs, time_efficiency
         )
+        step_character_time = (
+            None
+            if skill_source is None
+            else _character_time_seconds(
+                recipe.base_time_seconds,
+                runs,
+                time_efficiency,
+                recipe.activity,
+                skill_source.active_levels,
+            )
+        )
         total_base_time = _checked_add(total_base_time, step_time)
         total_blueprint_time = _checked_add(
             total_blueprint_time, step_blueprint_time
         )
+        if total_character_time is not None and step_character_time is not None:
+            total_character_time = _checked_add(
+                total_character_time, step_character_time
+            )
         steps.append(
             {
                 "sequence": sequence,
@@ -1121,6 +1308,17 @@ def resolve_production_plan(
                 "timeEfficiencyApplied": time_efficiency > 0,
                 "totalBlueprintTimeSeconds": step_blueprint_time,
                 "timeEfficiencySavingsSeconds": step_time - step_blueprint_time,
+                "timeSkills": _time_skills(recipe.activity, skill_source),
+                "characterSkillTimeApplied": (
+                    step_character_time is not None
+                    and step_character_time < step_blueprint_time
+                ),
+                "totalCharacterTimeSeconds": step_character_time,
+                "characterSkillTimeSavingsSeconds": (
+                    None
+                    if step_character_time is None
+                    else step_blueprint_time - step_character_time
+                ),
                 "recipeAlternatives": len(by_product.get(product_type_id, [])),
                 "materialEfficiency": material_efficiency,
                 "materialEfficiencyApplied": material_efficiency > 0,
@@ -1155,7 +1353,14 @@ def resolve_production_plan(
         "totalBaseTimeSeconds": total_base_time,
         "totalBlueprintTimeSeconds": total_blueprint_time,
         "timeEfficiencySavingsSeconds": total_base_time - total_blueprint_time,
+        "totalCharacterTimeSeconds": total_character_time,
+        "characterSkillTimeSavingsSeconds": (
+            None
+            if total_character_time is None
+            else total_blueprint_time - total_character_time
+        ),
         **assignment,
+        **skill_evidence,
         "appliedMaterialEfficiency": applied_material_efficiency,
         "appliedTimeEfficiency": applied_time_efficiency,
     }
@@ -1276,6 +1481,14 @@ def _serialize_plan(row: sqlite3.Row, resolution: Mapping[str, Any]) -> dict[str
         "totalBaseTimeSeconds": resolution["totalBaseTimeSeconds"],
         "totalBlueprintTimeSeconds": resolution["totalBlueprintTimeSeconds"],
         "timeEfficiencySavingsSeconds": resolution["timeEfficiencySavingsSeconds"],
+        "totalCharacterTimeSeconds": resolution["totalCharacterTimeSeconds"],
+        "characterSkillTimeSavingsSeconds": resolution[
+            "characterSkillTimeSavingsSeconds"
+        ],
+        "characterSkillState": resolution["characterSkillState"],
+        "skillSnapshotId": resolution["skillSnapshotId"],
+        "skillSyncRunId": resolution["skillSyncRunId"],
+        "skillObservedAt": resolution["skillObservedAt"],
         "inventoryState": resolution["inventoryState"],
         "assetSnapshotId": resolution["assetSnapshotId"],
         "assetSyncRunId": resolution["assetSyncRunId"],
@@ -1295,6 +1508,7 @@ def query_production_plans(connection: sqlite3.Connection, raw_query: Any) -> di
     )
     plan_rows = _plan_rows(connection)
     blueprint_sources = _load_blueprint_sources(connection, plan_rows)
+    skill_sources = _load_skill_sources(connection, plan_rows)
     inventory_sources = _load_inventory_sources(connection, plan_rows)
     resolutions = {
         int(row["id"]): resolve_production_plan(
@@ -1302,6 +1516,7 @@ def query_production_plans(connection: sqlite3.Connection, raw_query: Any) -> di
             row,
             loaded_recipes=loaded_recipes,
             blueprint_source=blueprint_sources.get(int(row["owner_character_id"])),
+            skill_source=skill_sources.get(int(row["owner_character_id"])),
         )
         for row in plan_rows
     }
@@ -1391,6 +1606,8 @@ def query_production_plans(connection: sqlite3.Connection, raw_query: Any) -> di
         "materialEfficiencyRule": MATERIAL_EFFICIENCY_RULE,
         "blueprintTimeEfficiencyApplied": True,
         "timeEfficiencyRule": TIME_EFFICIENCY_RULE,
+        "characterSkillTimeApplied": True,
+        "characterSkillTimeRule": CHARACTER_SKILL_TIME_RULE,
         "remainingModifiersApplied": False,
     }
 
