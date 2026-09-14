@@ -7230,7 +7230,7 @@ mod tests {
                     recipe_alternatives: 1,
                     material_efficiency: 0,
                     material_efficiency_applied: false,
-                    blueprint_assignment: ProductionStepBlueprintAssignment {
+                    blueprint_assignment: super::ProductionStepBlueprintAssignment {
                         blueprint_assignment_state: "unassigned".to_owned(),
                         blueprint_item_id: None,
                         blueprint_kind: None,
@@ -7296,7 +7296,7 @@ mod tests {
                     recipe_alternatives: 1,
                     material_efficiency: 10,
                     material_efficiency_applied: true,
-                    blueprint_assignment: ProductionStepBlueprintAssignment {
+                    blueprint_assignment: super::ProductionStepBlueprintAssignment {
                         blueprint_assignment_state: "ready".to_owned(),
                         blueprint_item_id: Some(7_001),
                         blueprint_kind: Some("copy".to_owned()),
