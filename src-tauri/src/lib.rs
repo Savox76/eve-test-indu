@@ -2796,11 +2796,9 @@ fn production_step_blueprint_assignment_is_valid(
         }
         && assignment.blueprint_candidate_count <= JAVASCRIPT_MAX_SAFE_INTEGER
         && assignment.blueprint_candidates.len() <= 50
-        && assignment.blueprint_candidate_count
-            >= assignment.blueprint_candidates.len() as u64
+        && assignment.blueprint_candidate_count >= assignment.blueprint_candidates.len() as u64
         && (assignment.blueprint_candidate_count > 50
-            || assignment.blueprint_candidate_count
-                == assignment.blueprint_candidates.len() as u64)
+            || assignment.blueprint_candidate_count == assignment.blueprint_candidates.len() as u64)
         && candidate_ids.len() == assignment.blueprint_candidates.len()
         && assignment
             .blueprint_candidates
@@ -3232,16 +3230,12 @@ fn production_plan_record_is_valid(item: &ProductionPlanRecord) -> bool {
                     && step.blueprint_assignment.blueprint_time_efficiency
                         == item.blueprint_time_efficiency
                     && step.blueprint_assignment.blueprint_runs == item.blueprint_runs
-                    && step.blueprint_assignment.blueprint_location_id
-                        == item.blueprint_location_id
+                    && step.blueprint_assignment.blueprint_location_id == item.blueprint_location_id
                     && step.blueprint_assignment.blueprint_location_flag
                         == item.blueprint_location_flag
-                    && step.blueprint_assignment.blueprint_snapshot_id
-                        == item.blueprint_snapshot_id
-                    && step.blueprint_assignment.blueprint_sync_run_id
-                        == item.blueprint_sync_run_id
-                    && step.blueprint_assignment.blueprint_observed_at
-                        == item.blueprint_observed_at
+                    && step.blueprint_assignment.blueprint_snapshot_id == item.blueprint_snapshot_id
+                    && step.blueprint_assignment.blueprint_sync_run_id == item.blueprint_sync_run_id
+                    && step.blueprint_assignment.blueprint_observed_at == item.blueprint_observed_at
                     && step.blueprint_assignment.blueprint_candidate_count
                         == item.blueprint_candidate_count
                     && step
@@ -3250,12 +3244,9 @@ fn production_plan_record_is_valid(item: &ProductionPlanRecord) -> bool {
                         .eq(&item.blueprint_candidates)
             })
             && item.steps.iter().all(|step| {
-                step.blueprint_assignment.blueprint_snapshot_id
-                    == item.blueprint_snapshot_id
-                    && step.blueprint_assignment.blueprint_sync_run_id
-                        == item.blueprint_sync_run_id
-                    && step.blueprint_assignment.blueprint_observed_at
-                        == item.blueprint_observed_at
+                step.blueprint_assignment.blueprint_snapshot_id == item.blueprint_snapshot_id
+                    && step.blueprint_assignment.blueprint_sync_run_id == item.blueprint_sync_run_id
+                    && step.blueprint_assignment.blueprint_observed_at == item.blueprint_observed_at
             })
             && item.steps.iter().try_fold(0_u64, |total, step| {
                 total.checked_add(step.total_base_time_seconds)
@@ -7250,9 +7241,7 @@ mod tests {
                         blueprint_location_flag: None,
                         blueprint_snapshot_id: Some(12),
                         blueprint_sync_run_id: Some(13),
-                        blueprint_observed_at: Some(
-                            "2026-09-12T10:00:00Z".to_owned(),
-                        ),
+                        blueprint_observed_at: Some("2026-09-12T10:00:00Z".to_owned()),
                         blueprint_candidate_count: 0,
                         blueprint_candidates: Vec::new(),
                     },
@@ -7318,9 +7307,7 @@ mod tests {
                         blueprint_location_flag: Some("Hangar".to_owned()),
                         blueprint_snapshot_id: Some(12),
                         blueprint_sync_run_id: Some(13),
-                        blueprint_observed_at: Some(
-                            "2026-09-12T10:00:00Z".to_owned(),
-                        ),
+                        blueprint_observed_at: Some("2026-09-12T10:00:00Z".to_owned()),
                         blueprint_candidate_count: 1,
                         blueprint_candidates: vec![ProductionBlueprintCandidate {
                             item_id: 7_001,
