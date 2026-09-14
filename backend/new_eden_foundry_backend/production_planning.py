@@ -25,6 +25,7 @@ MAX_RESERVATION_CLAIMS = 50
 MAX_BLUEPRINT_CANDIDATES = 50
 RESERVATION_RULE = "priority-desc-created-asc-plan-id-asc"
 MATERIAL_EFFICIENCY_RULE = "max-runs-ceil-base-runs-percent"
+TIME_EFFICIENCY_RULE = "max-one-ceil-base-runs-percent"
 PLAN_STATES = (
     "ready",
     "sde-unavailable",
@@ -274,6 +275,25 @@ def _material_quantity(base_quantity: int, runs: int, material_efficiency: int) 
     numerator = _checked_multiply(unmodified, 100 - material_efficiency)
     adjusted = (numerator + 99) // 100
     return max(runs, adjusted)
+
+
+def _blueprint_time_seconds(
+    base_time_seconds: int, runs: int, time_efficiency: int
+) -> int:
+    """Apply blueprint TE once to a complete job with exact integer ceiling."""
+
+    if (
+        not _positive_int(base_time_seconds)
+        or not _positive_int(runs)
+        or not _non_negative_int(time_efficiency)
+        or time_efficiency > 20
+    ):
+        raise ProductionPlanningError("production_time_efficiency_invalid")
+    base_total = _checked_multiply(base_time_seconds, runs)
+    factor = 100 - time_efficiency
+    whole_seconds = _checked_multiply(base_total // 100, factor)
+    partial_seconds = ((base_total % 100) * factor + 99) // 100
+    return max(1, _checked_add(whole_seconds, partial_seconds))
 
 
 def _blueprint_source(
@@ -864,6 +884,8 @@ def _empty_resolution(
         "warnings": [],
         "cycleTypeIds": [],
         "totalBaseTimeSeconds": None,
+        "totalBlueprintTimeSeconds": None,
+        "timeEfficiencySavingsSeconds": None,
     }
 
 
@@ -891,6 +913,7 @@ def resolve_production_plan(
             **_empty_resolution(connection, plan, "sde-unavailable", build_number),
             **initial_assignment,
             "appliedMaterialEfficiency": 0,
+            "appliedTimeEfficiency": 0,
         }
     by_product, by_exact = loaded_recipes or _load_recipes(connection)
     root_key = (
@@ -904,6 +927,7 @@ def resolve_production_plan(
             **_empty_resolution(connection, plan, "recipe-missing", build_number),
             **initial_assignment,
             "appliedMaterialEfficiency": 0,
+            "appliedTimeEfficiency": 0,
         }
 
     root_runs = (
@@ -912,6 +936,12 @@ def resolve_production_plan(
     assignment = _blueprint_assignment(plan, blueprint_source, root_runs)
     applied_material_efficiency = (
         int(assignment["blueprintMaterialEfficiency"])
+        if assignment["blueprintAssignmentState"] == "ready"
+        and root.activity == "manufacturing"
+        else 0
+    )
+    applied_time_efficiency = (
+        int(assignment["blueprintTimeEfficiency"])
         if assignment["blueprintAssignmentState"] == "ready"
         and root.activity == "manufacturing"
         else 0
@@ -952,6 +982,7 @@ def resolve_production_plan(
                     **result,
                     **assignment,
                     "appliedMaterialEfficiency": 0,
+                    "appliedTimeEfficiency": 0,
                 }
 
     edges: dict[int, set[int]] = {type_id: set() for type_id in selected}
@@ -986,6 +1017,7 @@ def resolve_production_plan(
             **result,
             **assignment,
             "appliedMaterialEfficiency": 0,
+            "appliedTimeEfficiency": 0,
         }
 
     required: dict[int, int] = defaultdict(int)
@@ -996,6 +1028,7 @@ def resolve_production_plan(
     unmodified_gross: dict[int, int] = {}
     steps: list[dict[str, Any]] = []
     total_base_time = 0
+    total_blueprint_time = 0
     for sequence, product_type_id in enumerate(ordered, start=1):
         recipe = selected[product_type_id]
         quantity_needed = required[product_type_id]
@@ -1007,6 +1040,13 @@ def resolve_production_plan(
         produced_quantity = _checked_multiply(runs, recipe.output_quantity)
         material_efficiency = (
             applied_material_efficiency
+            if recipe.blueprint_type_id == root.blueprint_type_id
+            and recipe.activity == root.activity
+            and recipe.product_type_id == root.product_type_id
+            else 0
+        )
+        time_efficiency = (
+            applied_time_efficiency
             if recipe.blueprint_type_id == root.blueprint_type_id
             and recipe.activity == root.activity
             and recipe.product_type_id == root.product_type_id
@@ -1053,7 +1093,13 @@ def resolve_production_plan(
                     unmodified_plan_quantity,
                 )
         step_time = _checked_multiply(runs, recipe.base_time_seconds)
+        step_blueprint_time = _blueprint_time_seconds(
+            recipe.base_time_seconds, runs, time_efficiency
+        )
         total_base_time = _checked_add(total_base_time, step_time)
+        total_blueprint_time = _checked_add(
+            total_blueprint_time, step_blueprint_time
+        )
         steps.append(
             {
                 "sequence": sequence,
@@ -1071,6 +1117,10 @@ def resolve_production_plan(
                 "surplusQuantity": produced_quantity - quantity_needed,
                 "baseTimeSecondsPerRun": recipe.base_time_seconds,
                 "totalBaseTimeSeconds": step_time,
+                "timeEfficiency": time_efficiency,
+                "timeEfficiencyApplied": time_efficiency > 0,
+                "totalBlueprintTimeSeconds": step_blueprint_time,
+                "timeEfficiencySavingsSeconds": step_time - step_blueprint_time,
                 "recipeAlternatives": len(by_product.get(product_type_id, [])),
                 "materialEfficiency": material_efficiency,
                 "materialEfficiencyApplied": material_efficiency > 0,
@@ -1103,8 +1153,11 @@ def resolve_production_plan(
         "warnings": sorted(warnings, key=lambda item: (item["typeName"].casefold(), item["typeId"])),
         "cycleTypeIds": [],
         "totalBaseTimeSeconds": total_base_time,
+        "totalBlueprintTimeSeconds": total_blueprint_time,
+        "timeEfficiencySavingsSeconds": total_base_time - total_blueprint_time,
         **assignment,
         "appliedMaterialEfficiency": applied_material_efficiency,
+        "appliedTimeEfficiency": applied_time_efficiency,
     }
 
 
@@ -1207,6 +1260,7 @@ def _serialize_plan(row: sqlite3.Row, resolution: Mapping[str, Any]) -> dict[str
         "blueprintCandidateCount": resolution["blueprintCandidateCount"],
         "blueprintCandidates": resolution["blueprintCandidates"],
         "appliedMaterialEfficiency": resolution["appliedMaterialEfficiency"],
+        "appliedTimeEfficiency": resolution["appliedTimeEfficiency"],
         "activity": str(row["activity"]),
         "productTypeId": int(row["product_type_id"]),
         "productName": resolution["productName"],
@@ -1220,6 +1274,8 @@ def _serialize_plan(row: sqlite3.Row, resolution: Mapping[str, Any]) -> dict[str
         "warnings": resolution["warnings"],
         "cycleTypeIds": resolution["cycleTypeIds"],
         "totalBaseTimeSeconds": resolution["totalBaseTimeSeconds"],
+        "totalBlueprintTimeSeconds": resolution["totalBlueprintTimeSeconds"],
+        "timeEfficiencySavingsSeconds": resolution["timeEfficiencySavingsSeconds"],
         "inventoryState": resolution["inventoryState"],
         "assetSnapshotId": resolution["assetSnapshotId"],
         "assetSyncRunId": resolution["assetSyncRunId"],
@@ -1333,6 +1389,8 @@ def query_production_plans(connection: sqlite3.Connection, raw_query: Any) -> di
         "reservationRule": RESERVATION_RULE,
         "blueprintMaterialEfficiencyApplied": True,
         "materialEfficiencyRule": MATERIAL_EFFICIENCY_RULE,
+        "blueprintTimeEfficiencyApplied": True,
+        "timeEfficiencyRule": TIME_EFFICIENCY_RULE,
         "remainingModifiersApplied": False,
     }
 

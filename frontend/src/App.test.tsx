@@ -338,6 +338,7 @@ const productionPlanPage: ProductionPlanPage = {
     blueprintCandidates: [{ itemId: 7_020, kind: "copy", materialEfficiency: 10,
       timeEfficiency: 20, runs: 2, locationId: 60_003_760, locationFlag: "Hangar",
       suitable: true, reason: "ready" }], appliedMaterialEfficiency: 0,
+    appliedTimeEfficiency: 0,
     activity: "manufacturing", productTypeId: 101, productName: "Synthetic Hull",
     targetQuantity: 3, priority: 50, note: "Doctrine", state: "ready",
     buildNumber: "synthetic-production-1", steps: [{ sequence: 1,
@@ -346,7 +347,9 @@ const productionPlanPage: ProductionPlanPage = {
       requiredQuantity: 3, outputQuantityPerRun: 2, runs: 2, unmodifiedRuns: 2,
       runsSavedByMaterialEfficiency: 0,
       producedQuantity: 4, surplusQuantity: 1, baseTimeSecondsPerRun: 100,
-      totalBaseTimeSeconds: 200, recipeAlternatives: 1, materialEfficiency: 0,
+      totalBaseTimeSeconds: 200, timeEfficiency: 0, timeEfficiencyApplied: false,
+      totalBlueprintTimeSeconds: 200, timeEfficiencySavingsSeconds: 0,
+      recipeAlternatives: 1, materialEfficiency: 0,
       materialEfficiencyApplied: false,
       materials: [{ typeId: 900, typeName: "Synthetic Mineral", quantityPerRun: 5,
         unmodifiedGrossQuantity: 10, grossQuantity: 10, materialEfficiency: 0,
@@ -372,6 +375,7 @@ const productionPlanPage: ProductionPlanPage = {
         quantity: 20, positionCount: 1, assetSnapshotId: 10, assetSyncRunId: 11,
         assetObservedAt: "2026-09-11T11:59:00Z" }] }],
     warnings: [], cycleTypeIds: [], totalBaseTimeSeconds: 200,
+    totalBlueprintTimeSeconds: 200, timeEfficiencySavingsSeconds: 0,
     inventoryState: "shortage", assetSnapshotId: 8, assetSyncRunId: 9,
     assetObservedAt: "2026-09-11T12:00:00Z",
     createdAt: "2026-09-11T12:00:00Z", updatedAt: "2026-09-11T12:00:00Z" }],
@@ -385,6 +389,8 @@ const productionPlanPage: ProductionPlanPage = {
   reservationRule: "priority-desc-created-asc-plan-id-asc",
   blueprintMaterialEfficiencyApplied: true,
   materialEfficiencyRule: "max-runs-ceil-base-runs-percent",
+  blueprintTimeEfficiencyApplied: true,
+  timeEfficiencyRule: "max-one-ceil-base-runs-percent",
   remainingModifiersApplied: false,
 };
 
@@ -759,7 +765,7 @@ describe("New Eden Foundry design preview", () => {
   it("credits Savoxmedia as the app creator next to the version", () => {
     render(<App />);
 
-    expect(screen.getByText("v0.2.0-alpha.4")).toBeInTheDocument();
+    expect(screen.getByText("v0.2.0-alpha.5")).toBeInTheDocument();
     expect(screen.getByText("Savoxmedia")).toBeInTheDocument();
     expect(screen.getByText("Erstellt von", { exact: false })).toBeInTheDocument();
     expect(screen.queryByText("Lokaler Betreiber")).not.toBeInTheDocument();
@@ -963,6 +969,45 @@ describe("New Eden Foundry design preview", () => {
     await waitFor(() => expect(productionPlanSaver).toHaveBeenCalledWith(expect.objectContaining({
       planId: 1, blueprintItemId: 7_020,
     })));
+  });
+
+  it("shows assigned blueprint TE as a distinct planning time", async () => {
+    const base = productionPlanPage.items[0];
+    const root = base.steps[0];
+    const page: ProductionPlanPage = {
+      ...productionPlanPage,
+      items: [{
+        ...base,
+        blueprintItemId: 7_020,
+        blueprintAssignmentState: "ready",
+        blueprintKind: "copy",
+        blueprintMaterialEfficiency: 10,
+        blueprintTimeEfficiency: 20,
+        blueprintRuns: 2,
+        blueprintLocationId: 60_003_760,
+        blueprintLocationFlag: "Hangar",
+        appliedMaterialEfficiency: 10,
+        appliedTimeEfficiency: 20,
+        totalBlueprintTimeSeconds: 160,
+        timeEfficiencySavingsSeconds: 40,
+        steps: [{
+          ...root,
+          materialEfficiency: 10,
+          materialEfficiencyApplied: true,
+          timeEfficiency: 20,
+          timeEfficiencyApplied: true,
+          totalBlueprintTimeSeconds: 160,
+          timeEfficiencySavingsSeconds: 40,
+        }],
+      }],
+    };
+    render(<App runtimeLoader={() => nativeRuntime()}
+      productionPlansLoader={() => Promise.resolve(page)} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Produktion" }));
+
+    expect(await screen.findByText(/TE 20 verkürzt ausschließlich/)).toBeInTheDocument();
+    expect(screen.getByText("Blueprint-Zeit 2 min 40 s · TE 20 spart 40 s")).toBeInTheDocument();
   });
 
   it("reveals a newly saved production goal even when persisted filters hid it", async () => {

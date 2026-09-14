@@ -24,6 +24,32 @@ Keine.
 
 Keine.
 
+## 0.2.0-alpha.5 – 14. September 2026
+
+### Neu hinzugefügt
+
+- Paket 34 wendet den belegten TE-Wert eines bewusst zugeordneten persönlichen BPO oder BPC auf die Zeit des Wurzel-Fertigungsschritts an.
+- Jeder Produktionsschritt nennt unveränderte SDE-Basiszeit, Blueprint-Zeit und TE-Ersparnis. Die Gesamtsicht summiert beide Zeitstände getrennt.
+- Die jobweite Berechnung verwendet ausschließlich Ganzzahlarithmetik und dokumentierte Aufrundung; eine nicht ganzzahlige Sekunde wird nicht zu optimistisch abgeschnitten.
+
+### Geändert
+
+- Die sichtbare Versionsnummer lautet `v0.2.0-alpha.5`.
+- Die Produktionsansicht zeigt bei wirksamem TE die verkürzte Blueprint-Zeit und die gesparten Sekunden beziehungsweise Minuten direkt am Zielschritt.
+
+### Behobene Fehler
+
+- Der bereits synchronisierte TE-Wert eines zugeordneten persönlichen Blueprints wurde bisher zwar angezeigt, aber nicht in der Zeitbasis der Planung berücksichtigt.
+
+### Bekannte Einschränkungen
+
+- ME und TE gelten ausschließlich für das zugewiesene Wurzel-Blueprint einer Fertigung. Reaktionen, automatisch ausgewählte Zwischen-Blueprints, Charakter-Skills, Anlagen-/Rigboni, Steuern, Preise und belastbare reale Fertigstellungszeiten sind noch nicht eingerechnet.
+- Die Alpha ist noch nicht produktiv code-signiert; SmartScreen kann deshalb weiterhin vor einem unbekannten Herausgeber warnen.
+
+### Update und Datenbankmigration
+
+- Das Datenbankschema bleibt bei Version 10. Der bestehende `data`-Ordner mit Charakteren, Einstellungen, Plänen und vollständigen Snapshots wird unverändert weiterverwendet.
+
 ## 0.2.0-alpha.4 – 13. September 2026
 
 ### Neu hinzugefügt

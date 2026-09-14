@@ -1,10 +1,10 @@
 # Masterplan – New Eden Foundry
 
-**Fassung:** 3.7 (lebendes Repository-Dokument)
+**Fassung:** 3.8 (lebendes Repository-Dokument)
 
-**Stand:** 13. September 2026
+**Stand:** 14. September 2026
 
-**Status:** Paket 33 – persönliche Blueprintzuordnung und ME-Materialbedarf technisch abgeschlossen
+**Status:** Paket 34 – persönliche Blueprint-TE-Zeitbasis technisch abgeschlossen
 
 **Geltungsbereich:** `Savox76/eve-test-indu`
 
@@ -199,6 +199,7 @@ Die Reihenfolge ist verbindlicher als eine Kalenderangabe.
 | 31 | Bestandsabgleich und Fehlmengen | Vollständige Asset-Snapshots werden nachvollziehbar auf äußere Bruttomaterialien angerechnet; verfügbare Mengen, ungedeckter Bedarf und bewusst ausgeschlossene Bestände bleiben charakter- und standortbezogen belegbar |
 | 32 | Bestandsreservierungen | Bestände werden zielbezogen und konfliktfest reserviert; Priorität und eindeutige Regeln verhindern eine unbemerkte Doppelverwendung zwischen Produktionszielen |
 | 33 | Blueprintzuordnung und ME-Materialbedarf | Ein Produktionsziel kann eine vorhandene persönliche Blueprintkopie nachvollziehbar zuordnen; deren ME-Wert verändert den Materialbedarf nach den belegten EVE-Rundungsregeln, während fehlende oder ungeeignete Kopien sichtbar bleiben |
+| 34 | Blueprint-TE und Zeitbasis | Der TE-Wert des zugeordneten persönlichen Blueprints verändert die Zeitbasis des Wurzel-Fertigungsschritts mit exakter jobweiter Aufrundung; Basiszeit, Blueprint-Zeit und Ersparnis bleiben getrennt nachvollziehbar |
 
 ### Aktueller Stand
 
@@ -234,7 +235,8 @@ Die Reihenfolge ist verbindlicher als eine Kalenderangabe.
 - **Abgeschlossen:** 31 – der letzte vollständig abgeschlossene Asset-Snapshot des ausführenden Charakters wird je äußerem Bruttomaterial angerechnet. Bedarf, verfügbarer Bestand und echte Fehlmenge bleiben mit Snapshot-, Sync-, Zeit-, Standort- und Bereichsbelegen nachvollziehbar; ein fehlender Snapshot bleibt unbekannt. Bestände anderer aktivierter Charaktere werden separat als bewusst ausgeschlossen ausgewiesen. Standortdetails sind pro Material und Kategorie auf 50 Gruppen begrenzt, während vollständige Mengen-, Positions- und Gruppensummen erhalten bleiben. Reservierungen und Modifikatoren werden nicht vorweggenommen.
 - **Abgeschlossen:** 32 – der bekannte persönliche Bestand wird je Charakter und Material über alle auflösbaren Ziele konfliktfrei reserviert. Die stabile Reihenfolge ist höhere Priorität, älteres Erstellungsdatum und kleinere Ziel-ID. Jedes Ziel zeigt physischen Bestand, vorrangig reservierte Menge, eigene Reservierung, danach freien Bestand sowie getrennte physische und reservierungsbedingte Fehlmengen. Suche, Filter, Sortierung und Seitenauswahl verändern die globale Reservierung nicht; ein neuer Snapshot oder eine Zieländerung berechnet sie unmittelbar neu. Das Schema bleibt bei Version 9.
 - **Abgeschlossen:** 33 – Produktionsziele können genau ein vorhandenes persönliches BPO oder BPC zuordnen. Der belegte ME-Wert verändert ausschließlich direkte Materialien des Wurzel-Fertigungsschritts mit ganzzahliger Aufrundung und einer Einheit Mindestbedarf je Material und Lauf; daraus veränderte Zwischenproduktläufe werden erneut deterministisch aufgelöst. Unmodifizierter Bedarf und Ersparnis bleiben parallel sichtbar. Fehlende Snapshots, verschwundene oder typfalsche Items und zu wenige BPC-Läufe bleiben nachvollziehbare Zustände. Schema 10 speichert die eindeutige optionale Item-ID.
-- **Als Nächstes:** Das nächste Fachpaket wird separat festgelegt. Skills, Anlagen-/Rigboni, Steuern, Preise und belastbare reale Laufzeiten bleiben bis zu eigenen Fachverträgen ausgeschlossen.
+- **Abgeschlossen:** 34 – Der belegte TE-Wert des zugeordneten persönlichen BPO oder BPC verändert ausschließlich die Blueprint-Zeit des Wurzel-Fertigungsschritts. Die Berechnung erfolgt jobweit mit exakter Ganzzahlarithmetik und Aufrundung auf volle Sekunden; SDE-Basiszeit, Blueprint-Zeit und Ersparnis bleiben je Schritt und als Summe parallel sichtbar. Reaktionen und automatisch ausgewählte Zwischen-Blueprints bleiben unverändert.
+- **Als Nächstes:** Das nächste Fachpaket wird separat festgelegt. Charakter-Skills, Anlagen-/Rigboni, Steuern, Preise und belastbare reale Fertigstellungszeiten bleiben bis zu eigenen Fachverträgen ausgeschlossen.
 - Architektur-Gate A0 ist vollständig erfüllt; `v0.2.0-alpha.1` bildet die erste freigegebene Alpha-Grundlage für die folgenden Produktionspakete.
 
 ## 13. Entscheidungs- und Quellenrang

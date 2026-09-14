@@ -910,6 +910,7 @@ describe("desktop runtime status", () => {
       blueprintCandidates: [{ itemId: 99, kind: "copy", materialEfficiency: 10,
         timeEfficiency: 20, runs: 2, locationId: 60_003_760, locationFlag: "Hangar",
         suitable: true, reason: "ready" }], appliedMaterialEfficiency: 0,
+      appliedTimeEfficiency: 0,
       productTypeId: 101, productName: "Synthetic Hull", targetQuantity: 3,
       priority: 12, note: "main goal", state: "ready", buildNumber: "synthetic-production-1",
       steps: [{ sequence: 1, blueprintTypeId: 110, blueprintName: "Synthetic Component Blueprint",
@@ -917,6 +918,8 @@ describe("desktop runtime status", () => {
         requiredQuantity: 4, outputQuantityPerRun: 1, runs: 4, unmodifiedRuns: 4,
         runsSavedByMaterialEfficiency: 0, producedQuantity: 4,
         surplusQuantity: 0, baseTimeSecondsPerRun: 25, totalBaseTimeSeconds: 100,
+        timeEfficiency: 0, timeEfficiencyApplied: false,
+        totalBlueprintTimeSeconds: 100, timeEfficiencySavingsSeconds: 0,
         recipeAlternatives: 1, materialEfficiency: 0, materialEfficiencyApplied: false,
         materials: [{ typeId: 901, typeName: "Synthetic Ore",
           quantityPerRun: 2, unmodifiedGrossQuantity: 8, grossQuantity: 8,
@@ -926,6 +929,8 @@ describe("desktop runtime status", () => {
         requiredQuantity: 3, outputQuantityPerRun: 2, runs: 2, unmodifiedRuns: 2,
         runsSavedByMaterialEfficiency: 0, producedQuantity: 4,
         surplusQuantity: 1, baseTimeSecondsPerRun: 100, totalBaseTimeSeconds: 200,
+        timeEfficiency: 0, timeEfficiencyApplied: false,
+        totalBlueprintTimeSeconds: 200, timeEfficiencySavingsSeconds: 0,
         recipeAlternatives: 1, materialEfficiency: 0, materialEfficiencyApplied: false,
         materials: [{ typeId: 111, typeName: "Synthetic Component",
           quantityPerRun: 2, unmodifiedGrossQuantity: 4, grossQuantity: 4,
@@ -949,6 +954,7 @@ describe("desktop runtime status", () => {
           quantity: 12, positionCount: 1, assetSnapshotId: 10, assetSyncRunId: 11,
           assetObservedAt: "2026-09-11T11:59:00Z" }] }],
       warnings: [], cycleTypeIds: [], totalBaseTimeSeconds: 300,
+      totalBlueprintTimeSeconds: 300, timeEfficiencySavingsSeconds: 0,
       inventoryState: "shortage", assetSnapshotId: 8, assetSyncRunId: 9,
       assetObservedAt: "2026-09-11T12:00:00Z",
       createdAt: "2026-09-11T12:00:00Z", updatedAt: "2026-09-11T12:00:00Z",
@@ -962,6 +968,8 @@ describe("desktop runtime status", () => {
       reservationRule: "priority-desc-created-asc-plan-id-asc",
       blueprintMaterialEfficiencyApplied: true,
       materialEfficiencyRule: "max-runs-ceil-base-runs-percent",
+      blueprintTimeEfficiencyApplied: true,
+      timeEfficiencyRule: "max-one-ceil-base-runs-percent",
       remainingModifiersApplied: false };
     invoke.mockResolvedValueOnce(JSON.stringify(page));
     const query = { search: "", ownerCharacterId: null, activity: null, state: null,
@@ -970,6 +978,32 @@ describe("desktop runtime status", () => {
     expect(invoke).toHaveBeenLastCalledWith("query_production_plans", expect.objectContaining({
       planState: null, sortBy: "priority",
     }));
+    const assignedTime = JSON.parse(JSON.stringify(page)) as typeof page;
+    const assignedPlan = assignedTime.items[0];
+    const assignedRoot = assignedPlan.steps[assignedPlan.steps.length - 1];
+    Object.assign(assignedPlan, {
+      blueprintItemId: 99,
+      blueprintAssignmentState: "ready",
+      blueprintKind: "copy",
+      blueprintMaterialEfficiency: 0,
+      blueprintTimeEfficiency: 20,
+      blueprintRuns: 2,
+      blueprintLocationId: 60_003_760,
+      blueprintLocationFlag: "Hangar",
+      appliedTimeEfficiency: 20,
+      totalBlueprintTimeSeconds: 260,
+      timeEfficiencySavingsSeconds: 40,
+    });
+    Object.assign(assignedRoot, {
+      timeEfficiency: 20,
+      timeEfficiencyApplied: true,
+      totalBlueprintTimeSeconds: 160,
+      timeEfficiencySavingsSeconds: 40,
+    });
+    invoke.mockResolvedValueOnce(JSON.stringify(assignedTime));
+    await expect(loadProductionPlans(query, { isAvailable: () => true, invoke }))
+      .resolves.toEqual(assignedTime);
+
     const inconsistentInventory = JSON.parse(JSON.stringify(page)) as {
       items: Array<{ grossMaterials: Array<{ missingQuantity: number }> }>;
     };
@@ -985,6 +1019,14 @@ describe("desktop runtime status", () => {
     invoke.mockResolvedValueOnce(JSON.stringify(inconsistentBlueprint));
     await expect(loadProductionPlans(query, { isAvailable: () => true, invoke }))
       .rejects.toThrow("inconsistent production-plan data");
+
+    const inconsistentTime = JSON.parse(JSON.stringify(page)) as {
+      items: Array<{ steps: Array<{ totalBlueprintTimeSeconds: number }> }>;
+    };
+    inconsistentTime.items[0].steps[0].totalBlueprintTimeSeconds = 99;
+    invoke.mockResolvedValueOnce(JSON.stringify(inconsistentTime));
+    await expect(loadProductionPlans(query, { isAvailable: () => true, invoke }))
+      .rejects.toThrow("invalid production steps");
 
     const input = { planId: null, ownerCharacterId: 7, blueprintTypeId: 100, blueprintItemId: null,
       activity: "manufacturing", productTypeId: 101, targetQuantity: 3,

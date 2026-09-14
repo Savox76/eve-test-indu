@@ -1,6 +1,6 @@
 # Produktionsplanung
 
-Paket 30 ergänzt lokale, updatefeste Fertigungs- und Reaktionsziele. Paket 31 gleicht deren äußeren Materialbedarf mit vollständigen persönlichen Asset-Snapshots ab. Paket 32 reserviert denselben Bestand konfliktfrei zwischen allen Zielen eines Charakters. Paket 33 ordnet einem Ziel optional ein konkretes persönliches Blueprint-Item zu und wendet dessen belegten ME-Wert auf den Wurzel-Fertigungsschritt an. Die Planung verwendet ausschließlich die vollständig importierte Blueprint-Aktivitätsbasis aus Paket 29, verändert keine Daten in EVE und startet keine Industrieaufträge.
+Paket 30 ergänzt lokale, updatefeste Fertigungs- und Reaktionsziele. Paket 31 gleicht deren äußeren Materialbedarf mit vollständigen persönlichen Asset-Snapshots ab. Paket 32 reserviert denselben Bestand konfliktfrei zwischen allen Zielen eines Charakters. Paket 33 ordnet einem Ziel optional ein konkretes persönliches Blueprint-Item zu und wendet dessen belegten ME-Wert auf den Wurzel-Fertigungsschritt an. Paket 34 bezieht zusätzlich dessen belegten TE-Wert in die Blueprint-Zeit des Zielschritts ein. Die Planung verwendet ausschließlich die vollständig importierte Blueprint-Aktivitätsbasis aus Paket 29, verändert keine Daten in EVE und startet keine Industrieaufträge.
 
 ## Persistentes Ziel
 
@@ -15,7 +15,7 @@ Ein Ziel enthält:
 
 Die Tabelle `production_plans` gehört ab Schema 9 zum Anwendungskern. Schema 10 ergänzt die optionale `blueprint_item_id`. Eine konkrete Item-ID darf höchstens einem Produktionsziel zugeordnet sein. Beim vollständigen Löschen des Charakters werden dessen Ziele über den Fremdschlüssel mitgelöscht. Ein späterer SDE-Neuaufbau löscht die Ziele dagegen nicht: fehlt danach der Aktivitätsstand oder das gespeicherte Rezept, bleibt das Ziel mit einem ausdrücklichen Fehlerzustand sichtbar.
 
-## Persönliche Blueprintzuordnung und ME
+## Persönliche Blueprintzuordnung, ME und TE
 
 Die Kandidaten stammen ausschließlich aus dem letzten vollständig abgeschlossenen persönlichen Blueprint-Snapshot des ausführenden Charakters und müssen exakt zum Blueprint-Typ des Zielrezepts passen. BPOs sind stets laufgeeignet; ein BPC ist nur geeignet, wenn seine verbleibenden Läufe mindestens die benötigten Wurzelläufe decken. Geeignete und ungeeignete Kandidaten bleiben mit Item-ID, BPO/BPC, ME, TE, Läufen, Standort sowie Snapshot-, Lauf- und Zeitbeleg sichtbar. Eine verschwundene oder typfalsche gespeicherte Zuordnung wird nicht stillschweigend ersetzt.
 
@@ -24,6 +24,12 @@ Für jedes direkte Material des zugewiesenen Wurzel-Fertigungsschritts gilt mit 
 $$q_{ME}=\max\left(r,\left\lceil\frac{q_{Basis}\cdot r\cdot(100-ME)}{100}\right\rceil\right)$$
 
 Dabei ist $r$ die Laufzahl und $q_{Basis}$ die SDE-Materialmenge je Lauf. Die Untergrenze von einer Einheit je Material und Lauf wird damit vor einer unzulässigen Abrundung geschützt. Diese Einzelmaterialrundung erfolgt vor der erneuten Auflösung veränderter Zwischenproduktmengen. Unmodifizierter Bedarf, wirksamer Bedarf und Ersparnis werden parallel ausgegeben. ME wird nicht auf Reaktionen oder automatisch ausgewählte Zwischen-Blueprints übertragen.
+
+Für die Blueprint-Zeit des zugewiesenen Wurzel-Fertigungsschritts gilt:
+
+$$t_{TE}=\max\left(1,\left\lceil\frac{t_{Basis}\cdot r\cdot(100-TE)}{100}\right\rceil\right)$$
+
+$t_{Basis}$ ist die unveränderte SDE-Zeit je Lauf. Die TE-Berechnung wird einmal auf den vollständigen Job angewendet und auf eine volle Sekunde aufgerundet. Jeder Schritt nennt unveränderte SDE-Basiszeit, Blueprint-Zeit und Ersparnis; automatisch ausgewählte Zwischenschritte bleiben bei TE 0. Reaktionen erhalten ebenfalls keinen Blueprint-TE-Modifikator.
 
 | Zuordnungszustand | Bedeutung |
 | --- | --- |
@@ -91,14 +97,14 @@ Neue Ziele mit Zyklus oder überschrittener Komplexitätsgrenze werden nicht ges
 
 ## Bewusste Berechnungsgrenze
 
-Paket 33 berechnet Bruttobedarf einschließlich belegtem Wurzel-Blueprint-ME, SDE-Basiszeit, persönlichen Bestand und konfliktfreie zielbezogene Reservierungen. Noch nicht einbezogen werden:
+Paket 34 berechnet Bruttobedarf einschließlich belegtem Wurzel-Blueprint-ME, die mit belegtem Wurzel-Blueprint-TE veränderte Blueprint-Zeit, persönlichen Bestand und konfliktfreie zielbezogene Reservierungen. Noch nicht einbezogen werden:
 
-- ME oder Zuordnungen für automatisch ausgewählte Zwischen-Blueprints,
+- ME, TE oder Zuordnungen für automatisch ausgewählte Zwischen-Blueprints,
 - Charakter-Skills,
 - Anlagen-, Service- und Rigboni,
 - Systemkosten, Steuern und Preise.
 
-Die API bestätigt die aktiven Verträge mit `inventoryApplied: true`, `reservationsApplied: true`, `reservationRule: priority-desc-created-asc-plan-id-asc`, `blueprintMaterialEfficiencyApplied: true` und `materialEfficiencyRule: max-runs-ceil-base-runs-percent`. Die verbleibende Modifikatorgrenze bleibt `remainingModifiersApplied: false`. SDE-Basiszeiten dürfen weiterhin nicht als reale Fertigstellungszeit oder Kostenprognose verstanden werden.
+Die API bestätigt die aktiven Verträge mit `inventoryApplied: true`, `reservationsApplied: true`, `reservationRule: priority-desc-created-asc-plan-id-asc`, `blueprintMaterialEfficiencyApplied: true`, `materialEfficiencyRule: max-runs-ceil-base-runs-percent`, `blueprintTimeEfficiencyApplied: true` und `timeEfficiencyRule: max-one-ceil-base-runs-percent`. Die verbleibende Modifikatorgrenze bleibt `remainingModifiersApplied: false`. Auch die ausgewiesene Blueprint-Zeit darf ohne Charakter-Skills und Anlagen-/Rigboni weiterhin nicht als reale Fertigstellungszeit oder Kostenprognose verstanden werden.
 
 ## Arbeitsvorrat und Bedienung
 
