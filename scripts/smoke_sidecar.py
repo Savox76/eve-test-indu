@@ -233,7 +233,7 @@ def main() -> int:
             database = health.get("database")
             if not isinstance(database, dict) or database.get("location") != "data/foundry.sqlite3":
                 raise RuntimeError("The sidecar reported an unexpected database location.")
-            if database.get("schemaVersion") != 10 or database.get("integrity") != "ok":
+            if database.get("schemaVersion") != 11 or database.get("integrity") != "ok":
                 raise RuntimeError("The sidecar database health is invalid.")
             if health.get("esiClient", {}).get("compatibilityDate") != "2026-09-09":
                 raise RuntimeError("The health response omitted the ESI compatibility date.")
