@@ -2719,8 +2719,14 @@ fn production_time_skills_are_valid(step: &ProductionStep) -> bool {
     {
         return false;
     }
-    let levels_missing = step.time_skills.iter().all(|skill| skill.active_level.is_none());
-    let levels_available = step.time_skills.iter().all(|skill| skill.active_level.is_some());
+    let levels_missing = step
+        .time_skills
+        .iter()
+        .all(|skill| skill.active_level.is_none());
+    let levels_available = step
+        .time_skills
+        .iter()
+        .all(|skill| skill.active_level.is_some());
     if levels_missing {
         return step.total_character_time_seconds.is_none()
             && step.character_skill_time_savings_seconds.is_none()
@@ -2729,13 +2735,12 @@ fn production_time_skills_are_valid(step: &ProductionStep) -> bool {
     if !levels_available {
         return false;
     }
-    let mut numerator = u128::from(step.total_base_time_seconds)
-        * u128::from(100 - step.time_efficiency);
+    let mut numerator =
+        u128::from(step.total_base_time_seconds) * u128::from(100 - step.time_efficiency);
     let mut denominator = 100_u128;
     for skill in &step.time_skills {
-        numerator *= u128::from(
-            100 - skill.percent_per_level * skill.active_level.unwrap_or_default(),
-        );
+        numerator *=
+            u128::from(100 - skill.percent_per_level * skill.active_level.unwrap_or_default());
         denominator *= 100;
     }
     let adjusted = (numerator + denominator - 1) / denominator;
@@ -2744,9 +2749,7 @@ fn production_time_skills_are_valid(step: &ProductionStep) -> bool {
     };
     production_id_is_valid(adjusted)
         && step.total_character_time_seconds == Some(adjusted)
-        && step
-            .total_blueprint_time_seconds
-            .checked_sub(adjusted)
+        && step.total_blueprint_time_seconds.checked_sub(adjusted)
             == step.character_skill_time_savings_seconds
         && step.character_skill_time_applied == (adjusted < step.total_blueprint_time_seconds)
 }
