@@ -3352,9 +3352,10 @@ fn production_plan_record_is_valid(item: &ProductionPlanRecord) -> bool {
                 production_stock_location_is_valid(location)
                     && location.owner_character_id == item.owner_character_id
             })
-            && material.excluded_locations.iter().all(|location| {
-                production_stock_location_is_valid(location)
-            })
+            && material
+                .excluded_locations
+                .iter()
+                .all(|location| production_stock_location_is_valid(location))
     });
     let warnings_valid = item.warnings.iter().all(|warning| {
         warning.code == "alternative-recipe"
@@ -3722,8 +3723,7 @@ fn production_plan_record_is_valid(item: &ProductionPlanRecord) -> bool {
             .is_none_or(|value| matches!(value.as_str(), "original" | "copy"))
         && item.applied_material_efficiency <= 10
         && item.applied_time_efficiency <= 20
-        && PRODUCTION_LOCATION_SELECTION_STATES
-            .contains(&item.location_selection_state.as_str())
+        && PRODUCTION_LOCATION_SELECTION_STATES.contains(&item.location_selection_state.as_str())
         && location_selection_valid
         && blueprint_candidates_valid
         && assignment_valid
@@ -5729,8 +5729,7 @@ fn save_production_plan(
             .then_with(|| left.blueprint_type_id.cmp(&right.blueprint_type_id))
     });
     step_supply_modes.sort_by(|left, right| {
-        left
-            .product_type_id
+        left.product_type_id
             .cmp(&right.product_type_id)
             .then_with(|| left.activity.cmp(&right.activity))
             .then_with(|| left.blueprint_type_id.cmp(&right.blueprint_type_id))
