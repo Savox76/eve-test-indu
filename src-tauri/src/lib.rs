@@ -1649,11 +1649,6 @@ fn asset_query_response_is_valid(response: &AssetQueryResponse) -> bool {
         .iter()
         .map(|owner| owner.character_id)
         .collect::<HashSet<_>>();
-    let location_keys = response
-        .location_options
-        .iter()
-        .map(|item| (item.owner_character_id, item.facility_id))
-        .collect::<HashSet<_>>();
     let item_ids = response
         .items
         .iter()
@@ -1673,12 +1668,6 @@ fn asset_query_response_is_valid(response: &AssetQueryResponse) -> bool {
         && response.items.len() as u64 <= response.total
         && item_ids.len() == response.items.len()
         && owner_ids.len() == response.owners.len()
-        && response.location_options.len() <= 200
-        && location_keys.len() == response.location_options.len()
-        && response
-            .location_options
-            .iter()
-            .all(production_location_option_is_valid)
         && response.owners.iter().all(|owner| {
             owner.character_id > 0
                 && owner.character_id <= JAVASCRIPT_MAX_SAFE_INTEGER
@@ -6775,9 +6764,10 @@ mod tests {
         IndustryJobSyncCharacterResponse, IndustryJobSyncResponse, IndustrySlotActivity,
         IndustrySlotQueryResponse, IndustrySlotRecord, ProductionBlueprintCandidate,
         ProductionFacilityEvidence, ProductionGrossMaterial, ProductionPlanRecord,
-        ProductionReservationClaim, ProductionStep, ProductionStepMaterial, ProductionTimeSkill,
-        ResearchPlanOwner, ResearchPlanQueryResponse, ResearchPlanRecord, ResearchPlanSummary,
-        RuntimeDataSnapshot, ScopePackageStatus, SsoCharacterIdentity, SsoLoginStatus,
+        ProductionReservationClaim, ProductionStep, ProductionStepMaterial,
+        ProductionSupplyDecision, ProductionTimeSkill, ResearchPlanOwner,
+        ResearchPlanQueryResponse, ResearchPlanRecord, ResearchPlanSummary, RuntimeDataSnapshot,
+        ScopePackageStatus, SsoCharacterIdentity, SsoLoginStatus,
         WindowSizePreference, ADVANCED_INDUSTRY_SKILL_ID, ASSET_LOCATION_STATUSES,
         INDUSTRY_COST_ACTIVITIES, INDUSTRY_FACILITY_ACCESS_STATES, INDUSTRY_FACILITY_KINDS,
         INDUSTRY_SECURITY_CLASSES, INDUSTRY_SKILL_ID, INDUSTRY_SLOT_ACTIVITIES,
