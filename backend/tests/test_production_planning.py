@@ -105,6 +105,9 @@ def plan_input(**changes: object) -> dict:
         "blueprintTypeId": 100,
         "blueprintItemId": None,
         "stepBlueprintAssignments": [],
+        "facilityId": None,
+        "materialLocationId": None,
+        "stepSupplyModes": [],
         "activity": "manufacturing",
         "productTypeId": 101,
         "targetQuantity": 3,
@@ -384,6 +387,75 @@ class ProductionPlanningTests(unittest.TestCase):
             ),
         )
 
+    def publish_container_locations(
+        self,
+        character_id: int,
+        asset_snapshot_id: int,
+        container_id: int,
+        item_ids: list[int],
+        root_item_ids: list[int],
+        observed_at: str,
+    ) -> None:
+        run = self.db.execute(
+            "INSERT INTO sync_runs(source,status,started_at,completed_at,data_timestamp,"
+            "character_id) VALUES('asset_locations','completed',?,?,?,?)",
+            (observed_at, observed_at, observed_at, character_id),
+        )
+        root = [
+            {
+                "locationId": 30_000_142,
+                "kind": "solar_system",
+                "name": "Synthetic System",
+                "access": "available",
+                "typeId": None,
+            },
+            {
+                "locationId": 60_003_760,
+                "kind": "station",
+                "name": "Synthetic Station",
+                "access": "available",
+                "typeId": None,
+            },
+        ]
+        locations = [{
+            "itemId": container_id,
+            "status": "resolved",
+            "path": root,
+            "errorCode": None,
+        }]
+        locations.extend({
+            "itemId": item_id,
+            "status": "resolved",
+            "path": root,
+            "errorCode": None,
+        } for item_id in root_item_ids)
+        locations.extend({
+            "itemId": item_id,
+            "status": "resolved",
+            "path": [*root, {
+                "locationId": container_id,
+                "kind": "container",
+                "name": "Production Materials",
+                "access": "available",
+                "typeId": 1_001,
+            }],
+            "errorCode": None,
+        } for item_id in item_ids)
+        self.db.execute(
+            "INSERT INTO cached_snapshots(sync_run_id,resource,payload_json,observed_at) "
+            "VALUES(?,?,?,?)",
+            (
+                int(run.lastrowid),
+                f"asset_locations:{character_id}",
+                json.dumps({
+                    "characterId": character_id,
+                    "assetSnapshotId": asset_snapshot_id,
+                    "locations": locations,
+                }),
+                observed_at,
+            ),
+        )
+
     def test_goal_persists_and_expands_shared_inputs_after_rounding(self) -> None:
         import_industry_sde(self.db, **bundle())
         saved = save_production_plan(self.db, plan_input())
@@ -480,6 +552,187 @@ class ProductionPlanningTests(unittest.TestCase):
             "selectedBlueprintTypeId": 120,
             "candidateCount": 2,
         }])
+
+    def test_selected_container_and_stock_only_intermediate_skip_blueprint_step(self) -> None:
+        import_industry_sde(self.db, **bundle())
+        container_id = 7_000
+        asset_snapshot, _ = self.publish_assets(
+            7,
+            [
+                {"item_id": container_id, "type_id": 1_001, "location_id": 60_003_760,
+                 "quantity": 1, "location_type": "station", "location_flag": "Hangar"},
+                {"item_id": 7_001, "type_id": 111, "location_id": container_id,
+                 "quantity": 4, "location_type": "item", "location_flag": "Unlocked"},
+                {"item_id": 7_002, "type_id": 900, "location_id": container_id,
+                 "quantity": 100, "location_type": "item", "location_flag": "Unlocked"},
+                {"item_id": 7_003, "type_id": 111, "location_id": 60_003_760,
+                 "quantity": 100, "location_type": "station", "location_flag": "Hangar"},
+            ],
+            "2026-09-15T10:00:00Z",
+        )
+        self.publish_container_locations(
+            7, asset_snapshot, container_id, [7_001, 7_002], [7_003],
+            "2026-09-15T10:01:00Z"
+        )
+        saved = save_production_plan(
+            self.db,
+            plan_input(
+                facilityId=60_003_760,
+                materialLocationId=container_id,
+                stepSupplyModes=[{
+                    "blueprintTypeId": 110,
+                    "activity": "manufacturing",
+                    "productTypeId": 111,
+                    "supplyMode": "stock-only",
+                }],
+            ),
+        )
+
+        page = query_production_plans(self.db, query())
+        record = page["items"][0]
+        frame = next(item for item in record["grossMaterials"] if item["typeId"] == 111)
+        decision = next(
+            item for item in record["supplyDecisions"] if item["productTypeId"] == 111
+        )
+
+        self.assertEqual(saved["facilityId"], 60_003_760)
+        self.assertEqual(saved["materialLocationId"], container_id)
+        self.assertEqual(record["locationSelectionState"], "ready")
+        self.assertEqual(record["facilityName"], "Synthetic Station")
+        self.assertEqual(record["materialLocationName"], "Production Materials")
+        self.assertEqual(frame["quantity"], 6)
+        self.assertEqual(frame["availableQuantity"], 4)
+        self.assertEqual(frame["reservedQuantity"], 4)
+        self.assertEqual(frame["missingQuantity"], 2)
+        self.assertEqual(decision["supplyMode"], "stock-only")
+        self.assertEqual(decision["stockUsedQuantity"], 4)
+        self.assertEqual(decision["buildQuantity"], 0)
+        self.assertFalse(decision["blueprintRequired"])
+        self.assertNotIn(110, [step["blueprintTypeId"] for step in record["steps"]])
+        root_material = next(
+            material
+            for step in record["steps"]
+            for material in step["materials"]
+            if material["typeId"] == 111
+        )
+        self.assertFalse(root_material["producedByPlan"])
+        self.assertEqual(frame["excludedQuantity"], 100)
+        self.assertEqual(frame["excludedLocations"][0]["ownerCharacterId"], 7)
+        self.assertEqual(page["locationOptions"][0]["materialLocations"][1]["locationId"], container_id)
+        self.assertTrue(page["supplyModesApplied"])
+        self.assertEqual(page["supplyModeRule"], "stock-first-before-recursive-build")
+
+    def test_stock_first_builds_only_the_uncovered_intermediate_quantity(self) -> None:
+        import_industry_sde(self.db, **bundle())
+        asset_snapshot, _ = self.publish_assets(
+            7,
+            [{"item_id": 8_001, "type_id": 111, "location_id": 60_003_760,
+              "quantity": 4, "location_type": "station", "location_flag": "Hangar"}],
+            "2026-09-15T11:00:00Z",
+        )
+        self.publish_locations(7, asset_snapshot, [8_001], "2026-09-15T11:01:00Z")
+        save_production_plan(self.db, plan_input())
+
+        record = query_production_plans(self.db, query())["items"][0]
+        frame_step = next(step for step in record["steps"] if step["productTypeId"] == 111)
+        frame_decision = next(
+            item for item in record["supplyDecisions"] if item["productTypeId"] == 111
+        )
+
+        self.assertEqual(frame_decision["supplyMode"], "stock-first")
+        self.assertEqual(frame_decision["stockUsedQuantity"], 4)
+        self.assertEqual(frame_decision["buildQuantity"], 2)
+        self.assertEqual(frame_step["requiredQuantity"], 2)
+        self.assertEqual(frame_step["runs"], 1)
+        root_material = next(
+            material
+            for step in record["steps"]
+            for material in step["materials"]
+            if material["typeId"] == 111
+        )
+        self.assertTrue(root_material["producedByPlan"])
+
+    def test_stock_only_parent_omits_inactive_descendants_without_zero_quantities(self) -> None:
+        import_industry_sde(self.db, **bundle())
+        self.db.execute(
+            "DELETE FROM sde_blueprint_materials "
+            "WHERE blueprint_type_id=100 AND material_type_id=121"
+        )
+        asset_snapshot, _ = self.publish_assets(
+            7,
+            [{"item_id": 8_101, "type_id": 111, "location_id": 60_003_760,
+              "quantity": 6, "location_type": "station", "location_flag": "Hangar"}],
+            "2026-09-15T12:00:00Z",
+        )
+        self.publish_locations(7, asset_snapshot, [8_101], "2026-09-15T12:01:00Z")
+        self.publish_blueprints(
+            7,
+            [{"item_id": 9_101, "type_id": 120, "quantity": -1,
+              "material_efficiency": 10, "time_efficiency": 20, "runs": -1,
+              "location_id": 60_003_760, "location_flag": "Hangar"}],
+            "2026-09-15T12:02:00Z",
+        )
+        save_production_plan(
+            self.db,
+            plan_input(stepBlueprintAssignments=[
+                {"blueprintTypeId": 120, "activity": "manufacturing",
+                 "productTypeId": 121, "blueprintItemId": 9_101},
+            ], stepSupplyModes=[
+                {"blueprintTypeId": 110, "activity": "manufacturing",
+                 "productTypeId": 111, "supplyMode": "stock-only"},
+                {"blueprintTypeId": 120, "activity": "manufacturing",
+                 "productTypeId": 121, "supplyMode": "build"},
+            ]),
+        )
+
+        record = query_production_plans(self.db, query())["items"][0]
+
+        self.assertEqual(
+            [(item["productTypeId"], item["requiredQuantity"])
+             for item in record["supplyDecisions"]],
+            [(111, 6)],
+        )
+        self.assertEqual(
+            [step["productTypeId"] for step in record["steps"]],
+            [101],
+        )
+        self.assertEqual(record["grossMaterials"][0]["typeId"], 111)
+        self.assertEqual(
+            self.db.execute(
+                "SELECT COUNT(*) FROM production_plan_step_blueprints "
+                "WHERE blueprint_item_id=9101"
+            ).fetchone()[0],
+            1,
+        )
+
+    def test_build_mode_ignores_available_intermediate_stock(self) -> None:
+        import_industry_sde(self.db, **bundle())
+        asset_snapshot, _ = self.publish_assets(
+            7,
+            [{"item_id": 8_201, "type_id": 111, "location_id": 60_003_760,
+              "quantity": 100, "location_type": "station", "location_flag": "Hangar"}],
+            "2026-09-15T13:00:00Z",
+        )
+        self.publish_locations(7, asset_snapshot, [8_201], "2026-09-15T13:01:00Z")
+        save_production_plan(
+            self.db,
+            plan_input(stepSupplyModes=[{
+                "blueprintTypeId": 110, "activity": "manufacturing",
+                "productTypeId": 111, "supplyMode": "build",
+            }]),
+        )
+
+        record = query_production_plans(self.db, query())["items"][0]
+        decision = next(
+            item for item in record["supplyDecisions"] if item["productTypeId"] == 111
+        )
+        step = next(item for item in record["steps"] if item["productTypeId"] == 111)
+
+        self.assertEqual(decision["stockAvailableQuantity"], 100)
+        self.assertEqual(decision["stockUsedQuantity"], 0)
+        self.assertEqual(decision["buildQuantity"], 6)
+        self.assertEqual(step["supplyMode"], "build")
+        self.assertNotIn(111, [item["typeId"] for item in record["grossMaterials"]])
 
     def test_assigned_blueprint_me_changes_chain_with_exact_job_rounding(self) -> None:
         import_industry_sde(self.db, **bundle())
@@ -1415,9 +1668,15 @@ class ProductionPlanningTests(unittest.TestCase):
                     validate_production_plan_query(payload)
         with self.assertRaisesRegex(ProductionPlanningError, "production_plan_input_invalid"):
             validate_production_plan_input(plan_input(targetQuantity=0))
+        with self.assertRaisesRegex(ProductionPlanningError, "production_plan_input_invalid"):
+            validate_production_plan_input(plan_input(materialLocationId=7_000))
         with self.assertRaisesRegex(ProductionPlanningError, "production_sde_unavailable"):
             save_production_plan(self.db, plan_input())
         import_industry_sde(self.db, **bundle())
+        with self.assertRaisesRegex(
+            ProductionPlanningError, "production_location_selection_invalid"
+        ):
+            save_production_plan(self.db, plan_input(facilityId=60_003_760))
         with self.assertRaisesRegex(ProductionPlanningError, "production_recipe_missing"):
             save_production_plan(self.db, plan_input(productTypeId=900))
         saved = save_production_plan(self.db, plan_input())

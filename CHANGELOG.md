@@ -6,23 +6,26 @@ Alle bemerkenswerten Änderungen an New Eden Foundry werden hier festgehalten. D
 
 ### Neu hinzugefügt
 
-Keine.
+- Paket 38 erlaubt pro produzierbarem Vorprodukt `Bestand zuerst`, `Nur Bestand` oder `Vollständig bauen`; vorhandene T1- und andere Zwischenprodukte verkürzen die Fertigungskette teilweise oder vollständig.
+- Produktionsstation beziehungsweise Struktur und optional der direkte Hangar oder ein aufgelöster Materialcontainer können je Ziel gewählt werden.
+- Bestandseinsatz, Restbau, Fehlmenge und Blueprintpflicht werden je Vorprodukt nachvollziehbar angezeigt.
 
 ### Geändert
 
-Keine.
+- Bestandsabgleich und zielübergreifende Reservierungen verwenden bei einer Anlagen-/Lagerwahl exakt diese persönliche Standortquelle. Ohne Auswahl bleibt das bisherige Verhalten über alle persönlichen Lagerorte erhalten.
 
 ### Behobene Fehler
 
-Keine.
+- Vollständig vorhandene oder bewusst ausschließlich aus Bestand bezogene Vorprodukte erzeugen keinen unnötigen Produktions- oder Blueprintschritt mehr.
 
 ### Bekannte Einschränkungen
 
-Keine.
+- Anlagen-, Service- und Rigboni, Steuern und Preise werden weiterhin nicht in Zeit oder Kosten eingerechnet.
+- Die Alpha ist noch nicht produktiv code-signiert; SmartScreen kann deshalb weiterhin vor einem unbekannten Herausgeber warnen.
 
 ### Update und Datenbankmigration
 
-Keine.
+- Beim ersten Start migriert die App Schema 11 automatisch auf Schema 12 und ergänzt Produktionsziele um Anlage, Materiallager und Vorprodukt-Versorgungsmodi. Zuvor wird ein geprüfter Datenbank-Snapshot unter `data/backups` angelegt; bei einem Fehler wird der vorherige Stand automatisch wiederhergestellt.
 
 ## 0.2.0-alpha.8 – 14. September 2026
 

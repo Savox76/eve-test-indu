@@ -454,7 +454,7 @@ select:focus-visible {
 
 .production-create {
   display: grid;
-  grid-template-columns: minmax(240px, 1.4fr) repeat(3, minmax(125px, 0.7fr)) minmax(190px, 1fr) auto;
+  grid-template-columns: minmax(220px, 1.4fr) repeat(5, minmax(115px, 0.7fr)) minmax(170px, 1fr) auto;
   align-items: end;
   gap: 10px;
   padding: 14px;
@@ -563,7 +563,7 @@ select:focus-visible {
 
 .production-plan-editor {
   display: grid;
-  grid-template-columns: minmax(145px, 0.9fr) minmax(230px, 1.35fr) repeat(2, minmax(95px, 0.5fr)) minmax(170px, 1fr) auto auto;
+  grid-template-columns: repeat(3, minmax(135px, 0.8fr)) minmax(210px, 1.2fr) repeat(2, minmax(85px, 0.45fr)) minmax(150px, 0.9fr) auto auto;
   align-items: end;
   gap: 9px;
   padding: 12px 14px;
@@ -614,6 +614,27 @@ select:focus-visible {
   border: 1px solid #39443b;
   border-radius: 6px;
   background: #1a201c;
+}
+
+.production-resolution .production-supply {
+  grid-column: 1 / -1;
+}
+
+.production-supply-list label {
+  display: grid;
+  min-width: min(320px, 42vw);
+  gap: 4px;
+  color: #929e94;
+  font-size: var(--font-size-2xs);
+}
+
+.production-supply-list select {
+  height: 34px;
+  padding: 0 9px;
+  border: 1px solid #465249;
+  border-radius: 5px;
+  color: #d7dfd8;
+  background: #121713;
 }
 
 .production-resolution summary {

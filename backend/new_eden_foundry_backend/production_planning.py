@@ -34,6 +34,9 @@ MAX_INVENTORY_LOCATION_GROUPS = 50
 MAX_RESERVATION_CLAIMS = 50
 MAX_BLUEPRINT_CANDIDATES = 50
 MAX_STEP_BLUEPRINT_ASSIGNMENTS = MAX_PLAN_STEPS - 1
+MAX_STEP_SUPPLY_MODES = MAX_PLAN_STEPS - 1
+MAX_PRODUCTION_FACILITIES = 200
+MAX_PRODUCTION_MATERIAL_LOCATIONS = 200
 RESERVATION_RULE = "priority-desc-created-asc-plan-id-asc"
 MATERIAL_EFFICIENCY_RULE = "max-runs-ceil-base-runs-percent"
 TIME_EFFICIENCY_RULE = "max-one-ceil-base-runs-percent"
@@ -42,6 +45,7 @@ CHARACTER_SKILL_TIME_RULE = (
     "job-wide-ceil-industry-4-advanced-industry-3-reactions-4-active-levels"
 )
 FACILITY_EVIDENCE_RULE = "assigned-blueprint-before-active-before-latest-owner-job"
+SUPPLY_MODE_RULE = "stock-first-before-recursive-build"
 INDUSTRY_SKILL_ID = 3380
 ADVANCED_INDUSTRY_SKILL_ID = 3388
 REACTIONS_SKILL_ID = 45746
@@ -75,6 +79,13 @@ FACILITY_STATES = (
     "facility-unavailable",
 )
 PLAN_FACILITY_STATES = ("ready", "partial", "missing", "not-applicable")
+SUPPLY_MODES = ("stock-first", "stock-only", "build")
+LOCATION_SELECTION_STATES = (
+    "unselected",
+    "ready",
+    "facility-missing",
+    "material-location-missing",
+)
 ACTIVE_JOB_STATUSES = ("active", "paused", "ready")
 PRODUCTION_JOB_ACTIVITY_IDS = {
     "manufacturing": (1,),
@@ -107,6 +118,7 @@ class InventorySource:
     sync_run_id: int
     observed_at: str
     stock: dict[int, tuple[dict[str, Any], ...]]
+    facilities: tuple[dict[str, Any], ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -231,6 +243,9 @@ def validate_production_plan_input(payload: Any) -> dict[str, Any]:
         "blueprintTypeId",
         "blueprintItemId",
         "stepBlueprintAssignments",
+        "facilityId",
+        "materialLocationId",
+        "stepSupplyModes",
         "activity",
         "productTypeId",
         "targetQuantity",
@@ -242,6 +257,9 @@ def validate_production_plan_input(payload: Any) -> dict[str, Any]:
     plan_id = payload["planId"]
     blueprint_item_id = payload["blueprintItemId"]
     raw_step_assignments = payload["stepBlueprintAssignments"]
+    facility_id = payload["facilityId"]
+    material_location_id = payload["materialLocationId"]
+    raw_supply_modes = payload["stepSupplyModes"]
     note = payload["note"]
     if note is not None:
         try:
@@ -255,6 +273,14 @@ def validate_production_plan_input(payload: Any) -> dict[str, Any]:
         and not _positive_int(blueprint_item_id)
         or not isinstance(raw_step_assignments, list)
         or len(raw_step_assignments) > MAX_STEP_BLUEPRINT_ASSIGNMENTS
+        or facility_id is not None
+        and not _positive_int(facility_id)
+        or material_location_id is not None
+        and not _positive_int(material_location_id)
+        or material_location_id is not None
+        and facility_id is None
+        or not isinstance(raw_supply_modes, list)
+        or len(raw_supply_modes) > MAX_STEP_SUPPLY_MODES
         or not _positive_int(payload["ownerCharacterId"])
         or not _positive_int(payload["blueprintTypeId"])
         or payload["activity"] not in SUPPORTED_BLUEPRINT_ACTIVITIES
@@ -314,7 +340,52 @@ def validate_production_plan_input(payload: Any) -> dict[str, Any]:
             value["blueprintTypeId"],
         )
     )
-    return {**payload, "note": note, "stepBlueprintAssignments": step_assignments}
+    step_supply_modes: list[dict[str, Any]] = []
+    supply_keys: set[tuple[int, str, int]] = set()
+    for supply in raw_supply_modes:
+        if not isinstance(supply, Mapping) or set(supply) != {
+            "blueprintTypeId",
+            "activity",
+            "productTypeId",
+            "supplyMode",
+        }:
+            raise ProductionPlanningError("production_plan_input_invalid")
+        key = (
+            supply["blueprintTypeId"],
+            supply["activity"],
+            supply["productTypeId"],
+        )
+        if (
+            not _positive_int(key[0])
+            or key[1] not in SUPPORTED_BLUEPRINT_ACTIVITIES
+            or not _positive_int(key[2])
+            or supply["supplyMode"] not in SUPPLY_MODES
+            or key == root_key
+            or key in supply_keys
+        ):
+            raise ProductionPlanningError("production_plan_input_invalid")
+        supply_keys.add(key)
+        step_supply_modes.append(
+            {
+                "blueprintTypeId": int(key[0]),
+                "activity": str(key[1]),
+                "productTypeId": int(key[2]),
+                "supplyMode": str(supply["supplyMode"]),
+            }
+        )
+    step_supply_modes.sort(
+        key=lambda value: (
+            value["productTypeId"],
+            value["activity"],
+            value["blueprintTypeId"],
+        )
+    )
+    return {
+        **payload,
+        "note": note,
+        "stepBlueprintAssignments": step_assignments,
+        "stepSupplyModes": step_supply_modes,
+    }
 
 
 def validate_production_plan_delete(payload: Any) -> int:
@@ -867,6 +938,40 @@ def _load_step_blueprint_assignments(
     return dict(result)
 
 
+def _step_supply_modes(
+    connection: sqlite3.Connection, plan_id: int
+) -> dict[tuple[int, str, int], str]:
+    if not _positive_int(plan_id):
+        raise ProductionPlanningError("production_plan_input_invalid")
+    return {
+        (int(row[0]), str(row[1]), int(row[2])): str(row[3])
+        for row in connection.execute(
+            "SELECT blueprint_type_id,activity,product_type_id,supply_mode "
+            "FROM production_plan_step_supply_modes WHERE plan_id=? "
+            "ORDER BY product_type_id,activity,blueprint_type_id",
+            (plan_id,),
+        )
+    }
+
+
+def _load_step_supply_modes(
+    connection: sqlite3.Connection,
+) -> dict[int, dict[tuple[int, str, int], str]]:
+    result: dict[int, dict[tuple[int, str, int], str]] = defaultdict(dict)
+    for row in connection.execute(
+        "SELECT plan_id,blueprint_type_id,activity,product_type_id,supply_mode "
+        "FROM production_plan_step_supply_modes "
+        "ORDER BY plan_id,product_type_id,activity,blueprint_type_id"
+    ):
+        plan_id = int(row[0])
+        key = (int(row[1]), str(row[2]), int(row[3]))
+        mode = str(row[4])
+        if key in result[plan_id] or mode not in SUPPLY_MODES:
+            raise ProductionPlanningError("production_supply_mode_invalid")
+        result[plan_id][key] = mode
+    return dict(result)
+
+
 def _load_recipes(connection: sqlite3.Connection) -> tuple[
     dict[int, list[Recipe]], dict[tuple[int, str, int], Recipe]
 ]:
@@ -967,7 +1072,7 @@ def _inventory_location_paths(
     connection: sqlite3.Connection,
     character_id: int,
     asset_snapshot_id: int,
-) -> tuple[bool, dict[int, tuple[str, str]]]:
+) -> tuple[bool, dict[int, dict[str, Any]]]:
     rows = connection.execute(
         "SELECT cached_snapshots.payload_json FROM cached_snapshots "
         "JOIN sync_runs ON sync_runs.id=cached_snapshots.sync_run_id "
@@ -987,7 +1092,7 @@ def _inventory_location_paths(
             raise ProductionPlanningError(
                 "production_inventory_location_snapshot_invalid"
             )
-        locations: dict[int, tuple[str, str]] = {}
+        locations: dict[int, dict[str, Any]] = {}
         for raw_location in payload["locations"]:
             if not isinstance(raw_location, Mapping):
                 raise ProductionPlanningError(
@@ -1007,6 +1112,7 @@ def _inventory_location_paths(
                     "production_inventory_location_snapshot_invalid"
                 )
             labels: list[str] = []
+            nodes: list[dict[str, Any]] = []
             for node in path:
                 if not isinstance(node, Mapping):
                     raise ProductionPlanningError(
@@ -1037,10 +1143,94 @@ def _inventory_location_paths(
                     raise ProductionPlanningError(
                         "production_inventory_location_snapshot_invalid"
                     )
-                labels.append(str(name) if name is not None else f"{kind} #{location_id}")
-            locations[int(item_id)] = (str(status), " / ".join(labels))
+                label = str(name) if name is not None else f"{kind} #{location_id}"
+                labels.append(label)
+                nodes.append(
+                    {
+                        "locationId": int(location_id),
+                        "kind": str(kind),
+                        "name": label,
+                        "access": str(access),
+                    }
+                )
+            locations[int(item_id)] = {
+                "status": str(status),
+                "path": " / ".join(labels),
+                "nodes": tuple(nodes),
+            }
         return True, locations
     return False, {}
+
+
+def _facility_from_nodes(nodes: tuple[dict[str, Any], ...]) -> dict[str, Any] | None:
+    for node in reversed(nodes):
+        if node["kind"] in {"station", "structure"}:
+            return node
+    return None
+
+
+def _inventory_facilities(
+    character_id: int,
+    locations: Mapping[int, Mapping[str, Any]],
+) -> tuple[dict[str, Any], ...]:
+    facilities: dict[int, dict[str, Any]] = {}
+    for location in locations.values():
+        nodes = tuple(location["nodes"])
+        facility_node = _facility_from_nodes(nodes)
+        if facility_node is None:
+            continue
+        facility_id = int(facility_node["locationId"])
+        facility = facilities.setdefault(
+            facility_id,
+            {
+                "ownerCharacterId": character_id,
+                "facilityId": facility_id,
+                "facilityName": str(facility_node["name"]),
+                "facilityKind": str(facility_node["kind"]),
+                "facilityAccess": str(facility_node["access"]),
+                "locationStatus": str(location["status"]),
+                "materialLocations": {},
+            },
+        )
+        facility["materialLocations"].setdefault(
+            facility_id,
+            {
+                "locationId": facility_id,
+                "locationName": str(facility_node["name"]),
+                "locationPath": str(facility_node["name"]),
+                "locationKind": "facility",
+            },
+        )
+        labels: list[str] = []
+        for node in nodes:
+            labels.append(str(node["name"]))
+            if node["kind"] != "container":
+                continue
+            location_id = int(node["locationId"])
+            facility["materialLocations"].setdefault(
+                location_id,
+                {
+                    "locationId": location_id,
+                    "locationName": str(node["name"]),
+                    "locationPath": " / ".join(labels),
+                    "locationKind": "container",
+                },
+            )
+    result: list[dict[str, Any]] = []
+    for facility in sorted(
+        facilities.values(),
+        key=lambda value: (str(value["facilityName"]).casefold(), value["facilityId"]),
+    )[:MAX_PRODUCTION_FACILITIES]:
+        material_locations = sorted(
+            facility.pop("materialLocations").values(),
+            key=lambda value: (
+                value["locationKind"] != "facility",
+                str(value["locationPath"]).casefold(),
+                value["locationId"],
+            ),
+        )[:MAX_PRODUCTION_MATERIAL_LOCATIONS]
+        result.append({**facility, "materialLocations": material_locations})
+    return tuple(result)
 
 
 def _inventory_source(
@@ -1099,7 +1289,13 @@ def _inventory_source(
         seen_items.add(int(item_id))
         if int(quantity) == 0:
             continue
-        status, path = locations.get(int(item_id), ("pending", ""))
+        location = locations.get(int(item_id))
+        status = "pending" if location is None else str(location["status"])
+        path = "" if location is None else str(location["path"])
+        nodes = () if location is None else tuple(location["nodes"])
+        facility = _facility_from_nodes(nodes)
+        facility_id = None if facility is None else int(facility["locationId"])
+        path_location_ids = tuple(int(node["locationId"]) for node in nodes)
         key = (int(location_id), status, path, location_flag)
         current = grouped[int(type_id)].get(key)
         if current is None:
@@ -1115,6 +1311,8 @@ def _inventory_source(
                 "assetSnapshotId": snapshot_id,
                 "assetSyncRunId": int(row[1]),
                 "assetObservedAt": observed_at,
+                "_facilityId": facility_id,
+                "_pathLocationIds": path_location_ids,
             }
         else:
             current["quantity"] = _checked_add(int(current["quantity"]), int(quantity))
@@ -1141,6 +1339,7 @@ def _inventory_source(
         sync_run_id=int(row[1]),
         observed_at=observed_at,
         stock=stock,
+        facilities=_inventory_facilities(character_id, locations),
     )
 
 
@@ -1163,6 +1362,73 @@ def _load_inventory_sources(
     return sources
 
 
+def _production_location_options(
+    sources: Mapping[int, InventorySource],
+) -> list[dict[str, Any]]:
+    return [
+        facility
+        for character_id in sorted(sources)
+        for facility in sources[character_id].facilities
+    ][:MAX_PRODUCTION_FACILITIES]
+
+
+def _location_selection(
+    plan: Mapping[str, Any], source: InventorySource | None
+) -> dict[str, Any]:
+    facility_id = plan["facility_id"] if "facility_id" in plan.keys() else None
+    material_location_id = (
+        plan["material_location_id"]
+        if "material_location_id" in plan.keys()
+        else None
+    )
+    empty = {
+        "facilityId": None if facility_id is None else int(facility_id),
+        "facilityName": None,
+        "materialLocationId": (
+            None if material_location_id is None else int(material_location_id)
+        ),
+        "materialLocationName": None,
+        "materialLocationPath": None,
+    }
+    if facility_id is None:
+        return {**empty, "locationSelectionState": "unselected"}
+    facility = next(
+        (
+            candidate
+            for candidate in (() if source is None else source.facilities)
+            if candidate["facilityId"] == int(facility_id)
+        ),
+        None,
+    )
+    if facility is None:
+        return {**empty, "locationSelectionState": "facility-missing"}
+    selected = {
+        **empty,
+        "facilityName": str(facility["facilityName"]),
+    }
+    if material_location_id is None:
+        return {**selected, "locationSelectionState": "ready"}
+    material_location = next(
+        (
+            candidate
+            for candidate in facility["materialLocations"]
+            if candidate["locationId"] == int(material_location_id)
+        ),
+        None,
+    )
+    if material_location is None:
+        return {
+            **selected,
+            "locationSelectionState": "material-location-missing",
+        }
+    return {
+        **selected,
+        "materialLocationName": str(material_location["locationName"]),
+        "materialLocationPath": str(material_location["locationPath"]),
+        "locationSelectionState": "ready",
+    }
+
+
 def _inventory_locations(
     groups: tuple[dict[str, Any], ...],
 ) -> tuple[int, int, list[dict[str, Any]]]:
@@ -1171,14 +1437,121 @@ def _inventory_locations(
     for group in groups:
         quantity = _checked_add(quantity, int(group["quantity"]))
         positions = _checked_add(positions, int(group["positionCount"]))
-    return quantity, positions, list(groups[:MAX_INVENTORY_LOCATION_GROUPS])
+    return quantity, positions, [
+        {key: value for key, value in group.items() if not key.startswith("_")}
+        for group in groups[:MAX_INVENTORY_LOCATION_GROUPS]
+    ]
+
+
+def _selected_inventory_groups(
+    source: InventorySource | None,
+    plan: Mapping[str, Any],
+    material_type_id: int,
+) -> tuple[dict[str, Any], ...]:
+    if source is None:
+        return ()
+    groups = source.stock.get(material_type_id, ())
+    facility_id = plan["facility_id"] if "facility_id" in plan.keys() else None
+    material_location_id = (
+        plan["material_location_id"]
+        if "material_location_id" in plan.keys()
+        else None
+    )
+    if facility_id is None:
+        return groups
+    facility_groups = tuple(
+        group for group in groups if group["_facilityId"] == int(facility_id)
+    )
+    if material_location_id is None:
+        return facility_groups
+    if int(material_location_id) == int(facility_id):
+        return tuple(
+            group
+            for group in facility_groups
+            if int(group["locationId"]) == int(facility_id)
+        )
+    return tuple(
+        group
+        for group in facility_groups
+        if int(material_location_id) in group["_pathLocationIds"]
+    )
+
+
+def _reservation_group_key(
+    character_id: int, material_type_id: int, group: Mapping[str, Any]
+) -> tuple[int, int, int, str, str, str]:
+    return (
+        character_id,
+        material_type_id,
+        int(group["locationId"]),
+        str(group["locationStatus"]),
+        str(group["locationPath"]),
+        str(group["locationFlag"]),
+    )
+
+
+def _reserved_in_group(
+    reservations: Mapping[tuple[int, int, int, str, str, str], list[dict[str, Any]]],
+    key: tuple[int, int, int, str, str, str],
+) -> int:
+    return sum(int(claim["quantity"]) for claim in reservations.get(key, ()))
+
+
+def _free_inventory_quantity(
+    source: InventorySource | None,
+    plan: Mapping[str, Any],
+    material_type_id: int,
+    reservations: Mapping[
+        tuple[int, int, int, str, str, str], list[dict[str, Any]]
+    ],
+) -> int:
+    if source is None:
+        return 0
+    return sum(
+        max(
+            0,
+            int(group["quantity"])
+            - _reserved_in_group(
+                reservations,
+                _reservation_group_key(
+                    source.character_id, material_type_id, group
+                ),
+            ),
+        )
+        for group in _selected_inventory_groups(source, plan, material_type_id)
+    )
+
+
+def _prior_reservation_claims(
+    source: InventorySource,
+    material_type_id: int,
+    groups: tuple[dict[str, Any], ...],
+    reservations: Mapping[
+        tuple[int, int, int, str, str, str], list[dict[str, Any]]
+    ],
+) -> tuple[dict[str, Any], ...]:
+    by_plan: dict[int, dict[str, Any]] = {}
+    for group in groups:
+        key = _reservation_group_key(source.character_id, material_type_id, group)
+        for claim in reservations.get(key, ()):
+            plan_id = int(claim["planId"])
+            current = by_plan.get(plan_id)
+            if current is None:
+                by_plan[plan_id] = dict(claim)
+            else:
+                current["quantity"] = _checked_add(
+                    int(current["quantity"]), int(claim["quantity"])
+                )
+    return tuple(by_plan.values())
 
 
 def _apply_inventory(
     resolution: dict[str, Any],
     plan: sqlite3.Row,
     sources: Mapping[int, InventorySource],
-    reservations: dict[tuple[int, int], list[dict[str, Any]]],
+    reservations: dict[
+        tuple[int, int, int, str, str, str], list[dict[str, Any]]
+    ],
 ) -> dict[str, Any]:
     owner_character_id = int(plan["owner_character_id"])
     if resolution["state"] != "ready":
@@ -1194,9 +1567,19 @@ def _apply_inventory(
     for material in resolution["grossMaterials"]:
         material_type_id = int(material["typeId"])
         required_quantity = int(material["quantity"])
-        reservation_key = (owner_character_id, material_type_id)
-        prior_reservations = tuple(reservations.get(reservation_key, ()))
-        available_groups = () if source is None else source.stock.get(material_type_id, ())
+        available_groups = _selected_inventory_groups(
+            source, plan, material_type_id
+        )
+        prior_reservations = (
+            ()
+            if source is None
+            else _prior_reservation_claims(
+                source,
+                material_type_id,
+                available_groups,
+                reservations,
+            )
+        )
         available_quantity, available_positions, available_locations = _inventory_locations(
             available_groups
         )
@@ -1205,8 +1588,8 @@ def _apply_inventory(
             for character_id, candidate in sorted(
                 sources.items(), key=lambda item: (item[1].owner_name.casefold(), item[0])
             )
-            if character_id != owner_character_id
             for group in candidate.stock.get(material_type_id, ())
+            if character_id != owner_character_id or group not in available_groups
         )
         excluded_quantity, excluded_positions, excluded_locations = _inventory_locations(
             excluded_groups
@@ -1225,7 +1608,9 @@ def _apply_inventory(
             reserved_by_prior = sum(
                 int(claim["quantity"]) for claim in prior_reservations
             )
-            available_before_plan = max(0, available - reserved_by_prior)
+            available_before_plan = _free_inventory_quantity(
+                source, plan, material_type_id, reservations
+            )
             reserved = min(required_quantity, available_before_plan)
             remaining = available_before_plan - reserved
             missing = required_quantity - reserved
@@ -1233,16 +1618,34 @@ def _apply_inventory(
             reservation_conflict = missing - inventory_shortage
             availability_state = "covered" if missing == 0 else "shortage"
             if reserved > 0:
-                reservations.setdefault(reservation_key, []).append(
-                    {
-                        "planId": int(plan["id"]),
-                        "productTypeId": int(plan["product_type_id"]),
-                        "productName": str(resolution["productName"]),
-                        "priority": int(plan["priority"]),
-                        "quantity": reserved,
-                        "createdAt": str(plan["created_at"]),
-                    }
-                )
+                still_needed = reserved
+                for group in available_groups:
+                    key = _reservation_group_key(
+                        owner_character_id, material_type_id, group
+                    )
+                    free = max(
+                        0,
+                        int(group["quantity"])
+                        - _reserved_in_group(reservations, key),
+                    )
+                    allocation = min(still_needed, free)
+                    if allocation == 0:
+                        continue
+                    reservations.setdefault(key, []).append(
+                        {
+                            "planId": int(plan["id"]),
+                            "productTypeId": int(plan["product_type_id"]),
+                            "productName": str(resolution["productName"]),
+                            "priority": int(plan["priority"]),
+                            "quantity": allocation,
+                            "createdAt": str(plan["created_at"]),
+                        }
+                    )
+                    still_needed -= allocation
+                    if still_needed == 0:
+                        break
+                if still_needed != 0:
+                    raise ProductionPlanningError("production_inventory_reservation_invalid")
         materials.append(
             {
                 **material,
@@ -1297,6 +1700,8 @@ def _empty_resolution(
         "blueprintName": _fallback_name(connection, int(plan["blueprint_type_id"])),
         "productName": _fallback_name(connection, int(plan["product_type_id"])),
         "steps": [],
+        "supplyDecisions": [],
+        "_supplyRecipeKeys": [],
         "grossMaterials": [],
         "warnings": [],
         "cycleTypeIds": [],
@@ -1320,6 +1725,12 @@ def resolve_production_plan(
     job_source: Mapping[str, Any] | None | object = _JOB_SOURCE_UNSET,
     facility_context: tuple[bool, Mapping[int, Mapping[str, Any]]] | None = None,
     step_blueprint_assignments: Mapping[tuple[int, str, int], int] | None = None,
+    step_supply_modes: Mapping[tuple[int, str, int], str] | None = None,
+    inventory_source: InventorySource | None = None,
+    reservations: Mapping[
+        tuple[int, int, int, str, str, str], list[dict[str, Any]]
+    ]
+    | None = None,
 ) -> dict[str, Any]:
     """Resolve one goal with a stable recipe tie-break and exact integer rounding."""
 
@@ -1366,6 +1777,22 @@ def resolve_production_plan(
         for key, item_id in step_blueprint_assignments.items()
     ):
         raise ProductionPlanningError("production_blueprint_assignment_invalid")
+    if step_supply_modes is None:
+        step_supply_modes = (
+            _step_supply_modes(connection, int(plan["id"]))
+            if "id" in plan.keys() and plan["id"] is not None
+            else {}
+        )
+    if any(
+        not isinstance(key, tuple)
+        or len(key) != 3
+        or not _positive_int(key[0])
+        or key[1] not in SUPPORTED_BLUEPRINT_ACTIVITIES
+        or not _positive_int(key[2])
+        or mode not in SUPPLY_MODES
+        for key, mode in step_supply_modes.items()
+    ):
+        raise ProductionPlanningError("production_supply_mode_invalid")
     initial_assignment = _blueprint_assignment(plan, blueprint_source, 1)
     skill_evidence = _skill_evidence(skill_source)
     if build_number is None or not _sde_tables_available(connection):
@@ -1491,24 +1918,91 @@ def resolve_production_plan(
     gross: dict[int, tuple[str, int]] = {}
     unmodified_gross: dict[int, int] = {}
     steps: list[dict[str, Any]] = []
+    supply_decisions: list[dict[str, Any]] = []
+    reservation_view = {} if reservations is None else reservations
     total_base_time = 0
     total_blueprint_time = 0
     total_character_time: int | None = 0 if skill_source is not None else None
     for sequence, product_type_id in enumerate(ordered, start=1):
         recipe = selected[product_type_id]
         quantity_needed = required[product_type_id]
-        runs = (quantity_needed + recipe.output_quantity - 1) // recipe.output_quantity
-        unmodified_quantity_needed = unmodified_required[product_type_id]
-        unmodified_runs = (
-            unmodified_quantity_needed + recipe.output_quantity - 1
-        ) // recipe.output_quantity
-        produced_quantity = _checked_multiply(runs, recipe.output_quantity)
         recipe_key = (
             recipe.blueprint_type_id,
             recipe.activity,
             recipe.product_type_id,
         )
         is_root = recipe_key == root_key
+        if quantity_needed == 0:
+            continue
+        supply_mode = "build" if is_root else step_supply_modes.get(
+            recipe_key, "stock-first"
+        )
+        stock_available = (
+            0
+            if is_root
+            else _free_inventory_quantity(
+                inventory_source,
+                plan,
+                product_type_id,
+                reservation_view,
+            )
+        )
+        stock_quantity = (
+            0 if is_root or supply_mode == "build" else min(quantity_needed, stock_available)
+        )
+        external_quantity = (
+            quantity_needed
+            if supply_mode == "stock-only"
+            else stock_quantity
+        )
+        build_quantity = (
+            quantity_needed
+            if is_root or supply_mode == "build"
+            else 0
+            if supply_mode == "stock-only"
+            else quantity_needed - stock_quantity
+        )
+        if not is_root:
+            supply_decisions.append(
+                {
+                    "blueprintTypeId": recipe.blueprint_type_id,
+                    "activity": recipe.activity,
+                    "productTypeId": product_type_id,
+                    "productName": recipe.product_name,
+                    "supplyMode": supply_mode,
+                    "requiredQuantity": quantity_needed,
+                    "stockAvailableQuantity": stock_available,
+                    "stockUsedQuantity": stock_quantity,
+                    "buildQuantity": build_quantity,
+                    "shortageQuantity": (
+                        max(0, quantity_needed - stock_available)
+                        if supply_mode == "stock-only"
+                        else 0
+                    ),
+                    "blueprintRequired": build_quantity > 0,
+                }
+            )
+        if external_quantity > 0:
+            previous = gross.get(product_type_id, (recipe.product_name, 0))
+            gross[product_type_id] = (
+                recipe.product_name,
+                _checked_add(previous[1], external_quantity),
+            )
+            unmodified_gross[product_type_id] = _checked_add(
+                unmodified_gross.get(product_type_id, 0), external_quantity
+            )
+        if build_quantity == 0:
+            continue
+        quantity_needed = build_quantity
+        runs = (quantity_needed + recipe.output_quantity - 1) // recipe.output_quantity
+        unmodified_quantity_needed = max(
+            quantity_needed,
+            unmodified_required[product_type_id] - stock_quantity,
+        )
+        unmodified_runs = (
+            unmodified_quantity_needed + recipe.output_quantity - 1
+        ) // recipe.output_quantity
+        produced_quantity = _checked_multiply(runs, recipe.output_quantity)
         step_assignment = (
             assignment
             if is_root
@@ -1609,7 +2103,9 @@ def resolve_production_plan(
                 "activity": recipe.activity,
                 "productTypeId": product_type_id,
                 "productName": recipe.product_name,
-                "requiredQuantity": quantity_needed,
+                "requiredQuantity": build_quantity,
+                "supplyMode": supply_mode,
+                "stockUsedQuantity": stock_quantity,
                 "outputQuantityPerRun": recipe.output_quantity,
                 "runs": runs,
                 "unmodifiedRuns": unmodified_runs,
@@ -1641,8 +2137,19 @@ def resolve_production_plan(
                 "materials": direct_materials,
             }
         )
+    produced_type_ids = {int(step["productTypeId"]) for step in steps}
     execution_steps = [
-        {**step, "sequence": sequence}
+        {
+            **step,
+            "sequence": sequence,
+            "materials": [
+                {
+                    **material,
+                    "producedByPlan": int(material["typeId"]) in produced_type_ids,
+                }
+                for material in step["materials"]
+            ],
+        }
         for sequence, step in enumerate(reversed(steps), start=1)
     ]
     ready_facilities = sum(
@@ -1661,6 +2168,24 @@ def resolve_production_plan(
         "blueprintName": root.blueprint_name,
         "productName": root.product_name,
         "steps": execution_steps,
+        "supplyDecisions": sorted(
+            supply_decisions,
+            key=lambda item: (item["productName"].casefold(), item["productTypeId"]),
+        ),
+        "_supplyRecipeKeys": sorted(
+            (
+                recipe.blueprint_type_id,
+                recipe.activity,
+                recipe.product_type_id,
+            )
+            for recipe in selected.values()
+            if (
+                recipe.blueprint_type_id,
+                recipe.activity,
+                recipe.product_type_id,
+            )
+            != root_key
+        ),
         "grossMaterials": [
             {
                 "typeId": type_id,
@@ -1763,7 +2288,8 @@ def _plan_rows(connection: sqlite3.Connection) -> list[sqlite3.Row]:
     return list(
         connection.execute(
             "SELECT plan.id,plan.owner_character_id,COALESCE(character.alias,character.name) "
-            "AS owner_name,plan.blueprint_type_id,plan.blueprint_item_id,plan.activity,plan.product_type_id,"
+            "AS owner_name,plan.blueprint_type_id,plan.blueprint_item_id,plan.facility_id,"
+            "plan.material_location_id,plan.activity,plan.product_type_id,"
             "plan.target_quantity,plan.priority,plan.note,plan.created_at,plan.updated_at "
             "FROM production_plans plan JOIN characters character "
             "ON character.character_id=plan.owner_character_id ORDER BY plan.id"
@@ -1778,6 +2304,12 @@ def _serialize_plan(row: sqlite3.Row, resolution: Mapping[str, Any]) -> dict[str
         "ownerName": str(row["owner_name"]),
         "blueprintTypeId": int(row["blueprint_type_id"]),
         "blueprintName": resolution["blueprintName"],
+        "facilityId": resolution["facilityId"],
+        "facilityName": resolution["facilityName"],
+        "materialLocationId": resolution["materialLocationId"],
+        "materialLocationName": resolution["materialLocationName"],
+        "materialLocationPath": resolution["materialLocationPath"],
+        "locationSelectionState": resolution["locationSelectionState"],
         "blueprintItemId": resolution["blueprintItemId"],
         "blueprintAssignmentState": resolution["blueprintAssignmentState"],
         "blueprintKind": resolution["blueprintKind"],
@@ -1802,6 +2334,7 @@ def _serialize_plan(row: sqlite3.Row, resolution: Mapping[str, Any]) -> dict[str
         "state": resolution["state"],
         "buildNumber": resolution["buildNumber"],
         "steps": resolution["steps"],
+        "supplyDecisions": resolution["supplyDecisions"],
         "grossMaterials": resolution["grossMaterials"],
         "warnings": resolution["warnings"],
         "cycleTypeIds": resolution["cycleTypeIds"],
@@ -1837,26 +2370,14 @@ def query_production_plans(connection: sqlite3.Connection, raw_query: Any) -> di
     plan_rows = _plan_rows(connection)
     blueprint_sources = _load_blueprint_sources(connection, plan_rows)
     step_blueprint_assignments = _load_step_blueprint_assignments(connection)
+    step_supply_modes = _load_step_supply_modes(connection)
     skill_sources = _load_skill_sources(connection, plan_rows)
     job_sources = _load_production_job_sources(connection)
     facility_context = _load_production_facilities(connection)
     inventory_sources = _load_inventory_sources(connection, plan_rows)
-    resolutions = {
-        int(row["id"]): resolve_production_plan(
-            connection,
-            row,
-            loaded_recipes=loaded_recipes,
-            blueprint_source=blueprint_sources.get(int(row["owner_character_id"])),
-            skill_source=skill_sources.get(int(row["owner_character_id"])),
-            job_source=job_sources.get(int(row["owner_character_id"])),
-            facility_context=facility_context,
-            step_blueprint_assignments=step_blueprint_assignments.get(
-                int(row["id"]), {}
-            ),
-        )
-        for row in plan_rows
-    }
-    reservations: dict[tuple[int, int], list[dict[str, Any]]] = {}
+    reservations: dict[
+        tuple[int, int, int, str, str, str], list[dict[str, Any]]
+    ] = {}
     inventory_resolutions: dict[int, dict[str, Any]] = {}
     for row in sorted(
         plan_rows,
@@ -1868,8 +2389,29 @@ def query_production_plans(connection: sqlite3.Connection, raw_query: Any) -> di
         ),
     ):
         plan_id = int(row["id"])
+        owner_character_id = int(row["owner_character_id"])
+        inventory_source = inventory_sources.get(owner_character_id)
+        resolution = resolve_production_plan(
+            connection,
+            row,
+            loaded_recipes=loaded_recipes,
+            blueprint_source=blueprint_sources.get(owner_character_id),
+            skill_source=skill_sources.get(owner_character_id),
+            job_source=job_sources.get(owner_character_id),
+            facility_context=facility_context,
+            step_blueprint_assignments=step_blueprint_assignments.get(plan_id, {}),
+            step_supply_modes=step_supply_modes.get(plan_id, {}),
+            inventory_source=inventory_source,
+            reservations=reservations,
+        )
         inventory_resolutions[plan_id] = _apply_inventory(
-            resolutions[plan_id], row, inventory_sources, reservations
+            {
+                **resolution,
+                **_location_selection(row, inventory_source),
+            },
+            row,
+            inventory_sources,
+            reservations,
         )
     records = [
         _serialize_plan(
@@ -1931,6 +2473,7 @@ def query_production_plans(connection: sqlite3.Connection, raw_query: Any) -> di
         "offset": query["offset"],
         "limit": query["limit"],
         "owners": owners,
+        "locationOptions": _production_location_options(inventory_sources),
         "activities": list(SUPPORTED_BLUEPRINT_ACTIVITIES),
         "states": list(PLAN_STATES),
         "summary": summary,
@@ -1948,6 +2491,8 @@ def query_production_plans(connection: sqlite3.Connection, raw_query: Any) -> di
         "characterSkillTimeRule": CHARACTER_SKILL_TIME_RULE,
         "facilityEvidenceApplied": True,
         "facilityEvidenceRule": FACILITY_EVIDENCE_RULE,
+        "supplyModesApplied": True,
+        "supplyModeRule": SUPPLY_MODE_RULE,
         "remainingModifiersApplied": False,
     }
 
@@ -2011,6 +2556,8 @@ def save_production_plan(connection: sqlite3.Connection, raw_input: Any) -> dict
         "owner_character_id": value["ownerCharacterId"],
         "blueprint_type_id": value["blueprintTypeId"],
         "blueprint_item_id": value["blueprintItemId"],
+        "facility_id": value["facilityId"],
+        "material_location_id": value["materialLocationId"],
         "activity": value["activity"],
         "product_type_id": value["productTypeId"],
         "target_quantity": value["targetQuantity"],
@@ -2023,10 +2570,19 @@ def save_production_plan(connection: sqlite3.Connection, raw_input: Any) -> dict
         ): int(assignment["blueprintItemId"])
         for assignment in value["stepBlueprintAssignments"]
     }
+    supply_modes = {
+        (
+            int(supply["blueprintTypeId"]),
+            str(supply["activity"]),
+            int(supply["productTypeId"]),
+        ): str(supply["supplyMode"])
+        for supply in value["stepSupplyModes"]
+    }
     resolved = resolve_production_plan(
         connection,
         candidate,
         step_blueprint_assignments=step_assignments,
+        step_supply_modes=supply_modes,
     )
     if resolved["state"] in {"cycle", "complexity-limit"}:
         raise ProductionPlanningError(f"production_plan_{resolved['state']}")
@@ -2045,15 +2601,42 @@ def save_production_plan(connection: sqlite3.Connection, raw_input: Any) -> dict
         ): step
         for step in resolved["steps"]
     }
+    resolved_supply_keys = set(resolved["_supplyRecipeKeys"])
+    if any(key not in resolved_supply_keys for key in supply_modes):
+        raise ProductionPlanningError("production_supply_step_missing")
     for key in step_assignments:
         step = resolved_steps.get(key)
         if step is None:
-            raise ProductionPlanningError("production_blueprint_step_missing")
+            if key not in resolved_supply_keys:
+                raise ProductionPlanningError("production_blueprint_step_missing")
+            inactive_assignment = _blueprint_assignment_for_recipe(
+                key[0],
+                step_assignments[key],
+                _blueprint_source(connection, value["ownerCharacterId"]),
+                1,
+            )
+            if inactive_assignment["blueprintAssignmentState"] != "ready":
+                raise ProductionPlanningError(
+                    f"production_blueprint_{inactive_assignment['blueprintAssignmentState']}"
+                )
+            continue
         assignment = step["blueprintAssignment"]
         if assignment["blueprintAssignmentState"] != "ready":
             raise ProductionPlanningError(
                 f"production_blueprint_{assignment['blueprintAssignmentState']}"
             )
+    if value["facilityId"] is not None:
+        owner_row = connection.execute(
+            "SELECT COALESCE(alias,name) FROM characters WHERE character_id=?",
+            (value["ownerCharacterId"],),
+        ).fetchone()
+        inventory_source = _inventory_source(
+            connection, value["ownerCharacterId"], str(owner_row[0])
+        )
+        if _location_selection(candidate, inventory_source)[
+            "locationSelectionState"
+        ] != "ready":
+            raise ProductionPlanningError("production_location_selection_invalid")
     try:
         connection.execute("BEGIN IMMEDIATE")
         assigned_item_ids = [
@@ -2076,21 +2659,24 @@ def save_production_plan(connection: sqlite3.Connection, raw_input: Any) -> dict
                 raise ProductionPlanningError("production_blueprint_already_assigned")
         if value["planId"] is None:
             cursor = connection.execute(
-                "INSERT INTO production_plans(owner_character_id,blueprint_type_id,blueprint_item_id,activity,"
-                "product_type_id,target_quantity,priority,note) VALUES (?,?,?,?,?,?,?,?)",
+                "INSERT INTO production_plans(owner_character_id,blueprint_type_id,blueprint_item_id,"
+                "facility_id,material_location_id,activity,product_type_id,target_quantity,priority,note) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?)",
                 (
-                    value["ownerCharacterId"], value["blueprintTypeId"], value["blueprintItemId"], value["activity"],
+                    value["ownerCharacterId"], value["blueprintTypeId"], value["blueprintItemId"],
+                    value["facilityId"], value["materialLocationId"], value["activity"],
                     value["productTypeId"], value["targetQuantity"], value["priority"], value["note"],
                 ),
             )
             plan_id = int(cursor.lastrowid)
         else:
             cursor = connection.execute(
-                "UPDATE production_plans SET owner_character_id=?,blueprint_type_id=?,blueprint_item_id=?,activity=?,"
-                "product_type_id=?,target_quantity=?,priority=?,note=?,"
+                "UPDATE production_plans SET owner_character_id=?,blueprint_type_id=?,blueprint_item_id=?,"
+                "facility_id=?,material_location_id=?,activity=?,product_type_id=?,target_quantity=?,priority=?,note=?,"
                 "updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=?",
                 (
-                    value["ownerCharacterId"], value["blueprintTypeId"], value["blueprintItemId"], value["activity"],
+                    value["ownerCharacterId"], value["blueprintTypeId"], value["blueprintItemId"],
+                    value["facilityId"], value["materialLocationId"], value["activity"],
                     value["productTypeId"], value["targetQuantity"], value["priority"], value["note"],
                     value["planId"],
                 ),
@@ -2117,6 +2703,25 @@ def save_production_plan(connection: sqlite3.Connection, raw_input: Any) -> dict
                 for assignment in value["stepBlueprintAssignments"]
             ],
         )
+        connection.execute(
+            "DELETE FROM production_plan_step_supply_modes WHERE plan_id=?",
+            (plan_id,),
+        )
+        connection.executemany(
+            "INSERT INTO production_plan_step_supply_modes("
+            "plan_id,blueprint_type_id,activity,product_type_id,supply_mode"
+            ") VALUES (?,?,?,?,?)",
+            [
+                (
+                    plan_id,
+                    supply["blueprintTypeId"],
+                    supply["activity"],
+                    supply["productTypeId"],
+                    supply["supplyMode"],
+                )
+                for supply in value["stepSupplyModes"]
+            ],
+        )
         connection.commit()
     except sqlite3.IntegrityError as error:
         connection.rollback()
@@ -2133,6 +2738,9 @@ def save_production_plan(connection: sqlite3.Connection, raw_input: Any) -> dict
         "blueprintTypeId": value["blueprintTypeId"],
         "blueprintItemId": value["blueprintItemId"],
         "stepBlueprintAssignments": value["stepBlueprintAssignments"],
+        "facilityId": value["facilityId"],
+        "materialLocationId": value["materialLocationId"],
+        "stepSupplyModes": value["stepSupplyModes"],
         "activity": value["activity"],
         "productTypeId": value["productTypeId"],
         "targetQuantity": value["targetQuantity"],

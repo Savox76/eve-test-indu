@@ -148,6 +148,13 @@ const PRODUCTION_FACILITY_EVIDENCE: [&str; 4] = [
     "active-blueprint-type-job",
     "latest-blueprint-type-job",
 ];
+const PRODUCTION_SUPPLY_MODES: [&str; 3] = ["stock-first", "stock-only", "build"];
+const PRODUCTION_LOCATION_SELECTION_STATES: [&str; 4] = [
+    "unselected",
+    "ready",
+    "facility-missing",
+    "material-location-missing",
+];
 const PRODUCTION_PLAN_SORT_FIELDS: [&str; 6] = [
     "priority", "product", "owner", "activity", "state", "updated",
 ];
@@ -898,6 +905,8 @@ struct ProductionStep {
     product_type_id: u64,
     product_name: String,
     required_quantity: u64,
+    supply_mode: String,
+    stock_used_quantity: u64,
     output_quantity_per_run: u64,
     runs: u64,
     unmodified_runs: u64,
@@ -920,6 +929,43 @@ struct ProductionStep {
     blueprint_assignment: ProductionStepBlueprintAssignment,
     facility_evidence: ProductionFacilityEvidence,
     materials: Vec<ProductionStepMaterial>,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ProductionSupplyDecision {
+    blueprint_type_id: u64,
+    activity: String,
+    product_type_id: u64,
+    product_name: String,
+    supply_mode: String,
+    required_quantity: u64,
+    stock_available_quantity: u64,
+    stock_used_quantity: u64,
+    build_quantity: u64,
+    shortage_quantity: u64,
+    blueprint_required: bool,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ProductionMaterialLocationOption {
+    location_id: u64,
+    location_name: String,
+    location_path: String,
+    location_kind: String,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ProductionFacilityOption {
+    owner_character_id: u64,
+    facility_id: u64,
+    facility_name: String,
+    facility_kind: String,
+    facility_access: String,
+    location_status: String,
+    material_locations: Vec<ProductionMaterialLocationOption>,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -1027,6 +1073,15 @@ struct ProductionStepBlueprintInput {
     blueprint_item_id: u64,
 }
 
+#[derive(Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ProductionStepSupplyInput {
+    blueprint_type_id: u64,
+    activity: String,
+    product_type_id: u64,
+    supply_mode: String,
+}
+
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ProductionPlanRecord {
@@ -1035,6 +1090,12 @@ struct ProductionPlanRecord {
     owner_name: String,
     blueprint_type_id: u64,
     blueprint_name: String,
+    facility_id: Option<u64>,
+    facility_name: Option<String>,
+    material_location_id: Option<u64>,
+    material_location_name: Option<String>,
+    material_location_path: Option<String>,
+    location_selection_state: String,
     blueprint_item_id: Option<u64>,
     blueprint_assignment_state: String,
     blueprint_kind: Option<String>,
@@ -1059,6 +1120,7 @@ struct ProductionPlanRecord {
     state: String,
     build_number: Option<String>,
     steps: Vec<ProductionStep>,
+    supply_decisions: Vec<ProductionSupplyDecision>,
     gross_materials: Vec<ProductionGrossMaterial>,
     warnings: Vec<ProductionWarning>,
     cycle_type_ids: Vec<u64>,
@@ -1100,6 +1162,7 @@ struct ProductionPlanQueryResponse {
     offset: u64,
     limit: u64,
     owners: Vec<AssetOwner>,
+    location_options: Vec<ProductionFacilityOption>,
     activities: Vec<String>,
     states: Vec<String>,
     summary: ProductionPlanSummary,
@@ -1117,6 +1180,8 @@ struct ProductionPlanQueryResponse {
     character_skill_time_rule: String,
     facility_evidence_applied: bool,
     facility_evidence_rule: String,
+    supply_modes_applied: bool,
+    supply_mode_rule: String,
     remaining_modifiers_applied: bool,
 }
 
@@ -1129,6 +1194,9 @@ struct ProductionPlanMutationResponse {
     blueprint_type_id: u64,
     blueprint_item_id: Option<u64>,
     step_blueprint_assignments: Vec<ProductionStepBlueprintInput>,
+    facility_id: Option<u64>,
+    material_location_id: Option<u64>,
+    step_supply_modes: Vec<ProductionStepSupplyInput>,
     activity: String,
     product_type_id: u64,
     target_quantity: u64,
@@ -1581,6 +1649,11 @@ fn asset_query_response_is_valid(response: &AssetQueryResponse) -> bool {
         .iter()
         .map(|owner| owner.character_id)
         .collect::<HashSet<_>>();
+    let location_keys = response
+        .location_options
+        .iter()
+        .map(|item| (item.owner_character_id, item.facility_id))
+        .collect::<HashSet<_>>();
     let item_ids = response
         .items
         .iter()
@@ -1600,6 +1673,12 @@ fn asset_query_response_is_valid(response: &AssetQueryResponse) -> bool {
         && response.items.len() as u64 <= response.total
         && item_ids.len() == response.items.len()
         && owner_ids.len() == response.owners.len()
+        && response.location_options.len() <= 200
+        && location_keys.len() == response.location_options.len()
+        && response
+            .location_options
+            .iter()
+            .all(production_location_option_is_valid)
         && response.owners.iter().all(|owner| {
             owner.character_id > 0
                 && owner.character_id <= JAVASCRIPT_MAX_SAFE_INTEGER
@@ -3004,6 +3083,70 @@ fn production_time_skills_are_valid(step: &ProductionStep) -> bool {
         && step.character_skill_time_applied == (adjusted < step.total_blueprint_time_seconds)
 }
 
+fn production_supply_decision_is_valid(item: &ProductionSupplyDecision) -> bool {
+    let quantities_valid = match item.supply_mode.as_str() {
+        "stock-first" => {
+            item.stock_used_quantity <= item.stock_available_quantity
+                && item.stock_used_quantity.checked_add(item.build_quantity)
+                    == Some(item.required_quantity)
+                && item.shortage_quantity == 0
+        }
+        "stock-only" => {
+            item.build_quantity == 0
+                && item.stock_used_quantity <= item.stock_available_quantity
+                && item.stock_used_quantity.checked_add(item.shortage_quantity)
+                    == Some(item.required_quantity)
+        }
+        "build" => {
+            item.stock_used_quantity == 0
+                && item.build_quantity == item.required_quantity
+                && item.shortage_quantity == 0
+        }
+        _ => false,
+    };
+    production_id_is_valid(item.blueprint_type_id)
+        && PRODUCTION_ACTIVITIES.contains(&item.activity.as_str())
+        && production_id_is_valid(item.product_type_id)
+        && asset_text_is_valid(&item.product_name, 200)
+        && PRODUCTION_SUPPLY_MODES.contains(&item.supply_mode.as_str())
+        && production_id_is_valid(item.required_quantity)
+        && item.stock_available_quantity <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && item.stock_used_quantity <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && item.build_quantity <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && item.shortage_quantity <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && item.blueprint_required == (item.build_quantity > 0)
+        && quantities_valid
+}
+
+fn production_location_option_is_valid(item: &ProductionFacilityOption) -> bool {
+    let location_ids = item
+        .material_locations
+        .iter()
+        .map(|location| location.location_id)
+        .collect::<HashSet<_>>();
+    production_id_is_valid(item.owner_character_id)
+        && production_id_is_valid(item.facility_id)
+        && asset_text_is_valid(&item.facility_name, 200)
+        && matches!(item.facility_kind.as_str(), "station" | "structure")
+        && asset_text_is_valid(&item.facility_access, 40)
+        && matches!(
+            item.location_status.as_str(),
+            "resolved" | "restricted" | "unresolved" | "cycle"
+        )
+        && !item.material_locations.is_empty()
+        && item.material_locations.len() <= 200
+        && location_ids.len() == item.material_locations.len()
+        && item.material_locations.iter().all(|location| {
+            production_id_is_valid(location.location_id)
+                && asset_text_is_valid(&location.location_name, 200)
+                && asset_text_is_valid(&location.location_path, 12_800)
+                && matches!(location.location_kind.as_str(), "facility" | "container")
+        })
+        && item.material_locations.iter().any(|location| {
+            location.location_id == item.facility_id && location.location_kind == "facility"
+        })
+}
+
 fn production_plan_record_is_valid(item: &ProductionPlanRecord) -> bool {
     let steps_valid = item.steps.iter().enumerate().all(|(index, step)| {
         step.sequence == index as u64 + 1
@@ -3013,6 +3156,9 @@ fn production_plan_record_is_valid(item: &ProductionPlanRecord) -> bool {
             && asset_text_is_valid(&step.product_name, 200)
             && PRODUCTION_ACTIVITIES.contains(&step.activity.as_str())
             && production_id_is_valid(step.required_quantity)
+            && matches!(step.supply_mode.as_str(), "stock-first" | "build")
+            && step.stock_used_quantity <= JAVASCRIPT_MAX_SAFE_INTEGER
+            && (step.supply_mode != "build" || step.stock_used_quantity == 0)
             && production_id_is_valid(step.output_quantity_per_run)
             && production_id_is_valid(step.runs)
             && production_id_is_valid(step.unmodified_runs)
@@ -3208,7 +3354,6 @@ fn production_plan_record_is_valid(item: &ProductionPlanRecord) -> bool {
             })
             && material.excluded_locations.iter().all(|location| {
                 production_stock_location_is_valid(location)
-                    && location.owner_character_id != item.owner_character_id
             })
     });
     let warnings_valid = item.warnings.iter().all(|warning| {
@@ -3219,6 +3364,101 @@ fn production_plan_record_is_valid(item: &ProductionPlanRecord) -> bool {
             && warning.candidate_count >= 2
             && warning.candidate_count <= JAVASCRIPT_MAX_SAFE_INTEGER
     });
+    let supply_keys = item
+        .supply_decisions
+        .iter()
+        .map(|decision| {
+            (
+                decision.blueprint_type_id,
+                decision.activity.as_str(),
+                decision.product_type_id,
+            )
+        })
+        .collect::<HashSet<_>>();
+    let supply_decisions_valid = item.supply_decisions.len() <= 499
+        && supply_keys.len() == item.supply_decisions.len()
+        && item
+            .supply_decisions
+            .iter()
+            .all(production_supply_decision_is_valid);
+    let supply_shape_valid = item.supply_decisions.iter().all(|decision| {
+        let matches = item
+            .steps
+            .iter()
+            .take(item.steps.len().saturating_sub(1))
+            .filter(|step| {
+                step.blueprint_type_id == decision.blueprint_type_id
+                    && step.activity == decision.activity
+                    && step.product_type_id == decision.product_type_id
+            })
+            .collect::<Vec<_>>();
+        if decision.build_quantity == 0 {
+            matches.is_empty()
+        } else {
+            matches.len() == 1
+                && matches[0].required_quantity == decision.build_quantity
+                && matches[0].stock_used_quantity == decision.stock_used_quantity
+                && matches[0].supply_mode == decision.supply_mode
+        }
+    }) && item
+        .steps
+        .iter()
+        .take(item.steps.len().saturating_sub(1))
+        .all(|step| {
+            item.supply_decisions.iter().any(|decision| {
+                decision.blueprint_type_id == step.blueprint_type_id
+                    && decision.activity == step.activity
+                    && decision.product_type_id == step.product_type_id
+            })
+        });
+    let location_selection_valid = match item.location_selection_state.as_str() {
+        "unselected" => {
+            item.facility_id.is_none()
+                && item.facility_name.is_none()
+                && item.material_location_id.is_none()
+                && item.material_location_name.is_none()
+                && item.material_location_path.is_none()
+        }
+        "ready" => {
+            item.facility_id.is_some_and(production_id_is_valid)
+                && item
+                    .facility_name
+                    .as_ref()
+                    .is_some_and(|value| asset_text_is_valid(value, 200))
+                && match (
+                    item.material_location_id,
+                    item.material_location_name.as_ref(),
+                    item.material_location_path.as_ref(),
+                ) {
+                    (None, None, None) => true,
+                    (Some(location_id), Some(name), Some(path)) => {
+                        production_id_is_valid(location_id)
+                            && asset_text_is_valid(name, 200)
+                            && asset_text_is_valid(path, 12_800)
+                    }
+                    _ => false,
+                }
+        }
+        "facility-missing" => {
+            item.facility_id.is_some_and(production_id_is_valid)
+                && item.facility_name.is_none()
+                && item.material_location_name.is_none()
+                && item.material_location_path.is_none()
+        }
+        "material-location-missing" => {
+            item.facility_id.is_some_and(production_id_is_valid)
+                && item
+                    .facility_name
+                    .as_ref()
+                    .is_some_and(|value| asset_text_is_valid(value, 200))
+                && item
+                    .material_location_id
+                    .is_some_and(production_id_is_valid)
+                && item.material_location_name.is_none()
+                && item.material_location_path.is_none()
+        }
+        _ => false,
+    };
     let assigned_step_blueprint_ids = item
         .steps
         .iter()
@@ -3460,6 +3700,7 @@ fn production_plan_record_is_valid(item: &ProductionPlanRecord) -> bool {
                 .is_some_and(|step| step.time_efficiency == item.applied_time_efficiency)
     } else {
         item.steps.is_empty()
+            && item.supply_decisions.is_empty()
             && item.gross_materials.is_empty()
             && item.total_base_time_seconds.is_none()
             && item.total_blueprint_time_seconds.is_none()
@@ -3481,6 +3722,9 @@ fn production_plan_record_is_valid(item: &ProductionPlanRecord) -> bool {
             .is_none_or(|value| matches!(value.as_str(), "original" | "copy"))
         && item.applied_material_efficiency <= 10
         && item.applied_time_efficiency <= 20
+        && PRODUCTION_LOCATION_SELECTION_STATES
+            .contains(&item.location_selection_state.as_str())
+        && location_selection_valid
         && blueprint_candidates_valid
         && assignment_valid
         && PRODUCTION_ACTIVITIES.contains(&item.activity.as_str())
@@ -3545,6 +3789,8 @@ fn production_plan_record_is_valid(item: &ProductionPlanRecord) -> bool {
         && steps_valid
         && gross_valid
         && warnings_valid
+        && supply_decisions_valid
+        && supply_shape_valid
         && resolution_shape
 }
 
@@ -3558,6 +3804,11 @@ fn production_plan_query_response_is_valid(response: &ProductionPlanQueryRespons
         .owners
         .iter()
         .map(|owner| owner.character_id)
+        .collect::<HashSet<_>>();
+    let location_keys = response
+        .location_options
+        .iter()
+        .map(|item| (item.owner_character_id, item.facility_id))
         .collect::<HashSet<_>>();
     let assigned_blueprint_ids = response
         .items
@@ -3586,6 +3837,12 @@ fn production_plan_query_response_is_valid(response: &ProductionPlanQueryRespons
         && ids.len() == response.items.len()
         && assigned_blueprint_id_count == assigned_blueprint_ids.len()
         && owner_ids.len() == response.owners.len()
+        && response.location_options.len() <= 200
+        && location_keys.len() == response.location_options.len()
+        && response
+            .location_options
+            .iter()
+            .all(production_location_option_is_valid)
         && response.items.iter().all(production_plan_record_is_valid)
         && response.owners.iter().all(|owner| {
             production_id_is_valid(owner.character_id) && asset_text_is_valid(&owner.name, 100)
@@ -3624,6 +3881,8 @@ fn production_plan_query_response_is_valid(response: &ProductionPlanQueryRespons
         && response.facility_evidence_applied
         && response.facility_evidence_rule
             == "assigned-blueprint-before-active-before-latest-owner-job"
+        && response.supply_modes_applied
+        && response.supply_mode_rule == "stock-first-before-recursive-build"
         && !response.remaining_modifiers_applied
 }
 
@@ -3649,11 +3908,25 @@ fn production_plan_mutation_is_valid(item: &ProductionPlanMutationResponse) -> b
         .iter()
         .map(|assignment| assignment.blueprint_item_id)
         .collect::<HashSet<_>>();
+    let supply_keys = item
+        .step_supply_modes
+        .iter()
+        .map(|supply| {
+            (
+                supply.blueprint_type_id,
+                supply.activity.as_str(),
+                supply.product_type_id,
+            )
+        })
+        .collect::<HashSet<_>>();
     item.saved
         && production_id_is_valid(item.plan_id)
         && production_id_is_valid(item.owner_character_id)
         && production_id_is_valid(item.blueprint_type_id)
         && item.blueprint_item_id.is_none_or(production_id_is_valid)
+        && item.facility_id.is_none_or(production_id_is_valid)
+        && item.material_location_id.is_none_or(production_id_is_valid)
+        && (item.material_location_id.is_none() || item.facility_id.is_some())
         && item.step_blueprint_assignments.len() <= 499
         && keys.len() == item.step_blueprint_assignments.len()
         && item_ids.len() == item.step_blueprint_assignments.len()
@@ -3669,6 +3942,19 @@ fn production_plan_mutation_is_valid(item: &ProductionPlanMutationResponse) -> b
                     assignment.blueprint_type_id,
                     assignment.activity.as_str(),
                     assignment.product_type_id,
+                ) != root_key
+        })
+        && item.step_supply_modes.len() <= 499
+        && supply_keys.len() == item.step_supply_modes.len()
+        && item.step_supply_modes.iter().all(|supply| {
+            production_id_is_valid(supply.blueprint_type_id)
+                && PRODUCTION_ACTIVITIES.contains(&supply.activity.as_str())
+                && production_id_is_valid(supply.product_type_id)
+                && PRODUCTION_SUPPLY_MODES.contains(&supply.supply_mode.as_str())
+                && (
+                    supply.blueprint_type_id,
+                    supply.activity.as_str(),
+                    supply.product_type_id,
                 ) != root_key
         })
         && PRODUCTION_ACTIVITIES.contains(&item.activity.as_str())
@@ -5426,6 +5712,9 @@ fn save_production_plan(
     blueprint_type_id: u64,
     blueprint_item_id: Option<u64>,
     mut step_blueprint_assignments: Vec<ProductionStepBlueprintInput>,
+    facility_id: Option<u64>,
+    material_location_id: Option<u64>,
+    mut step_supply_modes: Vec<ProductionStepSupplyInput>,
     activity: String,
     product_type_id: u64,
     target_quantity: u64,
@@ -5435,6 +5724,13 @@ fn save_production_plan(
 ) -> Result<String, String> {
     step_blueprint_assignments.sort_by(|left, right| {
         left.product_type_id
+            .cmp(&right.product_type_id)
+            .then_with(|| left.activity.cmp(&right.activity))
+            .then_with(|| left.blueprint_type_id.cmp(&right.blueprint_type_id))
+    });
+    step_supply_modes.sort_by(|left, right| {
+        left
+            .product_type_id
             .cmp(&right.product_type_id)
             .then_with(|| left.activity.cmp(&right.activity))
             .then_with(|| left.blueprint_type_id.cmp(&right.blueprint_type_id))
@@ -5454,12 +5750,27 @@ fn save_production_plan(
         .iter()
         .map(|assignment| assignment.blueprint_item_id)
         .collect::<HashSet<_>>();
+    let supply_keys = step_supply_modes
+        .iter()
+        .map(|supply| {
+            (
+                supply.blueprint_type_id,
+                supply.activity.as_str(),
+                supply.product_type_id,
+            )
+        })
+        .collect::<HashSet<_>>();
     if plan_id == Some(0)
         || plan_id.is_some_and(|value| value > JAVASCRIPT_MAX_SAFE_INTEGER)
         || !production_id_is_valid(owner_character_id)
         || !production_id_is_valid(blueprint_type_id)
         || blueprint_item_id == Some(0)
         || blueprint_item_id.is_some_and(|value| value > JAVASCRIPT_MAX_SAFE_INTEGER)
+        || facility_id == Some(0)
+        || facility_id.is_some_and(|value| value > JAVASCRIPT_MAX_SAFE_INTEGER)
+        || material_location_id == Some(0)
+        || material_location_id.is_some_and(|value| value > JAVASCRIPT_MAX_SAFE_INTEGER)
+        || material_location_id.is_some() && facility_id.is_none()
         || step_blueprint_assignments.len() > 499
         || step_keys.len() != step_blueprint_assignments.len()
         || step_item_ids.len() != step_blueprint_assignments.len()
@@ -5473,6 +5784,19 @@ fn save_production_plan(
                     assignment.blueprint_type_id,
                     assignment.activity.as_str(),
                     assignment.product_type_id,
+                ) == root_key
+        })
+        || step_supply_modes.len() > 499
+        || supply_keys.len() != step_supply_modes.len()
+        || step_supply_modes.iter().any(|supply| {
+            !production_id_is_valid(supply.blueprint_type_id)
+                || !PRODUCTION_ACTIVITIES.contains(&supply.activity.as_str())
+                || !production_id_is_valid(supply.product_type_id)
+                || !PRODUCTION_SUPPLY_MODES.contains(&supply.supply_mode.as_str())
+                || (
+                    supply.blueprint_type_id,
+                    supply.activity.as_str(),
+                    supply.product_type_id,
                 ) == root_key
         })
         || !PRODUCTION_ACTIVITIES.contains(&activity.as_str())
@@ -5492,6 +5816,9 @@ fn save_production_plan(
         "blueprintTypeId": blueprint_type_id,
         "blueprintItemId": blueprint_item_id,
         "stepBlueprintAssignments": step_blueprint_assignments,
+        "facilityId": facility_id,
+        "materialLocationId": material_location_id,
+        "stepSupplyModes": step_supply_modes,
         "activity": activity,
         "productTypeId": product_type_id,
         "targetQuantity": target_quantity,
@@ -5518,6 +5845,9 @@ fn save_production_plan(
         || saved.blueprint_type_id != blueprint_type_id
         || saved.blueprint_item_id != blueprint_item_id
         || saved.step_blueprint_assignments != step_blueprint_assignments
+        || saved.facility_id != facility_id
+        || saved.material_location_id != material_location_id
+        || saved.step_supply_modes != step_supply_modes
         || saved.activity != activity
         || saved.product_type_id != product_type_id
         || saved.target_quantity != target_quantity
@@ -7345,6 +7675,12 @@ mod tests {
             owner_name: "Builder".to_owned(),
             blueprint_type_id: 100,
             blueprint_name: "Synthetic Hull Blueprint".to_owned(),
+            facility_id: None,
+            facility_name: None,
+            material_location_id: None,
+            material_location_name: None,
+            material_location_path: None,
+            location_selection_state: "unselected".to_owned(),
             blueprint_item_id: Some(7_001),
             blueprint_assignment_state: "ready".to_owned(),
             blueprint_kind: Some("copy".to_owned()),
@@ -7387,6 +7723,8 @@ mod tests {
                     product_type_id: 111,
                     product_name: "Synthetic Frame".to_owned(),
                     required_quantity: 2,
+                    supply_mode: "stock-first".to_owned(),
+                    stock_used_quantity: 0,
                     output_quantity_per_run: 2,
                     runs: 1,
                     unmodified_runs: 1,
@@ -7454,6 +7792,8 @@ mod tests {
                     product_type_id: 101,
                     product_name: "Synthetic Hull".to_owned(),
                     required_quantity: 2,
+                    supply_mode: "build".to_owned(),
+                    stock_used_quantity: 0,
                     output_quantity_per_run: 1,
                     runs: 2,
                     unmodified_runs: 2,
@@ -7524,6 +7864,19 @@ mod tests {
                     }],
                 },
             ],
+            supply_decisions: vec![ProductionSupplyDecision {
+                blueprint_type_id: 110,
+                activity: "manufacturing".to_owned(),
+                product_type_id: 111,
+                product_name: "Synthetic Frame".to_owned(),
+                supply_mode: "stock-first".to_owned(),
+                required_quantity: 2,
+                stock_available_quantity: 0,
+                stock_used_quantity: 0,
+                build_quantity: 2,
+                shortage_quantity: 0,
+                blueprint_required: true,
+            }],
             gross_materials: vec![ProductionGrossMaterial {
                 type_id: 900,
                 type_name: "Synthetic Mineral".to_owned(),

@@ -330,6 +330,9 @@ const productionCatalogPage: ProductionCatalogPage = {
 const productionPlanPage: ProductionPlanPage = {
   items: [{ planId: 1, ownerCharacterId: 90_888_001, ownerName: "Builder",
     blueprintTypeId: 100, blueprintName: "Synthetic Hull Blueprint",
+    facilityId: null, facilityName: null, materialLocationId: null,
+    materialLocationName: null, materialLocationPath: null,
+    locationSelectionState: "unselected",
     blueprintItemId: null, blueprintAssignmentState: "unassigned",
     blueprintKind: null, blueprintMaterialEfficiency: null, blueprintTimeEfficiency: null,
     blueprintRuns: null, blueprintLocationId: null, blueprintLocationFlag: null,
@@ -344,7 +347,8 @@ const productionPlanPage: ProductionPlanPage = {
     buildNumber: "synthetic-production-1", steps: [{ sequence: 1,
       blueprintTypeId: 100, blueprintName: "Synthetic Hull Blueprint",
       activity: "manufacturing", productTypeId: 101, productName: "Synthetic Hull",
-      requiredQuantity: 3, outputQuantityPerRun: 2, runs: 2, unmodifiedRuns: 2,
+      requiredQuantity: 3, supplyMode: "build", stockUsedQuantity: 0,
+      outputQuantityPerRun: 2, runs: 2, unmodifiedRuns: 2,
       runsSavedByMaterialEfficiency: 0,
       producedQuantity: 4, surplusQuantity: 1, baseTimeSecondsPerRun: 100,
       totalBaseTimeSeconds: 200, timeEfficiency: 0, timeEfficiencyApplied: false,
@@ -381,6 +385,7 @@ const productionPlanPage: ProductionPlanPage = {
       materials: [{ typeId: 900, typeName: "Synthetic Mineral", quantityPerRun: 5,
         unmodifiedGrossQuantity: 10, grossQuantity: 10, materialEfficiency: 0,
         materialEfficiencySavings: 0, producedByPlan: false }] }],
+    supplyDecisions: [],
     grossMaterials: [{ typeId: 900, typeName: "Synthetic Mineral", quantity: 10,
       unmodifiedQuantity: 10, materialEfficiencySavings: 0,
       availabilityState: "shortage", availableQuantity: 15, reservedQuantity: 8,
@@ -412,6 +417,7 @@ const productionPlanPage: ProductionPlanPage = {
     createdAt: "2026-09-11T12:00:00Z", updatedAt: "2026-09-11T12:00:00Z" }],
   total: 1, offset: 0, limit: 50,
   owners: [{ characterId: 90_888_001, name: "Builder" }],
+  locationOptions: [],
   activities: ["manufacturing", "reaction"],
   states: ["ready", "sde-unavailable", "recipe-missing", "cycle", "complexity-limit"],
   summary: { ready: 1, "sde-unavailable": 0, "recipe-missing": 0, cycle: 0,
@@ -428,6 +434,8 @@ const productionPlanPage: ProductionPlanPage = {
   characterSkillTimeRule: "job-wide-ceil-industry-4-advanced-industry-3-reactions-4-active-levels",
   facilityEvidenceApplied: true,
   facilityEvidenceRule: "assigned-blueprint-before-active-before-latest-owner-job",
+  supplyModesApplied: true,
+  supplyModeRule: "stock-first-before-recursive-build",
   remainingModifiersApplied: false,
 };
 
@@ -988,7 +996,9 @@ describe("New Eden Foundry design preview", () => {
 
     await waitFor(() => expect(productionPlanSaver).toHaveBeenCalledWith({
       planId: null, ownerCharacterId: 90_888_001, blueprintTypeId: 100, blueprintItemId: null,
+      facilityId: null, materialLocationId: null,
       stepBlueprintAssignments: [],
+      stepSupplyModes: [],
       activity: "manufacturing", productTypeId: 101, targetQuantity: 2,
       priority: 0, note: null,
     }));
@@ -1010,7 +1020,8 @@ describe("New Eden Foundry design preview", () => {
     fireEvent.click(screen.getByRole("button", { name: "Änderungen speichern" }));
 
     await waitFor(() => expect(productionPlanSaver).toHaveBeenCalledWith(expect.objectContaining({
-      planId: 1, blueprintItemId: 7_020, stepBlueprintAssignments: [],
+      planId: 1, blueprintItemId: 7_020, facilityId: null, materialLocationId: null,
+      stepBlueprintAssignments: [], stepSupplyModes: [],
     })));
   });
 
@@ -1172,6 +1183,52 @@ describe("New Eden Foundry design preview", () => {
     await waitFor(() => expect(productionPlanSaver).toHaveBeenCalledWith(expect.objectContaining({
       stepBlueprintAssignments: [{ blueprintTypeId: 110, activity: "manufacturing",
         productTypeId: 111, blueprintItemId: 7_010 }],
+      stepSupplyModes: [],
+    })));
+  });
+
+  it("stores a production station, material container, and stock-only component source", async () => {
+    const basePlan = productionPlanPage.items[0];
+    const page: ProductionPlanPage = {
+      ...productionPlanPage,
+      locationOptions: [{ ownerCharacterId: 90_888_001, facilityId: 60_003_760,
+        facilityName: "Jita IV - Moon 4", facilityKind: "station", facilityAccess: "available",
+        locationStatus: "resolved", materialLocations: [
+          { locationId: 60_003_760, locationName: "Jita IV - Moon 4",
+            locationPath: "Jita IV - Moon 4", locationKind: "facility" },
+          { locationId: 7_000, locationName: "Production Materials",
+            locationPath: "Jita IV - Moon 4 / Production Materials", locationKind: "container" },
+        ] }],
+      items: [{ ...basePlan, supplyDecisions: [{ blueprintTypeId: 110,
+        activity: "manufacturing", productTypeId: 111, productName: "Synthetic Component",
+        supplyMode: "stock-first", requiredQuantity: 4, stockAvailableQuantity: 0,
+        stockUsedQuantity: 0, buildQuantity: 4, shortageQuantity: 0,
+        blueprintRequired: true }] }],
+    };
+    const productionPlanSaver = vi.fn().mockResolvedValue({ saved: true, planId: 1 });
+    render(<App runtimeLoader={() => nativeRuntime()}
+      productionPlansLoader={() => Promise.resolve(page)}
+      productionPlanSaver={productionPlanSaver} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Produktion" }));
+    const component = await screen.findByText("Synthetic Component");
+    const card = component.closest("article");
+    expect(card).not.toBeNull();
+    const selectWithOption = (value: string) => Array.from(card!.querySelectorAll("select"))
+      .find((select) => select.querySelector(`option[value="${value}"]`));
+    fireEvent.change(selectWithOption("60003760")!, { target: { value: "60003760" } });
+    await waitFor(() => expect(selectWithOption("7000")).toBeDefined());
+    fireEvent.change(selectWithOption("7000")!, { target: { value: "7000" } });
+    fireEvent.change(selectWithOption("stock-only")!, { target: { value: "stock-only" } });
+    expect(screen.getByText(/Kein Blueprint für diesen Vorproduktschritt erforderlich/))
+      .toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Änderungen speichern" }));
+
+    await waitFor(() => expect(productionPlanSaver).toHaveBeenCalledWith(expect.objectContaining({
+      planId: 1, facilityId: 60_003_760, materialLocationId: 7_000,
+      stepBlueprintAssignments: [],
+      stepSupplyModes: [{ blueprintTypeId: 110, activity: "manufacturing",
+        productTypeId: 111, supplyMode: "stock-only" }],
     })));
   });
 

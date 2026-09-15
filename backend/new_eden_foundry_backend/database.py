@@ -17,7 +17,7 @@ from .recovery import (
 
 
 BUSY_TIMEOUT_MILLISECONDS: Final = 5_000
-SCHEMA_VERSION: Final = 11
+SCHEMA_VERSION: Final = 12
 
 MIGRATIONS: Final = (
     (
@@ -347,6 +347,56 @@ MIGRATIONS: Final = (
             """
             CREATE INDEX idx_production_plan_step_blueprints_plan
                 ON production_plan_step_blueprints(plan_id, product_type_id)
+            """,
+        ),
+    ),
+    (
+        12,
+        "production_plan_supply_locations",
+        (
+            """
+            ALTER TABLE production_plans
+                ADD COLUMN facility_id INTEGER
+                    CHECK(facility_id IS NULL OR facility_id > 0)
+            """,
+            """
+            ALTER TABLE production_plans
+                ADD COLUMN material_location_id INTEGER
+                    CHECK(
+                        material_location_id IS NULL
+                        OR (material_location_id > 0 AND facility_id IS NOT NULL)
+                    )
+            """,
+            """
+            CREATE TABLE production_plan_step_supply_modes (
+                plan_id INTEGER NOT NULL
+                    REFERENCES production_plans(id) ON DELETE CASCADE,
+                blueprint_type_id INTEGER NOT NULL CHECK(blueprint_type_id > 0),
+                activity TEXT NOT NULL CHECK(
+                    activity IN ('manufacturing', 'reaction')
+                ),
+                product_type_id INTEGER NOT NULL CHECK(product_type_id > 0),
+                supply_mode TEXT NOT NULL CHECK(
+                    supply_mode IN ('stock-first', 'stock-only', 'build')
+                ),
+                created_at TEXT NOT NULL DEFAULT (
+                    strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                ),
+                updated_at TEXT NOT NULL DEFAULT (
+                    strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                ),
+                PRIMARY KEY (
+                    plan_id, blueprint_type_id, activity, product_type_id
+                )
+            )
+            """,
+            """
+            CREATE INDEX idx_production_plan_step_supply_modes_plan
+                ON production_plan_step_supply_modes(plan_id, product_type_id)
+            """,
+            """
+            CREATE INDEX idx_production_plans_facility
+                ON production_plans(owner_character_id, facility_id)
             """,
         ),
     ),
