@@ -398,7 +398,7 @@ class SidecarIntegrationTests(unittest.TestCase):
             with opener.open(valid_request, timeout=3) as response:
                 health = json.loads(response.read())
             self.assertEqual(health["state"], "ready")
-            self.assertEqual(health["database"]["schemaVersion"], 11)
+            self.assertEqual(health["database"]["schemaVersion"], 12)
             self.assertEqual(health["database"]["location"], "data/foundry.sqlite3")
             self.assertIsNone(health["database"]["lastMigrationBackup"])
             self.assertEqual(health["data"]["state"], "empty")

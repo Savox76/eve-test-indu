@@ -1,6 +1,6 @@
 # Produktionsplanung
 
-Paket 30 ergänzt lokale, updatefeste Fertigungs- und Reaktionsziele. Paket 31 gleicht deren äußeren Materialbedarf mit vollständigen persönlichen Asset-Snapshots ab. Paket 32 reserviert denselben Bestand konfliktfrei zwischen allen Zielen eines Charakters. Paket 33 ordnet einem Ziel optional ein konkretes persönliches Blueprint-Item zu und wendet dessen belegten ME-Wert auf den Wurzel-Fertigungsschritt an. Paket 34 bezieht zusätzlich dessen belegten TE-Wert in die Blueprint-Zeit des Zielschritts ein. Paket 35 wendet die aktuell wirksamen Industrie- und Reaktions-Skills des ausführenden Charakters auf jeden passenden Schritt an. Paket 36 erweitert die persönliche Blueprintzuordnung und ihre ME-/TE-Wirkung auf jeden Fertigungsschritt der Kette. Paket 37 verbindet jeden Schritt mit einem belegten persönlichen Job und dessen Anlagenstand. Die Planung verwendet ausschließlich vollständige, belegte Snapshots, verändert keine Daten in EVE und startet keine Industrieaufträge.
+Paket 30 ergänzt lokale, updatefeste Fertigungs- und Reaktionsziele. Paket 31 gleicht deren äußeren Materialbedarf mit vollständigen persönlichen Asset-Snapshots ab. Paket 32 reserviert denselben Bestand konfliktfrei zwischen allen Zielen eines Charakters. Paket 33 ordnet einem Ziel optional ein konkretes persönliches Blueprint-Item zu und wendet dessen belegten ME-Wert auf den Wurzel-Fertigungsschritt an. Paket 34 bezieht zusätzlich dessen belegten TE-Wert in die Blueprint-Zeit des Zielschritts ein. Paket 35 wendet die aktuell wirksamen Industrie- und Reaktions-Skills des ausführenden Charakters auf jeden passenden Schritt an. Paket 36 erweitert die persönliche Blueprintzuordnung und ihre ME-/TE-Wirkung auf jeden Fertigungsschritt der Kette. Paket 37 verbindet jeden Schritt mit einem belegten persönlichen Job und dessen Anlagenstand. Paket 38 lässt vorhandene Vorprodukte die Kette verkürzen und bindet Bestand sowie Reservierungen wahlweise an eine Produktionsstation und ein Materiallager. Die Planung verwendet ausschließlich vollständige, belegte Snapshots, verändert keine Daten in EVE und startet keine Industrieaufträge.
 
 ## Persistentes Ziel
 
@@ -10,11 +10,29 @@ Ein Ziel enthält:
 - das exakte Blueprint-/Aktivitäts-/Produkt-Rezept,
 - optional die Item-ID eines persönlichen BPO oder BPC für das Zielrezept,
 - optional je Fertigungs-Vorproduktschritt die Item-ID eines persönlichen BPO oder BPC,
+- optional eine Produktionsstation oder Struktur und darin ein direktes Hangarlager oder einen Container,
+- je produzierbarem Vorprodukt die Versorgung aus Bestand, Fertigung oder einer Kombination daraus,
 - eine positive Zielmenge,
 - eine Priorität von 0 bis 999,
 - eine optionale Notiz bis 240 Zeichen.
 
-Die Tabelle `production_plans` gehört ab Schema 9 zum Anwendungskern. Schema 10 ergänzt die optionale `blueprint_item_id` des Zielrezepts. Schema 11 ergänzt `production_plan_step_blueprints` für die expliziten Zuordnungen der Fertigungs-Vorproduktschritte. Eine konkrete physische Item-ID darf innerhalb eines Ziels und zielübergreifend höchstens einmal zugeordnet sein. Beim Löschen eines Ziels oder vollständigen Löschen des Charakters werden die Schrittzuordnungen über Fremdschlüssel mitgelöscht. Ein späterer SDE-Neuaufbau löscht die Ziele dagegen nicht: fehlt danach der Aktivitätsstand oder das gespeicherte Rezept, bleibt das Ziel mit einem ausdrücklichen Fehlerzustand sichtbar.
+Die Tabelle `production_plans` gehört ab Schema 9 zum Anwendungskern. Schema 10 ergänzt die optionale `blueprint_item_id` des Zielrezepts. Schema 11 ergänzt `production_plan_step_blueprints` für die expliziten Zuordnungen der Fertigungs-Vorproduktschritte. Schema 12 ergänzt die optionale Anlage und das Materiallager sowie `production_plan_step_supply_modes` für die Versorgungswahl. Eine konkrete physische Blueprint-Item-ID darf innerhalb eines Ziels und zielübergreifend höchstens einmal zugeordnet sein. Beim Löschen eines Ziels oder vollständigen Löschen des Charakters werden die Schrittzuordnungen und Versorgungsmodi über Fremdschlüssel mitgelöscht. Ein späterer SDE-Neuaufbau löscht die Ziele dagegen nicht: fehlt danach der Aktivitätsstand oder das gespeicherte Rezept, bleibt das Ziel mit einem ausdrücklichen Fehlerzustand sichtbar.
+
+## Versorgungsmodi und Produktionsort
+
+Das Zielprodukt wird immer gebaut. Für jedes produzierbare Vorprodukt stehen drei explizite Modi zur Verfügung:
+
+| Modus | Wirkung |
+| --- | --- |
+| `stock-first` | Der konfliktfrei freie Bestand wird zuerst eingesetzt; nur die ungedeckte Restmenge wird gebaut. Ist alles vorhanden, entfällt der Schritt samt Blueprintbedarf. |
+| `stock-only` | Das Vorprodukt wird ausschließlich als vorhandenes Material behandelt. Es wird kein Produktionsschritt und kein Blueprint benötigt; nicht vorhandene Einheiten bleiben als Fehlmenge sichtbar. |
+| `build` | Vorhandener Bestand dieses Vorprodukts wird ignoriert und die vollständige benötigte Menge gebaut. |
+
+`supplyDecisions` nennt je Vorprodukt benötigte, verfügbare, verwendete, zu bauende und fehlende Menge sowie die daraus folgende Blueprintpflicht. Die stabile Regel lautet `stock-first-before-recursive-build`: Bestand wird vor der rekursiven Auflösung der untergeordneten Materialien abgezogen. So verkürzen vorhandene T1-Gegenstände und andere Zwischenprodukte tatsächlich die Fertigungskette, statt nur am Ende als Rohmaterialbestand aufzutauchen.
+
+Anlagen- und Lageroptionen werden ausschließlich aus dem zum letzten vollständigen Asset-Snapshot gehörenden, root-first aufgelösten Standortstand des ausführenden Charakters gebildet. Eine Anlage kann als gesamter Standort, als direkter Stations-/Strukturhangar oder über einen Container gewählt werden. Bei einem Container zählen auch dessen aufgelöste Untercontainer. Dieselbe Auswahl begrenzt sowohl den angezeigten Bestand als auch die zielübergreifende Reservierungsbuchung; Bestand außerhalb der Auswahl bleibt als ausgeschlossen belegt. Ohne Anlagenwahl bleibt aus Kompatibilitätsgründen der gesamte persönliche Bestand des Charakters die Quelle.
+
+Die gespeicherte Wahl bleibt auch sichtbar, wenn ein späterer Snapshot die Anlage oder den Container nicht mehr auflösen kann. `facility-missing` und `material-location-missing` verhindern eine stillschweigende Umdeutung. Beim Speichern einer neuen Auswahl muss sie im aktuellen vollständigen Standortstand vorhanden sein.
 
 ## Persönliche Blueprintzuordnung, ME und TE
 
@@ -80,7 +98,7 @@ Ein historischer oder aktiver Job ist ein nachvollziehbarer persönlicher Anlage
 
 ## Bruttomaterial und Zustände
 
-`grossMaterials` enthält nur die äußeren Materialien, für die innerhalb der ausgewählten Kette kein Rezept verwendet wird. Zwischenprodukte erscheinen stattdessen als eigene Schritte.
+`grossMaterials` enthält alle Mengen, die aus Bestand oder Einkauf bereitgestellt werden müssen. Dazu gehören äußere Materialien ohne verwendetes Rezept sowie der aus Bestand gedeckte Anteil eines Vorprodukts. Nur tatsächlich zu bauende Zwischenmengen erscheinen als Produktionsschritt; `producedByPlan` kennzeichnet diese Beziehung in den direkten Schrittmaterialien.
 
 ## Bestandsabgleich, Reservierung und Fehlmengen
 
@@ -103,7 +121,7 @@ Die endgültige Fehlmenge ist die Summe beider Werte. Höchstens 50 vorrangige Z
 
 Angerechnete Bestände werden nach Standortpfad und EVE-Bereich zusammengefasst. Jede Gruppe nennt Charakter, Quellstandort, Standortstatus, Bereich, Menge, Positionszahl sowie Asset-Snapshot-, Sync-Lauf- und Beobachtungszeitpunkt. Höchstens 50 Standortgruppen je Material und Kategorie werden übertragen; Gesamtmenge, Positions- und Gruppenzahl bleiben auch bei einer gekürzten Detailansicht vollständig. Fehlt der exakt zum Asset-Snapshot gehörende Standort-Snapshot, bleibt die Menge anrechenbar und ihr Standortstatus nachvollziehbar `pending`.
 
-Passende Bestände anderer aktivierter Charaktere werden nicht stillschweigend zusammengelegt. Sie erscheinen getrennt als bewusst nicht angerechneter Bestand mit denselben Quellenangaben. Dadurch bleibt sichtbar, wo Material vorhanden wäre, ohne die technische und fachliche Charaktertrennung aufzuheben.
+Passende Bestände anderer aktivierter Charaktere werden nicht stillschweigend zusammengelegt. Bei einer gewählten Produktions- oder Materialquelle erscheinen außerdem Bestände desselben Charakters außerhalb dieser Auswahl getrennt als bewusst nicht angerechneter Bestand mit denselben Quellenangaben. Dadurch bleibt sichtbar, wo Material vorhanden wäre, ohne die Charakter- oder Standortgrenze aufzuheben.
 
 | Bestandszustand | Bedeutung |
 | --- | --- |
@@ -124,17 +142,17 @@ Neue Ziele mit Zyklus oder überschrittener Komplexitätsgrenze werden nicht ges
 
 ## Bewusste Berechnungsgrenze
 
-Paket 37 berechnet Bruttobedarf einschließlich des belegten Blueprint-ME jedes zugewiesenen Fertigungsschritts, die mit dessen belegtem TE veränderte Blueprint-Zeit, die persönliche Skillzeit, persönlichen Bestand und konfliktfreie zielbezogene Reservierungen. Zusätzlich werden passende persönliche Job- und Anlagenbelege samt aktivitätsspezifischem Systemkostenindex dargestellt. Noch nicht einbezogen werden:
+Paket 38 berechnet Bruttobedarf einschließlich des belegten Blueprint-ME jedes tatsächlich gebauten Fertigungsschritts, die mit dessen belegtem TE veränderte Blueprint-Zeit, die persönliche Skillzeit, gewählte Bestandsquellen und konfliktfreie zielbezogene Reservierungen. Vorhandene Vorprodukte können die Kette teilweise oder vollständig ersetzen. Zusätzlich werden passende persönliche Job- und Anlagenbelege samt aktivitätsspezifischem Systemkostenindex dargestellt. Noch nicht einbezogen werden:
 
 - persönliche Blueprint-ME-/TE-Modifikatoren für Reaktionen,
 - Anlagen-, Service- und Rigboni,
 - Systemkosten, Steuern und Preise.
 
-Die API bestätigt die aktiven Verträge mit `inventoryApplied: true`, `reservationsApplied: true`, `reservationRule: priority-desc-created-asc-plan-id-asc`, `blueprintMaterialEfficiencyApplied: true`, `materialEfficiencyRule: max-runs-ceil-base-runs-percent`, `blueprintTimeEfficiencyApplied: true`, `timeEfficiencyRule: max-one-ceil-base-runs-percent`, `blueprintChainAssignmentsApplied: true`, `blueprintChainAssignmentRule: explicit-per-recipe-unique-item`, `characterSkillTimeApplied: true`, `characterSkillTimeRule: job-wide-ceil-industry-4-advanced-industry-3-reactions-4-active-levels`, `facilityEvidenceApplied: true` und `facilityEvidenceRule: assigned-blueprint-before-active-before-latest-owner-job`. Die verbleibende Modifikatorgrenze bleibt `remainingModifiersApplied: false`. Auch die ausgewiesene persönliche Skillzeit darf ohne Anlagen-/Rigboni weiterhin nicht als reale Fertigstellungszeit oder Kostenprognose verstanden werden.
+Die API bestätigt die aktiven Verträge mit `inventoryApplied: true`, `reservationsApplied: true`, `reservationRule: priority-desc-created-asc-plan-id-asc`, `blueprintMaterialEfficiencyApplied: true`, `materialEfficiencyRule: max-runs-ceil-base-runs-percent`, `blueprintTimeEfficiencyApplied: true`, `timeEfficiencyRule: max-one-ceil-base-runs-percent`, `blueprintChainAssignmentsApplied: true`, `blueprintChainAssignmentRule: explicit-per-recipe-unique-item`, `characterSkillTimeApplied: true`, `characterSkillTimeRule: job-wide-ceil-industry-4-advanced-industry-3-reactions-4-active-levels`, `facilityEvidenceApplied: true`, `facilityEvidenceRule: assigned-blueprint-before-active-before-latest-owner-job`, `supplyModesApplied: true` und `supplyModeRule: stock-first-before-recursive-build`. Die verbleibende Modifikatorgrenze bleibt `remainingModifiersApplied: false`. Auch die ausgewiesene persönliche Skillzeit darf ohne Anlagen-/Rigboni weiterhin nicht als reale Fertigstellungszeit oder Kostenprognose verstanden werden.
 
 ## Arbeitsvorrat und Bedienung
 
-Die Produktionsplanung befindet sich unter **Produktion & Reaktionen**. Die Auswahl des ausführenden Charakters stammt direkt aus der Liste aktivierter Charaktere und hängt weder von vorhandenen Zielen noch von einer erfolgreichen Zielabfrage ab. Produkt- und Ziellisten unterstützen Suche, Aktivitäts-, Besitzer- und Statusfilter, Sortierung und begrenzte Seiten. Ein Ziel kann angelegt, geändert und bewusst entfernt werden.
+Die Produktionsplanung befindet sich unter **Produktion & Reaktionen**. Die Auswahl des ausführenden Charakters stammt direkt aus der Liste aktivierter Charaktere und hängt weder von vorhandenen Zielen noch von einer erfolgreichen Zielabfrage ab. Beim Anlegen und Bearbeiten können die Produktionsstation und das darin verwendete Materiallager gewählt werden. Nach der ersten Auflösung lässt sich die Quelle jedes Vorprodukts umstellen; die Anzeige nennt unmittelbar Bestandseinsatz, Restbau, Fehlmenge und Blueprintpflicht. Produkt- und Ziellisten unterstützen Suche, Aktivitäts-, Besitzer- und Statusfilter, Sortierung und begrenzte Seiten. Ein Ziel kann angelegt, geändert und bewusst entfernt werden.
 
 Die Industrie-Slotübersicht zählt ein auflösbares Ziel als **laufend**, wenn derselbe Charakter einen aktiven, pausierten oder abholbereiten Job mit passender Aktivität und Blueprint-Typ-ID besitzt. Sonst ist es **geplant**. Nicht auflösbare Ziele sind **blockiert**. Ein Fertigzustand wird nicht aus Bestand oder Jobhistorie erfunden und bleibt daher null.
 

@@ -151,6 +151,7 @@ import {
   type ProductionPlanQuery,
   type ProductionPlanSortField,
   type ProductionPlanState,
+  type ProductionSupplyMode,
   type PublicReleaseNotice,
   type CharacterUpdate,
   type DesktopRuntimeStatus,
@@ -921,6 +922,15 @@ const copy = {
       select: "Auswählen",
       selected: "Ausgewählt",
       owner: "Ausführender Charakter",
+      facilityChoice: "Produktionsstation / Struktur",
+      noFacilityChoice: "Alle persönlichen Lagerorte",
+      materialSource: "Materiallager",
+      allFacilityLocations: "Gesamter Bestand dieser Station",
+      locationStateLabels: {
+        unselected: "Produktionsort offen", ready: "Produktionsort gewählt",
+        "facility-missing": "Produktionsstation fehlt",
+        "material-location-missing": "Materiallager fehlt",
+      },
       blueprintAssignment: "Persönlicher Blueprint",
       stepBlueprintAssignment: "Blueprint für diesen Schritt",
       noBlueprint: "Nicht zugewiesen",
@@ -982,6 +992,14 @@ const copy = {
       quantity: "Zielmenge",
       goalQuantity: "Ziel: {quantity}",
       steps: "Herstellungsreihenfolge",
+      supplies: "Bezugsart der Vorprodukte",
+      supplyHint: "Bestand zuerst kürzt den Fertigungsschritt; nur Bestand/Zukauf benötigt keinen Blueprint.",
+      supplyModeLabels: {
+        "stock-first": "Bestand zuerst", "stock-only": "Nur Bestand / Zukauf",
+        build: "Selbst herstellen",
+      },
+      supplySummary: "Bedarf {required} · Bestand {stock} · Herstellung {build} · Fehlmenge {missing}",
+      noBlueprintNeeded: "Kein Blueprint für diesen Vorproduktschritt erforderlich",
       sequenceHint: "Vorprodukte werden zuerst hergestellt; das gewählte Zielprodukt steht bewusst am Ende.",
       step: "Schritt {sequence}",
       intermediateStep: "Vorprodukt",
@@ -1741,6 +1759,15 @@ const copy = {
       select: "Select",
       selected: "Selected",
       owner: "Executing character",
+      facilityChoice: "Production station / structure",
+      noFacilityChoice: "All personal inventory locations",
+      materialSource: "Material storage",
+      allFacilityLocations: "All inventory at this facility",
+      locationStateLabels: {
+        unselected: "Production location open", ready: "Production location selected",
+        "facility-missing": "Production facility missing",
+        "material-location-missing": "Material storage missing",
+      },
       blueprintAssignment: "Personal blueprint",
       stepBlueprintAssignment: "Blueprint for this step",
       noBlueprint: "Unassigned",
@@ -1802,6 +1829,14 @@ const copy = {
       quantity: "Target quantity",
       goalQuantity: "Goal: {quantity}",
       steps: "Manufacturing order",
+      supplies: "Intermediate supply method",
+      supplyHint: "Stock first shortens the manufacturing step; stock/purchase only needs no blueprint.",
+      supplyModeLabels: {
+        "stock-first": "Stock first", "stock-only": "Stock / purchase only",
+        build: "Manufacture",
+      },
+      supplySummary: "Required {required} · stock {stock} · manufacture {build} · shortage {missing}",
+      noBlueprintNeeded: "No blueprint required for this intermediate step",
       sequenceHint: "Components are manufactured first; the selected goal product deliberately comes last.",
       step: "Step {sequence}",
       intermediateStep: "Component",
@@ -5112,6 +5147,8 @@ function ProductionWorkspace({
   const [catalogFailed, setCatalogFailed] = useState(false);
   const [selected, setSelected] = useState<ProductionCatalogItem | null>(null);
   const [newOwner, setNewOwner] = useStoredState<number | null>("production.executing-character", null, isNullablePositiveInteger);
+  const [newFacilityId, setNewFacilityId] = useStoredState<number | null>("production.facility", null, isNullablePositiveInteger);
+  const [newMaterialLocationId, setNewMaterialLocationId] = useStoredState<number | null>("production.material-location", null, isNullablePositiveInteger);
   const [newQuantity, setNewQuantity] = useState(1);
   const [newPriority, setNewPriority] = useState(0);
   const [newNote, setNewNote] = useState("");
@@ -5129,7 +5166,11 @@ function ProductionWorkspace({
   const [revision, setRevision] = useState(0);
   const [busyId, setBusyId] = useState<number | "new" | null>(null);
   const [mutationState, setMutationState] = useState<"saved" | "deleted" | "error" | null>(null);
-  const [drafts, setDrafts] = useState<Record<number, { owner: number; blueprintItemId: number | null; stepBlueprintItemIds: Record<string, number | null>; quantity: number; priority: number; note: string }>>({});
+  const [drafts, setDrafts] = useState<Record<number, {
+    owner: number; blueprintItemId: number | null; stepBlueprintItemIds: Record<string, number | null>;
+    facilityId: number | null; materialLocationId: number | null;
+    supplyModes: Record<string, ProductionSupplyMode>; quantity: number; priority: number; note: string;
+  }>>({});
   const numberFormat = useMemo(() => new Intl.NumberFormat(locale === "de" ? "de-DE" : "en-US"), [locale]);
   const percentFormat = useMemo(
     () => new Intl.NumberFormat(locale === "de" ? "de-DE" : "en-US", {
@@ -5146,11 +5187,24 @@ function ProductionWorkspace({
     });
     return [...owners.values()];
   }, [characters, plans]);
+  const newFacilityOptions = useMemo(() =>
+    (plans?.locationOptions ?? []).filter((option) => option.ownerCharacterId === newOwner),
+  [newOwner, plans]);
+  const newFacility = newFacilityOptions.find((option) => option.facilityId === newFacilityId) ?? null;
 
   useEffect(() => {
     setNewOwner((current) => current !== null && productionOwners.some((owner) => owner.characterId === current)
       ? current : productionOwners[0]?.characterId ?? null);
   }, [productionOwners]);
+  useEffect(() => {
+    if (newFacilityId !== null && !newFacilityOptions.some((option) => option.facilityId === newFacilityId)) {
+      setNewFacilityId(null);
+      setNewMaterialLocationId(null);
+    } else if (newMaterialLocationId !== null &&
+      !newFacility?.materialLocations.some((option) => option.locationId === newMaterialLocationId)) {
+      setNewMaterialLocationId(null);
+    }
+  }, [newFacility, newFacilityId, newFacilityOptions, newMaterialLocationId]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -5203,9 +5257,14 @@ function ProductionWorkspace({
         setPlans(page);
         setDrafts(Object.fromEntries(page.items.map((item) => [item.planId, {
           owner: item.ownerCharacterId, blueprintItemId: item.blueprintItemId, quantity: item.targetQuantity,
+          facilityId: item.facilityId, materialLocationId: item.materialLocationId,
           stepBlueprintItemIds: Object.fromEntries(item.steps.slice(0, -1).map((step) => [
             `${step.blueprintTypeId}:${step.activity}:${step.productTypeId}`,
             step.blueprintAssignment.blueprintItemId,
+          ])),
+          supplyModes: Object.fromEntries(item.supplyDecisions.map((decision) => [
+            `${decision.blueprintTypeId}:${decision.activity}:${decision.productTypeId}`,
+            decision.supplyMode,
           ])),
           priority: item.priority, note: item.note ?? "",
         }])));
@@ -5223,6 +5282,8 @@ function ProductionWorkspace({
     try {
       await savePlan({ planId: null, ownerCharacterId: newOwner,
         blueprintTypeId: selected.blueprintTypeId, blueprintItemId: null, stepBlueprintAssignments: [], activity: selected.activity,
+        facilityId: newFacilityId, materialLocationId: newMaterialLocationId,
+        stepSupplyModes: [],
         productTypeId: selected.productTypeId, targetQuantity: newQuantity,
         priority: newPriority, note: newNote || null });
       setPlanSearch("");
@@ -5253,18 +5314,27 @@ function ProductionWorkspace({
     try {
       await savePlan({ planId: item.planId, ownerCharacterId: draft.owner,
         blueprintTypeId: item.blueprintTypeId, blueprintItemId: draft.blueprintItemId,
+        facilityId: draft.facilityId, materialLocationId: draft.materialLocationId,
         stepBlueprintAssignments: item.steps.slice(0, -1).flatMap((step) => {
           if (step.activity !== "manufacturing") return [];
-          const blueprintItemId = draft.stepBlueprintItemIds[
-            `${step.blueprintTypeId}:${step.activity}:${step.productTypeId}`
-          ];
+          const stepKey = `${step.blueprintTypeId}:${step.activity}:${step.productTypeId}`;
+          if ((draft.supplyModes[stepKey] ?? step.supplyMode) === "stock-only") return [];
+          const blueprintItemId = draft.stepBlueprintItemIds[stepKey];
           return blueprintItemId == null ? [] : [{
             blueprintTypeId: step.blueprintTypeId,
             activity: step.activity,
             productTypeId: step.productTypeId,
             blueprintItemId,
           }];
-        }), activity: item.activity,
+        }),
+        stepSupplyModes: item.supplyDecisions.map((decision) => ({
+          blueprintTypeId: decision.blueprintTypeId,
+          activity: decision.activity,
+          productTypeId: decision.productTypeId,
+          supplyMode: draft.supplyModes[
+            `${decision.blueprintTypeId}:${decision.activity}:${decision.productTypeId}`
+          ] ?? decision.supplyMode,
+        })), activity: item.activity,
         productTypeId: item.productTypeId, targetQuantity: draft.quantity,
         priority: draft.priority, note: draft.note || null });
       setMutationState("saved");
@@ -5333,6 +5403,8 @@ function ProductionWorkspace({
         <div className="production-create">
           <div className="production-create__selection"><Factory size={18} /><span><strong>{selected?.productName ?? t.productionPlanning.catalog}</strong><small>{selected ? `${selected.blueprintName} · ${t.productionPlanning.activityLabels[selected.activity]}` : t.productionPlanning.searchRecipe}</small></span></div>
           <label><span>{t.productionPlanning.owner}</span><select value={newOwner ?? ""} onChange={(event) => setNewOwner(event.target.value ? Number(event.target.value) : null)}><option value="">—</option>{productionOwners.map((owner) => <option key={owner.characterId} value={owner.characterId}>{owner.name}</option>)}</select></label>
+          <label><span>{t.productionPlanning.facilityChoice}</span><select value={newFacilityId ?? ""} onChange={(event) => { setNewFacilityId(event.target.value ? Number(event.target.value) : null); setNewMaterialLocationId(null); }}><option value="">{t.productionPlanning.noFacilityChoice}</option>{newFacilityOptions.map((option) => <option key={option.facilityId} value={option.facilityId}>{option.facilityName}</option>)}</select></label>
+          <label><span>{t.productionPlanning.materialSource}</span><select value={newMaterialLocationId ?? ""} disabled={newFacility === null} onChange={(event) => setNewMaterialLocationId(event.target.value ? Number(event.target.value) : null)}><option value="">{t.productionPlanning.allFacilityLocations}</option>{newFacility?.materialLocations.map((option) => <option key={option.locationId} value={option.locationId}>{option.locationKind === "facility" ? `${option.locationName} · Hangar` : option.locationPath}</option>)}</select></label>
           <label><span>{t.productionPlanning.target}</span><input type="number" min={1} max={Number.MAX_SAFE_INTEGER} value={newQuantity} onChange={(event) => setNewQuantity(Math.max(1, Number(event.target.value) || 1))} /></label>
           <label><span>{t.productionPlanning.priority}</span><input type="number" min={0} max={999} value={newPriority} onChange={(event) => setNewPriority(Math.min(999, Math.max(0, Number(event.target.value) || 0)))} /></label>
           <label className="production-create__note"><span>{t.productionPlanning.note}</span><input value={newNote} maxLength={240} placeholder={t.productionPlanning.notePlaceholder} onChange={(event) => setNewNote(event.target.value)} /></label>
@@ -5357,12 +5429,16 @@ function ProductionWorkspace({
           : plansLoading && plans === null ? <div className="asset-empty"><RefreshCw className="spin" size={22} />{t.productionPlanning.loading}</div>
           : plans && plans.items.length === 0 ? <div className="asset-empty"><Factory size={22} />{planSearch || planOwner || planActivity || planState ? t.productionPlanning.noMatches : t.productionPlanning.noPlans}</div>
           : plans ? <div className="production-plan-list">{plans.items.map((item) => {
-              const draft = drafts[item.planId] ?? { owner: item.ownerCharacterId, blueprintItemId: item.blueprintItemId, stepBlueprintItemIds: Object.fromEntries(item.steps.slice(0, -1).map((step) => [`${step.blueprintTypeId}:${step.activity}:${step.productTypeId}`, step.blueprintAssignment.blueprintItemId])), quantity: item.targetQuantity, priority: item.priority, note: item.note ?? "" };
+              const draft = drafts[item.planId] ?? { owner: item.ownerCharacterId, blueprintItemId: item.blueprintItemId, stepBlueprintItemIds: Object.fromEntries(item.steps.slice(0, -1).map((step) => [`${step.blueprintTypeId}:${step.activity}:${step.productTypeId}`, step.blueprintAssignment.blueprintItemId])), facilityId: item.facilityId, materialLocationId: item.materialLocationId, supplyModes: Object.fromEntries(item.supplyDecisions.map((decision) => [`${decision.blueprintTypeId}:${decision.activity}:${decision.productTypeId}`, decision.supplyMode])), quantity: item.targetQuantity, priority: item.priority, note: item.note ?? "" };
               const blueprintCandidates = draft.owner === item.ownerCharacterId ? item.blueprintCandidates : [];
+              const draftFacilityOptions = plans.locationOptions.filter((option) => option.ownerCharacterId === draft.owner);
+              const draftFacility = draftFacilityOptions.find((option) => option.facilityId === draft.facilityId) ?? null;
               return <article className="production-plan-card" key={item.planId}>
-                <header><div><div className="production-plan-statuses"><span className={`status-pill status-pill--${item.state === "ready" ? "good" : "warn"}`}>{t.productionPlanning.stateLabels[item.state]}</span><span className={`status-pill status-pill--${item.inventoryState === "covered" ? "good" : "warn"}`}>{t.productionPlanning.inventoryLabels[item.inventoryState]}</span><span className={`status-pill status-pill--${item.blueprintAssignmentState === "ready" ? "good" : "warn"}`}>{t.productionPlanning.blueprintStateLabels[item.blueprintAssignmentState]}</span><span className={`status-pill status-pill--${item.characterSkillState === "ready" ? "good" : "warn"}`}>{t.productionPlanning.skillStateLabels[item.characterSkillState]}</span><span className={`status-pill status-pill--${item.facilityState === "ready" ? "good" : item.facilityState === "partial" ? "info" : "warn"}`}>{t.productionPlanning.facilityStateLabels[item.facilityState]}</span></div><h2>{item.productName}</h2><p>{item.blueprintName} · {t.productionPlanning.activityLabels[item.activity]} · #{item.blueprintTypeId}</p></div><strong>{t.productionPlanning.goalQuantity.replace("{quantity}", numberFormat.format(item.targetQuantity))}</strong></header>
+                <header><div><div className="production-plan-statuses"><span className={`status-pill status-pill--${item.state === "ready" ? "good" : "warn"}`}>{t.productionPlanning.stateLabels[item.state]}</span><span className={`status-pill status-pill--${item.inventoryState === "covered" ? "good" : "warn"}`}>{t.productionPlanning.inventoryLabels[item.inventoryState]}</span><span className={`status-pill status-pill--${item.locationSelectionState === "ready" ? "good" : item.locationSelectionState === "unselected" ? "info" : "warn"}`}>{t.productionPlanning.locationStateLabels[item.locationSelectionState]}</span><span className={`status-pill status-pill--${item.blueprintAssignmentState === "ready" ? "good" : "warn"}`}>{t.productionPlanning.blueprintStateLabels[item.blueprintAssignmentState]}</span><span className={`status-pill status-pill--${item.characterSkillState === "ready" ? "good" : "warn"}`}>{t.productionPlanning.skillStateLabels[item.characterSkillState]}</span><span className={`status-pill status-pill--${item.facilityState === "ready" ? "good" : item.facilityState === "partial" ? "info" : "warn"}`}>{t.productionPlanning.facilityStateLabels[item.facilityState]}</span></div><h2>{item.productName}</h2><p>{item.blueprintName} · {t.productionPlanning.activityLabels[item.activity]} · #{item.blueprintTypeId}</p>{item.facilityName !== null && <p>{t.productionPlanning.facilityChoice}: {item.facilityName} · {t.productionPlanning.materialSource}: {item.materialLocationPath ?? t.productionPlanning.allFacilityLocations}</p>}</div><strong>{t.productionPlanning.goalQuantity.replace("{quantity}", numberFormat.format(item.targetQuantity))}</strong></header>
                 <div className="production-plan-editor">
-                  <label><span>{t.productionPlanning.owner}</span><select value={draft.owner} onChange={(event) => setDrafts((current) => ({ ...current, [item.planId]: { ...draft, owner: Number(event.target.value), blueprintItemId: null, stepBlueprintItemIds: {} } }))}>{!productionOwners.some((owner) => owner.characterId === draft.owner) && <option value={draft.owner}>{item.ownerName}</option>}{productionOwners.map((owner) => <option key={owner.characterId} value={owner.characterId}>{owner.name}</option>)}</select></label>
+                  <label><span>{t.productionPlanning.owner}</span><select value={draft.owner} onChange={(event) => setDrafts((current) => ({ ...current, [item.planId]: { ...draft, owner: Number(event.target.value), blueprintItemId: null, stepBlueprintItemIds: {}, facilityId: null, materialLocationId: null } }))}>{!productionOwners.some((owner) => owner.characterId === draft.owner) && <option value={draft.owner}>{item.ownerName}</option>}{productionOwners.map((owner) => <option key={owner.characterId} value={owner.characterId}>{owner.name}</option>)}</select></label>
+                  <label><span>{t.productionPlanning.facilityChoice}</span><select value={draft.facilityId ?? ""} onChange={(event) => setDrafts((current) => ({ ...current, [item.planId]: { ...draft, facilityId: event.target.value ? Number(event.target.value) : null, materialLocationId: null } }))}><option value="">{t.productionPlanning.noFacilityChoice}</option>{draftFacilityOptions.map((option) => <option key={option.facilityId} value={option.facilityId}>{option.facilityName}</option>)}</select></label>
+                  <label><span>{t.productionPlanning.materialSource}</span><select value={draft.materialLocationId ?? ""} disabled={draftFacility === null} onChange={(event) => setDrafts((current) => ({ ...current, [item.planId]: { ...draft, materialLocationId: event.target.value ? Number(event.target.value) : null } }))}><option value="">{t.productionPlanning.allFacilityLocations}</option>{draftFacility?.materialLocations.map((option) => <option key={option.locationId} value={option.locationId}>{option.locationKind === "facility" ? `${option.locationName} · Hangar` : option.locationPath}</option>)}</select></label>
                   <label><span>{t.productionPlanning.blueprintAssignment}</span><select value={draft.blueprintItemId ?? ""} onChange={(event) => setDrafts((current) => ({ ...current, [item.planId]: { ...draft, blueprintItemId: event.target.value ? Number(event.target.value) : null } }))}><option value="">{t.productionPlanning.noBlueprint}</option>{blueprintCandidates.map((candidate) => <option key={candidate.itemId} value={candidate.itemId} disabled={!candidate.suitable}>{t.productionPlanning.blueprintOption.replace("{kind}", candidate.kind === "original" ? "BPO" : "BPC").replace("{item}", String(candidate.itemId)).replace("{me}", String(candidate.materialEfficiency)).replace("{te}", String(candidate.timeEfficiency)).replace("{runs}", candidate.runs === -1 ? "∞" : numberFormat.format(candidate.runs))}{candidate.suitable ? "" : ` · ${t.productionPlanning.blueprintRunsInsufficient}`}</option>)}</select></label>
                   <label><span>{t.productionPlanning.quantity}</span><input type="number" min={1} value={draft.quantity} onChange={(event) => setDrafts((current) => ({ ...current, [item.planId]: { ...draft, quantity: Math.max(1, Number(event.target.value) || 1) } }))} /></label>
                   <label><span>{t.productionPlanning.priority}</span><input type="number" min={0} max={999} value={draft.priority} onChange={(event) => setDrafts((current) => ({ ...current, [item.planId]: { ...draft, priority: Math.min(999, Math.max(0, Number(event.target.value) || 0)) } }))} /></label>
@@ -5374,6 +5450,11 @@ function ProductionWorkspace({
                 <div className="production-blueprint-evidence production-skill-evidence"><strong>{t.productionPlanning.skillEvidence}</strong><span>{item.skillSnapshotId === null ? t.productionPlanning.skillSnapshotMissing : t.productionPlanning.skillSource.replace("{snapshot}", String(item.skillSnapshotId)).replace("{run}", String(item.skillSyncRunId)).replace("{date}", String(item.skillObservedAt))}</span>{item.totalCharacterTimeSeconds !== null && item.characterSkillTimeSavingsSeconds !== null && <span>{t.productionPlanning.skillSummary.replace("{time}", formatDuration(item.totalCharacterTimeSeconds)).replace("{saved}", formatDuration(item.characterSkillTimeSavingsSeconds))}</span>}</div>
                 {item.warnings.map((warning) => <div className="production-warning" key={`${warning.typeId}:${warning.selectedBlueprintTypeId}`}><AlertTriangle size={14} />{t.productionPlanning.alternatives.replace("{type}", warning.typeName).replace("{count}", String(warning.candidateCount)).replace("{blueprint}", String(warning.selectedBlueprintTypeId))}</div>)}
                 {item.state === "ready" && <div className="production-resolution">
+                  {item.supplyDecisions.length > 0 && <details className="production-supply" open><summary>{t.productionPlanning.supplies} · {item.supplyDecisions.length}</summary><p className="production-sequence-hint">{t.productionPlanning.supplyHint}</p><ul className="production-supply-list">{item.supplyDecisions.map((decision) => {
+                    const key = `${decision.blueprintTypeId}:${decision.activity}:${decision.productTypeId}`;
+                    const mode = draft.supplyModes[key] ?? decision.supplyMode;
+                    return <li key={key}><span><strong>{decision.productName}</strong><small>{t.productionPlanning.supplySummary.replace("{required}", numberFormat.format(decision.requiredQuantity)).replace("{stock}", numberFormat.format(decision.stockUsedQuantity)).replace("{build}", numberFormat.format(decision.buildQuantity)).replace("{missing}", numberFormat.format(decision.shortageQuantity))}</small>{(mode === "stock-only" || !decision.blueprintRequired) && <small>{t.productionPlanning.noBlueprintNeeded}</small>}</span><label><span>{t.productionPlanning.materialSource}</span><select value={mode} onChange={(event) => setDrafts((current) => ({ ...current, [item.planId]: { ...draft, supplyModes: { ...draft.supplyModes, [key]: event.target.value as ProductionSupplyMode } } }))}>{(["stock-first", "stock-only", "build"] as const).map((value) => <option key={value} value={value}>{t.productionPlanning.supplyModeLabels[value]}</option>)}</select></label></li>;
+                  })}</ul></details>}
                   <details open><summary>{t.productionPlanning.steps} · {item.steps.length}</summary><p className="production-sequence-hint">{t.productionPlanning.sequenceHint}</p><ol>{item.steps.map((step, index) => {
                     const isGoal = index === item.steps.length - 1;
                     const skillLevels = step.timeSkills.map((skill) => `${skill.skillName} ${skill.activeLevel ?? "—"}`).join(" · ");
@@ -5389,6 +5470,7 @@ function ProductionWorkspace({
                     const stepBlueprintItemId = isGoal
                       ? draft.blueprintItemId
                       : draft.stepBlueprintItemIds[stepKey] ?? null;
+                    const stepSupplyMode = draft.supplyModes[stepKey] ?? step.supplyMode;
                     const facility = step.facilityEvidence;
                     const facilityDetails = facility.facilityId === null
                       ? t.productionPlanning.facilityEvidenceLabels[facility.state]
@@ -5399,7 +5481,7 @@ function ProductionWorkspace({
                           ? t.productionPlanning.facilityUnknownCost
                           : percentFormat.format(facility.systemCostIndex));
                     return <li className={isGoal ? "production-step--goal" : ""} key={`${step.sequence}:${step.productTypeId}`}>
-                      <div><strong>{t.productionPlanning.step.replace("{sequence}", String(step.sequence))} · {isGoal ? t.productionPlanning.goalStep : t.productionPlanning.intermediateStep}: {step.productName}</strong><span>{step.blueprintName} · {t.productionPlanning.activityLabels[step.activity]}</span>{!isGoal && step.activity === "manufacturing" && <label className="production-step-blueprint"><span>{t.productionPlanning.stepBlueprintAssignment}</span><select value={stepBlueprintItemId ?? ""} onChange={(event) => setDrafts((current) => ({ ...current, [item.planId]: { ...draft, stepBlueprintItemIds: { ...draft.stepBlueprintItemIds, [stepKey]: event.target.value ? Number(event.target.value) : null } } }))}><option value="">{t.productionPlanning.noBlueprint}</option>{stepCandidates.map((candidate) => <option key={candidate.itemId} value={candidate.itemId} disabled={!candidate.suitable}>{t.productionPlanning.blueprintOption.replace("{kind}", candidate.kind === "original" ? "BPO" : "BPC").replace("{item}", String(candidate.itemId)).replace("{me}", String(candidate.materialEfficiency)).replace("{te}", String(candidate.timeEfficiency)).replace("{runs}", candidate.runs === -1 ? "∞" : numberFormat.format(candidate.runs))}{candidate.suitable ? "" : ` · ${t.productionPlanning.blueprintRunsInsufficient}`}</option>)}</select></label>}</div>
+                      <div><strong>{t.productionPlanning.step.replace("{sequence}", String(step.sequence))} · {isGoal ? t.productionPlanning.goalStep : t.productionPlanning.intermediateStep}: {step.productName}</strong><span>{step.blueprintName} · {t.productionPlanning.activityLabels[step.activity]}</span>{!isGoal && step.activity === "manufacturing" && stepSupplyMode !== "stock-only" && <label className="production-step-blueprint"><span>{t.productionPlanning.stepBlueprintAssignment}</span><select value={stepBlueprintItemId ?? ""} onChange={(event) => setDrafts((current) => ({ ...current, [item.planId]: { ...draft, stepBlueprintItemIds: { ...draft.stepBlueprintItemIds, [stepKey]: event.target.value ? Number(event.target.value) : null } } }))}><option value="">{t.productionPlanning.noBlueprint}</option>{stepCandidates.map((candidate) => <option key={candidate.itemId} value={candidate.itemId} disabled={!candidate.suitable}>{t.productionPlanning.blueprintOption.replace("{kind}", candidate.kind === "original" ? "BPO" : "BPC").replace("{item}", String(candidate.itemId)).replace("{me}", String(candidate.materialEfficiency)).replace("{te}", String(candidate.timeEfficiency)).replace("{runs}", candidate.runs === -1 ? "∞" : numberFormat.format(candidate.runs))}{candidate.suitable ? "" : ` · ${t.productionPlanning.blueprintRunsInsufficient}`}</option>)}</select></label>}</div>
                       <div>{step.activity === "manufacturing" && <span className={`status-pill status-pill--${stepAssignment.blueprintAssignmentState === "ready" ? "good" : "warn"}`}>{t.productionPlanning.blueprintStateLabels[stepAssignment.blueprintAssignmentState]}</span>}<strong>{t.productionPlanning.runs.replace("{runs}", numberFormat.format(step.runs)).replace("{produced}", numberFormat.format(step.producedQuantity)).replace("{surplus}", numberFormat.format(step.surplusQuantity))}</strong><span>{step.timeEfficiencySavingsSeconds > 0 ? t.productionPlanning.blueprintTime.replace("{time}", formatDuration(step.totalBlueprintTimeSeconds)).replace("{te}", String(step.timeEfficiency)).replace("{saved}", formatDuration(step.timeEfficiencySavingsSeconds)) : t.productionPlanning.baseTime.replace("{time}", formatDuration(step.totalBaseTimeSeconds))}</span><span>{skillTime}</span><span className={`production-facility-evidence production-facility-evidence--${facility.state === "ready" ? "ready" : "missing"}`}><strong>{t.productionPlanning.facilityEvidenceLabels[facility.state]}</strong> · {facilityDetails}{facility.jobId !== null && facility.jobStatus !== null ? ` · ${t.productionPlanning.facilityJob.replace("{job}", String(facility.jobId)).replace("{status}", t.blueprints.jobs.statusLabels[facility.jobStatus])}` : ""}{facility.jobSnapshotId !== null && facility.facilitySnapshotId !== null ? ` · ${t.productionPlanning.facilitySources.replace("{jobSnapshot}", String(facility.jobSnapshotId)).replace("{facilitySnapshot}", String(facility.facilitySnapshotId))}` : ""}</span></div>
                     </li>;
                   })}</ol></details>

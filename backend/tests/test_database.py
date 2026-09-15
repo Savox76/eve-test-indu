@@ -114,6 +114,7 @@ class DatabaseFoundationTests(unittest.TestCase):
                 "research_plans",
                 "production_plans",
                 "production_plan_step_blueprints",
+                "production_plan_step_supply_modes",
             }
             <= tables
         )
@@ -164,6 +165,12 @@ class DatabaseFoundationTests(unittest.TestCase):
             production_columns = {
                 row["name"] for row in migrated.execute("PRAGMA table_info(production_plans)")
             }
+            step_supply_indexes = {
+                row["name"]
+                for row in migrated.execute(
+                    "PRAGMA index_list(production_plan_step_supply_modes)"
+                )
+            }
             production_indexes = {
                 row["name"] for row in migrated.execute("PRAGMA index_list(production_plans)")
             }
@@ -181,9 +188,14 @@ class DatabaseFoundationTests(unittest.TestCase):
         self.assertEqual(tuple(migrated_character), ("Migration Pilot", None))
         self.assertIn("alias", character_columns)
         self.assertIn("blueprint_item_id", production_columns)
+        self.assertIn("facility_id", production_columns)
+        self.assertIn("material_location_id", production_columns)
         self.assertIn("idx_production_plans_blueprint_item", production_indexes)
         self.assertIn(
             "idx_production_plan_step_blueprints_plan", step_blueprint_indexes
+        )
+        self.assertIn(
+            "idx_production_plan_step_supply_modes_plan", step_supply_indexes
         )
         verify_database_backup(
             backup_path,

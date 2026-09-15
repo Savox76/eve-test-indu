@@ -913,6 +913,9 @@ describe("desktop runtime status", () => {
     const plan: ProductionPlanRecord = {
       planId: 1, ownerCharacterId: 7, ownerName: "Pilot", blueprintTypeId: 100,
       blueprintName: "Synthetic Hull Blueprint", activity: "manufacturing",
+      facilityId: null, facilityName: null, materialLocationId: null,
+      materialLocationName: null, materialLocationPath: null,
+      locationSelectionState: "unselected",
       blueprintItemId: null, blueprintAssignmentState: "unassigned",
       blueprintKind: null, blueprintMaterialEfficiency: null, blueprintTimeEfficiency: null,
       blueprintRuns: null, blueprintLocationId: null, blueprintLocationFlag: null,
@@ -926,7 +929,8 @@ describe("desktop runtime status", () => {
       priority: 12, note: "main goal", state: "ready", buildNumber: "synthetic-production-1",
       steps: [{ sequence: 1, blueprintTypeId: 110, blueprintName: "Synthetic Component Blueprint",
         activity: "manufacturing", productTypeId: 111, productName: "Synthetic Component",
-        requiredQuantity: 4, outputQuantityPerRun: 1, runs: 4, unmodifiedRuns: 4,
+        requiredQuantity: 4, supplyMode: "stock-first", stockUsedQuantity: 0,
+        outputQuantityPerRun: 1, runs: 4, unmodifiedRuns: 4,
         runsSavedByMaterialEfficiency: 0, producedQuantity: 4,
         surplusQuantity: 0, baseTimeSecondsPerRun: 25, totalBaseTimeSeconds: 100,
         timeEfficiency: 0, timeEfficiencyApplied: false,
@@ -949,7 +953,8 @@ describe("desktop runtime status", () => {
           materialEfficiency: 0, materialEfficiencySavings: 0, producedByPlan: false }] },
       { sequence: 2, blueprintTypeId: 100, blueprintName: "Synthetic Hull Blueprint",
         activity: "manufacturing", productTypeId: 101, productName: "Synthetic Hull",
-        requiredQuantity: 3, outputQuantityPerRun: 2, runs: 2, unmodifiedRuns: 2,
+        requiredQuantity: 3, supplyMode: "build", stockUsedQuantity: 0,
+        outputQuantityPerRun: 2, runs: 2, unmodifiedRuns: 2,
         runsSavedByMaterialEfficiency: 0, producedQuantity: 4,
         surplusQuantity: 1, baseTimeSecondsPerRun: 100, totalBaseTimeSeconds: 200,
         timeEfficiency: 0, timeEfficiencyApplied: false,
@@ -972,6 +977,10 @@ describe("desktop runtime status", () => {
         materials: [{ typeId: 111, typeName: "Synthetic Component",
           quantityPerRun: 2, unmodifiedGrossQuantity: 4, grossQuantity: 4,
           materialEfficiency: 0, materialEfficiencySavings: 0, producedByPlan: true }] }],
+      supplyDecisions: [{ blueprintTypeId: 110, activity: "manufacturing",
+        productTypeId: 111, productName: "Synthetic Component", supplyMode: "stock-first",
+        requiredQuantity: 4, stockAvailableQuantity: 0, stockUsedQuantity: 0,
+        buildQuantity: 4, shortageQuantity: 0, blueprintRequired: true }],
       grossMaterials: [{ typeId: 901, typeName: "Synthetic Ore", quantity: 8,
         unmodifiedQuantity: 8, materialEfficiencySavings: 0,
         availabilityState: "shortage", availableQuantity: 5, reservedQuantity: 5,
@@ -1001,6 +1010,14 @@ describe("desktop runtime status", () => {
     };
     const page: ProductionPlanPage = { items: [plan], total: 1, offset: 0, limit: 50,
       owners: [{ characterId: 7, name: "Pilot" }], activities: ["manufacturing", "reaction"],
+      locationOptions: [{ ownerCharacterId: 7, facilityId: 60_003_760,
+        facilityName: "Synthetic Station", facilityKind: "station", facilityAccess: "available",
+        locationStatus: "resolved", materialLocations: [
+          { locationId: 60_003_760, locationName: "Synthetic Station",
+            locationPath: "Synthetic Station", locationKind: "facility" },
+          { locationId: 7_000, locationName: "Production Materials",
+            locationPath: "Synthetic Station / Production Materials", locationKind: "container" },
+        ] }],
       states: ["ready", "sde-unavailable", "recipe-missing", "cycle", "complexity-limit"],
       summary: { ready: 1, "sde-unavailable": 0, "recipe-missing": 0, cycle: 0,
         "complexity-limit": 0 }, buildNumber: "synthetic-production-1",
@@ -1016,6 +1033,8 @@ describe("desktop runtime status", () => {
       characterSkillTimeRule: "job-wide-ceil-industry-4-advanced-industry-3-reactions-4-active-levels",
       facilityEvidenceApplied: true,
       facilityEvidenceRule: "assigned-blueprint-before-active-before-latest-owner-job",
+      supplyModesApplied: true,
+      supplyModeRule: "stock-first-before-recursive-build",
       remainingModifiersApplied: false };
     invoke.mockResolvedValueOnce(JSON.stringify(page));
     const query = { search: "", ownerCharacterId: null, activity: null, state: null,
@@ -1164,7 +1183,8 @@ describe("desktop runtime status", () => {
       .rejects.toThrow("invalid production steps");
 
     const input = { planId: null, ownerCharacterId: 7, blueprintTypeId: 100, blueprintItemId: null,
-      stepBlueprintAssignments: [],
+      facilityId: null, materialLocationId: null, stepBlueprintAssignments: [],
+      stepSupplyModes: [],
       activity: "manufacturing", productTypeId: 101, targetQuantity: 3,
       priority: 12, note: "main goal" } as const;
     const saved = { ...input, planId: 1, saved: true };

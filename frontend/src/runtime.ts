@@ -603,6 +603,8 @@ export type ProductionCharacterSkillState = "ready" | "snapshot-missing";
 export type ProductionFacilityState = "ready" | "partial" | "missing" | "not-applicable";
 export type ProductionStepFacilityState = "ready" | "job-snapshot-missing" | "job-missing" | "facility-snapshot-missing" | "facility-missing" | "facility-unavailable";
 export type ProductionFacilityEvidenceKind = "none" | "assigned-blueprint-job" | "active-blueprint-type-job" | "latest-blueprint-type-job";
+export type ProductionSupplyMode = "stock-first" | "stock-only" | "build";
+export type ProductionLocationSelectionState = "unselected" | "ready" | "facility-missing" | "material-location-missing";
 export type ProductionPlanSortField = "priority" | "product" | "owner" | "activity" | "state" | "updated";
 export const productionActivities: readonly ProductionActivity[] = ["manufacturing", "reaction"];
 export const productionPlanStates: readonly ProductionPlanState[] = [
@@ -692,6 +694,8 @@ export interface ProductionStep {
   productTypeId: number;
   productName: string;
   requiredQuantity: number;
+  supplyMode: Exclude<ProductionSupplyMode, "stock-only">;
+  stockUsedQuantity: number;
   outputQuantityPerRun: number;
   runs: number;
   unmodifiedRuns: number;
@@ -714,6 +718,37 @@ export interface ProductionStep {
   blueprintAssignment: ProductionStepBlueprintAssignment;
   facilityEvidence: ProductionFacilityEvidence;
   materials: ProductionStepMaterial[];
+}
+
+export interface ProductionSupplyDecision {
+  blueprintTypeId: number;
+  activity: ProductionActivity;
+  productTypeId: number;
+  productName: string;
+  supplyMode: ProductionSupplyMode;
+  requiredQuantity: number;
+  stockAvailableQuantity: number;
+  stockUsedQuantity: number;
+  buildQuantity: number;
+  shortageQuantity: number;
+  blueprintRequired: boolean;
+}
+
+export interface ProductionMaterialLocationOption {
+  locationId: number;
+  locationName: string;
+  locationPath: string;
+  locationKind: "facility" | "container";
+}
+
+export interface ProductionFacilityOption {
+  ownerCharacterId: number;
+  facilityId: number;
+  facilityName: string;
+  facilityKind: "station" | "structure";
+  facilityAccess: string;
+  locationStatus: Exclude<AssetLocationStatus, "pending">;
+  materialLocations: ProductionMaterialLocationOption[];
 }
 
 export interface ProductionGrossMaterial {
@@ -807,12 +842,25 @@ export interface ProductionStepBlueprintInput {
   blueprintItemId: number;
 }
 
+export interface ProductionStepSupplyInput {
+  blueprintTypeId: number;
+  activity: ProductionActivity;
+  productTypeId: number;
+  supplyMode: ProductionSupplyMode;
+}
+
 export interface ProductionPlanRecord {
   planId: number;
   ownerCharacterId: number;
   ownerName: string;
   blueprintTypeId: number;
   blueprintName: string;
+  facilityId: number | null;
+  facilityName: string | null;
+  materialLocationId: number | null;
+  materialLocationName: string | null;
+  materialLocationPath: string | null;
+  locationSelectionState: ProductionLocationSelectionState;
   blueprintItemId: number | null;
   blueprintAssignmentState: ProductionBlueprintAssignmentState;
   blueprintKind: "original" | "copy" | null;
@@ -837,6 +885,7 @@ export interface ProductionPlanRecord {
   state: ProductionPlanState;
   buildNumber: string | null;
   steps: ProductionStep[];
+  supplyDecisions: ProductionSupplyDecision[];
   grossMaterials: ProductionGrossMaterial[];
   warnings: ProductionWarning[];
   cycleTypeIds: number[];
@@ -875,6 +924,7 @@ export interface ProductionPlanPage {
   offset: number;
   limit: number;
   owners: AssetOwner[];
+  locationOptions: ProductionFacilityOption[];
   activities: ProductionActivity[];
   states: ProductionPlanState[];
   summary: Record<ProductionPlanState, number>;
@@ -892,6 +942,8 @@ export interface ProductionPlanPage {
   characterSkillTimeRule: "job-wide-ceil-industry-4-advanced-industry-3-reactions-4-active-levels";
   facilityEvidenceApplied: true;
   facilityEvidenceRule: "assigned-blueprint-before-active-before-latest-owner-job";
+  supplyModesApplied: true;
+  supplyModeRule: "stock-first-before-recursive-build";
   remainingModifiersApplied: false;
 }
 
@@ -901,6 +953,9 @@ export interface ProductionPlanInput {
   blueprintTypeId: number;
   blueprintItemId: number | null;
   stepBlueprintAssignments: readonly ProductionStepBlueprintInput[];
+  facilityId: number | null;
+  materialLocationId: number | null;
+  stepSupplyModes: readonly ProductionStepSupplyInput[];
   activity: ProductionActivity;
   productTypeId: number;
   targetQuantity: number;
@@ -3006,6 +3061,9 @@ function parseProductionStep(candidate: unknown, index: number): ProductionStep 
     !isPositiveSafeInteger(candidate.blueprintTypeId) || !isBoundedText(candidate.blueprintName, 200) ||
     !productionActivities.includes(candidate.activity as ProductionActivity) ||
     !isPositiveSafeInteger(candidate.productTypeId) || !isBoundedText(candidate.productName, 200) ||
+    !["stock-first", "build"].includes(String(candidate.supplyMode)) ||
+    !isNonNegativeSafeInteger(candidate.stockUsedQuantity) ||
+    (candidate.supplyMode === "build" && candidate.stockUsedQuantity !== 0) ||
     ![candidate.requiredQuantity, candidate.outputQuantityPerRun, candidate.runs,
       candidate.unmodifiedRuns,
       candidate.producedQuantity, candidate.baseTimeSecondsPerRun, candidate.totalBaseTimeSeconds,
@@ -3219,11 +3277,72 @@ function parseProductionReservationClaim(candidate: unknown): ProductionReservat
   return candidate as unknown as ProductionReservationClaim;
 }
 
+function parseProductionSupplyDecision(candidate: unknown): ProductionSupplyDecision {
+  if (
+    !isRecord(candidate) || !isPositiveSafeInteger(candidate.blueprintTypeId) ||
+    !productionActivities.includes(candidate.activity as ProductionActivity) ||
+    !isPositiveSafeInteger(candidate.productTypeId) || !isBoundedText(candidate.productName, 200) ||
+    !["stock-first", "stock-only", "build"].includes(String(candidate.supplyMode)) ||
+    !isPositiveSafeInteger(candidate.requiredQuantity) ||
+    !isNonNegativeSafeInteger(candidate.stockAvailableQuantity) ||
+    !isNonNegativeSafeInteger(candidate.stockUsedQuantity) ||
+    !isNonNegativeSafeInteger(candidate.buildQuantity) ||
+    !isNonNegativeSafeInteger(candidate.shortageQuantity) ||
+    typeof candidate.blueprintRequired !== "boolean" ||
+    candidate.blueprintRequired !== (Number(candidate.buildQuantity) > 0)
+  ) throw new Error("The native runtime returned invalid production supply decisions.");
+  const required = Number(candidate.requiredQuantity);
+  const available = Number(candidate.stockAvailableQuantity);
+  const used = Number(candidate.stockUsedQuantity);
+  const build = Number(candidate.buildQuantity);
+  const shortage = Number(candidate.shortageQuantity);
+  const valid = candidate.supplyMode === "stock-first"
+    ? used <= available && used + build === required && shortage === 0
+    : candidate.supplyMode === "stock-only"
+      ? build === 0 && used <= available && used + shortage === required
+      : used === 0 && build === required && shortage === 0;
+  if (!valid) throw new Error("The native runtime returned inconsistent supply quantities.");
+  return candidate as unknown as ProductionSupplyDecision;
+}
+
+function parseProductionFacilityOption(candidate: unknown): ProductionFacilityOption {
+  if (
+    !isRecord(candidate) || !isPositiveSafeInteger(candidate.ownerCharacterId) ||
+    !isPositiveSafeInteger(candidate.facilityId) || !isBoundedText(candidate.facilityName, 200) ||
+    !["station", "structure"].includes(String(candidate.facilityKind)) ||
+    !isBoundedText(candidate.facilityAccess, 40) ||
+    !["resolved", "restricted", "unresolved", "cycle"].includes(String(candidate.locationStatus)) ||
+    !Array.isArray(candidate.materialLocations) || candidate.materialLocations.length === 0 ||
+    candidate.materialLocations.length > 200
+  ) throw new Error("The native runtime returned invalid production locations.");
+  const materialLocations = candidate.materialLocations.map((location): ProductionMaterialLocationOption => {
+    if (
+      !isRecord(location) || !isPositiveSafeInteger(location.locationId) ||
+      !isBoundedText(location.locationName, 200) || !isBoundedText(location.locationPath, 12_800) ||
+      !["facility", "container"].includes(String(location.locationKind))
+    ) throw new Error("The native runtime returned invalid production material locations.");
+    return location as unknown as ProductionMaterialLocationOption;
+  });
+  if (
+    new Set(materialLocations.map((location) => location.locationId)).size !== materialLocations.length ||
+    !materialLocations.some((location) =>
+      location.locationId === candidate.facilityId && location.locationKind === "facility")
+  ) throw new Error("The native runtime returned inconsistent production locations.");
+  return { ...candidate, materialLocations } as unknown as ProductionFacilityOption;
+}
+
 function parseProductionPlanRecord(candidate: unknown): ProductionPlanRecord {
   if (
     !isRecord(candidate) || !isPositiveSafeInteger(candidate.planId) ||
     !isPositiveSafeInteger(candidate.ownerCharacterId) || !isBoundedText(candidate.ownerName, 100) ||
     !isPositiveSafeInteger(candidate.blueprintTypeId) || !isBoundedText(candidate.blueprintName, 200) ||
+    !(candidate.facilityId === null || isPositiveSafeInteger(candidate.facilityId)) ||
+    !(candidate.facilityName === null || isBoundedText(candidate.facilityName, 200)) ||
+    !(candidate.materialLocationId === null || isPositiveSafeInteger(candidate.materialLocationId)) ||
+    !(candidate.materialLocationName === null || isBoundedText(candidate.materialLocationName, 200)) ||
+    !(candidate.materialLocationPath === null || isBoundedText(candidate.materialLocationPath, 12_800)) ||
+    !["unselected", "ready", "facility-missing", "material-location-missing"]
+      .includes(String(candidate.locationSelectionState)) ||
     !(candidate.blueprintItemId === null || isPositiveSafeInteger(candidate.blueprintItemId)) ||
     !["ready", "unassigned", "snapshot-missing", "missing", "type-mismatch", "runs-insufficient"]
       .includes(String(candidate.blueprintAssignmentState)) ||
@@ -3245,7 +3364,8 @@ function parseProductionPlanRecord(candidate: unknown): ProductionPlanRecord {
     Number(candidate.priority) > 999 || !(candidate.note === null || isBoundedText(candidate.note, 240)) ||
     !productionPlanStates.includes(candidate.state as ProductionPlanState) ||
     !(candidate.buildNumber === null || isBoundedText(candidate.buildNumber, 80)) ||
-    !Array.isArray(candidate.steps) || !Array.isArray(candidate.grossMaterials) ||
+    !Array.isArray(candidate.steps) || !Array.isArray(candidate.supplyDecisions) ||
+    candidate.supplyDecisions.length > 499 || !Array.isArray(candidate.grossMaterials) ||
     !Array.isArray(candidate.warnings) || !Array.isArray(candidate.cycleTypeIds) ||
     !(candidate.totalBaseTimeSeconds === null || isPositiveSafeInteger(candidate.totalBaseTimeSeconds)) ||
     !(candidate.totalBlueprintTimeSeconds === null || isPositiveSafeInteger(candidate.totalBlueprintTimeSeconds)) ||
@@ -3271,6 +3391,7 @@ function parseProductionPlanRecord(candidate: unknown): ProductionPlanRecord {
     throw new Error("The native runtime returned invalid production plans.");
   }
   const steps = candidate.steps.map(parseProductionStep);
+  const supplyDecisions = candidate.supplyDecisions.map(parseProductionSupplyDecision);
   const blueprintCandidates = candidate.blueprintCandidates.map(parseProductionBlueprintCandidate);
   const grossMaterials = candidate.grossMaterials.map((material): ProductionGrossMaterial => {
     if (!isRecord(material) || !isPositiveSafeInteger(material.typeId) ||
@@ -3334,7 +3455,6 @@ function parseProductionPlanRecord(candidate: unknown): ProductionPlanRecord {
       Number(material.excludedPositionCount) < excludedLocations.reduce((total, item) => total + item.positionCount, 0) ||
       representedExcluded > Number(material.excludedQuantity) ||
       availableLocations.some((item) => item.ownerCharacterId !== candidate.ownerCharacterId) ||
-      excludedLocations.some((item) => item.ownerCharacterId === candidate.ownerCharacterId) ||
       (snapshotMissing && (availableQuantity !== null || reservedQuantity !== null ||
         reservedByPrior !== null || remainingQuantity !== null || inventoryShortage !== null ||
         reservationConflict !== null || missingQuantity !== null || priorCount !== 0 ||
@@ -3388,6 +3508,37 @@ function parseProductionPlanRecord(candidate: unknown): ProductionPlanRecord {
       ? []
       : [step.blueprintAssignment.blueprintItemId]);
   const rootStepAssignment = steps.at(-1)?.blueprintAssignment;
+  const supplyKeys = supplyDecisions.map((decision) =>
+    `${decision.blueprintTypeId}:${decision.activity}:${decision.productTypeId}`);
+  const intermediateSteps = steps.slice(0, -1);
+  const supplyShapeValid = supplyDecisions.every((decision) => {
+    const matches = intermediateSteps.filter((step) =>
+      step.blueprintTypeId === decision.blueprintTypeId && step.activity === decision.activity &&
+      step.productTypeId === decision.productTypeId);
+    return decision.buildQuantity === 0
+      ? matches.length === 0
+      : matches.length === 1 && matches[0].requiredQuantity === decision.buildQuantity &&
+        matches[0].stockUsedQuantity === decision.stockUsedQuantity &&
+        matches[0].supplyMode === decision.supplyMode;
+  }) && intermediateSteps.every((step) => supplyDecisions.some((decision) =>
+    decision.blueprintTypeId === step.blueprintTypeId && decision.activity === step.activity &&
+    decision.productTypeId === step.productTypeId));
+  const locationSelectionValid = candidate.locationSelectionState === "unselected"
+    ? candidate.facilityId === null && candidate.facilityName === null &&
+      candidate.materialLocationId === null && candidate.materialLocationName === null &&
+      candidate.materialLocationPath === null
+    : candidate.locationSelectionState === "ready"
+      ? candidate.facilityId !== null && candidate.facilityName !== null &&
+        ((candidate.materialLocationId === null && candidate.materialLocationName === null &&
+          candidate.materialLocationPath === null) ||
+          (candidate.materialLocationId !== null && candidate.materialLocationName !== null &&
+            candidate.materialLocationPath !== null))
+      : candidate.locationSelectionState === "facility-missing"
+        ? candidate.facilityId !== null && candidate.facilityName === null &&
+          candidate.materialLocationName === null && candidate.materialLocationPath === null
+        : candidate.facilityId !== null && candidate.facilityName !== null &&
+          candidate.materialLocationId !== null && candidate.materialLocationName === null &&
+          candidate.materialLocationPath === null;
   const rootAssignmentMatches = !ready || rootStepAssignment !== undefined &&
     rootStepAssignment.blueprintAssignmentState === candidate.blueprintAssignmentState &&
     rootStepAssignment.blueprintItemId === candidate.blueprintItemId &&
@@ -3448,9 +3599,13 @@ function parseProductionPlanRecord(candidate: unknown): ProductionPlanRecord {
           step.characterSkillTimeSavingsSeconds !== null || step.characterSkillTimeApplied ||
           step.timeSkills.some((skill) => skill.activeLevel !== null)))))) ||
     (!ready && (grossMaterials.length !== 0 || candidate.totalBaseTimeSeconds !== null ||
+      supplyDecisions.length !== 0 ||
       candidate.totalBlueprintTimeSeconds !== null || candidate.timeEfficiencySavingsSeconds !== null ||
       candidate.totalCharacterTimeSeconds !== null || candidate.characterSkillTimeSavingsSeconds !== null)) ||
     ((candidate.state === "cycle") !== (candidate.cycleTypeIds.length > 0)) ||
+    !locationSelectionValid ||
+    !supplyShapeValid ||
+    new Set(supplyKeys).size !== supplyKeys.length ||
     candidate.inventoryState !== expectedInventoryState ||
     candidate.facilityState !== expectedFacilityState ||
     (!ready && ownerSnapshotAvailable) ||
@@ -3482,7 +3637,9 @@ function parseProductionPlanRecord(candidate: unknown): ProductionPlanRecord {
   ) {
     throw new Error("The native runtime returned inconsistent production-plan data.");
   }
-  return { ...candidate, steps, grossMaterials, warnings, blueprintCandidates } as unknown as ProductionPlanRecord;
+  return {
+    ...candidate, steps, supplyDecisions, grossMaterials, warnings, blueprintCandidates,
+  } as unknown as ProductionPlanRecord;
 }
 
 function validateProductionPlanQuery(query: ProductionPlanQuery): ProductionPlanQuery {
@@ -3505,6 +3662,7 @@ function emptyProductionSummary(): Record<ProductionPlanState, number> {
 function parseProductionPlanPage(candidate: unknown): ProductionPlanPage {
   if (
     !isRecord(candidate) || !Array.isArray(candidate.items) || !Array.isArray(candidate.owners) ||
+    !Array.isArray(candidate.locationOptions) || candidate.locationOptions.length > 200 ||
     !Array.isArray(candidate.activities) || !Array.isArray(candidate.states) || !isRecord(candidate.summary) ||
     !isNonNegativeSafeInteger(candidate.total) || !isNonNegativeSafeInteger(candidate.offset) ||
     !Number.isSafeInteger(candidate.limit) || Number(candidate.limit) < 1 || Number(candidate.limit) > 100 ||
@@ -3529,6 +3687,8 @@ function parseProductionPlanPage(candidate: unknown): ProductionPlanPage {
     candidate.facilityEvidenceApplied !== true ||
     candidate.facilityEvidenceRule !==
       "assigned-blueprint-before-active-before-latest-owner-job" ||
+    candidate.supplyModesApplied !== true ||
+    candidate.supplyModeRule !== "stock-first-before-recursive-build" ||
     candidate.remainingModifiersApplied !== false
   ) throw new Error("The native runtime returned invalid production-plan data.");
   const items = candidate.items.map(parseProductionPlanRecord);
@@ -3542,13 +3702,16 @@ function parseProductionPlanPage(candidate: unknown): ProductionPlanPage {
     }
     return owner as unknown as AssetOwner;
   });
+  const locationOptions = (candidate.locationOptions as unknown[]).map(parseProductionFacilityOption);
   if (items.length > Number(candidate.limit) || items.length > Number(candidate.total) ||
     new Set(items.map((item) => item.planId)).size !== items.length ||
     new Set(assignedBlueprintIds).size !== assignedBlueprintIds.length ||
-    new Set(owners.map((owner) => owner.characterId)).size !== owners.length) {
+    new Set(owners.map((owner) => owner.characterId)).size !== owners.length ||
+    new Set(locationOptions.map((item) => `${item.ownerCharacterId}:${item.facilityId}`)).size !==
+      locationOptions.length) {
     throw new Error("The native runtime returned inconsistent production-plan metadata.");
   }
-  return { ...candidate, items, owners } as unknown as ProductionPlanPage;
+  return { ...candidate, items, owners, locationOptions } as unknown as ProductionPlanPage;
 }
 
 export async function loadProductionPlans(
@@ -3558,6 +3721,7 @@ export async function loadProductionPlans(
   const validated = validateProductionPlanQuery(query);
   if (!adapter.isAvailable()) return {
     items: [], total: 0, offset: validated.offset, limit: validated.limit, owners: [],
+    locationOptions: [],
     activities: [...productionActivities], states: [...productionPlanStates],
     summary: emptyProductionSummary(), buildNumber: null, inventoryApplied: true,
     reservationsApplied: true, reservationRule: "priority-desc-created-asc-plan-id-asc",
@@ -3572,6 +3736,8 @@ export async function loadProductionPlans(
       "job-wide-ceil-industry-4-advanced-industry-3-reactions-4-active-levels",
     facilityEvidenceApplied: true,
     facilityEvidenceRule: "assigned-blueprint-before-active-before-latest-owner-job",
+    supplyModesApplied: true,
+    supplyModeRule: "stock-first-before-recursive-build",
     remainingModifiersApplied: false,
   };
   const page = parseProductionPlanPage(JSON.parse(await adapter.invoke("query_production_plans", {
@@ -3589,15 +3755,20 @@ function validateProductionPlanInput(input: ProductionPlanInput): ProductionPlan
   const note = input.note === null ? null : input.note.trim().replace(/\s+/g, " ") || null;
   const rootKey = `${input.blueprintTypeId}:${input.activity}:${input.productTypeId}`;
   const assignmentKeys = new Set<string>();
+  const supplyKeys = new Set<string>();
   const itemIds = new Set<number>();
   if (
     !(input.planId === null || isPositiveSafeInteger(input.planId)) ||
     !isPositiveSafeInteger(input.ownerCharacterId) || !isPositiveSafeInteger(input.blueprintTypeId) ||
     !(input.blueprintItemId === null || isPositiveSafeInteger(input.blueprintItemId)) ||
+    !(input.facilityId === null || isPositiveSafeInteger(input.facilityId)) ||
+    !(input.materialLocationId === null || isPositiveSafeInteger(input.materialLocationId)) ||
+    (input.materialLocationId !== null && input.facilityId === null) ||
     !productionActivities.includes(input.activity) || !isPositiveSafeInteger(input.productTypeId) ||
     !isPositiveSafeInteger(input.targetQuantity) || !isNonNegativeSafeInteger(input.priority) ||
     input.priority > 999 || !(note === null || note.length <= 240) ||
-    !Array.isArray(input.stepBlueprintAssignments) || input.stepBlueprintAssignments.length > 499
+    !Array.isArray(input.stepBlueprintAssignments) || input.stepBlueprintAssignments.length > 499 ||
+    !Array.isArray(input.stepSupplyModes) || input.stepSupplyModes.length > 499
   ) throw new Error("The production plan is invalid.");
   if (input.blueprintItemId !== null) itemIds.add(input.blueprintItemId);
   const stepBlueprintAssignments = input.stepBlueprintAssignments.map((assignment) => {
@@ -3614,7 +3785,20 @@ function validateProductionPlanInput(input: ProductionPlanInput): ProductionPlan
     return assignment;
   }).sort((left, right) => left.productTypeId - right.productTypeId ||
     left.activity.localeCompare(right.activity) || left.blueprintTypeId - right.blueprintTypeId);
-  return { ...input, note, stepBlueprintAssignments };
+  const stepSupplyModes = input.stepSupplyModes.map((supply) => {
+    const key = `${supply.blueprintTypeId}:${supply.activity}:${supply.productTypeId}`;
+    if (
+      !isPositiveSafeInteger(supply.blueprintTypeId) ||
+      !productionActivities.includes(supply.activity) ||
+      !isPositiveSafeInteger(supply.productTypeId) ||
+      !["stock-first", "stock-only", "build"].includes(supply.supplyMode) ||
+      key === rootKey || supplyKeys.has(key)
+    ) throw new Error("The production plan contains invalid supply modes.");
+    supplyKeys.add(key);
+    return supply;
+  }).sort((left, right) => left.productTypeId - right.productTypeId ||
+    left.activity.localeCompare(right.activity) || left.blueprintTypeId - right.blueprintTypeId);
+  return { ...input, note, stepBlueprintAssignments, stepSupplyModes };
 }
 
 export async function saveProductionPlan(
@@ -3627,6 +3811,8 @@ export async function saveProductionPlan(
     planId: validated.planId, ownerCharacterId: validated.ownerCharacterId,
     blueprintTypeId: validated.blueprintTypeId, blueprintItemId: validated.blueprintItemId,
     stepBlueprintAssignments: validated.stepBlueprintAssignments,
+    facilityId: validated.facilityId, materialLocationId: validated.materialLocationId,
+    stepSupplyModes: validated.stepSupplyModes,
     activity: validated.activity,
     productTypeId: validated.productTypeId, targetQuantity: validated.targetQuantity,
     priority: validated.priority, note: validated.note,
@@ -3636,8 +3822,12 @@ export async function saveProductionPlan(
     candidate.ownerCharacterId !== validated.ownerCharacterId ||
     candidate.blueprintTypeId !== validated.blueprintTypeId ||
     candidate.blueprintItemId !== validated.blueprintItemId || candidate.activity !== validated.activity ||
+    candidate.facilityId !== validated.facilityId ||
+    candidate.materialLocationId !== validated.materialLocationId ||
     !Array.isArray(candidate.stepBlueprintAssignments) ||
     JSON.stringify(candidate.stepBlueprintAssignments) !== JSON.stringify(validated.stepBlueprintAssignments) ||
+    !Array.isArray(candidate.stepSupplyModes) ||
+    JSON.stringify(candidate.stepSupplyModes) !== JSON.stringify(validated.stepSupplyModes) ||
     candidate.productTypeId !== validated.productTypeId || candidate.targetQuantity !== validated.targetQuantity ||
     candidate.priority !== validated.priority || candidate.note !== validated.note) {
     throw new Error("The native runtime returned an invalid production-plan update.");
