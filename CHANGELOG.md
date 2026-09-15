@@ -6,12 +6,35 @@ Alle bemerkenswerten Änderungen an New Eden Foundry werden hier festgehalten. D
 
 ### Neu hinzugefügt
 
+- Keine.
+
+### Geändert
+
+- Keine.
+
+### Behobene Fehler
+
+- Keine.
+
+### Bekannte Einschränkungen
+
+- Keine.
+
+### Update und Datenbankmigration
+
+- Keine.
+
+## 0.2.0-alpha.9 – 15. September 2026
+
+### Neu hinzugefügt
+
 - Paket 38 erlaubt pro produzierbarem Vorprodukt `Bestand zuerst`, `Nur Bestand` oder `Vollständig bauen`; vorhandene T1- und andere Zwischenprodukte verkürzen die Fertigungskette teilweise oder vollständig.
 - Produktionsstation beziehungsweise Struktur und optional der direkte Hangar oder ein aufgelöster Materialcontainer können je Ziel gewählt werden.
 - Bestandseinsatz, Restbau, Fehlmenge und Blueprintpflicht werden je Vorprodukt nachvollziehbar angezeigt.
 
 ### Geändert
 
+- Die sichtbare Versionsnummer lautet `v0.2.0-alpha.9`.
 - Bestandsabgleich und zielübergreifende Reservierungen verwenden bei einer Anlagen-/Lagerwahl exakt diese persönliche Standortquelle. Ohne Auswahl bleibt das bisherige Verhalten über alle persönlichen Lagerorte erhalten.
 
 ### Behobene Fehler
@@ -20,7 +43,7 @@ Alle bemerkenswerten Änderungen an New Eden Foundry werden hier festgehalten. D
 
 ### Bekannte Einschränkungen
 
-- Anlagen-, Service- und Rigboni, Steuern und Preise werden weiterhin nicht in Zeit oder Kosten eingerechnet.
+- Die gewählte Produktionsstation ist derzeit Planungsort und Bestandsgrenze. Frühere oder laufende Job-/Anlagenbelege bleiben davon getrennt; Anlagen-, Service- und Rigboni, Steuern, Preise und reale Fertigstellungszeiten werden weiterhin nicht berechnet.
 - Die Alpha ist noch nicht produktiv code-signiert; SmartScreen kann deshalb weiterhin vor einem unbekannten Herausgeber warnen.
 
 ### Update und Datenbankmigration
