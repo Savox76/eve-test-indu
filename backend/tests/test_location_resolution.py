@@ -69,15 +69,27 @@ class FakeLocationProvider:
 
 
 class FakeEsiClient:
-    def __init__(self, result: EsiResponse | EsiClientError) -> None:
+    def __init__(
+        self,
+        result: EsiResponse | EsiClientError,
+        post_result: EsiResponse | EsiClientError | None = None,
+    ) -> None:
         self.result = result
+        self.post_result = post_result or EsiResponse(200, [], {}, False)
         self.calls: list[tuple[str, dict[str, object]]] = []
+        self.post_calls: list[tuple[str, object, dict[str, object]]] = []
 
     def get_json(self, path: str, **kwargs: object) -> EsiResponse:
         self.calls.append((path, kwargs))
         if isinstance(self.result, EsiClientError):
             raise self.result
         return self.result
+
+    def post_json(self, path: str, payload: object, **kwargs: object) -> EsiResponse:
+        self.post_calls.append((path, payload, kwargs))
+        if isinstance(self.post_result, EsiClientError):
+            raise self.post_result
+        return self.post_result
 
 
 class LocationResolutionGoldenTests(unittest.TestCase):
@@ -95,11 +107,14 @@ class LocationResolutionGoldenTests(unittest.TestCase):
         import_minimal_sde(
             self.database,
             build_number="synthetic-sde-location-golden-1",
-            groups=[{"group_id": 99_000, "name": "Synthetic Asset Group"}],
+            groups=[
+                {"group_id": 12, "name": "Synthetic Storage Container Group"},
+                {"group_id": 99_000, "name": "Synthetic Asset Group"},
+            ],
             types=[
                 {
                     "type_id": CONTAINER_TYPE_ID,
-                    "group_id": 99_000,
+                    "group_id": 12,
                     "name": "Synthetic Freight Container",
                 },
                 {
@@ -181,6 +196,108 @@ class LocationResolutionGoldenTests(unittest.TestCase):
             ],
         )
         self.assertEqual(provider.station_calls, [])
+
+    def test_custom_container_name_is_published_from_authenticated_esi(self) -> None:
+        container_id = 9_900_061
+        material_id = 9_900_062
+        source_run_id = self.publish_asset_snapshot(
+            [
+                asset(container_id, STATION_ID, "station", CONTAINER_TYPE_ID),
+                asset(material_id, container_id, "item"),
+            ]
+        )
+        client = FakeEsiClient(
+            EsiResponse(200, {}, {}, False),
+            EsiResponse(
+                200,
+                [{"item_id": container_id, "name": "Production Minerals"}],
+                {},
+                False,
+            ),
+        )
+
+        result = resolve_latest_character_asset_locations(
+            self.database, client, CHARACTER_ID  # type: ignore[arg-type]
+        )
+
+        snapshot = self.database.execute(
+            "SELECT payload_json FROM cached_snapshots WHERE sync_run_id=?",
+            (result.sync_run_id,),
+        ).fetchone()
+        payload = json.loads(snapshot[0])
+        material = next(
+            location
+            for location in payload["locations"]
+            if location["itemId"] == material_id
+        )
+        self.assertEqual(source_run_id, result.asset_sync_run_id)
+        self.assertEqual(material["path"][-1]["kind"], "container")
+        self.assertEqual(material["path"][-1]["name"], "Production Minerals")
+        self.assertEqual(
+            client.post_calls,
+            [
+                (
+                    f"/characters/{CHARACTER_ID}/assets/names/",
+                    [container_id],
+                    {
+                        "character_id": CHARACTER_ID,
+                        "required_scopes": ("esi-assets.read_assets.v1",),
+                    },
+                )
+            ],
+        )
+        self.assertEqual(client.calls, [])
+
+    def test_non_container_parent_is_not_exposed_as_storage_container(self) -> None:
+        provider = FakeLocationProvider()
+        ship_id = 9_900_071
+        material_id = 9_900_072
+
+        locations = resolve_asset_locations(
+            self.database,
+            provider,
+            CHARACTER_ID,
+            [
+                asset(ship_id, STATION_ID, "station", ITEM_TYPE_ID),
+                asset(material_id, ship_id, "item"),
+            ],
+        )
+
+        self.assertEqual(locations[1].path[-1].kind, "inventory_item")
+        self.assertEqual(locations[1].path[-1].name, "Synthetic Component")
+        self.assertEqual(provider.station_calls, [])
+
+    def test_container_name_failure_falls_back_without_losing_locations(self) -> None:
+        container_id = 9_900_081
+        material_id = 9_900_082
+        self.publish_asset_snapshot(
+            [
+                asset(container_id, STATION_ID, "station", CONTAINER_TYPE_ID),
+                asset(material_id, container_id, "item"),
+            ]
+        )
+        client = FakeEsiClient(
+            EsiResponse(200, {}, {}, False),
+            EsiClientError("esi-network-unavailable", retryable=True),
+        )
+
+        result = resolve_latest_character_asset_locations(
+            self.database, client, CHARACTER_ID  # type: ignore[arg-type]
+        )
+
+        snapshot = self.database.execute(
+            "SELECT payload_json FROM cached_snapshots WHERE sync_run_id=?",
+            (result.sync_run_id,),
+        ).fetchone()
+        payload = json.loads(snapshot[0])
+        material = next(
+            location
+            for location in payload["locations"]
+            if location["itemId"] == material_id
+        )
+        self.assertEqual(material["status"], "resolved")
+        self.assertEqual(material["path"][-1]["kind"], "container")
+        self.assertEqual(material["path"][-1]["name"], "Synthetic Freight Container")
 
     def test_station_provider_is_reused_for_shared_root(self) -> None:
         provider = FakeLocationProvider()

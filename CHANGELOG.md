@@ -6,15 +6,16 @@ Alle bemerkenswerten Änderungen an New Eden Foundry werden hier festgehalten. D
 
 ### Neu hinzugefügt
 
-- Keine.
+- Die Materiallager-Auswahl zeigt den tatsächlich in EVE vergebenen Namen eines persönlichen Containers zuerst und ergänzt zur eindeutigen Unterscheidung dessen Item-ID.
 
 ### Geändert
 
-- Keine.
+- Als Materiallager werden nur echte Lagercontainer an der gewählten Station oder Struktur angeboten. Schiffe und deren Laderäume erscheinen nicht mehr als Container.
+- Bei einer gewählten Station oder Struktur werden Bestände in Schiffsladeräumen nicht mehr als produktionsverfügbares Material angerechnet.
 
 ### Behobene Fehler
 
-- Keine.
+- Verschachtelte Assets wurden bisher pauschal als Container behandelt, wodurch Schiffsladeräume irrtümlich als Materiallager erscheinen konnten.
 
 ### Bekannte Einschränkungen
 
@@ -22,7 +23,7 @@ Alle bemerkenswerten Änderungen an New Eden Foundry werden hier festgehalten. D
 
 ### Update und Datenbankmigration
 
-- Keine.
+- Das Datenbankschema bleibt bei Version 12. Ein erneuter Asset-Abgleich aktualisiert die Containerbezeichnungen und Standortpfade ohne Migration.
 
 ## 0.2.0-alpha.9 – 15. September 2026
 

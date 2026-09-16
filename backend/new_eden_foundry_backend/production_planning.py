@@ -1169,6 +1169,19 @@ def _facility_from_nodes(nodes: tuple[dict[str, Any], ...]) -> dict[str, Any] | 
     return None
 
 
+def _production_inventory_path_is_eligible(
+    nodes: tuple[dict[str, Any], ...],
+) -> bool:
+    facility_seen = False
+    for node in nodes:
+        if node["kind"] in {"station", "structure"}:
+            facility_seen = True
+            continue
+        if facility_seen and node["kind"] != "container":
+            return False
+    return facility_seen
+
+
 def _inventory_facilities(
     character_id: int,
     locations: Mapping[int, Mapping[str, Any]],
@@ -1202,9 +1215,20 @@ def _inventory_facilities(
             },
         )
         labels: list[str] = []
+        facility_seen = False
+        selectable = True
         for node in nodes:
             labels.append(str(node["name"]))
+            if node["kind"] in {"station", "structure"}:
+                facility_seen = True
+                selectable = True
+                continue
+            if not facility_seen:
+                continue
             if node["kind"] != "container":
+                selectable = False
+                continue
+            if not selectable:
                 continue
             location_id = int(node["locationId"])
             facility["materialLocations"].setdefault(
@@ -1313,6 +1337,9 @@ def _inventory_source(
                 "assetObservedAt": observed_at,
                 "_facilityId": facility_id,
                 "_pathLocationIds": path_location_ids,
+                "_productionInventoryEligible": _production_inventory_path_is_eligible(
+                    nodes
+                ),
             }
         else:
             current["quantity"] = _checked_add(int(current["quantity"]), int(quantity))
@@ -1460,7 +1487,10 @@ def _selected_inventory_groups(
     if facility_id is None:
         return groups
     facility_groups = tuple(
-        group for group in groups if group["_facilityId"] == int(facility_id)
+        group
+        for group in groups
+        if group["_facilityId"] == int(facility_id)
+        and bool(group["_productionInventoryEligible"])
     )
     if material_location_id is None:
         return facility_groups

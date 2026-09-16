@@ -1218,6 +1218,9 @@ describe("New Eden Foundry design preview", () => {
       .find((select) => select.querySelector(`option[value="${value}"]`));
     fireEvent.change(selectWithOption("60003760")!, { target: { value: "60003760" } });
     await waitFor(() => expect(selectWithOption("7000")).toBeDefined());
+    expect(screen.getByRole("option", {
+      name: "Production Materials · Container #7000",
+    })).toBeInTheDocument();
     fireEvent.change(selectWithOption("7000")!, { target: { value: "7000" } });
     fireEvent.change(selectWithOption("stock-only")!, { target: { value: "stock-only" } });
     expect(screen.getByText(/Kein Blueprint für diesen Vorproduktschritt erforderlich/))
