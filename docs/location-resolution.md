@@ -8,7 +8,9 @@ Jeder Assetpfad wird von außen nach innen gespeichert:
 
 `Sonnensystem → Station oder Struktur → äußerer Container → innerer Container`
 
-Der Pfad enthält nicht das Asset selbst. Containerbezeichnungen stammen aus dem atomar importierten SDE-Typbestand. Statische Standorte werden bevorzugt aus dem SDE-Bestand gelesen; nur fehlende Stationen und dynamische Spielerstrukturen benötigen einen ESI-Aufruf.
+Der Pfad enthält nicht das Asset selbst. Für echte persönliche Lagercontainer wird der in EVE vergebene Name über `/characters/{character_id}/assets/names/` mit demselben Asset-Scope in Paketen von höchstens 1.000 Item-IDs gelesen. Fehlt für einen Container ein persönlicher Name, bleibt sein Typname aus dem atomar importierten SDE-Bestand die sichere Rückfallebene. Statische Standorte werden bevorzugt aus dem SDE-Bestand gelesen; nur fehlende Stationen und dynamische Spielerstrukturen benötigen einen ESI-Aufruf.
+
+Nur die SDE-Gruppen für normale, sichere, Audit-Log-/Stations- und Frachtcontainer werden als auswählbare Lagercontainer klassifiziert. Andere verschachtelte Inventarobjekte bleiben als `inventory_item` im Pfad unterscheidbar. Dadurch werden insbesondere Schiffe und deren Laderäume nicht als Container umgedeutet.
 
 ## Statuswerte
 

@@ -480,24 +480,47 @@ class EsiClient:
             retryable=True,
         )
 
-    def post_json(self, path: str, payload: Any) -> EsiResponse:
-        """Send a bounded unauthenticated JSON POST through the same ESI policy."""
+    def post_json(
+        self,
+        path: str,
+        payload: Any,
+        *,
+        character_id: int | None = None,
+        required_scopes: Sequence[str] = (),
+    ) -> EsiResponse:
+        """Send a bounded JSON POST through the same ESI policy."""
         url = self._build_url(path, None)
+        try:
+            scopes = tuple(sorted(set(required_scopes)))
+        except TypeError as error:
+            raise EsiClientError("esi-auth-request-invalid") from error
+        if character_id is None:
+            if scopes:
+                raise EsiClientError("esi-auth-request-invalid")
+        elif (
+            isinstance(character_id, bool)
+            or not isinstance(character_id, int)
+            or character_id <= 0
+            or not scopes
+            or any(
+                not isinstance(scope, str)
+                or not scope.startswith("esi-")
+                or not scope.endswith(".v1")
+                or len(scope) > 200
+                for scope in scopes
+            )
+            or self._token_provider is None
+        ):
+            raise EsiClientError("esi-auth-request-invalid")
         try:
             body = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
         except (TypeError, ValueError) as error:
             raise EsiClientError("esi-request-payload-invalid") from error
         if not body or len(body) > 256_000:
             raise EsiClientError("esi-request-payload-invalid")
-        headers = {
-            "Accept": "application/json",
-            "Content-Type": "application/json",
-            "User-Agent": self._user_agent,
-            "X-Compatibility-Date": self._compatibility_date,
-        }
         cache_key = (
             f"POST {url} {hashlib.sha256(body).hexdigest()}",
-            None,
+            character_id,
         )
         now = self._monotonic()
         with self._lock:
@@ -509,6 +532,33 @@ class EsiClient:
                     dict(cached.headers),
                     True,
                 )
+
+        token = None
+        if character_id is not None:
+            try:
+                token = self._token_provider(character_id, scopes)  # type: ignore[misc]
+            except Exception as error:
+                token_error_code = getattr(error, "code", None)
+                if isinstance(token_error_code, str) and _PUBLIC_ERROR_CODE.fullmatch(
+                    token_error_code
+                ):
+                    raise EsiClientError(token_error_code) from error
+                raise EsiClientError("esi-access-token-unavailable") from error
+            if (
+                not isinstance(token, str)
+                or not token
+                or any(character.isspace() for character in token)
+                or len(token) > 8_192
+            ):
+                raise EsiClientError("esi-access-token-invalid")
+        headers = {
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "User-Agent": self._user_agent,
+            "X-Compatibility-Date": self._compatibility_date,
+        }
+        if token is not None:
+            headers["Authorization"] = f"Bearer {token}"
 
         last_status: int | None = None
         for attempt in range(self._max_attempts):

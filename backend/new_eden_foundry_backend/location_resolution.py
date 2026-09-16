@@ -12,8 +12,12 @@ from .esi_client import EsiClient, EsiClientError
 
 
 STRUCTURE_SCOPE = "esi-universe.read_structures.v1"
+ASSET_SCOPE = "esi-assets.read_assets.v1"
 STRUCTURE_ID_MINIMUM = 1_000_000_000_000
 MAX_CONTAINER_DEPTH = 64
+ASSET_NAME_BATCH_SIZE = 1_000
+# Cargo, secure cargo, audit/station and freight containers from the official SDE.
+STORAGE_CONTAINER_GROUP_IDS = frozenset({12, 340, 448, 649})
 
 
 class LocationResolutionError(RuntimeError):
@@ -249,15 +253,89 @@ def _load_sde_type_names(connection: sqlite3.Connection) -> dict[int, str]:
     return names
 
 
+def _storage_container_type_ids(connection: sqlite3.Connection) -> frozenset[int]:
+    exists = connection.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='sde_types'"
+    ).fetchone()
+    if exists is None:
+        return frozenset()
+    placeholders = ",".join("?" for _ in STORAGE_CONTAINER_GROUP_IDS)
+    rows = connection.execute(
+        f"SELECT type_id FROM sde_types WHERE group_id IN ({placeholders})",
+        tuple(sorted(STORAGE_CONTAINER_GROUP_IDS)),
+    )
+    return frozenset(int(row[0]) for row in rows)
+
+
+def _custom_container_names(
+    client: EsiClient,
+    character_id: int,
+    assets: list[_Asset],
+    storage_container_type_ids: frozenset[int],
+) -> dict[int, str]:
+    asset_by_id = {asset.item_id: asset for asset in assets}
+    parent_ids = {asset.location_id for asset in assets if asset.location_id in asset_by_id}
+    container_ids = sorted(
+        item_id
+        for item_id in parent_ids
+        if asset_by_id[item_id].type_id in storage_container_type_ids
+    )
+    names: dict[int, str] = {}
+    for offset in range(0, len(container_ids), ASSET_NAME_BATCH_SIZE):
+        batch = container_ids[offset : offset + ASSET_NAME_BATCH_SIZE]
+        response = client.post_json(
+            f"/characters/{character_id}/assets/names/",
+            batch,
+            character_id=character_id,
+            required_scopes=(ASSET_SCOPE,),
+        )
+        if not isinstance(response.payload, list) or len(response.payload) > len(batch):
+            raise LocationResolutionError("asset_name_payload_invalid")
+        batch_ids = set(batch)
+        for raw in response.payload:
+            if not isinstance(raw, Mapping) or set(raw) != {"item_id", "name"}:
+                raise LocationResolutionError("asset_name_payload_invalid")
+            item_id = _require_positive_id(raw.get("item_id"), "asset_name_item_id")
+            raw_name = raw.get("name")
+            name = _bounded_text(raw_name, "asset_name")
+            if (
+                item_id not in batch_ids
+                or item_id in names
+                or not isinstance(raw_name, str)
+                or name != raw_name
+            ):
+                raise LocationResolutionError("asset_name_payload_invalid")
+            names[item_id] = name
+    return names
+
+
 def resolve_asset_locations(
     connection: sqlite3.Connection,
     provider: LocationProvider,
     character_id: int,
     asset_rows: Iterable[Mapping[str, Any]],
+    *,
+    custom_item_names: Mapping[int, str] | None = None,
+    storage_container_type_ids: frozenset[int] | None = None,
 ) -> tuple[ResolvedAssetLocation, ...]:
     """Resolve root-first paths for one complete character asset snapshot."""
     _require_positive_id(character_id, "character_id")
     assets = _validated_assets(asset_rows)
+    if custom_item_names is None:
+        custom_item_names = {}
+    if not isinstance(custom_item_names, Mapping) or any(
+        isinstance(item_id, bool)
+        or not isinstance(item_id, int)
+        or item_id <= 0
+        or not isinstance(name, str)
+        or not name.strip()
+        or name.strip() != name
+        or len(name) > 200
+        for item_id, name in custom_item_names.items()
+    ):
+        raise LocationResolutionError("asset_name_payload_invalid")
+    if storage_container_type_ids is None:
+        storage_container_type_ids = _storage_container_type_ids(connection)
     by_item_id = {asset.item_id: asset for asset in assets}
     sde_locations = _load_sde_locations(connection)
     type_names = _load_sde_type_names(connection)
@@ -362,7 +440,7 @@ def resolve_asset_locations(
             resolved = ResolvedAssetLocation(
                 0,
                 "unresolved",
-                (LocationNode(asset.location_id, "container", None, "unknown"),),
+                (LocationNode(asset.location_id, "inventory_item", None, "unknown"),),
                 "container_missing",
             )
         else:
@@ -403,18 +481,26 @@ def resolve_asset_locations(
                     item_id, parent.status, parent.path, parent.error_code
                 )
             else:
-                container = by_item_id[asset.location_id]
+                parent_asset = by_item_id[asset.location_id]
+                is_storage_container = (
+                    parent_asset.type_id in storage_container_type_ids
+                )
                 result = ResolvedAssetLocation(
                     item_id,
                     parent.status,
                     parent.path
                     + (
                         LocationNode(
-                            container.item_id,
-                            "container",
-                            type_names.get(container.type_id),
+                            parent_asset.item_id,
+                            "container" if is_storage_container else "inventory_item",
+                            (
+                                custom_item_names.get(parent_asset.item_id)
+                                if is_storage_container
+                                else None
+                            )
+                            or type_names.get(parent_asset.type_id),
                             "available",
-                            container.type_id,
+                            parent_asset.type_id,
                         ),
                     ),
                     parent.error_code,
@@ -478,11 +564,24 @@ def resolve_latest_character_asset_locations(
             or not isinstance(source_payload.get("assets"), list)
         ):
             raise LocationResolutionError("asset_snapshot_invalid")
+        validated_assets = _validated_assets(source_payload["assets"])
+        storage_container_type_ids = _storage_container_type_ids(connection)
+        try:
+            custom_item_names = _custom_container_names(
+                client,
+                character_id,
+                validated_assets,
+                storage_container_type_ids,
+            )
+        except EsiClientError:
+            custom_item_names = {}
         locations = resolve_asset_locations(
             connection,
             EsiLocationProvider(client),
             character_id,
             source_payload["assets"],
+            custom_item_names=custom_item_names,
+            storage_container_type_ids=storage_container_type_ids,
         )
         counts = {
             status: sum(location.status == status for location in locations)

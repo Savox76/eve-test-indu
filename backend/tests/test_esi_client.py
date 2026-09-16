@@ -99,6 +99,71 @@ class EsiClientTests(unittest.TestCase):
         self.assertEqual(b"[34]", body)
         self.assertEqual(20.0, timeout)
 
+    def test_posts_authenticated_json_with_character_bound_cache(self) -> None:
+        transport = QueuePostTransport(
+            response(
+                body=b'[{"item_id":7001,"name":"Production Minerals"}]',
+                cache_control="max-age=60",
+            ),
+            response(
+                body=b'[{"item_id":7001,"name":"Reaction Materials"}]',
+                cache_control="max-age=60",
+            ),
+        )
+        provider_calls: list[tuple[int, tuple[str, ...]]] = []
+
+        def token_provider(character_id: int, scopes: tuple[str, ...]) -> str:
+            provider_calls.append((character_id, scopes))
+            return f"synthetic-token-{character_id}"
+
+        client = EsiClient(
+            token_provider,
+            post_transport=transport,
+            sleep=lambda _: None,
+        )
+        arguments = {"required_scopes": ("esi-assets.read_assets.v1",)}
+
+        first = client.post_json(
+            "/characters/90000001/assets/names/",
+            [7001],
+            character_id=90_000_001,
+            **arguments,
+        )
+        cached = client.post_json(
+            "/characters/90000001/assets/names/",
+            [7001],
+            character_id=90_000_001,
+            **arguments,
+        )
+        other = client.post_json(
+            "/characters/90000001/assets/names/",
+            [7001],
+            character_id=90_000_002,
+            **arguments,
+        )
+
+        self.assertFalse(first.from_cache)
+        self.assertTrue(cached.from_cache)
+        self.assertFalse(other.from_cache)
+        self.assertEqual(
+            provider_calls,
+            [
+                (90_000_001, ("esi-assets.read_assets.v1",)),
+                (90_000_002, ("esi-assets.read_assets.v1",)),
+            ],
+        )
+        self.assertEqual(2, len(transport.calls))
+        self.assertEqual(
+            "Bearer synthetic-token-90000001",
+            transport.calls[0][1]["Authorization"],
+        )
+        self.assertEqual(
+            "Bearer synthetic-token-90000002",
+            transport.calls[1][1]["Authorization"],
+        )
+        self.assertEqual("Production Minerals", first.payload[0]["name"])
+        self.assertEqual("Reaction Materials", other.payload[0]["name"])
+
     def test_applies_fixed_identity_compatibility_and_character_authorization(self) -> None:
         transport = QueueTransport(response(cache_control="max-age=0"))
         provider_calls: list[tuple[int, tuple[str, ...]]] = []

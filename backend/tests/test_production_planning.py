@@ -395,6 +395,9 @@ class ProductionPlanningTests(unittest.TestCase):
         item_ids: list[int],
         root_item_ids: list[int],
         observed_at: str,
+        *,
+        inventory_item_id: int | None = None,
+        inventory_item_child_ids: list[int] | None = None,
     ) -> None:
         run = self.db.execute(
             "INSERT INTO sync_runs(source,status,started_at,completed_at,data_timestamp,"
@@ -441,6 +444,25 @@ class ProductionPlanningTests(unittest.TestCase):
             }],
             "errorCode": None,
         } for item_id in item_ids)
+        if inventory_item_id is not None:
+            locations.append({
+                "itemId": inventory_item_id,
+                "status": "resolved",
+                "path": root,
+                "errorCode": None,
+            })
+            locations.extend({
+                "itemId": item_id,
+                "status": "resolved",
+                "path": [*root, {
+                    "locationId": inventory_item_id,
+                    "kind": "inventory_item",
+                    "name": "Synthetic Hauler",
+                    "access": "available",
+                    "typeId": 1_002,
+                }],
+                "errorCode": None,
+            } for item_id in (inventory_item_child_ids or []))
         self.db.execute(
             "INSERT INTO cached_snapshots(sync_run_id,resource,payload_json,observed_at) "
             "VALUES(?,?,?,?)",
@@ -621,6 +643,64 @@ class ProductionPlanningTests(unittest.TestCase):
         self.assertEqual(page["locationOptions"][0]["materialLocations"][1]["locationId"], container_id)
         self.assertTrue(page["supplyModesApplied"])
         self.assertEqual(page["supplyModeRule"], "stock-first-before-recursive-build")
+
+    def test_station_source_excludes_ship_holds_from_material_inventory(self) -> None:
+        import_industry_sde(self.db, **bundle())
+        ship_id = 7_100
+        asset_snapshot, _ = self.publish_assets(
+            7,
+            [
+                {"item_id": 7_000, "type_id": 1_001,
+                 "location_id": 60_003_760, "quantity": 1,
+                 "location_type": "station", "location_flag": "Hangar"},
+                {"item_id": ship_id, "type_id": 1_002,
+                 "location_id": 60_003_760, "quantity": 1,
+                 "location_type": "station", "location_flag": "Hangar"},
+                {"item_id": 7_101, "type_id": 900, "location_id": ship_id,
+                 "quantity": 500, "location_type": "item", "location_flag": "Cargo"},
+                {"item_id": 7_102, "type_id": 900, "location_id": 60_003_760,
+                 "quantity": 20, "location_type": "station", "location_flag": "Hangar"},
+            ],
+            "2026-09-15T10:10:00Z",
+        )
+        self.publish_container_locations(
+            7,
+            asset_snapshot,
+            7_000,
+            [],
+            [7_102],
+            "2026-09-15T10:11:00Z",
+            inventory_item_id=ship_id,
+            inventory_item_child_ids=[7_101],
+        )
+        save_production_plan(
+            self.db,
+            plan_input(
+                facilityId=60_003_760,
+                stepSupplyModes=[
+                    {"blueprintTypeId": 110, "activity": "manufacturing",
+                     "productTypeId": 111, "supplyMode": "build"},
+                    {"blueprintTypeId": 120, "activity": "manufacturing",
+                     "productTypeId": 121, "supplyMode": "build"},
+                ],
+            ),
+        )
+
+        page = query_production_plans(self.db, query())
+        mineral = next(
+            item for item in page["items"][0]["grossMaterials"]
+            if item["typeId"] == 900
+        )
+
+        self.assertEqual(mineral["availableQuantity"], 20)
+        self.assertEqual(mineral["excludedQuantity"], 500)
+        self.assertEqual(
+            [
+                item["locationId"]
+                for item in page["locationOptions"][0]["materialLocations"]
+            ],
+            [60_003_760],
+        )
 
     def test_stock_first_builds_only_the_uncovered_intermediate_quantity(self) -> None:
         import_industry_sde(self.db, **bundle())
