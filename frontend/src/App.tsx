@@ -10,6 +10,7 @@ import {
   CircleCheck,
   Clock3,
   Command,
+  Copy,
   Database,
   Download,
   Factory,
@@ -911,6 +912,18 @@ const copy = {
       title: "Fertigungs- und Reaktionsziele",
       subtitle: "Persistente Ziele werden in Schritte aufgelöst und konfliktfrei aus dem letzten vollständigen Asset-Snapshot reserviert.",
       boundary: "Der Bestand des ausführenden Charakters wird lokal und zielübergreifend reserviert. Persönliche Blueprints, ME/TE und aktive Charakter-Skills werden schrittgenau angewendet. Anlagenboni werden nur aus den ausdrücklich gespeicherten Planwerten berechnet und nie aus ESI geraten. Steuern und Preise folgen später.",
+      purchaseTitle: "Einkaufsliste / EVE Multibuy",
+      purchaseSubtitle: "Aggregiert die konfliktfreien Fehlmengen aller aktuell gefilterten Produktionsziele.",
+      purchaseStateLabels: { ready: "Vollständig", empty: "Keine Fehlmengen", incomplete: "Unvollständig" },
+      purchaseSummary: "{items} Materialarten · {quantity} Einheiten · {plans} Ziele",
+      purchaseIncomplete: "{plans} Ziele haben noch keinen belastbaren Rezept- oder Asset-Stand und sind nicht enthalten.",
+      purchaseOmitted: "{items} weitere Materialarten überschreiten die sichere Ausgabelänge und werden nicht kopiert.",
+      purchaseEmpty: "Für die aktuellen Filter gibt es keine belegte Fehlmenge.",
+      purchaseCopy: "Für EVE Multibuy kopieren",
+      purchaseCopied: "Multibuy-Liste kopiert.",
+      purchaseCopyError: "Die Multibuy-Liste konnte nicht kopiert werden.",
+      purchaseItemSummary: "{quantity} benötigt · {plans} Ziele",
+      purchaseBreakdown: "{inventory} physisch fehlend · {conflict} durch Reservierungen gebunden",
       build: "SDE-Build {build}",
       searchRecipe: "Produkt oder Blueprint suchen",
       activity: "Aktivität",
@@ -1761,6 +1774,18 @@ const copy = {
       title: "Manufacturing and reaction goals",
       subtitle: "Persistent goals are expanded into steps and reserved conflict-free from the latest complete asset snapshot.",
       boundary: "Stock owned by the executing character is reserved locally across all goals. Personal blueprints, ME/TE and active character skills are applied per step. Facility bonuses are calculated only from explicitly saved plan values and are never guessed from ESI. Taxes and prices follow later.",
+      purchaseTitle: "Purchase list / EVE Multibuy",
+      purchaseSubtitle: "Aggregates the conflict-free shortages of every currently filtered production goal.",
+      purchaseStateLabels: { ready: "Complete", empty: "No shortages", incomplete: "Incomplete" },
+      purchaseSummary: "{items} material types · {quantity} units · {plans} goals",
+      purchaseIncomplete: "{plans} goals do not yet have a reliable recipe or asset state and are excluded.",
+      purchaseOmitted: "{items} additional material types exceed the safe response size and will not be copied.",
+      purchaseEmpty: "There is no evidenced shortage for the current filters.",
+      purchaseCopy: "Copy for EVE Multibuy",
+      purchaseCopied: "Multibuy list copied.",
+      purchaseCopyError: "The Multibuy list could not be copied.",
+      purchaseItemSummary: "{quantity} required · {plans} goals",
+      purchaseBreakdown: "{inventory} physically missing · {conflict} held by reservations",
       build: "SDE build {build}",
       searchRecipe: "Search product or blueprint",
       activity: "Activity",
@@ -5191,6 +5216,7 @@ function ProductionWorkspace({
   const [plans, setPlans] = useState<ProductionPlanPage | null>(null);
   const [plansLoading, setPlansLoading] = useState(false);
   const [plansFailed, setPlansFailed] = useState(false);
+  const [purchaseCopyState, setPurchaseCopyState] = useState<"idle" | "copied" | "error">("idle");
   const [revision, setRevision] = useState(0);
   const [busyId, setBusyId] = useState<number | "new" | null>(null);
   const [mutationState, setMutationState] = useState<"saved" | "deleted" | "error" | null>(null);
@@ -5285,6 +5311,7 @@ function ProductionWorkspace({
           setPlanOffset(Math.floor((page.total - 1) / productionPlanPageSize) * productionPlanPageSize);
           return;
         }
+        setPurchaseCopyState("idle");
         setPlans(page);
         setDrafts(Object.fromEntries(page.items.map((item) => [item.planId, {
           owner: item.ownerCharacterId, blueprintItemId: item.blueprintItemId, quantity: item.targetQuantity,
@@ -5407,6 +5434,29 @@ function ProductionWorkspace({
     if (minutes > 0) return `${minutes} min`;
     return `${remainingSeconds} s`;
   };
+  const copyPurchaseList = async () => {
+    const purchaseList = plans?.purchaseList;
+    if (!purchaseList || purchaseList.items.length === 0 || purchaseList.omittedItemCount > 0) return;
+    const text = purchaseList.items.map((item) => `${item.typeName} ${item.quantity}`).join("\n");
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const textarea = document.createElement("textarea");
+        textarea.value = text;
+        textarea.style.position = "fixed";
+        textarea.style.opacity = "0";
+        document.body.appendChild(textarea);
+        textarea.select();
+        const copied = typeof document.execCommand === "function" && document.execCommand("copy");
+        textarea.remove();
+        if (!copied) throw new Error("clipboard_unavailable");
+      }
+      setPurchaseCopyState("copied");
+    } catch {
+      setPurchaseCopyState("error");
+    }
+  };
   const planTotal = plans?.total ?? 0;
   const planFrom = planTotal === 0 ? 0 : planOffset + 1;
   const planTo = Math.min(planOffset + (plans?.items.length ?? 0), planTotal);
@@ -5465,6 +5515,14 @@ function ProductionWorkspace({
           <label><span>{t.productionPlanning.sort}</span><select value={sortBy} onChange={(event) => { setSortBy(event.target.value as ProductionPlanSortField); setPlanOffset(0); }}>{(["priority", "product", "owner", "activity", "state", "updated"] as const).map((field) => <option key={field} value={field}>{t.productionPlanning.sortLabels[field]}</option>)}</select></label>
           <button type="button" className="secondary-button" onClick={() => setSortDirection((value) => value === "asc" ? "desc" : "asc")}><ChevronDown className={sortDirection === "asc" ? "asset-sort__asc" : ""} size={15} />{sortDirection.toUpperCase()}</button>
         </div>
+        {plans && <section className="production-purchase-list" aria-label={t.productionPlanning.purchaseTitle}>
+          <header><div><h3>{t.productionPlanning.purchaseTitle}</h3><p>{t.productionPlanning.purchaseSubtitle}</p></div><span className={`status-pill status-pill--${plans.purchaseList.state === "ready" || plans.purchaseList.state === "empty" ? "good" : "warn"}`}>{t.productionPlanning.purchaseStateLabels[plans.purchaseList.state]}</span></header>
+          <div className="production-purchase-list__summary"><strong>{t.productionPlanning.purchaseSummary.replace("{items}", numberFormat.format(plans.purchaseList.itemCount)).replace("{quantity}", numberFormat.format(plans.purchaseList.totalQuantity)).replace("{plans}", numberFormat.format(plans.purchaseList.includedPlanCount))}</strong><button type="button" className="secondary-button" onClick={() => void copyPurchaseList()} disabled={plans.purchaseList.items.length === 0 || plans.purchaseList.omittedItemCount > 0}><Copy size={15} />{t.productionPlanning.purchaseCopy}</button></div>
+          {plans.purchaseList.unresolvedPlanCount > 0 && <p className="production-purchase-list__warning"><AlertTriangle size={14} />{t.productionPlanning.purchaseIncomplete.replace("{plans}", numberFormat.format(plans.purchaseList.unresolvedPlanCount))}</p>}
+          {plans.purchaseList.omittedItemCount > 0 && <p className="production-purchase-list__warning"><AlertTriangle size={14} />{t.productionPlanning.purchaseOmitted.replace("{items}", numberFormat.format(plans.purchaseList.omittedItemCount))}</p>}
+          {purchaseCopyState !== "idle" && <p className={`production-purchase-list__copy-state ${purchaseCopyState === "error" ? "is-error" : ""}`} role="status">{purchaseCopyState === "copied" ? t.productionPlanning.purchaseCopied : t.productionPlanning.purchaseCopyError}</p>}
+          {plans.purchaseList.items.length === 0 ? <p className="production-purchase-list__empty">{t.productionPlanning.purchaseEmpty}</p> : <details><summary>{t.productionPlanning.purchaseTitle} · {numberFormat.format(plans.purchaseList.items.length)}</summary><ul>{plans.purchaseList.items.map((item) => <li key={item.typeId}><span><strong>{item.typeName}</strong><small>Type #{item.typeId}</small></span><span><strong>{t.productionPlanning.purchaseItemSummary.replace("{quantity}", numberFormat.format(item.quantity)).replace("{plans}", numberFormat.format(item.planCount))}</strong><small>{t.productionPlanning.purchaseBreakdown.replace("{inventory}", numberFormat.format(item.inventoryShortageQuantity)).replace("{conflict}", numberFormat.format(item.reservationConflictQuantity))}</small></span></li>)}</ul></details>}
+        </section>}
         {!available ? <div className="asset-empty"><Database size={22} />{t.productionPlanning.queryError}</div>
           : plansFailed ? <div className="asset-empty asset-empty--error"><AlertTriangle size={22} />{t.productionPlanning.queryError}</div>
           : plansLoading && plans === null ? <div className="asset-empty"><RefreshCw className="spin" size={22} />{t.productionPlanning.loading}</div>

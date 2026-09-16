@@ -37,6 +37,7 @@ MAX_STEP_BLUEPRINT_ASSIGNMENTS = MAX_PLAN_STEPS - 1
 MAX_STEP_SUPPLY_MODES = MAX_PLAN_STEPS - 1
 MAX_PRODUCTION_FACILITIES = 200
 MAX_PRODUCTION_MATERIAL_LOCATIONS = 200
+MAX_PURCHASE_LIST_ITEMS = 1_000
 MAX_FACILITY_BONUS_BASIS_POINTS = 5_000
 RESERVATION_RULE = "priority-desc-created-asc-plan-id-asc"
 MATERIAL_EFFICIENCY_RULE = "max-runs-ceil-base-runs-percent"
@@ -48,6 +49,7 @@ CHARACTER_SKILL_TIME_RULE = (
 FACILITY_EVIDENCE_RULE = "assigned-blueprint-before-active-before-latest-owner-job"
 SUPPLY_MODE_RULE = "stock-first-before-recursive-build"
 FACILITY_MODIFIER_RULE = "explicit-basis-points-combined-before-single-ceil"
+PURCHASE_LIST_RULE = "filtered-plans-sum-missing-by-type"
 INDUSTRY_SKILL_ID = 3380
 ADVANCED_INDUSTRY_SKILL_ID = 3388
 REACTIONS_SKILL_ID = 45746
@@ -2595,6 +2597,97 @@ def _serialize_plan(row: sqlite3.Row, resolution: Mapping[str, Any]) -> dict[str
     }
 
 
+def _purchase_list(records: list[dict[str, Any]]) -> dict[str, Any]:
+    """Aggregate conflict-free missing quantities for the current plan filters."""
+
+    aggregated: dict[int, dict[str, Any]] = {}
+    included_plan_count = 0
+    unresolved_plan_count = 0
+    for record in records:
+        if record["state"] != "ready" or record["inventoryState"] == "snapshot-missing":
+            unresolved_plan_count += 1
+            continue
+        included_plan_count += 1
+        for material in record["grossMaterials"]:
+            missing_quantity = material["missingQuantity"]
+            inventory_shortage = material["inventoryShortageQuantity"]
+            reservation_conflict = material["reservationConflictQuantity"]
+            if (
+                missing_quantity is None
+                or inventory_shortage is None
+                or reservation_conflict is None
+            ):
+                raise ProductionPlanningError("production_purchase_list_invalid")
+            if int(missing_quantity) <= 0:
+                continue
+            type_id = int(material["typeId"])
+            type_name = str(material["typeName"])
+            item = aggregated.setdefault(
+                type_id,
+                {
+                    "typeId": type_id,
+                    "typeName": type_name,
+                    "quantity": 0,
+                    "inventoryShortageQuantity": 0,
+                    "reservationConflictQuantity": 0,
+                    "planIds": set(),
+                },
+            )
+            if item["typeName"] != type_name:
+                raise ProductionPlanningError("production_purchase_list_invalid")
+            item["quantity"] = _checked_add(
+                int(item["quantity"]), int(missing_quantity)
+            )
+            item["inventoryShortageQuantity"] = _checked_add(
+                int(item["inventoryShortageQuantity"]), int(inventory_shortage)
+            )
+            item["reservationConflictQuantity"] = _checked_add(
+                int(item["reservationConflictQuantity"]), int(reservation_conflict)
+            )
+            item["planIds"].add(int(record["planId"]))
+    ordered = sorted(
+        aggregated.values(),
+        key=lambda item: (str(item["typeName"]).casefold(), int(item["typeId"])),
+    )
+    visible = ordered[:MAX_PURCHASE_LIST_ITEMS]
+    omitted_item_count = len(ordered) - len(visible)
+    total_quantity = 0
+    for item in ordered:
+        total_quantity = _checked_add(total_quantity, int(item["quantity"]))
+    items: list[dict[str, Any]] = []
+    for item in visible:
+        items.append(
+            {
+                "typeId": int(item["typeId"]),
+                "typeName": str(item["typeName"]),
+                "quantity": int(item["quantity"]),
+                "inventoryShortageQuantity": int(
+                    item["inventoryShortageQuantity"]
+                ),
+                "reservationConflictQuantity": int(
+                    item["reservationConflictQuantity"]
+                ),
+                "planCount": len(item["planIds"]),
+            }
+        )
+    state = (
+        "incomplete"
+        if unresolved_plan_count > 0 or omitted_item_count > 0
+        else "ready"
+        if items
+        else "empty"
+    )
+    return {
+        "state": state,
+        "items": items,
+        "itemCount": len(ordered),
+        "totalQuantity": total_quantity,
+        "includedPlanCount": included_plan_count,
+        "unresolvedPlanCount": unresolved_plan_count,
+        "omittedItemCount": omitted_item_count,
+    }
+
+
 def query_production_plans(connection: sqlite3.Connection, raw_query: Any) -> dict[str, Any]:
     query = validate_production_plan_query(raw_query)
     build_number = current_sde_blueprint_activity_build(connection)
@@ -2673,6 +2766,7 @@ def query_production_plans(connection: sqlite3.Connection, raw_query: Any) -> di
     summary = {state: sum(record["state"] == state for record in records) for state in PLAN_STATES}
     if query["state"] is not None:
         records = [record for record in records if record["state"] == query["state"]]
+    purchase_list = _purchase_list(records)
     sort_keys = {
         "product": lambda item: (str(item["productName"]).casefold(), item["productTypeId"], item["planId"]),
         "owner": lambda item: (str(item["ownerName"]).casefold(), item["ownerCharacterId"], item["planId"]),
@@ -2713,6 +2807,7 @@ def query_production_plans(connection: sqlite3.Connection, raw_query: Any) -> di
         "activities": list(SUPPORTED_BLUEPRINT_ACTIVITIES),
         "states": list(PLAN_STATES),
         "summary": summary,
+        "purchaseList": purchase_list,
         "buildNumber": build_number,
         "inventoryApplied": True,
         "reservationsApplied": True,
@@ -2731,6 +2826,8 @@ def query_production_plans(connection: sqlite3.Connection, raw_query: Any) -> di
         "supplyModeRule": SUPPLY_MODE_RULE,
         "facilityModifiersApplied": True,
         "facilityModifierRule": FACILITY_MODIFIER_RULE,
+        "purchaseListApplied": True,
+        "purchaseListRule": PURCHASE_LIST_RULE,
         "remainingModifiersApplied": False,
     }
 

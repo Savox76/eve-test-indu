@@ -782,6 +782,27 @@ export interface ProductionGrossMaterial {
   excludedLocations: ProductionStockLocation[];
 }
 
+export type ProductionPurchaseListState = "ready" | "empty" | "incomplete";
+
+export interface ProductionPurchaseListItem {
+  typeId: number;
+  typeName: string;
+  quantity: number;
+  inventoryShortageQuantity: number;
+  reservationConflictQuantity: number;
+  planCount: number;
+}
+
+export interface ProductionPurchaseList {
+  state: ProductionPurchaseListState;
+  items: ProductionPurchaseListItem[];
+  itemCount: number;
+  totalQuantity: number;
+  includedPlanCount: number;
+  unresolvedPlanCount: number;
+  omittedItemCount: number;
+}
+
 export interface ProductionReservationClaim {
   planId: number;
   productTypeId: number;
@@ -939,6 +960,7 @@ export interface ProductionPlanPage {
   activities: ProductionActivity[];
   states: ProductionPlanState[];
   summary: Record<ProductionPlanState, number>;
+  purchaseList: ProductionPurchaseList;
   buildNumber: string | null;
   inventoryApplied: true;
   reservationsApplied: true;
@@ -957,6 +979,8 @@ export interface ProductionPlanPage {
   supplyModeRule: "stock-first-before-recursive-build";
   facilityModifiersApplied: true;
   facilityModifierRule: "explicit-basis-points-combined-before-single-ceil";
+  purchaseListApplied: true;
+  purchaseListRule: "filtered-plans-sum-missing-by-type";
   remainingModifiersApplied: false;
 }
 
@@ -3751,6 +3775,41 @@ function emptyProductionSummary(): Record<ProductionPlanState, number> {
   return Object.fromEntries(productionPlanStates.map((state) => [state, 0])) as Record<ProductionPlanState, number>;
 }
 
+function parseProductionPurchaseList(candidate: unknown, planCount: number): ProductionPurchaseList {
+  if (
+    !isRecord(candidate) || !["ready", "empty", "incomplete"].includes(String(candidate.state)) ||
+    !Array.isArray(candidate.items) || candidate.items.length > 1_000 ||
+    !isNonNegativeSafeInteger(candidate.itemCount) ||
+    !isNonNegativeSafeInteger(candidate.totalQuantity) ||
+    !isNonNegativeSafeInteger(candidate.includedPlanCount) ||
+    !isNonNegativeSafeInteger(candidate.unresolvedPlanCount) ||
+    !isNonNegativeSafeInteger(candidate.omittedItemCount)
+  ) throw new Error("The native runtime returned an invalid production purchase list.");
+  const items = candidate.items.map((item): ProductionPurchaseListItem => {
+    if (
+      !isRecord(item) || !isPositiveSafeInteger(item.typeId) ||
+      !isBoundedText(item.typeName, 200) || !isPositiveSafeInteger(item.quantity) ||
+      !isNonNegativeSafeInteger(item.inventoryShortageQuantity) ||
+      !isNonNegativeSafeInteger(item.reservationConflictQuantity) ||
+      !isPositiveSafeInteger(item.planCount) ||
+      Number(item.inventoryShortageQuantity) + Number(item.reservationConflictQuantity) !==
+        Number(item.quantity) || Number(item.planCount) > planCount
+    ) throw new Error("The native runtime returned an invalid production purchase-list item.");
+    return item as unknown as ProductionPurchaseListItem;
+  });
+  const incomplete = Number(candidate.unresolvedPlanCount) > 0 || Number(candidate.omittedItemCount) > 0;
+  const representedQuantity = items.reduce((total, item) => total + item.quantity, 0);
+  if (
+    Number(candidate.includedPlanCount) + Number(candidate.unresolvedPlanCount) !== planCount ||
+    Number(candidate.itemCount) !== items.length + Number(candidate.omittedItemCount) ||
+    Number(candidate.totalQuantity) < representedQuantity ||
+    (Number(candidate.omittedItemCount) === 0 && Number(candidate.totalQuantity) !== representedQuantity) ||
+    new Set(items.map((item) => item.typeId)).size !== items.length ||
+    candidate.state !== (incomplete ? "incomplete" : items.length > 0 ? "ready" : "empty")
+  ) throw new Error("The native runtime returned inconsistent production purchase-list data.");
+  return { ...candidate, items } as unknown as ProductionPurchaseList;
+}
+
 function parseProductionPlanPage(candidate: unknown): ProductionPlanPage {
   if (
     !isRecord(candidate) || !Array.isArray(candidate.items) || !Array.isArray(candidate.owners) ||
@@ -3783,9 +3842,12 @@ function parseProductionPlanPage(candidate: unknown): ProductionPlanPage {
     candidate.supplyModeRule !== "stock-first-before-recursive-build" ||
     candidate.facilityModifiersApplied !== true ||
     candidate.facilityModifierRule !== "explicit-basis-points-combined-before-single-ceil" ||
+    candidate.purchaseListApplied !== true ||
+    candidate.purchaseListRule !== "filtered-plans-sum-missing-by-type" ||
     candidate.remainingModifiersApplied !== false
   ) throw new Error("The native runtime returned invalid production-plan data.");
   const items = candidate.items.map(parseProductionPlanRecord);
+  const purchaseList = parseProductionPurchaseList(candidate.purchaseList, Number(candidate.total));
   const assignedBlueprintIds = items.flatMap((item) => item.steps.flatMap((step) =>
     step.blueprintAssignment.blueprintItemId === null
       ? []
@@ -3805,7 +3867,7 @@ function parseProductionPlanPage(candidate: unknown): ProductionPlanPage {
       locationOptions.length) {
     throw new Error("The native runtime returned inconsistent production-plan metadata.");
   }
-  return { ...candidate, items, owners, locationOptions } as unknown as ProductionPlanPage;
+  return { ...candidate, items, owners, locationOptions, purchaseList } as unknown as ProductionPlanPage;
 }
 
 export async function loadProductionPlans(
@@ -3817,7 +3879,10 @@ export async function loadProductionPlans(
     items: [], total: 0, offset: validated.offset, limit: validated.limit, owners: [],
     locationOptions: [],
     activities: [...productionActivities], states: [...productionPlanStates],
-    summary: emptyProductionSummary(), buildNumber: null, inventoryApplied: true,
+    summary: emptyProductionSummary(), purchaseList: {
+      state: "empty", items: [], itemCount: 0, totalQuantity: 0,
+      includedPlanCount: 0, unresolvedPlanCount: 0, omittedItemCount: 0,
+    }, buildNumber: null, inventoryApplied: true,
     reservationsApplied: true, reservationRule: "priority-desc-created-asc-plan-id-asc",
     blueprintMaterialEfficiencyApplied: true,
     materialEfficiencyRule: "max-runs-ceil-base-runs-percent",
@@ -3834,6 +3899,8 @@ export async function loadProductionPlans(
     supplyModeRule: "stock-first-before-recursive-build",
     facilityModifiersApplied: true,
     facilityModifierRule: "explicit-basis-points-combined-before-single-ceil",
+    purchaseListApplied: true,
+    purchaseListRule: "filtered-plans-sum-missing-by-type",
     remainingModifiersApplied: false,
   };
   const page = parseProductionPlanPage(JSON.parse(await adapter.invoke("query_production_plans", {

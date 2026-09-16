@@ -514,6 +514,19 @@ class ProductionPlanningTests(unittest.TestCase):
             "assigned-blueprint-before-active-before-latest-owner-job",
         )
         self.assertFalse(page["remainingModifiersApplied"])
+        self.assertTrue(page["purchaseListApplied"])
+        self.assertEqual(
+            page["purchaseListRule"], "filtered-plans-sum-missing-by-type"
+        )
+        self.assertEqual(page["purchaseList"], {
+            "state": "incomplete",
+            "items": [],
+            "itemCount": 0,
+            "totalQuantity": 0,
+            "includedPlanCount": 0,
+            "unresolvedPlanCount": 1,
+            "omittedItemCount": 0,
+        })
         self.assertEqual(page["summary"]["ready"], 1)
         record = page["items"][0]
         self.assertEqual(record["state"], "ready")
@@ -576,6 +589,58 @@ class ProductionPlanningTests(unittest.TestCase):
             "selectedBlueprintTypeId": 120,
             "candidateCount": 2,
         }])
+
+    def test_purchase_list_aggregates_filtered_conflict_free_shortages(self) -> None:
+        import_industry_sde(self.db, **bundle())
+        asset_snapshot, _ = self.publish_assets(
+            7,
+            [{
+                "item_id": 7_001,
+                "type_id": 900,
+                "location_id": 60_003_760,
+                "quantity": 10,
+                "location_type": "station",
+                "location_flag": "Hangar",
+            }],
+            "2026-09-16T10:00:00Z",
+        )
+        self.publish_locations(
+            7, asset_snapshot, [7_001], "2026-09-16T10:01:00Z"
+        )
+        first = save_production_plan(
+            self.db, plan_input(priority=100, note="First batch")
+        )
+        second = save_production_plan(
+            self.db, plan_input(priority=50, note="Second batch")
+        )
+
+        page = query_production_plans(self.db, query())
+        self.assertEqual(page["purchaseList"], {
+            "state": "ready",
+            "items": [{
+                "typeId": 900,
+                "typeName": "Synthetic Mineral",
+                "quantity": 44,
+                "inventoryShortageQuantity": 34,
+                "reservationConflictQuantity": 10,
+                "planCount": 2,
+            }],
+            "itemCount": 1,
+            "totalQuantity": 44,
+            "includedPlanCount": 2,
+            "unresolvedPlanCount": 0,
+            "omittedItemCount": 0,
+        })
+        self.assertEqual(
+            [item["planId"] for item in page["items"]],
+            [first["planId"], second["planId"]],
+        )
+
+        filtered = query_production_plans(self.db, query(search="first batch"))
+        self.assertEqual(filtered["total"], 1)
+        self.assertEqual(filtered["purchaseList"]["items"][0]["quantity"], 17)
+        self.assertEqual(filtered["purchaseList"]["items"][0]["planCount"], 1)
+        self.assertEqual(filtered["purchaseList"]["includedPlanCount"], 1)
 
     def test_selected_container_and_stock_only_intermediate_skip_blueprint_step(self) -> None:
         import_industry_sde(self.db, **bundle())

@@ -4,7 +4,7 @@
 
 **Stand:** 16. September 2026
 
-**Status:** Paket 39 – explizite Anlagenprofile und Anlagenzeit technisch abgeschlossen
+**Status:** Paket 40 – zielübergreifende Einkaufsliste und EVE-Multibuy technisch abgeschlossen
 
 **Geltungsbereich:** `Savox76/eve-test-indu`
 
@@ -205,6 +205,7 @@ Die Reihenfolge ist verbindlicher als eine Kalenderangabe.
 | 37 | Anlagen- und Jobbelege für Produktionsketten | Jeder Produktionsschritt verbindet den stärksten passenden persönlichen Job mit dem vollständigen Anlagen-Snapshot; Anlage, Systemkostenindex und Quellenzustände bleiben sichtbar, ohne unbekannte Modifikatoren zu erfinden |
 | 38 | Bestandsquellen und Produktionsorte | Vorprodukte können vollständig oder teilweise aus persönlichem Bestand stammen; Produktionsstation und echte, persönlich benannte Materialcontainer sind wählbar, updatefest und begrenzen Bestandsabgleich sowie Reservierungen ohne Schiffsladeräume nachvollziehbar |
 | 39 | Explizite Anlagenprofile und Anlagenzeit | Ein bewusst gespeichertes, aktivitätsgebundenes Material-/Zeitprofil der gewählten Anlage wirkt mit ME/TE und Charakter-Skills vor genau einer Aufrundung; unbekannte Boni bleiben sichtbar unkonfiguriert statt geschätzt |
+| 40 | Zielübergreifende Einkaufsliste und EVE-Multibuy | Die konfliktfreien Fehlmengen aller aktuell gefilterten Ziele werden typweise aggregiert, unvollständige Quellstände sichtbar ausgeschlossen und als direkt kopierbare EVE-Multibuy-Liste ausgegeben |
 
 ### Aktueller Stand
 
@@ -246,6 +247,7 @@ Die Reihenfolge ist verbindlicher als eine Kalenderangabe.
 - **Abgeschlossen:** 37 – Jeder aufgelöste Produktionsschritt erhält den stärksten passenden Anlagenbeleg aus dem letzten vollständigen persönlichen Job-Snapshot des ausführenden Charakters und dem letzten vollständigen globalen Anlagen-Snapshot. Ein Job mit exakt zugeordnetem Blueprint-Item hat Vorrang vor einem aktiven und danach vor dem jüngsten typgleichen Job. Anlage, Zugriffsstatus, Sonnensystem, Sicherheitsraum, aktivitätsspezifischer Systemkostenindex sowie beide Quellenstände bleiben sichtbar; fehlende und nicht auflösbare Belege werden nicht ersetzt oder geschätzt. Das Schema bleibt bei Version 11.
 - **Abgeschlossen:** 38 – Jedes produzierbare Vorprodukt kann updatefest als `Bestand zuerst`, `Nur Bestand` oder `Vollständig bauen` geplant werden. Vorhandene T1- und andere Zwischenprodukte verkürzen dadurch die rekursive Fertigungskette; `Nur Bestand` erzeugt keinen Produktionsschritt und benötigt keinen Blueprint, weist aber eine mögliche Restfehlmenge aus. Eine gewählte persönliche Station oder Struktur und optional deren direkter Hangar beziehungsweise ein echter Lagercontainer begrenzen Bestandsabgleich und konfliktfreie Reservierungen exakt auf diese Quelle. Der tatsächliche EVE-Containername und die eindeutige Item-ID werden angezeigt; Schiffe und deren Laderäume werden an einer gewählten Anlage weder als Container angeboten noch als Produktionsbestand angerechnet. Ohne Auswahl bleibt das bisherige Verhalten über alle persönlichen Lagerorte erhalten. Schema 12 speichert Anlagen-, Lager- und Versorgungswahl updatefest.
 - **Abgeschlossen:** 39 – Eine gewählte Produktionsanlage kann ein bewusst eingegebenes Material- und Zeitprofil in Hundertstelprozent erhalten. Der Materialfaktor wird mit dem schrittgenauen Blueprint-ME, der Zeitfaktor mit Blueprint-TE und aktiven Charakter-Skills multipliziert; erst danach wird je Material beziehungsweise Job einmal ganzzahlig aufgerundet. Das Profil gilt nur für Schritte derselben Aktivität, zeigt abweichende Aktivitäten ausdrücklich und wird niemals aus ESI, Jobs oder Strukturtypen geraten. Bestehende Ziele bleiben nach Schema-13-Migration unverändert und zeigen das Profil als nicht konfiguriert. Anlagenzeit und zusätzliche Ersparnis bleiben je Schritt und als belegbare Summe sichtbar.
+- **Abgeschlossen:** 40 – Die Produktionsabfrage aggregiert nach Anwendung von Suche, Besitzer-, Aktivitäts- und Statusfilter alle bereits konfliktfrei berechneten Fehlmengen stabil nach Typ-ID. Physische Fehlmenge und durch vorrangige Ziele gebundene Menge bleiben getrennt; die Oberfläche zeigt Materialarten, Gesamtmenge und beteiligte Ziele und kopiert den vollständigen belegten Ausschnitt im EVE-Multibuy-Format. Ziele ohne auflösbares Rezept oder vollständigen Asset-Snapshot werden gezählt und ausdrücklich als nicht enthalten markiert. Sortierung und Seitenauswahl verändern die Einkaufsliste nicht. Das Schema bleibt bei Version 13.
 - **Als Nächstes:** Das nächste Fachpaket wird separat festgelegt. Automatische Struktur-/Service-/Rig-Erkennung, Systemkosten, Steuern, Preise und belastbare Endtermine bleiben bis zu eigenen Fachverträgen ausgeschlossen.
 - Architektur-Gate A0 ist vollständig erfüllt; `v0.2.0-alpha.1` bildet die erste freigegebene Alpha-Grundlage für die folgenden Produktionspakete.
 
