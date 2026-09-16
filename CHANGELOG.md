@@ -6,11 +6,34 @@ Alle bemerkenswerten Änderungen an New Eden Foundry werden hier festgehalten. D
 
 ### Neu hinzugefügt
 
+- Keine.
+
+### Geändert
+
+- Keine.
+
+### Behobene Fehler
+
+- Keine.
+
+### Bekannte Einschränkungen
+
+- Keine.
+
+### Update und Datenbankmigration
+
+- Keine.
+
+## 0.2.0-alpha.12 – 16. September 2026
+
+### Neu hinzugefügt
+
 - Paket 40 aggregiert die konfliktfreien Fehlmengen aller aktuell gefilterten Produktionsziele zu einer gemeinsamen Einkaufsliste.
 - Die Einkaufsliste kann im Format `Typname Menge` direkt für EVE Multibuy kopiert werden.
 
 ### Geändert
 
+- Die sichtbare Versionsnummer lautet `v0.2.0-alpha.12`.
 - Physisch fehlende Mengen und durch vorrangige Ziele gebundene Mengen bleiben auch in der aggregierten Liste getrennt nachvollziehbar.
 - Suche, Charakter-, Aktivitäts- und Statusfilter bestimmen den Listeninhalt; Sortierung und Seitenauswahl verändern ihn nicht.
 
@@ -21,10 +44,12 @@ Alle bemerkenswerten Änderungen an New Eden Foundry werden hier festgehalten. D
 ### Bekannte Einschränkungen
 
 - Preise, Handelsorte, Steuern, Systemkosten und automatische Struktur-/Rigprofile werden weiterhin nicht berechnet.
+- Die Alpha ist noch nicht produktiv code-signiert; SmartScreen kann deshalb weiterhin vor einem unbekannten Herausgeber warnen.
 
 ### Update und Datenbankmigration
 
 - Das Datenbankschema bleibt bei Version 13; bestehende Charaktere, Ziele, Einstellungen und Snapshots werden unverändert weiterverwendet.
+- Für ein Installer-Update die Anwendung vollständig schließen und die Option zum Löschen der Anwendungsdaten abgewählt lassen. Für ein portables Update die neue Alpha in einen neuen Ordner entpacken und den bisherigen `data`-Ordner bei geschlossener Anwendung übernehmen.
 
 ## 0.2.0-alpha.11 – 16. September 2026
 
