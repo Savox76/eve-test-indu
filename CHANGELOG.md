@@ -6,11 +6,34 @@ Alle bemerkenswerten Änderungen an New Eden Foundry werden hier festgehalten. D
 
 ### Neu hinzugefügt
 
+- Keine.
+
+### Geändert
+
+- Keine.
+
+### Behobene Fehler
+
+- Keine.
+
+### Bekannte Einschränkungen
+
+- Keine.
+
+### Update und Datenbankmigration
+
+- Keine.
+
+## 0.2.0-alpha.13 – 16. September 2026
+
+### Neu hinzugefügt
+
 - Paket 41 synchronisiert offizielle angepasste ESI-Preise gemeinsam mit der Anlagen- und Systemkostenbasis.
 - Produktionsziele können eine ausdrückliche Anlagensteuer speichern und zeigen je gebautem Schritt sowie als Summe Eingabewert, Systemkosten, Steuer und geschätzte Installationskostenbasis.
 
 ### Geändert
 
+- Die sichtbare Versionsnummer lautet `v0.2.0-alpha.13`.
 - Fehlende Preis-, Anlagen- oder Systemindexbelege bleiben als eigene Kostenstatus sichtbar; berechenbare Teilschritte werden getrennt von nicht berechenbaren Schritten gezählt.
 - Die native Brücke validiert nun außerdem den vollständigen Vertrag der in Paket 40 eingeführten Einkaufsliste.
 
@@ -26,6 +49,7 @@ Alle bemerkenswerten Änderungen an New Eden Foundry werden hier festgehalten. D
 ### Update und Datenbankmigration
 
 - Schema 14 ergänzt `production_plans.facility_tax_basis_points`. Bestehende Ziele bleiben erhalten und zeigen die Kostenbasis bis zur ausdrücklichen Steuerkonfiguration als unkonfiguriert.
+- Für ein Installer-Update die Anwendung vollständig schließen und die Option zum Löschen der Anwendungsdaten abgewählt lassen. Für ein portables Update die neue Alpha in einen neuen Ordner entpacken und den bisherigen `data`-Ordner bei geschlossener Anwendung übernehmen.
 
 ## 0.2.0-alpha.12 – 16. September 2026
 
