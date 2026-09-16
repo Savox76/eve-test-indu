@@ -201,6 +201,8 @@ class IndustrySlotTests(unittest.TestCase):
                     "stepBlueprintAssignments": [],
                     "facilityId": None,
                     "materialLocationId": None,
+                    "facilityMaterialBonusBasisPoints": None,
+                    "facilityTimeBonusBasisPoints": None,
                     "stepSupplyModes": [],
                     "activity": activity,
                     "productTypeId": 6_002,

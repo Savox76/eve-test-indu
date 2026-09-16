@@ -17,7 +17,7 @@ from .recovery import (
 
 
 BUSY_TIMEOUT_MILLISECONDS: Final = 5_000
-SCHEMA_VERSION: Final = 12
+SCHEMA_VERSION: Final = 13
 
 MIGRATIONS: Final = (
     (
@@ -397,6 +397,28 @@ MIGRATIONS: Final = (
             """
             CREATE INDEX idx_production_plans_facility
                 ON production_plans(owner_character_id, facility_id)
+            """,
+        ),
+    ),
+    (
+        13,
+        "production_plan_facility_modifiers",
+        (
+            """
+            ALTER TABLE production_plans
+                ADD COLUMN facility_material_bonus_basis_points INTEGER
+                    CHECK(
+                        facility_material_bonus_basis_points IS NULL
+                        OR facility_material_bonus_basis_points BETWEEN 0 AND 5000
+                    )
+            """,
+            """
+            ALTER TABLE production_plans
+                ADD COLUMN facility_time_bonus_basis_points INTEGER
+                    CHECK(
+                        facility_time_bonus_basis_points IS NULL
+                        OR facility_time_bonus_basis_points BETWEEN 0 AND 5000
+                    )
             """,
         ),
     ),

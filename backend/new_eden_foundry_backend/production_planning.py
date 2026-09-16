@@ -37,6 +37,7 @@ MAX_STEP_BLUEPRINT_ASSIGNMENTS = MAX_PLAN_STEPS - 1
 MAX_STEP_SUPPLY_MODES = MAX_PLAN_STEPS - 1
 MAX_PRODUCTION_FACILITIES = 200
 MAX_PRODUCTION_MATERIAL_LOCATIONS = 200
+MAX_FACILITY_BONUS_BASIS_POINTS = 5_000
 RESERVATION_RULE = "priority-desc-created-asc-plan-id-asc"
 MATERIAL_EFFICIENCY_RULE = "max-runs-ceil-base-runs-percent"
 TIME_EFFICIENCY_RULE = "max-one-ceil-base-runs-percent"
@@ -46,6 +47,7 @@ CHARACTER_SKILL_TIME_RULE = (
 )
 FACILITY_EVIDENCE_RULE = "assigned-blueprint-before-active-before-latest-owner-job"
 SUPPLY_MODE_RULE = "stock-first-before-recursive-build"
+FACILITY_MODIFIER_RULE = "explicit-basis-points-combined-before-single-ceil"
 INDUSTRY_SKILL_ID = 3380
 ADVANCED_INDUSTRY_SKILL_ID = 3388
 REACTIONS_SKILL_ID = 45746
@@ -85,6 +87,12 @@ LOCATION_SELECTION_STATES = (
     "ready",
     "facility-missing",
     "material-location-missing",
+)
+FACILITY_MODIFIER_STATES = (
+    "not-selected",
+    "unconfigured",
+    "ready",
+    "activity-mismatch",
 )
 ACTIVE_JOB_STATUSES = ("active", "paused", "ready")
 PRODUCTION_JOB_ACTIVITY_IDS = {
@@ -245,6 +253,8 @@ def validate_production_plan_input(payload: Any) -> dict[str, Any]:
         "stepBlueprintAssignments",
         "facilityId",
         "materialLocationId",
+        "facilityMaterialBonusBasisPoints",
+        "facilityTimeBonusBasisPoints",
         "stepSupplyModes",
         "activity",
         "productTypeId",
@@ -259,6 +269,8 @@ def validate_production_plan_input(payload: Any) -> dict[str, Any]:
     raw_step_assignments = payload["stepBlueprintAssignments"]
     facility_id = payload["facilityId"]
     material_location_id = payload["materialLocationId"]
+    facility_material_bonus = payload["facilityMaterialBonusBasisPoints"]
+    facility_time_bonus = payload["facilityTimeBonusBasisPoints"]
     raw_supply_modes = payload["stepSupplyModes"]
     note = payload["note"]
     if note is not None:
@@ -279,6 +291,19 @@ def validate_production_plan_input(payload: Any) -> dict[str, Any]:
         and not _positive_int(material_location_id)
         or material_location_id is not None
         and facility_id is None
+        or (facility_material_bonus is None) != (facility_time_bonus is None)
+        or facility_material_bonus is not None
+        and (
+            not _non_negative_int(facility_material_bonus)
+            or facility_material_bonus > MAX_FACILITY_BONUS_BASIS_POINTS
+        )
+        or facility_time_bonus is not None
+        and (
+            not _non_negative_int(facility_time_bonus)
+            or facility_time_bonus > MAX_FACILITY_BONUS_BASIS_POINTS
+        )
+        or facility_id is None
+        and facility_material_bonus is not None
         or not isinstance(raw_supply_modes, list)
         or len(raw_supply_modes) > MAX_STEP_SUPPLY_MODES
         or not _positive_int(payload["ownerCharacterId"])
@@ -446,6 +471,31 @@ def _material_quantity(base_quantity: int, runs: int, material_efficiency: int) 
     return max(runs, adjusted)
 
 
+def _facility_material_quantity(
+    base_quantity: int,
+    runs: int,
+    material_efficiency: int,
+    facility_bonus_basis_points: int,
+) -> int:
+    """Combine blueprint ME and an explicit facility factor before one ceiling."""
+
+    if (
+        not _positive_int(base_quantity)
+        or not _positive_int(runs)
+        or not _non_negative_int(material_efficiency)
+        or material_efficiency > 10
+        or not _non_negative_int(facility_bonus_basis_points)
+        or facility_bonus_basis_points > MAX_FACILITY_BONUS_BASIS_POINTS
+    ):
+        raise ProductionPlanningError("production_facility_modifier_invalid")
+    numerator = base_quantity * runs * (100 - material_efficiency)
+    numerator *= 10_000 - facility_bonus_basis_points
+    adjusted = (numerator + 999_999) // 1_000_000
+    if adjusted > MAX_SAFE_INTEGER:
+        raise ProductionPlanningError("production_plan_calculation_overflow")
+    return max(runs, adjusted)
+
+
 def _blueprint_time_seconds(
     base_time_seconds: int, runs: int, time_efficiency: int
 ) -> int:
@@ -510,6 +560,91 @@ def _character_time_seconds(
         numerator *= factor
         denominator *= 100
     return max(1, (numerator + denominator - 1) // denominator)
+
+
+def _facility_time_seconds(
+    base_time_seconds: int,
+    runs: int,
+    time_efficiency: int,
+    activity: str,
+    active_levels: Mapping[int, int],
+    facility_bonus_basis_points: int,
+) -> int:
+    """Combine TE, character skills and an explicit facility factor exactly."""
+
+    if (
+        not _non_negative_int(facility_bonus_basis_points)
+        or facility_bonus_basis_points > MAX_FACILITY_BONUS_BASIS_POINTS
+    ):
+        raise ProductionPlanningError("production_facility_modifier_invalid")
+    levels = {
+        skill_id: active_levels.get(skill_id, 0)
+        for skill_id in (
+            INDUSTRY_SKILL_ID,
+            ADVANCED_INDUSTRY_SKILL_ID,
+            REACTIONS_SKILL_ID,
+        )
+    }
+    if (
+        not _positive_int(base_time_seconds)
+        or not _positive_int(runs)
+        or not _non_negative_int(time_efficiency)
+        or time_efficiency > 20
+        or activity not in SUPPORTED_BLUEPRINT_ACTIVITIES
+        or any(not _non_negative_int(level) or level > 5 for level in levels.values())
+    ):
+        raise ProductionPlanningError("production_facility_modifier_invalid")
+    factors = [100 - time_efficiency]
+    if activity == "manufacturing":
+        factors.extend(
+            (
+                100 - 4 * levels[INDUSTRY_SKILL_ID],
+                100 - 3 * levels[ADVANCED_INDUSTRY_SKILL_ID],
+            )
+        )
+    else:
+        factors.append(100 - 4 * levels[REACTIONS_SKILL_ID])
+    numerator = base_time_seconds * runs
+    denominator = 1
+    for factor in factors:
+        numerator *= factor
+        denominator *= 100
+    numerator *= 10_000 - facility_bonus_basis_points
+    denominator *= 10_000
+    adjusted = max(1, (numerator + denominator - 1) // denominator)
+    if adjusted > MAX_SAFE_INTEGER:
+        raise ProductionPlanningError("production_plan_calculation_overflow")
+    return adjusted
+
+
+def _facility_modifier_for_step(
+    plan: Mapping[str, Any], activity: str
+) -> tuple[str, int | None, int | None]:
+    facility_id = plan["facility_id"] if "facility_id" in plan.keys() else None
+    material_bonus = (
+        plan["facility_material_bonus_basis_points"]
+        if "facility_material_bonus_basis_points" in plan.keys()
+        else None
+    )
+    time_bonus = (
+        plan["facility_time_bonus_basis_points"]
+        if "facility_time_bonus_basis_points" in plan.keys()
+        else None
+    )
+    if facility_id is None:
+        return "not-selected", None, None
+    if material_bonus is None or time_bonus is None:
+        return "unconfigured", None, None
+    if (
+        not _non_negative_int(material_bonus)
+        or int(material_bonus) > MAX_FACILITY_BONUS_BASIS_POINTS
+        or not _non_negative_int(time_bonus)
+        or int(time_bonus) > MAX_FACILITY_BONUS_BASIS_POINTS
+    ):
+        raise ProductionPlanningError("production_facility_modifier_invalid")
+    if activity != str(plan["activity"]):
+        return "activity-mismatch", None, None
+    return "ready", int(material_bonus), int(time_bonus)
 
 
 def _time_skills(
@@ -1724,6 +1859,9 @@ def _empty_resolution(
     state: str,
     build_number: str | None,
 ) -> dict[str, Any]:
+    modifier_state, material_bonus, time_bonus = _facility_modifier_for_step(
+        plan, str(plan["activity"])
+    )
     return {
         "state": state,
         "buildNumber": build_number,
@@ -1740,6 +1878,11 @@ def _empty_resolution(
         "timeEfficiencySavingsSeconds": None,
         "totalCharacterTimeSeconds": None,
         "characterSkillTimeSavingsSeconds": None,
+        "totalFacilityTimeSeconds": None,
+        "facilityTimeSavingsSeconds": None,
+        "facilityModifierState": modifier_state,
+        "facilityMaterialBonusBasisPoints": material_bonus,
+        "facilityTimeBonusBasisPoints": time_bonus,
         "facilityState": "not-applicable",
     }
 
@@ -1953,6 +2096,7 @@ def resolve_production_plan(
     total_base_time = 0
     total_blueprint_time = 0
     total_character_time: int | None = 0 if skill_source is not None else None
+    total_facility_time: int | None = 0
     for sequence, product_type_id in enumerate(ordered, start=1):
         recipe = selected[product_type_id]
         quantity_needed = required[product_type_id]
@@ -2055,14 +2199,26 @@ def resolve_production_plan(
             and recipe.activity == "manufacturing"
             else 0
         )
+        (
+            facility_modifier_state,
+            facility_material_bonus,
+            facility_time_bonus,
+        ) = _facility_modifier_for_step(plan, recipe.activity)
         direct_materials: list[dict[str, Any]] = []
         for material_type_id, material_name, base_quantity in recipe.materials:
             unmodified_quantity = _checked_multiply(runs, base_quantity)
             unmodified_plan_quantity = _checked_multiply(
                 unmodified_runs, base_quantity
             )
-            gross_quantity = _material_quantity(
-                base_quantity, runs, material_efficiency
+            gross_quantity = (
+                _facility_material_quantity(
+                    base_quantity,
+                    runs,
+                    material_efficiency,
+                    int(facility_material_bonus),
+                )
+                if facility_modifier_state == "ready"
+                else _material_quantity(base_quantity, runs, material_efficiency)
             )
             direct_materials.append(
                 {
@@ -2110,6 +2266,18 @@ def resolve_production_plan(
                 skill_source.active_levels,
             )
         )
+        step_facility_time = (
+            None
+            if step_character_time is None or facility_modifier_state != "ready"
+            else _facility_time_seconds(
+                recipe.base_time_seconds,
+                runs,
+                time_efficiency,
+                recipe.activity,
+                skill_source.active_levels,
+                int(facility_time_bonus),
+            )
+        )
         step_facility_evidence = _facility_evidence(
             recipe,
             step_assignment["blueprintItemId"],
@@ -2125,6 +2293,13 @@ def resolve_production_plan(
             total_character_time = _checked_add(
                 total_character_time, step_character_time
             )
+        if total_facility_time is not None:
+            if step_facility_time is None:
+                total_facility_time = None
+            else:
+                total_facility_time = _checked_add(
+                    total_facility_time, step_facility_time
+                )
         steps.append(
             {
                 "sequence": sequence,
@@ -2159,6 +2334,15 @@ def resolve_production_plan(
                     if step_character_time is None
                     else step_blueprint_time - step_character_time
                 ),
+                "facilityModifierState": facility_modifier_state,
+                "facilityMaterialBonusBasisPoints": facility_material_bonus,
+                "facilityTimeBonusBasisPoints": facility_time_bonus,
+                "totalFacilityTimeSeconds": step_facility_time,
+                "facilityTimeSavingsSeconds": (
+                    None
+                    if step_facility_time is None or step_character_time is None
+                    else step_character_time - step_facility_time
+                ),
                 "recipeAlternatives": len(by_product.get(product_type_id, [])),
                 "materialEfficiency": material_efficiency,
                 "materialEfficiencyApplied": material_efficiency > 0,
@@ -2192,6 +2376,11 @@ def resolve_production_plan(
         if ready_facilities > 0
         else "missing"
     )
+    (
+        root_facility_modifier_state,
+        root_facility_material_bonus,
+        root_facility_time_bonus,
+    ) = _facility_modifier_for_step(plan, root.activity)
     return {
         "state": "ready",
         "buildNumber": build_number,
@@ -2240,6 +2429,15 @@ def resolve_production_plan(
             if total_character_time is None
             else total_blueprint_time - total_character_time
         ),
+        "totalFacilityTimeSeconds": total_facility_time,
+        "facilityTimeSavingsSeconds": (
+            None
+            if total_facility_time is None or total_character_time is None
+            else total_character_time - total_facility_time
+        ),
+        "facilityModifierState": root_facility_modifier_state,
+        "facilityMaterialBonusBasisPoints": root_facility_material_bonus,
+        "facilityTimeBonusBasisPoints": root_facility_time_bonus,
         "facilityState": facility_state,
         **assignment,
         **skill_evidence,
@@ -2319,7 +2517,8 @@ def _plan_rows(connection: sqlite3.Connection) -> list[sqlite3.Row]:
         connection.execute(
             "SELECT plan.id,plan.owner_character_id,COALESCE(character.alias,character.name) "
             "AS owner_name,plan.blueprint_type_id,plan.blueprint_item_id,plan.facility_id,"
-            "plan.material_location_id,plan.activity,plan.product_type_id,"
+            "plan.material_location_id,plan.facility_material_bonus_basis_points,"
+            "plan.facility_time_bonus_basis_points,plan.activity,plan.product_type_id,"
             "plan.target_quantity,plan.priority,plan.note,plan.created_at,plan.updated_at "
             "FROM production_plans plan JOIN characters character "
             "ON character.character_id=plan.owner_character_id ORDER BY plan.id"
@@ -2340,6 +2539,11 @@ def _serialize_plan(row: sqlite3.Row, resolution: Mapping[str, Any]) -> dict[str
         "materialLocationName": resolution["materialLocationName"],
         "materialLocationPath": resolution["materialLocationPath"],
         "locationSelectionState": resolution["locationSelectionState"],
+        "facilityMaterialBonusBasisPoints": resolution[
+            "facilityMaterialBonusBasisPoints"
+        ],
+        "facilityTimeBonusBasisPoints": resolution["facilityTimeBonusBasisPoints"],
+        "facilityModifierState": resolution["facilityModifierState"],
         "blueprintItemId": resolution["blueprintItemId"],
         "blueprintAssignmentState": resolution["blueprintAssignmentState"],
         "blueprintKind": resolution["blueprintKind"],
@@ -2375,6 +2579,8 @@ def _serialize_plan(row: sqlite3.Row, resolution: Mapping[str, Any]) -> dict[str
         "characterSkillTimeSavingsSeconds": resolution[
             "characterSkillTimeSavingsSeconds"
         ],
+        "totalFacilityTimeSeconds": resolution["totalFacilityTimeSeconds"],
+        "facilityTimeSavingsSeconds": resolution["facilityTimeSavingsSeconds"],
         "characterSkillState": resolution["characterSkillState"],
         "skillSnapshotId": resolution["skillSnapshotId"],
         "skillSyncRunId": resolution["skillSyncRunId"],
@@ -2523,6 +2729,8 @@ def query_production_plans(connection: sqlite3.Connection, raw_query: Any) -> di
         "facilityEvidenceRule": FACILITY_EVIDENCE_RULE,
         "supplyModesApplied": True,
         "supplyModeRule": SUPPLY_MODE_RULE,
+        "facilityModifiersApplied": True,
+        "facilityModifierRule": FACILITY_MODIFIER_RULE,
         "remainingModifiersApplied": False,
     }
 
@@ -2588,6 +2796,12 @@ def save_production_plan(connection: sqlite3.Connection, raw_input: Any) -> dict
         "blueprint_item_id": value["blueprintItemId"],
         "facility_id": value["facilityId"],
         "material_location_id": value["materialLocationId"],
+        "facility_material_bonus_basis_points": value[
+            "facilityMaterialBonusBasisPoints"
+        ],
+        "facility_time_bonus_basis_points": value[
+            "facilityTimeBonusBasisPoints"
+        ],
         "activity": value["activity"],
         "product_type_id": value["productTypeId"],
         "target_quantity": value["targetQuantity"],
@@ -2690,23 +2904,30 @@ def save_production_plan(connection: sqlite3.Connection, raw_input: Any) -> dict
         if value["planId"] is None:
             cursor = connection.execute(
                 "INSERT INTO production_plans(owner_character_id,blueprint_type_id,blueprint_item_id,"
-                "facility_id,material_location_id,activity,product_type_id,target_quantity,priority,note) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?)",
+                "facility_id,material_location_id,facility_material_bonus_basis_points,"
+                "facility_time_bonus_basis_points,activity,product_type_id,target_quantity,priority,note) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
                 (
                     value["ownerCharacterId"], value["blueprintTypeId"], value["blueprintItemId"],
-                    value["facilityId"], value["materialLocationId"], value["activity"],
-                    value["productTypeId"], value["targetQuantity"], value["priority"], value["note"],
+                    value["facilityId"], value["materialLocationId"],
+                    value["facilityMaterialBonusBasisPoints"],
+                    value["facilityTimeBonusBasisPoints"],
+                    value["activity"], value["productTypeId"], value["targetQuantity"],
+                    value["priority"], value["note"],
                 ),
             )
             plan_id = int(cursor.lastrowid)
         else:
             cursor = connection.execute(
                 "UPDATE production_plans SET owner_character_id=?,blueprint_type_id=?,blueprint_item_id=?,"
-                "facility_id=?,material_location_id=?,activity=?,product_type_id=?,target_quantity=?,priority=?,note=?,"
+                "facility_id=?,material_location_id=?,facility_material_bonus_basis_points=?,"
+                "facility_time_bonus_basis_points=?,activity=?,product_type_id=?,target_quantity=?,priority=?,note=?,"
                 "updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=?",
                 (
                     value["ownerCharacterId"], value["blueprintTypeId"], value["blueprintItemId"],
-                    value["facilityId"], value["materialLocationId"], value["activity"],
+                    value["facilityId"], value["materialLocationId"],
+                    value["facilityMaterialBonusBasisPoints"],
+                    value["facilityTimeBonusBasisPoints"], value["activity"],
                     value["productTypeId"], value["targetQuantity"], value["priority"], value["note"],
                     value["planId"],
                 ),
@@ -2770,6 +2991,12 @@ def save_production_plan(connection: sqlite3.Connection, raw_input: Any) -> dict
         "stepBlueprintAssignments": value["stepBlueprintAssignments"],
         "facilityId": value["facilityId"],
         "materialLocationId": value["materialLocationId"],
+        "facilityMaterialBonusBasisPoints": value[
+            "facilityMaterialBonusBasisPoints"
+        ],
+        "facilityTimeBonusBasisPoints": value[
+            "facilityTimeBonusBasisPoints"
+        ],
         "stepSupplyModes": value["stepSupplyModes"],
         "activity": value["activity"],
         "productTypeId": value["productTypeId"],

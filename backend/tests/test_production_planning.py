@@ -107,6 +107,8 @@ def plan_input(**changes: object) -> dict:
         "stepBlueprintAssignments": [],
         "facilityId": None,
         "materialLocationId": None,
+        "facilityMaterialBonusBasisPoints": None,
+        "facilityTimeBonusBasisPoints": None,
         "stepSupplyModes": [],
         "activity": "manufacturing",
         "productTypeId": 101,
@@ -622,6 +624,15 @@ class ProductionPlanningTests(unittest.TestCase):
         self.assertEqual(record["locationSelectionState"], "ready")
         self.assertEqual(record["facilityName"], "Synthetic Station")
         self.assertEqual(record["materialLocationName"], "Production Materials")
+        self.assertEqual(record["facilityModifierState"], "unconfigured")
+        self.assertIsNone(record["facilityMaterialBonusBasisPoints"])
+        self.assertIsNone(record["facilityTimeBonusBasisPoints"])
+        self.assertIsNone(record["totalFacilityTimeSeconds"])
+        self.assertTrue(all(
+            step["facilityModifierState"] == "unconfigured"
+            and step["totalFacilityTimeSeconds"] is None
+            for step in record["steps"]
+        ))
         self.assertEqual(frame["quantity"], 6)
         self.assertEqual(frame["availableQuantity"], 4)
         self.assertEqual(frame["reservedQuantity"], 4)
@@ -1234,6 +1245,117 @@ class ProductionPlanningTests(unittest.TestCase):
             (facility_snapshot, facility_run),
         )
 
+    def test_explicit_facility_modifiers_apply_before_single_rounding(self) -> None:
+        import_industry_sde(self.db, **bundle())
+        asset_snapshot, _ = self.publish_assets(
+            7,
+            [{
+                "item_id": 7_001,
+                "type_id": 900,
+                "location_id": 60_003_760,
+                "quantity": 100,
+                "location_type": "station",
+                "location_flag": "Hangar",
+            }],
+            "2026-09-16T08:00:00Z",
+        )
+        self.publish_locations(
+            7, asset_snapshot, [7_001], "2026-09-16T08:01:00Z"
+        )
+        self.publish_skills(
+            7, {3380: 0, 3388: 0}, "2026-09-16T08:02:00Z"
+        )
+
+        saved = save_production_plan(
+            self.db,
+            plan_input(
+                facilityId=60_003_760,
+                facilityMaterialBonusBasisPoints=1_000,
+                facilityTimeBonusBasisPoints=2_000,
+            ),
+        )
+        page = query_production_plans(self.db, query())
+        record = page["items"][0]
+
+        self.assertEqual(saved["facilityMaterialBonusBasisPoints"], 1_000)
+        self.assertEqual(saved["facilityTimeBonusBasisPoints"], 2_000)
+        self.assertEqual(record["facilityModifierState"], "ready")
+        self.assertEqual(record["facilityMaterialBonusBasisPoints"], 1_000)
+        self.assertEqual(record["facilityTimeBonusBasisPoints"], 2_000)
+        self.assertEqual(record["grossMaterials"][0]["quantity"], 25)
+        self.assertEqual(record["grossMaterials"][0]["unmodifiedQuantity"], 27)
+        self.assertEqual(record["grossMaterials"][0]["materialEfficiencySavings"], 2)
+        self.assertEqual(record["totalCharacterTimeSeconds"], 290)
+        self.assertEqual(record["totalFacilityTimeSeconds"], 232)
+        self.assertEqual(record["facilityTimeSavingsSeconds"], 58)
+        self.assertTrue(all(
+            step["facilityModifierState"] == "ready"
+            and step["facilityMaterialBonusBasisPoints"] == 1_000
+            and step["facilityTimeBonusBasisPoints"] == 2_000
+            and step["totalFacilityTimeSeconds"]
+            == (step["totalCharacterTimeSeconds"] * 8 + 9) // 10
+            for step in record["steps"]
+        ))
+        self.assertTrue(page["facilityModifiersApplied"])
+        self.assertEqual(
+            page["facilityModifierRule"],
+            "explicit-basis-points-combined-before-single-ceil",
+        )
+
+    def test_facility_profile_does_not_cross_activity_boundaries(self) -> None:
+        mixed_bundle = bundle()
+        mixed_bundle["blueprint_activities"][0]["materials"].append(
+            {"type_id": 201, "quantity": 1}
+        )
+        import_industry_sde(self.db, **mixed_bundle)
+        asset_snapshot, _ = self.publish_assets(
+            7,
+            [{
+                "item_id": 7_001,
+                "type_id": 901,
+                "location_id": 60_003_760,
+                "quantity": 100,
+                "location_type": "station",
+                "location_flag": "Hangar",
+            }],
+            "2026-09-16T09:00:00Z",
+        )
+        self.publish_locations(
+            7, asset_snapshot, [7_001], "2026-09-16T09:01:00Z"
+        )
+        self.publish_skills(
+            7, {3380: 0, 3388: 0, 45746: 0}, "2026-09-16T09:02:00Z"
+        )
+        save_production_plan(
+            self.db,
+            plan_input(
+                facilityId=60_003_760,
+                facilityMaterialBonusBasisPoints=1_000,
+                facilityTimeBonusBasisPoints=2_000,
+            ),
+        )
+
+        record = query_production_plans(self.db, query())["items"][0]
+        reaction = next(
+            step for step in record["steps"] if step["activity"] == "reaction"
+        )
+        reaction_gas = next(
+            material for material in reaction["materials"] if material["typeId"] == 901
+        )
+
+        self.assertEqual(record["facilityModifierState"], "ready")
+        self.assertIsNone(record["totalFacilityTimeSeconds"])
+        self.assertEqual(reaction["facilityModifierState"], "activity-mismatch")
+        self.assertIsNone(reaction["facilityMaterialBonusBasisPoints"])
+        self.assertIsNone(reaction["facilityTimeBonusBasisPoints"])
+        self.assertIsNone(reaction["totalFacilityTimeSeconds"])
+        self.assertEqual(reaction_gas["grossQuantity"], 100)
+        self.assertTrue(any(
+            step["facilityModifierState"] == "ready"
+            and step["totalFacilityTimeSeconds"] is not None
+            for step in record["steps"]
+        ))
+
     def test_active_character_skills_apply_to_every_matching_step(self) -> None:
         import_industry_sde(self.db, **bundle())
         snapshot_id, run_id = self.publish_skills(
@@ -1750,6 +1872,18 @@ class ProductionPlanningTests(unittest.TestCase):
             validate_production_plan_input(plan_input(targetQuantity=0))
         with self.assertRaisesRegex(ProductionPlanningError, "production_plan_input_invalid"):
             validate_production_plan_input(plan_input(materialLocationId=7_000))
+        with self.assertRaisesRegex(ProductionPlanningError, "production_plan_input_invalid"):
+            validate_production_plan_input(
+                plan_input(facilityMaterialBonusBasisPoints=100)
+            )
+        with self.assertRaisesRegex(ProductionPlanningError, "production_plan_input_invalid"):
+            validate_production_plan_input(
+                plan_input(
+                    facilityId=60_003_760,
+                    facilityMaterialBonusBasisPoints=5_001,
+                    facilityTimeBonusBasisPoints=0,
+                )
+            )
         with self.assertRaisesRegex(ProductionPlanningError, "production_sde_unavailable"):
             save_production_plan(self.db, plan_input())
         import_industry_sde(self.db, **bundle())

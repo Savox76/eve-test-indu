@@ -359,6 +359,9 @@ const productionPlanPage: ProductionPlanPage = {
       ],
       characterSkillTimeApplied: true, totalCharacterTimeSeconds: 158,
       characterSkillTimeSavingsSeconds: 42,
+      facilityModifierState: "not-selected", facilityMaterialBonusBasisPoints: null,
+      facilityTimeBonusBasisPoints: null, totalFacilityTimeSeconds: null,
+      facilityTimeSavingsSeconds: null,
       recipeAlternatives: 1, materialEfficiency: 0,
       materialEfficiencyApplied: false,
       blueprintAssignment: {
@@ -411,6 +414,9 @@ const productionPlanPage: ProductionPlanPage = {
     totalCharacterTimeSeconds: 158, characterSkillTimeSavingsSeconds: 42,
     characterSkillState: "ready", skillSnapshotId: 14, skillSyncRunId: 15,
     skillObservedAt: "2026-09-11T12:01:00Z",
+    facilityModifierState: "not-selected", facilityMaterialBonusBasisPoints: null,
+    facilityTimeBonusBasisPoints: null, totalFacilityTimeSeconds: null,
+    facilityTimeSavingsSeconds: null,
     facilityState: "ready",
     inventoryState: "shortage", assetSnapshotId: 8, assetSyncRunId: 9,
     assetObservedAt: "2026-09-11T12:00:00Z",
@@ -434,6 +440,8 @@ const productionPlanPage: ProductionPlanPage = {
   characterSkillTimeRule: "job-wide-ceil-industry-4-advanced-industry-3-reactions-4-active-levels",
   facilityEvidenceApplied: true,
   facilityEvidenceRule: "assigned-blueprint-before-active-before-latest-owner-job",
+  facilityModifiersApplied: true,
+  facilityModifierRule: "explicit-basis-points-combined-before-single-ceil",
   supplyModesApplied: true,
   supplyModeRule: "stock-first-before-recursive-build",
   remainingModifiersApplied: false,
@@ -997,6 +1005,7 @@ describe("New Eden Foundry design preview", () => {
     await waitFor(() => expect(productionPlanSaver).toHaveBeenCalledWith({
       planId: null, ownerCharacterId: 90_888_001, blueprintTypeId: 100, blueprintItemId: null,
       facilityId: null, materialLocationId: null,
+      facilityMaterialBonusBasisPoints: null, facilityTimeBonusBasisPoints: null,
       stepBlueprintAssignments: [],
       stepSupplyModes: [],
       activity: "manufacturing", productTypeId: 101, targetQuantity: 2,
@@ -1223,12 +1232,17 @@ describe("New Eden Foundry design preview", () => {
     })).toBeInTheDocument();
     fireEvent.change(selectWithOption("7000")!, { target: { value: "7000" } });
     fireEvent.change(selectWithOption("stock-only")!, { target: { value: "stock-only" } });
+    const numberInput = (label: string) => Array.from(card!.querySelectorAll("label"))
+      .find((item) => item.textContent?.includes(label))?.querySelector("input");
+    fireEvent.change(numberInput("Anlagen-Materialbonus")!, { target: { value: "1.25" } });
+    fireEvent.change(numberInput("Anlagen-Zeitbonus")!, { target: { value: "2.5" } });
     expect(screen.getByText(/Kein Blueprint für diesen Vorproduktschritt erforderlich/))
       .toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Änderungen speichern" }));
 
     await waitFor(() => expect(productionPlanSaver).toHaveBeenCalledWith(expect.objectContaining({
       planId: 1, facilityId: 60_003_760, materialLocationId: 7_000,
+      facilityMaterialBonusBasisPoints: 125, facilityTimeBonusBasisPoints: 250,
       stepBlueprintAssignments: [],
       stepSupplyModes: [{ blueprintTypeId: 110, activity: "manufacturing",
         productTypeId: 111, supplyMode: "stock-only" }],
