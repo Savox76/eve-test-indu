@@ -6,12 +6,35 @@ Alle bemerkenswerten Änderungen an New Eden Foundry werden hier festgehalten. D
 
 ### Neu hinzugefügt
 
+- Keine.
+
+### Geändert
+
+- Keine.
+
+### Behobene Fehler
+
+- Keine.
+
+### Bekannte Einschränkungen
+
+- Keine.
+
+### Update und Datenbankmigration
+
+- Keine.
+
+## 0.2.0-alpha.11 – 16. September 2026
+
+### Neu hinzugefügt
+
 - Paket 39 erlaubt für eine gewählte Produktionsanlage ein ausdrücklich gespeichertes Material- und Zeitprofil mit zwei Nachkommastellen.
 - Materialbonus, Blueprint-ME, Zeitbonus, Blueprint-TE und aktive Charakter-Skills werden je passendem Schritt vor genau einer ganzzahligen Aufrundung kombiniert.
 - Produktionsziele zeigen Profilzustand, Anlagenzeit und zusätzliche Zeitersparnis je Schritt sowie als belastbare Gesamtsumme.
 
 ### Geändert
 
+- Die sichtbare Versionsnummer lautet `v0.2.0-alpha.11`.
 - Anlagenprofile gelten ausschließlich für die Aktivität des Zielrezepts. Andersartige Kettenschritte bleiben sichtbar unmodifiziert, statt den Wert stillschweigend zu übernehmen.
 - Materialersparnis weist nun die gemeinsame Wirkung von Blueprint-ME und explizitem Anlagenprofil aus.
 
