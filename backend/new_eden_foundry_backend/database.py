@@ -17,7 +17,7 @@ from .recovery import (
 
 
 BUSY_TIMEOUT_MILLISECONDS: Final = 5_000
-SCHEMA_VERSION: Final = 13
+SCHEMA_VERSION: Final = 14
 
 MIGRATIONS: Final = (
     (
@@ -418,6 +418,20 @@ MIGRATIONS: Final = (
                     CHECK(
                         facility_time_bonus_basis_points IS NULL
                         OR facility_time_bonus_basis_points BETWEEN 0 AND 5000
+                    )
+            """,
+        ),
+    ),
+    (
+        14,
+        "production_plan_facility_tax",
+        (
+            """
+            ALTER TABLE production_plans
+                ADD COLUMN facility_tax_basis_points INTEGER
+                    CHECK(
+                        facility_tax_basis_points IS NULL
+                        OR facility_tax_basis_points BETWEEN 0 AND 10000
                     )
             """,
         ),

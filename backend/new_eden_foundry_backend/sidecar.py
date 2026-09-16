@@ -900,6 +900,7 @@ def create_application(
                 "observedFacilities": synced.observed_facilities,
                 "restrictedStructures": synced.restricted_structures,
                 "systems": synced.systems,
+                "prices": synced.prices,
                 "resolvedNames": synced.resolved_names,
             }
         )

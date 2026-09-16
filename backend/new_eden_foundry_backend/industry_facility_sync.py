@@ -53,6 +53,7 @@ class IndustryFacilitySyncResult:
     observed_facilities: int
     restricted_structures: int
     systems: int
+    prices: int
     resolved_names: int
 
 
@@ -84,6 +85,42 @@ def _rate(value: Any) -> float:
     if not math.isfinite(normalized) or not 0 <= normalized <= 1:
         raise IndustryFacilitySyncError("industry_facility_payload_invalid")
     return normalized
+
+
+def _price(value: Any) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise IndustryFacilitySyncError("industry_price_payload_invalid")
+    normalized = float(value)
+    if not math.isfinite(normalized) or not 0 < normalized <= MAX_SAFE_INTEGER:
+        raise IndustryFacilitySyncError("industry_price_payload_invalid")
+    return normalized
+
+
+def validate_industry_prices(payload: Any) -> list[dict[str, Any]]:
+    """Validate the official adjusted-price basis used by industry fees."""
+
+    if not isinstance(payload, list) or not payload:
+        raise IndustryFacilitySyncError("industry_price_payload_invalid")
+    prices: list[dict[str, Any]] = []
+    for row in payload:
+        if not isinstance(row, Mapping) or "type_id" not in row:
+            raise IndustryFacilitySyncError("industry_price_payload_invalid")
+        adjusted = row.get("adjusted_price")
+        average = row.get("average_price")
+        if adjusted is None and average is None:
+            raise IndustryFacilitySyncError("industry_price_payload_invalid")
+        prices.append(
+            {
+                "type_id": _positive_integer(row["type_id"]),
+                "adjusted_price": None if adjusted is None else _price(adjusted),
+                "average_price": None if average is None else _price(average),
+            }
+        )
+    type_ids = [price["type_id"] for price in prices]
+    if len(type_ids) != len(set(type_ids)):
+        raise IndustryFacilitySyncError("industry_price_payload_invalid")
+    prices.sort(key=lambda price: int(price["type_id"]))
+    return prices
 
 
 def validate_industry_facilities(payload: Any) -> list[dict[str, Any]]:
@@ -344,15 +381,14 @@ def _resolve_names(client: EsiClient, expected: Mapping[int, str]) -> list[dict[
 def validate_industry_reference(payload: Any) -> dict[str, Any]:
     """Validate a stored reference snapshot before it reaches a read model."""
 
-    if not isinstance(payload, Mapping) or set(payload) != {
-        "facilities",
-        "names",
-        "structures",
-        "systems",
-    }:
+    if not isinstance(payload, Mapping) or set(payload) not in (
+        {"facilities", "names", "structures", "systems"},
+        {"facilities", "names", "prices", "structures", "systems"},
+    ):
         raise IndustryFacilitySyncError("industry_facility_snapshot_invalid")
     facilities = validate_industry_facilities(payload["facilities"])
     systems = validate_industry_systems(payload["systems"])
+    prices = validate_industry_prices(payload["prices"]) if "prices" in payload else []
     structures: list[dict[str, Any]] = []
     if not isinstance(payload["structures"], list):
         raise IndustryFacilitySyncError("industry_facility_snapshot_invalid")
@@ -440,6 +476,7 @@ def validate_industry_reference(payload: Any) -> dict[str, Any]:
     return {
         "facilities": facilities,
         "names": names,
+        "prices": prices,
         "structures": structures,
         "systems": systems,
     }
@@ -463,6 +500,7 @@ def sync_industry_facilities(
             client.get_json("/industry/facilities/").payload
         )
         systems = validate_industry_systems(client.get_json("/industry/systems/").payload)
+        prices = validate_industry_prices(client.get_json("/markets/prices/").payload)
         observed = _observed_facilities(connection)
         public_ids = {facility["facility_id"] for facility in facilities}
         structures = _resolve_observed_facilities(
@@ -476,6 +514,7 @@ def sync_industry_facilities(
             {
                 "facilities": facilities,
                 "names": names,
+                "prices": prices,
                 "structures": structures,
                 "systems": systems,
             }
@@ -508,6 +547,7 @@ def sync_industry_facilities(
                 for structure in structures
             ),
             systems=len(systems),
+            prices=len(prices),
             resolved_names=len(names),
         )
     except Exception as error:

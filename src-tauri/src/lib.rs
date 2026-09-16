@@ -157,6 +157,19 @@ const PRODUCTION_LOCATION_SELECTION_STATES: [&str; 4] = [
 ];
 const PRODUCTION_FACILITY_MODIFIER_STATES: [&str; 4] =
     ["not-selected", "unconfigured", "ready", "activity-mismatch"];
+const PRODUCTION_INSTALLATION_COST_STATES: [&str; 9] = [
+    "ready",
+    "not-selected",
+    "unconfigured",
+    "facility-snapshot-missing",
+    "facility-missing",
+    "facility-unavailable",
+    "cost-index-missing",
+    "price-snapshot-missing",
+    "price-missing",
+];
+const PRODUCTION_PLAN_INSTALLATION_COST_STATES: [&str; 5] =
+    ["ready", "partial", "unconfigured", "unavailable", "not-applicable"];
 const PRODUCTION_PLAN_SORT_FIELDS: [&str; 6] = [
     "priority", "product", "owner", "activity", "state", "updated",
 ];
@@ -658,6 +671,7 @@ struct IndustryFacilitySyncResponse {
     observed_facilities: u64,
     restricted_structures: u64,
     systems: u64,
+    prices: u64,
     resolved_names: u64,
 }
 
@@ -899,6 +913,22 @@ struct ProductionFacilityEvidence {
 
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
+struct ProductionInstallationCost {
+    state: String,
+    estimated_item_value: Option<u64>,
+    system_cost_index: Option<f64>,
+    system_cost: Option<u64>,
+    facility_tax_basis_points: Option<u16>,
+    facility_tax: Option<u64>,
+    estimated_installation_cost: Option<u64>,
+    missing_adjusted_price_type_ids: Vec<u64>,
+    price_snapshot_id: Option<u64>,
+    price_sync_run_id: Option<u64>,
+    price_observed_at: Option<String>,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct ProductionStep {
     sequence: u64,
     blueprint_type_id: u64,
@@ -935,6 +965,7 @@ struct ProductionStep {
     material_efficiency_applied: bool,
     blueprint_assignment: ProductionStepBlueprintAssignment,
     facility_evidence: ProductionFacilityEvidence,
+    installation_cost: ProductionInstallationCost,
     materials: Vec<ProductionStepMaterial>,
 }
 
@@ -1105,6 +1136,7 @@ struct ProductionPlanRecord {
     location_selection_state: String,
     facility_material_bonus_basis_points: Option<u16>,
     facility_time_bonus_basis_points: Option<u16>,
+    facility_tax_basis_points: Option<u16>,
     facility_modifier_state: String,
     blueprint_item_id: Option<u64>,
     blueprint_assignment_state: String,
@@ -1141,6 +1173,13 @@ struct ProductionPlanRecord {
     character_skill_time_savings_seconds: Option<u64>,
     total_facility_time_seconds: Option<u64>,
     facility_time_savings_seconds: Option<u64>,
+    installation_cost_state: String,
+    estimated_item_value: Option<u64>,
+    system_cost: Option<u64>,
+    facility_tax: Option<u64>,
+    estimated_installation_cost: Option<u64>,
+    costed_step_count: u64,
+    uncosted_step_count: u64,
     character_skill_state: String,
     skill_snapshot_id: Option<u64>,
     skill_sync_run_id: Option<u64>,
@@ -1168,6 +1207,29 @@ struct ProductionPlanSummary {
 
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
+struct ProductionPurchaseListItem {
+    type_id: u64,
+    type_name: String,
+    quantity: u64,
+    inventory_shortage_quantity: u64,
+    reservation_conflict_quantity: u64,
+    plan_count: u64,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ProductionPurchaseList {
+    state: String,
+    items: Vec<ProductionPurchaseListItem>,
+    item_count: u64,
+    total_quantity: u64,
+    included_plan_count: u64,
+    unresolved_plan_count: u64,
+    omitted_item_count: u64,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct ProductionPlanQueryResponse {
     items: Vec<ProductionPlanRecord>,
     total: u64,
@@ -1178,6 +1240,7 @@ struct ProductionPlanQueryResponse {
     activities: Vec<String>,
     states: Vec<String>,
     summary: ProductionPlanSummary,
+    purchase_list: ProductionPurchaseList,
     build_number: Option<String>,
     inventory_applied: bool,
     reservations_applied: bool,
@@ -1196,6 +1259,10 @@ struct ProductionPlanQueryResponse {
     supply_mode_rule: String,
     facility_modifiers_applied: bool,
     facility_modifier_rule: String,
+    purchase_list_applied: bool,
+    purchase_list_rule: String,
+    installation_costs_applied: bool,
+    installation_cost_rule: String,
     remaining_modifiers_applied: bool,
 }
 
@@ -1212,6 +1279,7 @@ struct ProductionPlanMutationResponse {
     material_location_id: Option<u64>,
     facility_material_bonus_basis_points: Option<u16>,
     facility_time_bonus_basis_points: Option<u16>,
+    facility_tax_basis_points: Option<u16>,
     step_supply_modes: Vec<ProductionStepSupplyInput>,
     activity: String,
     product_type_id: u64,
@@ -2328,6 +2396,8 @@ fn industry_facility_sync_response_is_valid(response: &IndustryFacilitySyncRespo
         && response.restricted_structures <= response.observed_facilities
         && response.systems > 0
         && response.systems <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && response.prices > 0
+        && response.prices <= JAVASCRIPT_MAX_SAFE_INTEGER
         && response.resolved_names > 0
         && response.resolved_names <= JAVASCRIPT_MAX_SAFE_INTEGER
 }
@@ -3034,6 +3104,74 @@ fn production_facility_evidence_is_valid(evidence: &ProductionFacilityEvidence) 
         && (has_facility || facility_details_empty)
 }
 
+fn production_installation_cost_is_valid(cost: &ProductionInstallationCost) -> bool {
+    let source_complete = match (
+        cost.price_snapshot_id,
+        cost.price_sync_run_id,
+        cost.price_observed_at.as_ref(),
+    ) {
+        (None, None, None) => false,
+        (Some(snapshot_id), Some(sync_run_id), Some(observed_at)) => {
+            production_id_is_valid(snapshot_id)
+                && production_id_is_valid(sync_run_id)
+                && asset_text_is_valid(observed_at, 64)
+        }
+        _ => return false,
+    };
+    let values_ready = cost.estimated_item_value.is_some()
+        && cost.system_cost.is_some()
+        && cost.facility_tax.is_some()
+        && cost.estimated_installation_cost.is_some();
+    let values_missing = cost.estimated_item_value.is_none()
+        && cost.system_cost.is_none()
+        && cost.facility_tax.is_none()
+        && cost.estimated_installation_cost.is_none();
+    let missing_ids = cost
+        .missing_adjusted_price_type_ids
+        .iter()
+        .copied()
+        .collect::<HashSet<_>>();
+    PRODUCTION_INSTALLATION_COST_STATES.contains(&cost.state.as_str())
+        && cost
+            .estimated_item_value
+            .is_none_or(|value| value <= JAVASCRIPT_MAX_SAFE_INTEGER)
+        && cost
+            .system_cost_index
+            .is_none_or(|value| value.is_finite() && (0.0..=1.0).contains(&value))
+        && cost
+            .system_cost
+            .is_none_or(|value| value <= JAVASCRIPT_MAX_SAFE_INTEGER)
+        && cost
+            .facility_tax_basis_points
+            .is_none_or(|value| value <= 10_000)
+        && cost
+            .facility_tax
+            .is_none_or(|value| value <= JAVASCRIPT_MAX_SAFE_INTEGER)
+        && cost
+            .estimated_installation_cost
+            .is_none_or(|value| value <= JAVASCRIPT_MAX_SAFE_INTEGER)
+        && missing_ids.len() == cost.missing_adjusted_price_type_ids.len()
+        && missing_ids.iter().all(|value| production_id_is_valid(*value))
+        && if cost.state == "ready" {
+            source_complete
+                && values_ready
+                && cost.system_cost_index.is_some()
+                && cost.facility_tax_basis_points.is_some()
+                && cost.system_cost.zip(cost.facility_tax).and_then(|(system, tax)| {
+                    system.checked_add(tax)
+                }) == cost.estimated_installation_cost
+                && cost.missing_adjusted_price_type_ids.is_empty()
+        } else {
+            values_missing
+                && (cost.state == "price-missing")
+                    == !cost.missing_adjusted_price_type_ids.is_empty()
+                && (matches!(cost.state.as_str(), "not-selected" | "unconfigured")
+                    == cost.facility_tax_basis_points.is_none())
+                && (cost.state != "price-snapshot-missing" || !source_complete)
+                && (cost.state != "price-missing" || source_complete)
+        }
+}
+
 fn production_time_skills_are_valid(step: &ProductionStep) -> bool {
     let expected: &[(u64, &str, u8)] = if step.activity == "manufacturing" {
         &[
@@ -3231,6 +3369,9 @@ fn production_plan_record_is_valid(item: &ProductionPlanRecord) -> bool {
             && step.material_efficiency_applied == (step.material_efficiency > 0)
             && production_step_blueprint_assignment_is_valid(&step.blueprint_assignment)
             && production_facility_evidence_is_valid(&step.facility_evidence)
+            && production_installation_cost_is_valid(&step.installation_cost)
+            && step.installation_cost.facility_tax_basis_points
+                == item.facility_tax_basis_points
             && if step.blueprint_assignment.blueprint_assignment_state == "ready"
                 && step.activity == "manufacturing"
             {
@@ -3704,6 +3845,73 @@ fn production_plan_record_is_valid(item: &ProductionPlanRecord) -> bool {
         .steps
         .iter()
         .all(|step| step.facility_modifier_state == "ready");
+    let ready_costs = item
+        .steps
+        .iter()
+        .filter(|step| step.installation_cost.state == "ready")
+        .map(|step| &step.installation_cost)
+        .collect::<Vec<_>>();
+    let expected_installation_cost_state = if !ready {
+        "not-applicable"
+    } else if ready_costs.len() == item.steps.len() {
+        "ready"
+    } else if !ready_costs.is_empty() {
+        "partial"
+    } else if item
+        .steps
+        .iter()
+        .all(|step| step.installation_cost.state == "unconfigured")
+    {
+        "unconfigured"
+    } else {
+        "unavailable"
+    };
+    let expected_estimated_item_value = if ready_costs.is_empty() {
+        None
+    } else {
+        ready_costs.iter().try_fold(0_u64, |total, cost| {
+            total.checked_add(cost.estimated_item_value?)
+        })
+    };
+    let expected_system_cost = if ready_costs.is_empty() {
+        None
+    } else {
+        ready_costs
+            .iter()
+            .try_fold(0_u64, |total, cost| total.checked_add(cost.system_cost?))
+    };
+    let expected_facility_tax = if ready_costs.is_empty() {
+        None
+    } else {
+        ready_costs
+            .iter()
+            .try_fold(0_u64, |total, cost| total.checked_add(cost.facility_tax?))
+    };
+    let expected_installation_cost = if ready_costs.is_empty() {
+        None
+    } else {
+        ready_costs.iter().try_fold(0_u64, |total, cost| {
+            total.checked_add(cost.estimated_installation_cost?)
+        })
+    };
+    let installation_cost_shape_valid = item.installation_cost_state
+        == expected_installation_cost_state
+        && item.costed_step_count == ready_costs.len() as u64
+        && item.uncosted_step_count
+            == if ready {
+                item.steps.len() as u64 - ready_costs.len() as u64
+            } else {
+                0
+            }
+        && (ready_costs.is_empty()
+            || expected_estimated_item_value.is_some()
+                && expected_system_cost.is_some()
+                && expected_facility_tax.is_some()
+                && expected_installation_cost.is_some())
+        && expected_estimated_item_value == item.estimated_item_value
+        && expected_system_cost == item.system_cost
+        && expected_facility_tax == item.facility_tax
+        && expected_installation_cost == item.estimated_installation_cost;
     let facility_time_shape_valid = if ready
         && skill_source_available
         && item.facility_modifier_state == "ready"
@@ -3842,6 +4050,27 @@ fn production_plan_record_is_valid(item: &ProductionPlanRecord) -> bool {
         && location_selection_valid
         && facility_modifier_shape_valid
         && facility_time_shape_valid
+        && item
+            .facility_tax_basis_points
+            .is_none_or(|value| value <= 10_000)
+        && (item.facility_id.is_some() || item.facility_tax_basis_points.is_none())
+        && PRODUCTION_PLAN_INSTALLATION_COST_STATES
+            .contains(&item.installation_cost_state.as_str())
+        && item
+            .estimated_item_value
+            .is_none_or(|value| value <= JAVASCRIPT_MAX_SAFE_INTEGER)
+        && item
+            .system_cost
+            .is_none_or(|value| value <= JAVASCRIPT_MAX_SAFE_INTEGER)
+        && item
+            .facility_tax
+            .is_none_or(|value| value <= JAVASCRIPT_MAX_SAFE_INTEGER)
+        && item
+            .estimated_installation_cost
+            .is_none_or(|value| value <= JAVASCRIPT_MAX_SAFE_INTEGER)
+        && item.costed_step_count <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && item.uncosted_step_count <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && installation_cost_shape_valid
         && blueprint_candidates_valid
         && assignment_valid
         && PRODUCTION_ACTIVITIES.contains(&item.activity.as_str())
@@ -3915,6 +4144,59 @@ fn production_plan_record_is_valid(item: &ProductionPlanRecord) -> bool {
         && supply_decisions_valid
         && supply_shape_valid
         && resolution_shape
+}
+
+fn production_purchase_list_is_valid(list: &ProductionPurchaseList, plan_count: u64) -> bool {
+    let type_ids = list
+        .items
+        .iter()
+        .map(|item| item.type_id)
+        .collect::<HashSet<_>>();
+    let represented_quantity = list
+        .items
+        .iter()
+        .try_fold(0_u64, |total, item| total.checked_add(item.quantity));
+    let incomplete = list.unresolved_plan_count > 0 || list.omitted_item_count > 0;
+    let expected_state = if incomplete {
+        "incomplete"
+    } else if list.items.is_empty() {
+        "empty"
+    } else {
+        "ready"
+    };
+    matches!(list.state.as_str(), "ready" | "empty" | "incomplete")
+        && list.items.len() <= 1_000
+        && type_ids.len() == list.items.len()
+        && list.item_count <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && list.total_quantity <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && list.included_plan_count <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && list.unresolved_plan_count <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && list.omitted_item_count <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && list
+            .included_plan_count
+            .checked_add(list.unresolved_plan_count)
+            == Some(plan_count)
+        && (list.items.len() as u64)
+            .checked_add(list.omitted_item_count)
+            == Some(list.item_count)
+        && represented_quantity.is_some_and(|quantity| {
+            quantity <= list.total_quantity
+                && (list.omitted_item_count > 0 || quantity == list.total_quantity)
+        })
+        && list.state == expected_state
+        && list.items.iter().all(|item| {
+            production_id_is_valid(item.type_id)
+                && asset_text_is_valid(&item.type_name, 200)
+                && production_id_is_valid(item.quantity)
+                && item.inventory_shortage_quantity <= JAVASCRIPT_MAX_SAFE_INTEGER
+                && item.reservation_conflict_quantity <= JAVASCRIPT_MAX_SAFE_INTEGER
+                && item
+                    .inventory_shortage_quantity
+                    .checked_add(item.reservation_conflict_quantity)
+                    == Some(item.quantity)
+                && production_id_is_valid(item.plan_count)
+                && item.plan_count <= plan_count
+        })
 }
 
 fn production_plan_query_response_is_valid(response: &ProductionPlanQueryResponse) -> bool {
@@ -4008,6 +4290,12 @@ fn production_plan_query_response_is_valid(response: &ProductionPlanQueryRespons
         && response.supply_mode_rule == "stock-first-before-recursive-build"
         && response.facility_modifiers_applied
         && response.facility_modifier_rule == "explicit-basis-points-combined-before-single-ceil"
+        && production_purchase_list_is_valid(&response.purchase_list, response.total)
+        && response.purchase_list_applied
+        && response.purchase_list_rule == "filtered-plans-sum-missing-by-type"
+        && response.installation_costs_applied
+        && response.installation_cost_rule
+            == "base-material-adjusted-price-times-runs-system-index-plus-explicit-tax-ceil"
         && !response.remaining_modifiers_applied
 }
 
@@ -4057,9 +4345,13 @@ fn production_plan_mutation_is_valid(item: &ProductionPlanMutationResponse) -> b
         && item
             .facility_time_bonus_basis_points
             .is_none_or(|value| value <= 5_000)
+        && item
+            .facility_tax_basis_points
+            .is_none_or(|value| value <= 10_000)
         && ((item.facility_material_bonus_basis_points.is_none())
             == item.facility_time_bonus_basis_points.is_none())
         && (item.facility_id.is_some() || item.facility_material_bonus_basis_points.is_none())
+        && (item.facility_id.is_some() || item.facility_tax_basis_points.is_none())
         && (item.material_location_id.is_none() || item.facility_id.is_some())
         && item.step_blueprint_assignments.len() <= 499
         && keys.len() == item.step_blueprint_assignments.len()
@@ -5850,6 +6142,7 @@ fn save_production_plan(
     material_location_id: Option<u64>,
     facility_material_bonus_basis_points: Option<u16>,
     facility_time_bonus_basis_points: Option<u16>,
+    facility_tax_basis_points: Option<u16>,
     mut step_supply_modes: Vec<ProductionStepSupplyInput>,
     activity: String,
     product_type_id: u64,
@@ -5908,9 +6201,11 @@ fn save_production_plan(
         || material_location_id.is_some() && facility_id.is_none()
         || facility_material_bonus_basis_points.is_some_and(|value| value > 5_000)
         || facility_time_bonus_basis_points.is_some_and(|value| value > 5_000)
+        || facility_tax_basis_points.is_some_and(|value| value > 10_000)
         || facility_material_bonus_basis_points.is_none()
             != facility_time_bonus_basis_points.is_none()
         || facility_id.is_none() && facility_material_bonus_basis_points.is_some()
+        || facility_id.is_none() && facility_tax_basis_points.is_some()
         || step_blueprint_assignments.len() > 499
         || step_keys.len() != step_blueprint_assignments.len()
         || step_item_ids.len() != step_blueprint_assignments.len()
@@ -5960,6 +6255,7 @@ fn save_production_plan(
         "materialLocationId": material_location_id,
         "facilityMaterialBonusBasisPoints": facility_material_bonus_basis_points,
         "facilityTimeBonusBasisPoints": facility_time_bonus_basis_points,
+        "facilityTaxBasisPoints": facility_tax_basis_points,
         "stepSupplyModes": step_supply_modes,
         "activity": activity,
         "productTypeId": product_type_id,
@@ -5991,6 +6287,7 @@ fn save_production_plan(
         || saved.material_location_id != material_location_id
         || saved.facility_material_bonus_basis_points != facility_material_bonus_basis_points
         || saved.facility_time_bonus_basis_points != facility_time_bonus_basis_points
+        || saved.facility_tax_basis_points != facility_tax_basis_points
         || saved.step_supply_modes != step_supply_modes
         || saved.activity != activity
         || saved.product_type_id != product_type_id
@@ -6919,7 +7216,8 @@ mod tests {
         IndustryFacilitySyncResponse, IndustryJobQueryResponse, IndustryJobRecord,
         IndustryJobSyncCharacterResponse, IndustryJobSyncResponse, IndustrySlotActivity,
         IndustrySlotQueryResponse, IndustrySlotRecord, ProductionBlueprintCandidate,
-        ProductionFacilityEvidence, ProductionGrossMaterial, ProductionPlanRecord,
+        ProductionFacilityEvidence, ProductionGrossMaterial, ProductionInstallationCost,
+        ProductionPlanRecord,
         ProductionReservationClaim, ProductionStep, ProductionStepMaterial,
         ProductionSupplyDecision, ProductionTimeSkill, ResearchPlanOwner,
         ResearchPlanQueryResponse, ResearchPlanRecord, ResearchPlanSummary, RuntimeDataSnapshot,
@@ -7605,6 +7903,7 @@ mod tests {
             restricted_structures: 1,
             systems: 1,
             resolved_names: 7,
+            prices: 2,
         };
         assert!(industry_facility_sync_response_is_valid(&sync));
     }
@@ -7812,6 +8111,22 @@ mod tests {
         }
     }
 
+    fn unselected_production_installation_cost() -> ProductionInstallationCost {
+        ProductionInstallationCost {
+            state: "not-selected".to_owned(),
+            estimated_item_value: None,
+            system_cost_index: None,
+            system_cost: None,
+            facility_tax_basis_points: None,
+            facility_tax: None,
+            estimated_installation_cost: None,
+            missing_adjusted_price_type_ids: Vec::new(),
+            price_snapshot_id: None,
+            price_sync_run_id: None,
+            price_observed_at: None,
+        }
+    }
+
     #[test]
     fn validates_multi_step_production_goal_at_end_of_execution_order() {
         let mut plan = ProductionPlanRecord {
@@ -7828,6 +8143,7 @@ mod tests {
             location_selection_state: "unselected".to_owned(),
             facility_material_bonus_basis_points: None,
             facility_time_bonus_basis_points: None,
+            facility_tax_basis_points: None,
             facility_modifier_state: "not-selected".to_owned(),
             blueprint_item_id: Some(7_001),
             blueprint_assignment_state: "ready".to_owned(),
@@ -7926,6 +8242,7 @@ mod tests {
                         blueprint_candidates: Vec::new(),
                     },
                     facility_evidence: missing_production_facility_evidence(),
+                    installation_cost: unselected_production_installation_cost(),
                     materials: vec![ProductionStepMaterial {
                         type_id: 900,
                         type_name: "Synthetic Mineral".to_owned(),
@@ -8010,6 +8327,7 @@ mod tests {
                         }],
                     },
                     facility_evidence: missing_production_facility_evidence(),
+                    installation_cost: unselected_production_installation_cost(),
                     materials: vec![ProductionStepMaterial {
                         type_id: 111,
                         type_name: "Synthetic Frame".to_owned(),
@@ -8068,6 +8386,13 @@ mod tests {
             character_skill_time_savings_seconds: Some(57),
             total_facility_time_seconds: None,
             facility_time_savings_seconds: None,
+            installation_cost_state: "unavailable".to_owned(),
+            estimated_item_value: None,
+            system_cost: None,
+            facility_tax: None,
+            estimated_installation_cost: None,
+            costed_step_count: 0,
+            uncosted_step_count: 2,
             character_skill_state: "ready".to_owned(),
             skill_snapshot_id: Some(14),
             skill_sync_run_id: Some(15),

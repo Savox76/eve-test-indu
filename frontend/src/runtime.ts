@@ -533,6 +533,7 @@ export interface IndustryFacilitySyncResult {
   observedFacilities: number;
   restrictedStructures: number;
   systems: number;
+  prices: number;
   resolvedNames: number;
 }
 
@@ -606,6 +607,8 @@ export type ProductionFacilityEvidenceKind = "none" | "assigned-blueprint-job" |
 export type ProductionSupplyMode = "stock-first" | "stock-only" | "build";
 export type ProductionLocationSelectionState = "unselected" | "ready" | "facility-missing" | "material-location-missing";
 export type ProductionFacilityModifierState = "not-selected" | "unconfigured" | "ready" | "activity-mismatch";
+export type ProductionInstallationCostState = "ready" | "not-selected" | "unconfigured" | "facility-snapshot-missing" | "facility-missing" | "facility-unavailable" | "cost-index-missing" | "price-snapshot-missing" | "price-missing";
+export type ProductionPlanInstallationCostState = "ready" | "partial" | "unconfigured" | "unavailable" | "not-applicable";
 export type ProductionPlanSortField = "priority" | "product" | "owner" | "activity" | "state" | "updated";
 export const productionActivities: readonly ProductionActivity[] = ["manufacturing", "reaction"];
 export const productionPlanStates: readonly ProductionPlanState[] = [
@@ -687,6 +690,20 @@ export interface ProductionFacilityEvidence {
   facilityObservedAt: string | null;
 }
 
+export interface ProductionInstallationCost {
+  state: ProductionInstallationCostState;
+  estimatedItemValue: number | null;
+  systemCostIndex: number | null;
+  systemCost: number | null;
+  facilityTaxBasisPoints: number | null;
+  facilityTax: number | null;
+  estimatedInstallationCost: number | null;
+  missingAdjustedPriceTypeIds: number[];
+  priceSnapshotId: number | null;
+  priceSyncRunId: number | null;
+  priceObservedAt: string | null;
+}
+
 export interface ProductionStep {
   sequence: number;
   blueprintTypeId: number;
@@ -723,6 +740,7 @@ export interface ProductionStep {
   materialEfficiencyApplied: boolean;
   blueprintAssignment: ProductionStepBlueprintAssignment;
   facilityEvidence: ProductionFacilityEvidence;
+  installationCost: ProductionInstallationCost;
   materials: ProductionStepMaterial[];
 }
 
@@ -890,6 +908,7 @@ export interface ProductionPlanRecord {
   locationSelectionState: ProductionLocationSelectionState;
   facilityMaterialBonusBasisPoints: number | null;
   facilityTimeBonusBasisPoints: number | null;
+  facilityTaxBasisPoints: number | null;
   facilityModifierState: Exclude<ProductionFacilityModifierState, "activity-mismatch">;
   blueprintItemId: number | null;
   blueprintAssignmentState: ProductionBlueprintAssignmentState;
@@ -926,6 +945,13 @@ export interface ProductionPlanRecord {
   characterSkillTimeSavingsSeconds: number | null;
   totalFacilityTimeSeconds: number | null;
   facilityTimeSavingsSeconds: number | null;
+  installationCostState: ProductionPlanInstallationCostState;
+  estimatedItemValue: number | null;
+  systemCost: number | null;
+  facilityTax: number | null;
+  estimatedInstallationCost: number | null;
+  costedStepCount: number;
+  uncostedStepCount: number;
   characterSkillState: ProductionCharacterSkillState;
   skillSnapshotId: number | null;
   skillSyncRunId: number | null;
@@ -981,6 +1007,8 @@ export interface ProductionPlanPage {
   facilityModifierRule: "explicit-basis-points-combined-before-single-ceil";
   purchaseListApplied: true;
   purchaseListRule: "filtered-plans-sum-missing-by-type";
+  installationCostsApplied: true;
+  installationCostRule: "base-material-adjusted-price-times-runs-system-index-plus-explicit-tax-ceil";
   remainingModifiersApplied: false;
 }
 
@@ -994,6 +1022,7 @@ export interface ProductionPlanInput {
   materialLocationId: number | null;
   facilityMaterialBonusBasisPoints: number | null;
   facilityTimeBonusBasisPoints: number | null;
+  facilityTaxBasisPoints: number | null;
   stepSupplyModes: readonly ProductionStepSupplyInput[];
   activity: ProductionActivity;
   productTypeId: number;
@@ -2784,11 +2813,12 @@ export async function syncIndustryFacilities(
   if (
     !isRecord(candidate) || !isPositiveSafeInteger(candidate.syncRunId) ||
     ![candidate.facilities, candidate.npcFacilities, candidate.observedFacilities,
-      candidate.restrictedStructures, candidate.systems, candidate.resolvedNames]
+      candidate.restrictedStructures, candidate.systems, candidate.prices, candidate.resolvedNames]
       .every(isNonNegativeSafeInteger) ||
     Number(candidate.facilities) !== Number(candidate.npcFacilities) + Number(candidate.observedFacilities) ||
     Number(candidate.restrictedStructures) > Number(candidate.observedFacilities) ||
     Number(candidate.npcFacilities) === 0 || Number(candidate.systems) === 0 ||
+    Number(candidate.prices) === 0 ||
     Number(candidate.resolvedNames) === 0
   ) {
     throw new Error("The native runtime returned an invalid industry-facility sync result.");
@@ -3094,6 +3124,52 @@ function parseProductionFacilityEvidence(candidate: unknown): ProductionFacility
   return candidate as unknown as ProductionFacilityEvidence;
 }
 
+function parseProductionInstallationCost(candidate: unknown): ProductionInstallationCost {
+  const states: readonly ProductionInstallationCostState[] = [
+    "ready", "not-selected", "unconfigured", "facility-snapshot-missing",
+    "facility-missing", "facility-unavailable", "cost-index-missing",
+    "price-snapshot-missing", "price-missing",
+  ];
+  if (
+    !isRecord(candidate) || !states.includes(candidate.state as ProductionInstallationCostState) ||
+    !(candidate.estimatedItemValue === null || isNonNegativeSafeInteger(candidate.estimatedItemValue)) ||
+    !(candidate.systemCostIndex === null || typeof candidate.systemCostIndex === "number" &&
+      Number.isFinite(candidate.systemCostIndex) && candidate.systemCostIndex >= 0 && candidate.systemCostIndex <= 1) ||
+    !(candidate.systemCost === null || isNonNegativeSafeInteger(candidate.systemCost)) ||
+    !(candidate.facilityTaxBasisPoints === null ||
+      isNonNegativeSafeInteger(candidate.facilityTaxBasisPoints) &&
+      Number(candidate.facilityTaxBasisPoints) <= 10_000) ||
+    !(candidate.facilityTax === null || isNonNegativeSafeInteger(candidate.facilityTax)) ||
+    !(candidate.estimatedInstallationCost === null ||
+      isNonNegativeSafeInteger(candidate.estimatedInstallationCost)) ||
+    !Array.isArray(candidate.missingAdjustedPriceTypeIds) ||
+    !candidate.missingAdjustedPriceTypeIds.every(isPositiveSafeInteger)
+  ) throw new Error("The native runtime returned invalid production installation costs.");
+  const sourceReady = isPositiveSafeInteger(candidate.priceSnapshotId) &&
+    isPositiveSafeInteger(candidate.priceSyncRunId) && isBoundedText(candidate.priceObservedAt, 64);
+  const sourceMissing = candidate.priceSnapshotId === null && candidate.priceSyncRunId === null &&
+    candidate.priceObservedAt === null;
+  const valuesReady = candidate.estimatedItemValue !== null && candidate.systemCost !== null &&
+    candidate.facilityTax !== null && candidate.estimatedInstallationCost !== null;
+  const valuesMissing = candidate.estimatedItemValue === null && candidate.systemCost === null &&
+    candidate.facilityTax === null && candidate.estimatedInstallationCost === null;
+  if (
+    (!sourceReady && !sourceMissing) ||
+    (candidate.state === "ready" && (!sourceReady || !valuesReady ||
+      candidate.systemCostIndex === null || candidate.facilityTaxBasisPoints === null ||
+      Number(candidate.systemCost) + Number(candidate.facilityTax) !==
+        Number(candidate.estimatedInstallationCost) ||
+      candidate.missingAdjustedPriceTypeIds.length !== 0)) ||
+    (candidate.state !== "ready" && !valuesMissing) ||
+    (candidate.state === "price-missing") !== (candidate.missingAdjustedPriceTypeIds.length > 0) ||
+    (["not-selected", "unconfigured"].includes(String(candidate.state)) !==
+      (candidate.facilityTaxBasisPoints === null)) ||
+    (candidate.state === "price-snapshot-missing" && !sourceMissing) ||
+    (candidate.state === "price-missing" && !sourceReady)
+  ) throw new Error("The native runtime returned inconsistent production installation costs.");
+  return candidate as unknown as ProductionInstallationCost;
+}
+
 function parseProductionStep(candidate: unknown, index: number): ProductionStep {
   if (
     !isRecord(candidate) || candidate.sequence !== index + 1 ||
@@ -3235,6 +3311,7 @@ function parseProductionStep(candidate: unknown, index: number): ProductionStep 
     candidate.blueprintAssignment,
   );
   const facilityEvidence = parseProductionFacilityEvidence(candidate.facilityEvidence);
+  const installationCost = parseProductionInstallationCost(candidate.installationCost);
   const assignmentEfficiency = blueprintAssignment.blueprintAssignmentState === "ready" &&
     candidate.activity === "manufacturing"
     ? blueprintAssignment
@@ -3255,6 +3332,7 @@ function parseProductionStep(candidate: unknown, index: number): ProductionStep 
     materials,
     blueprintAssignment,
     facilityEvidence,
+    installationCost,
   } as unknown as ProductionStep;
 }
 
@@ -3430,6 +3508,9 @@ function parseProductionPlanRecord(candidate: unknown): ProductionPlanRecord {
     !(candidate.facilityTimeBonusBasisPoints === null ||
       isNonNegativeSafeInteger(candidate.facilityTimeBonusBasisPoints) &&
       Number(candidate.facilityTimeBonusBasisPoints) <= 5_000) ||
+    !(candidate.facilityTaxBasisPoints === null ||
+      isNonNegativeSafeInteger(candidate.facilityTaxBasisPoints) &&
+      Number(candidate.facilityTaxBasisPoints) <= 10_000) ||
     !["not-selected", "unconfigured", "ready"].includes(String(candidate.facilityModifierState)) ||
     !(candidate.blueprintItemId === null || isPositiveSafeInteger(candidate.blueprintItemId)) ||
     !["ready", "unassigned", "snapshot-missing", "missing", "type-mismatch", "runs-insufficient"]
@@ -3466,6 +3547,15 @@ function parseProductionPlanRecord(candidate: unknown): ProductionPlanRecord {
     !(candidate.totalFacilityTimeSeconds === null || isPositiveSafeInteger(candidate.totalFacilityTimeSeconds)) ||
     !(candidate.facilityTimeSavingsSeconds === null ||
       isNonNegativeSafeInteger(candidate.facilityTimeSavingsSeconds)) ||
+    !["ready", "partial", "unconfigured", "unavailable", "not-applicable"]
+      .includes(String(candidate.installationCostState)) ||
+    !(candidate.estimatedItemValue === null || isNonNegativeSafeInteger(candidate.estimatedItemValue)) ||
+    !(candidate.systemCost === null || isNonNegativeSafeInteger(candidate.systemCost)) ||
+    !(candidate.facilityTax === null || isNonNegativeSafeInteger(candidate.facilityTax)) ||
+    !(candidate.estimatedInstallationCost === null ||
+      isNonNegativeSafeInteger(candidate.estimatedInstallationCost)) ||
+    !isNonNegativeSafeInteger(candidate.costedStepCount) ||
+    !isNonNegativeSafeInteger(candidate.uncostedStepCount) ||
     !["ready", "snapshot-missing"].includes(String(candidate.characterSkillState)) ||
     !((candidate.skillSnapshotId === null && candidate.skillSyncRunId === null &&
       candidate.skillObservedAt === null) ||
@@ -3670,6 +3760,31 @@ function parseProductionPlanRecord(candidate: unknown): ProductionPlanRecord {
         candidate.facilityTimeBonusBasisPoints === null
       : candidate.facilityId !== null && candidate.facilityMaterialBonusBasisPoints !== null &&
         candidate.facilityTimeBonusBasisPoints !== null;
+  const readyCosts = steps.map((step) => step.installationCost)
+    .filter((cost) => cost.state === "ready");
+  const expectedInstallationCostState: ProductionPlanInstallationCostState = !ready
+    ? "not-applicable"
+    : readyCosts.length === steps.length
+      ? "ready"
+      : readyCosts.length > 0
+        ? "partial"
+        : steps.every((step) => step.installationCost.state === "unconfigured")
+          ? "unconfigured"
+          : "unavailable";
+  const expectedCost = (field: "estimatedItemValue" | "systemCost" | "facilityTax" |
+    "estimatedInstallationCost") => readyCosts.length === 0
+      ? null
+      : readyCosts.reduce((total, cost) => total + Number(cost[field]), 0);
+  const installationCostShapeValid =
+    candidate.installationCostState === expectedInstallationCostState &&
+    Number(candidate.costedStepCount) === readyCosts.length &&
+    Number(candidate.uncostedStepCount) === (ready ? steps.length - readyCosts.length : 0) &&
+    candidate.estimatedItemValue === expectedCost("estimatedItemValue") &&
+    candidate.systemCost === expectedCost("systemCost") &&
+    candidate.facilityTax === expectedCost("facilityTax") &&
+    candidate.estimatedInstallationCost === expectedCost("estimatedInstallationCost") &&
+    steps.every((step) =>
+      step.installationCost.facilityTaxBasisPoints === candidate.facilityTaxBasisPoints);
   if (
     ready !== (steps.length > 0 && candidate.totalBaseTimeSeconds !== null &&
       candidate.totalBlueprintTimeSeconds !== null && candidate.timeEfficiencySavingsSeconds !== null) ||
@@ -3713,6 +3828,9 @@ function parseProductionPlanRecord(candidate: unknown): ProductionPlanRecord {
     ((candidate.state === "cycle") !== (candidate.cycleTypeIds.length > 0)) ||
     !locationSelectionValid ||
     !facilityModifierShapeValid ||
+    !installationCostShapeValid ||
+    ((candidate.facilityId === null) !== (candidate.facilityTaxBasisPoints === null) &&
+      candidate.facilityTaxBasisPoints !== null) ||
     steps.some((step) => candidate.facilityModifierState === "ready"
       ? step.activity === candidate.activity
         ? step.facilityModifierState !== "ready" ||
@@ -3844,6 +3962,9 @@ function parseProductionPlanPage(candidate: unknown): ProductionPlanPage {
     candidate.facilityModifierRule !== "explicit-basis-points-combined-before-single-ceil" ||
     candidate.purchaseListApplied !== true ||
     candidate.purchaseListRule !== "filtered-plans-sum-missing-by-type" ||
+    candidate.installationCostsApplied !== true ||
+    candidate.installationCostRule !==
+      "base-material-adjusted-price-times-runs-system-index-plus-explicit-tax-ceil" ||
     candidate.remainingModifiersApplied !== false
   ) throw new Error("The native runtime returned invalid production-plan data.");
   const items = candidate.items.map(parseProductionPlanRecord);
@@ -3901,6 +4022,8 @@ export async function loadProductionPlans(
     facilityModifierRule: "explicit-basis-points-combined-before-single-ceil",
     purchaseListApplied: true,
     purchaseListRule: "filtered-plans-sum-missing-by-type",
+    installationCostsApplied: true,
+    installationCostRule: "base-material-adjusted-price-times-runs-system-index-plus-explicit-tax-ceil",
     remainingModifiersApplied: false,
   };
   const page = parseProductionPlanPage(JSON.parse(await adapter.invoke("query_production_plans", {
@@ -3936,6 +4059,10 @@ function validateProductionPlanInput(input: ProductionPlanInput): ProductionPlan
     ((input.facilityMaterialBonusBasisPoints === null) !==
       (input.facilityTimeBonusBasisPoints === null)) ||
     (input.facilityId === null && input.facilityMaterialBonusBasisPoints !== null) ||
+    !(input.facilityTaxBasisPoints === null ||
+      isNonNegativeSafeInteger(input.facilityTaxBasisPoints) &&
+      input.facilityTaxBasisPoints <= 10_000) ||
+    (input.facilityId === null && input.facilityTaxBasisPoints !== null) ||
     !productionActivities.includes(input.activity) || !isPositiveSafeInteger(input.productTypeId) ||
     !isPositiveSafeInteger(input.targetQuantity) || !isNonNegativeSafeInteger(input.priority) ||
     input.priority > 999 || !(note === null || note.length <= 240) ||
@@ -3986,6 +4113,7 @@ export async function saveProductionPlan(
     facilityId: validated.facilityId, materialLocationId: validated.materialLocationId,
     facilityMaterialBonusBasisPoints: validated.facilityMaterialBonusBasisPoints,
     facilityTimeBonusBasisPoints: validated.facilityTimeBonusBasisPoints,
+    facilityTaxBasisPoints: validated.facilityTaxBasisPoints,
     stepSupplyModes: validated.stepSupplyModes,
     activity: validated.activity,
     productTypeId: validated.productTypeId, targetQuantity: validated.targetQuantity,
@@ -4000,6 +4128,7 @@ export async function saveProductionPlan(
     candidate.materialLocationId !== validated.materialLocationId ||
     candidate.facilityMaterialBonusBasisPoints !== validated.facilityMaterialBonusBasisPoints ||
     candidate.facilityTimeBonusBasisPoints !== validated.facilityTimeBonusBasisPoints ||
+    candidate.facilityTaxBasisPoints !== validated.facilityTaxBasisPoints ||
     !Array.isArray(candidate.stepBlueprintAssignments) ||
     JSON.stringify(candidate.stepBlueprintAssignments) !== JSON.stringify(validated.stepBlueprintAssignments) ||
     !Array.isArray(candidate.stepSupplyModes) ||

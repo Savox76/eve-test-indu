@@ -830,7 +830,8 @@ describe("desktop runtime status", () => {
     }));
 
     const result = { syncRunId: 12, facilities: 2, npcFacilities: 1,
-      observedFacilities: 1, restrictedStructures: 1, systems: 1, resolvedNames: 7 };
+      observedFacilities: 1, restrictedStructures: 1, systems: 1, resolvedNames: 7,
+      prices: 2 };
     invoke.mockResolvedValueOnce(JSON.stringify(result));
     await expect(syncIndustryFacilities({ isAvailable: () => true, invoke })).resolves.toEqual(result);
     expect(invoke).toHaveBeenLastCalledWith("sync_industry_facilities");
@@ -949,8 +950,13 @@ describe("desktop runtime status", () => {
           blueprintRuns: null, blueprintLocationId: null, blueprintLocationFlag: null,
           blueprintSnapshotId: 12, blueprintSyncRunId: 13,
           blueprintObservedAt: "2026-09-11T12:00:00Z", blueprintCandidateCount: 0,
-          blueprintCandidates: [] },
+        blueprintCandidates: [] },
         facilityEvidence: missingFacilityEvidence,
+        installationCost: { state: "not-selected", estimatedItemValue: null,
+          systemCostIndex: null, systemCost: null, facilityTaxBasisPoints: null,
+          facilityTax: null, estimatedInstallationCost: null,
+          missingAdjustedPriceTypeIds: [], priceSnapshotId: null, priceSyncRunId: null,
+          priceObservedAt: null },
         materials: [{ typeId: 901, typeName: "Synthetic Ore",
           quantityPerRun: 2, unmodifiedGrossQuantity: 8, grossQuantity: 8,
           materialEfficiency: 0, materialEfficiencySavings: 0, producedByPlan: false }] },
@@ -980,6 +986,11 @@ describe("desktop runtime status", () => {
             timeEfficiency: 20, runs: 2, locationId: 60_003_760, locationFlag: "Hangar",
             suitable: true, reason: "ready" }] },
         facilityEvidence: missingFacilityEvidence,
+        installationCost: { state: "not-selected", estimatedItemValue: null,
+          systemCostIndex: null, systemCost: null, facilityTaxBasisPoints: null,
+          facilityTax: null, estimatedInstallationCost: null,
+          missingAdjustedPriceTypeIds: [], priceSnapshotId: null, priceSyncRunId: null,
+          priceObservedAt: null },
         materials: [{ typeId: 111, typeName: "Synthetic Component",
           quantityPerRun: 2, unmodifiedGrossQuantity: 4, grossQuantity: 4,
           materialEfficiency: 0, materialEfficiencySavings: 0, producedByPlan: true }] }],
@@ -1011,8 +1022,12 @@ describe("desktop runtime status", () => {
       characterSkillState: "snapshot-missing", skillSnapshotId: null, skillSyncRunId: null,
       skillObservedAt: null, facilityState: "missing",
       facilityModifierState: "not-selected", facilityMaterialBonusBasisPoints: null,
-      facilityTimeBonusBasisPoints: null, totalFacilityTimeSeconds: null,
+      facilityTimeBonusBasisPoints: null, facilityTaxBasisPoints: null,
+      totalFacilityTimeSeconds: null,
       facilityTimeSavingsSeconds: null,
+      installationCostState: "unavailable", estimatedItemValue: null, systemCost: null,
+      facilityTax: null, estimatedInstallationCost: null, costedStepCount: 0,
+      uncostedStepCount: 2,
       inventoryState: "shortage", assetSnapshotId: 8, assetSyncRunId: 9,
       assetObservedAt: "2026-09-11T12:00:00Z",
       createdAt: "2026-09-11T12:00:00Z", updatedAt: "2026-09-11T12:00:00Z",
@@ -1051,6 +1066,8 @@ describe("desktop runtime status", () => {
       facilityModifierRule: "explicit-basis-points-combined-before-single-ceil",
       purchaseListApplied: true,
       purchaseListRule: "filtered-plans-sum-missing-by-type",
+      installationCostsApplied: true,
+      installationCostRule: "base-material-adjusted-price-times-runs-system-index-plus-explicit-tax-ceil",
       supplyModesApplied: true,
       supplyModeRule: "stock-first-before-recursive-build",
       remainingModifiersApplied: false };
@@ -1208,6 +1225,7 @@ describe("desktop runtime status", () => {
     const input = { planId: null, ownerCharacterId: 7, blueprintTypeId: 100, blueprintItemId: null,
       facilityId: null, materialLocationId: null, stepBlueprintAssignments: [],
       facilityMaterialBonusBasisPoints: null, facilityTimeBonusBasisPoints: null,
+      facilityTaxBasisPoints: null,
       stepSupplyModes: [],
       activity: "manufacturing", productTypeId: 101, targetQuantity: 3,
       priority: 12, note: "main goal" } as const;
