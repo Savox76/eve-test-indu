@@ -6,23 +6,25 @@ Alle bemerkenswerten Änderungen an New Eden Foundry werden hier festgehalten. D
 
 ### Neu hinzugefügt
 
-- Keine.
+- Paket 40 aggregiert die konfliktfreien Fehlmengen aller aktuell gefilterten Produktionsziele zu einer gemeinsamen Einkaufsliste.
+- Die Einkaufsliste kann im Format `Typname Menge` direkt für EVE Multibuy kopiert werden.
 
 ### Geändert
 
-- Keine.
+- Physisch fehlende Mengen und durch vorrangige Ziele gebundene Mengen bleiben auch in der aggregierten Liste getrennt nachvollziehbar.
+- Suche, Charakter-, Aktivitäts- und Statusfilter bestimmen den Listeninhalt; Sortierung und Seitenauswahl verändern ihn nicht.
 
 ### Behobene Fehler
 
-- Keine.
+- Ziele ohne vollständigen Asset-Snapshot oder auflösbares Rezept werden nicht mehr versehentlich als Einkauf ohne Fehlmenge behandelt, sondern ausdrücklich als unvollständig gezählt.
 
 ### Bekannte Einschränkungen
 
-- Keine.
+- Preise, Handelsorte, Steuern, Systemkosten und automatische Struktur-/Rigprofile werden weiterhin nicht berechnet.
 
 ### Update und Datenbankmigration
 
-- Keine.
+- Das Datenbankschema bleibt bei Version 13; bestehende Charaktere, Ziele, Einstellungen und Snapshots werden unverändert weiterverwendet.
 
 ## 0.2.0-alpha.11 – 16. September 2026
 

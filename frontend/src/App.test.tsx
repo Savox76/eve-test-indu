@@ -428,6 +428,11 @@ const productionPlanPage: ProductionPlanPage = {
   states: ["ready", "sde-unavailable", "recipe-missing", "cycle", "complexity-limit"],
   summary: { ready: 1, "sde-unavailable": 0, "recipe-missing": 0, cycle: 0,
     "complexity-limit": 0 }, buildNumber: "synthetic-production-1",
+  purchaseList: { state: "ready", items: [{ typeId: 900,
+    typeName: "Synthetic Mineral", quantity: 2, inventoryShortageQuantity: 0,
+    reservationConflictQuantity: 2, planCount: 1 }], itemCount: 1,
+    totalQuantity: 2, includedPlanCount: 1, unresolvedPlanCount: 0,
+    omittedItemCount: 0 },
   inventoryApplied: true, reservationsApplied: true,
   reservationRule: "priority-desc-created-asc-plan-id-asc",
   blueprintMaterialEfficiencyApplied: true,
@@ -442,6 +447,8 @@ const productionPlanPage: ProductionPlanPage = {
   facilityEvidenceRule: "assigned-blueprint-before-active-before-latest-owner-job",
   facilityModifiersApplied: true,
   facilityModifierRule: "explicit-basis-points-combined-before-single-ceil",
+  purchaseListApplied: true,
+  purchaseListRule: "filtered-plans-sum-missing-by-type",
   supplyModesApplied: true,
   supplyModeRule: "stock-first-before-recursive-build",
   remainingModifiersApplied: false,
@@ -970,6 +977,11 @@ describe("New Eden Foundry design preview", () => {
   });
 
   it("renders and creates a deterministic production goal", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
     const productionCatalogLoader = vi.fn().mockResolvedValue(productionCatalogPage);
     const productionPlansLoader = vi.fn().mockResolvedValue(productionPlanPage);
     const productionPlanSaver = vi.fn().mockResolvedValue({ saved: true, planId: 2 });
@@ -983,7 +995,7 @@ describe("New Eden Foundry design preview", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "Produktion" }));
 
-    expect(await screen.findByText("Synthetic Mineral")).toBeInTheDocument();
+    expect(await screen.findAllByText("Synthetic Mineral")).toHaveLength(2);
     expect(screen.getByText("Anlagen belegt")).toBeInTheDocument();
     expect(screen.getByText("Anlage belegt")).toBeInTheDocument();
     expect(screen.getByText(/Jita IV - Moon 4 · Jita · Systemkostenindex 1,25 %/))
@@ -999,6 +1011,11 @@ describe("New Eden Foundry design preview", () => {
     expect(screen.getByText(/Vorrangige Ziele · 7 reserviert/)).toBeInTheDocument();
     expect(screen.getByText(/2 durch vorrangige Ziele gebunden/)).toBeInTheDocument();
     expect(screen.getByText(/Nicht angerechnet: andere Charaktere · 20/)).toBeInTheDocument();
+    expect(screen.getByText("Einkaufsliste / EVE Multibuy")).toBeInTheDocument();
+    expect(screen.getByText("1 Materialarten · 2 Einheiten · 1 Ziele")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Für EVE Multibuy kopieren" }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("Synthetic Mineral 2"));
+    expect(screen.getByText("Multibuy-Liste kopiert.")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Synthetic Hull.*Auswählen$/ }));
     fireEvent.click(screen.getByRole("button", { name: "Ziel speichern" }));
 
@@ -1099,6 +1116,8 @@ describe("New Eden Foundry design preview", () => {
     const hiddenPage: ProductionPlanPage = {
       ...productionPlanPage,
       items: [], total: 0,
+      purchaseList: { state: "empty", items: [], itemCount: 0, totalQuantity: 0,
+        includedPlanCount: 0, unresolvedPlanCount: 0, omittedItemCount: 0 },
       summary: { ready: 0, "sde-unavailable": 0, "recipe-missing": 0, cycle: 0,
         "complexity-limit": 0 },
     };
@@ -1122,7 +1141,7 @@ describe("New Eden Foundry design preview", () => {
     fireEvent.click(await screen.findByRole("button", { name: /Synthetic Hull.*Auswählen$/ }));
     fireEvent.click(screen.getByRole("button", { name: "Ziel speichern" }));
 
-    expect(await screen.findByText("Synthetic Mineral")).toBeInTheDocument();
+    expect(await screen.findAllByText("Synthetic Mineral")).toHaveLength(2);
     expect(productionPlansLoader).toHaveBeenLastCalledWith(expect.objectContaining({
       ownerCharacterId: null, activity: null, state: null, search: "", offset: 0,
       sortBy: "updated", sortDirection: "desc",

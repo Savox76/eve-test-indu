@@ -1029,7 +1029,12 @@ describe("desktop runtime status", () => {
         ] }],
       states: ["ready", "sde-unavailable", "recipe-missing", "cycle", "complexity-limit"],
       summary: { ready: 1, "sde-unavailable": 0, "recipe-missing": 0, cycle: 0,
-        "complexity-limit": 0 }, buildNumber: "synthetic-production-1",
+        "complexity-limit": 0 },
+      purchaseList: { state: "ready", items: [{ typeId: 901,
+        typeName: "Synthetic Ore", quantity: 3, inventoryShortageQuantity: 3,
+        reservationConflictQuantity: 0, planCount: 1 }], itemCount: 1,
+        totalQuantity: 3, includedPlanCount: 1, unresolvedPlanCount: 0,
+        omittedItemCount: 0 }, buildNumber: "synthetic-production-1",
       inventoryApplied: true, reservationsApplied: true,
       reservationRule: "priority-desc-created-asc-plan-id-asc",
       blueprintMaterialEfficiencyApplied: true,
@@ -1044,6 +1049,8 @@ describe("desktop runtime status", () => {
       facilityEvidenceRule: "assigned-blueprint-before-active-before-latest-owner-job",
       facilityModifiersApplied: true,
       facilityModifierRule: "explicit-basis-points-combined-before-single-ceil",
+      purchaseListApplied: true,
+      purchaseListRule: "filtered-plans-sum-missing-by-type",
       supplyModesApplied: true,
       supplyModeRule: "stock-first-before-recursive-build",
       remainingModifiersApplied: false };
@@ -1054,6 +1061,11 @@ describe("desktop runtime status", () => {
     expect(invoke).toHaveBeenLastCalledWith("query_production_plans", expect.objectContaining({
       planState: null, sortBy: "priority",
     }));
+    const inconsistentPurchaseList = JSON.parse(JSON.stringify(page)) as typeof page;
+    inconsistentPurchaseList.purchaseList.items[0].quantity = 4;
+    invoke.mockResolvedValueOnce(JSON.stringify(inconsistentPurchaseList));
+    await expect(loadProductionPlans(query, { isAvailable: () => true, invoke }))
+      .rejects.toThrow("invalid production purchase-list item");
     const withFacility = JSON.parse(JSON.stringify(page)) as typeof page;
     withFacility.items[0].facilityState = "partial";
     withFacility.items[0].steps[1].facilityEvidence = {
