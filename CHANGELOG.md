@@ -6,23 +6,28 @@ Alle bemerkenswerten Änderungen an New Eden Foundry werden hier festgehalten. D
 
 ### Neu hinzugefügt
 
-- Keine.
+- Paket 39 erlaubt für eine gewählte Produktionsanlage ein ausdrücklich gespeichertes Material- und Zeitprofil mit zwei Nachkommastellen.
+- Materialbonus, Blueprint-ME, Zeitbonus, Blueprint-TE und aktive Charakter-Skills werden je passendem Schritt vor genau einer ganzzahligen Aufrundung kombiniert.
+- Produktionsziele zeigen Profilzustand, Anlagenzeit und zusätzliche Zeitersparnis je Schritt sowie als belastbare Gesamtsumme.
 
 ### Geändert
 
-- Keine.
+- Anlagenprofile gelten ausschließlich für die Aktivität des Zielrezepts. Andersartige Kettenschritte bleiben sichtbar unmodifiziert, statt den Wert stillschweigend zu übernehmen.
+- Materialersparnis weist nun die gemeinsame Wirkung von Blueprint-ME und explizitem Anlagenprofil aus.
 
 ### Behobene Fehler
 
-- Keine.
+- Unbekannte Struktur-, Service- oder Rigboni werden nicht mehr nur als spätere Berechnungsgrenze behandelt, sondern können neutral und nachvollziehbar als unkonfiguriertes Profil von bewusst gesetzten Werten unterschieden werden.
 
 ### Bekannte Einschränkungen
 
-- Keine.
+- Struktur-, Service- und Rigboni werden nicht automatisch aus ESI, Anlagentyp oder früheren Jobs erkannt. Systemkosten, Steuern, Preise und reale Endtermine bleiben ausgeschlossen.
+- Die Alpha ist noch nicht produktiv code-signiert; SmartScreen kann deshalb weiterhin vor einem unbekannten Herausgeber warnen.
 
 ### Update und Datenbankmigration
 
-- Keine.
+- Beim ersten Start migriert die App Schema 12 automatisch auf Schema 13. Bestehende Produktionsziele behalten identische Ergebnisse und zeigen eine bereits gewählte Anlage als `Anlagenprofil nicht konfiguriert`; erst das bewusste Speichern beider Werte aktiviert Boni.
+- Vor der Migration wird wie bisher ein geprüfter Datenbank-Snapshot unter `data/backups` angelegt und bei einem Fehler automatisch wiederhergestellt.
 
 ## 0.2.0-alpha.10 – 16. September 2026
 

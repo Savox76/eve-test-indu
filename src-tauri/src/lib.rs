@@ -155,6 +155,8 @@ const PRODUCTION_LOCATION_SELECTION_STATES: [&str; 4] = [
     "facility-missing",
     "material-location-missing",
 ];
+const PRODUCTION_FACILITY_MODIFIER_STATES: [&str; 4] =
+    ["not-selected", "unconfigured", "ready", "activity-mismatch"];
 const PRODUCTION_PLAN_SORT_FIELDS: [&str; 6] = [
     "priority", "product", "owner", "activity", "state", "updated",
 ];
@@ -923,6 +925,11 @@ struct ProductionStep {
     character_skill_time_applied: bool,
     total_character_time_seconds: Option<u64>,
     character_skill_time_savings_seconds: Option<u64>,
+    facility_modifier_state: String,
+    facility_material_bonus_basis_points: Option<u16>,
+    facility_time_bonus_basis_points: Option<u16>,
+    total_facility_time_seconds: Option<u64>,
+    facility_time_savings_seconds: Option<u64>,
     recipe_alternatives: u64,
     material_efficiency: u8,
     material_efficiency_applied: bool,
@@ -1096,6 +1103,9 @@ struct ProductionPlanRecord {
     material_location_name: Option<String>,
     material_location_path: Option<String>,
     location_selection_state: String,
+    facility_material_bonus_basis_points: Option<u16>,
+    facility_time_bonus_basis_points: Option<u16>,
+    facility_modifier_state: String,
     blueprint_item_id: Option<u64>,
     blueprint_assignment_state: String,
     blueprint_kind: Option<String>,
@@ -1129,6 +1139,8 @@ struct ProductionPlanRecord {
     time_efficiency_savings_seconds: Option<u64>,
     total_character_time_seconds: Option<u64>,
     character_skill_time_savings_seconds: Option<u64>,
+    total_facility_time_seconds: Option<u64>,
+    facility_time_savings_seconds: Option<u64>,
     character_skill_state: String,
     skill_snapshot_id: Option<u64>,
     skill_sync_run_id: Option<u64>,
@@ -1182,6 +1194,8 @@ struct ProductionPlanQueryResponse {
     facility_evidence_rule: String,
     supply_modes_applied: bool,
     supply_mode_rule: String,
+    facility_modifiers_applied: bool,
+    facility_modifier_rule: String,
     remaining_modifiers_applied: bool,
 }
 
@@ -1196,6 +1210,8 @@ struct ProductionPlanMutationResponse {
     step_blueprint_assignments: Vec<ProductionStepBlueprintInput>,
     facility_id: Option<u64>,
     material_location_id: Option<u64>,
+    facility_material_bonus_basis_points: Option<u16>,
+    facility_time_bonus_basis_points: Option<u16>,
     step_supply_modes: Vec<ProductionStepSupplyInput>,
     activity: String,
     product_type_id: u64,
@@ -3048,7 +3064,9 @@ fn production_time_skills_are_valid(step: &ProductionStep) -> bool {
     if levels_missing {
         return step.total_character_time_seconds.is_none()
             && step.character_skill_time_savings_seconds.is_none()
-            && !step.character_skill_time_applied;
+            && !step.character_skill_time_applied
+            && step.total_facility_time_seconds.is_none()
+            && step.facility_time_savings_seconds.is_none();
     }
     if !levels_available {
         return false;
@@ -3065,11 +3083,28 @@ fn production_time_skills_are_valid(step: &ProductionStep) -> bool {
     let Ok(adjusted) = u64::try_from(adjusted) else {
         return false;
     };
-    production_id_is_valid(adjusted)
+    let character_valid = production_id_is_valid(adjusted)
         && step.total_character_time_seconds == Some(adjusted)
         && step.total_blueprint_time_seconds.checked_sub(adjusted)
             == step.character_skill_time_savings_seconds
-        && step.character_skill_time_applied == (adjusted < step.total_blueprint_time_seconds)
+        && step.character_skill_time_applied == (adjusted < step.total_blueprint_time_seconds);
+    let facility_valid = if step.facility_modifier_state == "ready" {
+        let Some(time_bonus) = step.facility_time_bonus_basis_points else {
+            return false;
+        };
+        numerator *= u128::from(10_000 - time_bonus);
+        denominator *= 10_000;
+        let facility_adjusted = (numerator + denominator - 1) / denominator;
+        let Ok(facility_adjusted) = u64::try_from(facility_adjusted) else {
+            return false;
+        };
+        production_id_is_valid(facility_adjusted)
+            && step.total_facility_time_seconds == Some(facility_adjusted)
+            && adjusted.checked_sub(facility_adjusted) == step.facility_time_savings_seconds
+    } else {
+        step.total_facility_time_seconds.is_none() && step.facility_time_savings_seconds.is_none()
+    };
+    character_valid && facility_valid
 }
 
 fn production_supply_decision_is_valid(item: &ProductionSupplyDecision) -> bool {
@@ -3138,6 +3173,34 @@ fn production_location_option_is_valid(item: &ProductionFacilityOption) -> bool 
 
 fn production_plan_record_is_valid(item: &ProductionPlanRecord) -> bool {
     let steps_valid = item.steps.iter().enumerate().all(|(index, step)| {
+        let facility_modifier_shape_valid = PRODUCTION_FACILITY_MODIFIER_STATES
+            .contains(&step.facility_modifier_state.as_str())
+            && step
+                .facility_material_bonus_basis_points
+                .is_none_or(|value| value <= 5_000)
+            && step
+                .facility_time_bonus_basis_points
+                .is_none_or(|value| value <= 5_000)
+            && if step.facility_modifier_state == "ready" {
+                step.facility_material_bonus_basis_points.is_some()
+                    && step.facility_time_bonus_basis_points.is_some()
+            } else {
+                step.facility_material_bonus_basis_points.is_none()
+                    && step.facility_time_bonus_basis_points.is_none()
+            };
+        let facility_modifier_matches_plan = if item.facility_modifier_state == "ready" {
+            if step.activity == item.activity {
+                step.facility_modifier_state == "ready"
+                    && step.facility_material_bonus_basis_points
+                        == item.facility_material_bonus_basis_points
+                    && step.facility_time_bonus_basis_points
+                        == item.facility_time_bonus_basis_points
+            } else {
+                step.facility_modifier_state == "activity-mismatch"
+            }
+        } else {
+            step.facility_modifier_state == item.facility_modifier_state
+        };
         step.sequence == index as u64 + 1
             && production_id_is_valid(step.blueprint_type_id)
             && production_id_is_valid(step.product_type_id)
@@ -3160,6 +3223,8 @@ fn production_plan_record_is_valid(item: &ProductionPlanRecord) -> bool {
             && step.time_efficiency_applied == (step.time_efficiency > 0)
             && production_id_is_valid(step.total_blueprint_time_seconds)
             && step.time_efficiency_savings_seconds <= JAVASCRIPT_MAX_SAFE_INTEGER
+            && facility_modifier_shape_valid
+            && facility_modifier_matches_plan
             && production_time_skills_are_valid(step)
             && production_id_is_valid(step.recipe_alternatives)
             && step.material_efficiency <= 10
@@ -3200,6 +3265,20 @@ fn production_plan_record_is_valid(item: &ProductionPlanRecord) -> bool {
             && step.unmodified_runs.checked_sub(step.runs)
                 == Some(step.runs_saved_by_material_efficiency)
             && step.materials.iter().all(|material| {
+                let facility_factor = if step.facility_modifier_state == "ready" {
+                    10_000_u128
+                        - u128::from(
+                            step.facility_material_bonus_basis_points
+                                .unwrap_or_default(),
+                        )
+                } else {
+                    10_000_u128
+                };
+                let numerator = u128::from(material.unmodified_gross_quantity)
+                    * u128::from(100 - step.material_efficiency)
+                    * facility_factor;
+                let rounded = (numerator + 999_999) / 1_000_000;
+                let expected_gross = rounded.max(u128::from(step.runs));
                 production_id_is_valid(material.type_id)
                     && asset_text_is_valid(&material.type_name, 200)
                     && production_id_is_valid(material.quantity_per_run)
@@ -3214,6 +3293,7 @@ fn production_plan_record_is_valid(item: &ProductionPlanRecord) -> bool {
                         .unmodified_gross_quantity
                         .checked_sub(material.gross_quantity)
                         == Some(material.material_efficiency_savings)
+                    && u128::from(material.gross_quantity) == expected_gross
             })
     });
     let gross_valid = item.gross_materials.iter().all(|material| {
@@ -3449,6 +3529,28 @@ fn production_plan_record_is_valid(item: &ProductionPlanRecord) -> bool {
         }
         _ => false,
     };
+    let facility_modifier_shape_valid = match item.facility_modifier_state.as_str() {
+        "not-selected" => {
+            item.facility_id.is_none()
+                && item.facility_material_bonus_basis_points.is_none()
+                && item.facility_time_bonus_basis_points.is_none()
+        }
+        "unconfigured" => {
+            item.facility_id.is_some()
+                && item.facility_material_bonus_basis_points.is_none()
+                && item.facility_time_bonus_basis_points.is_none()
+        }
+        "ready" => {
+            item.facility_id.is_some()
+                && item
+                    .facility_material_bonus_basis_points
+                    .is_some_and(|value| value <= 5_000)
+                && item
+                    .facility_time_bonus_basis_points
+                    .is_some_and(|value| value <= 5_000)
+        }
+        _ => false,
+    };
     let assigned_step_blueprint_ids = item
         .steps
         .iter()
@@ -3598,6 +3700,28 @@ fn production_plan_record_is_valid(item: &ProductionPlanRecord) -> bool {
     } else {
         "covered"
     };
+    let all_step_modifiers_ready = item
+        .steps
+        .iter()
+        .all(|step| step.facility_modifier_state == "ready");
+    let facility_time_shape_valid = if ready
+        && skill_source_available
+        && item.facility_modifier_state == "ready"
+        && all_step_modifiers_ready
+    {
+        item.total_facility_time_seconds.is_some()
+            && item.facility_time_savings_seconds.is_some()
+            && item.steps.iter().try_fold(0_u64, |total, step| {
+                total.checked_add(step.total_facility_time_seconds?)
+            }) == item.total_facility_time_seconds
+            && item
+                .total_character_time_seconds
+                .zip(item.total_facility_time_seconds)
+                .and_then(|(character, facility)| character.checked_sub(facility))
+                == item.facility_time_savings_seconds
+    } else {
+        item.total_facility_time_seconds.is_none() && item.facility_time_savings_seconds.is_none()
+    };
     let resolution_shape = if ready {
         item.build_number.is_some()
             && !item.steps.is_empty()
@@ -3697,6 +3821,8 @@ fn production_plan_record_is_valid(item: &ProductionPlanRecord) -> bool {
             && item.time_efficiency_savings_seconds.is_none()
             && item.total_character_time_seconds.is_none()
             && item.character_skill_time_savings_seconds.is_none()
+            && item.total_facility_time_seconds.is_none()
+            && item.facility_time_savings_seconds.is_none()
             && ((item.state == "cycle" && !item.cycle_type_ids.is_empty())
                 || (item.state != "cycle" && item.cycle_type_ids.is_empty()))
     };
@@ -3714,6 +3840,8 @@ fn production_plan_record_is_valid(item: &ProductionPlanRecord) -> bool {
         && item.applied_time_efficiency <= 20
         && PRODUCTION_LOCATION_SELECTION_STATES.contains(&item.location_selection_state.as_str())
         && location_selection_valid
+        && facility_modifier_shape_valid
+        && facility_time_shape_valid
         && blueprint_candidates_valid
         && assignment_valid
         && PRODUCTION_ACTIVITIES.contains(&item.activity.as_str())
@@ -3748,6 +3876,12 @@ fn production_plan_record_is_valid(item: &ProductionPlanRecord) -> bool {
             .is_none_or(production_id_is_valid)
         && item
             .character_skill_time_savings_seconds
+            .is_none_or(|value| value <= JAVASCRIPT_MAX_SAFE_INTEGER)
+        && item
+            .total_facility_time_seconds
+            .is_none_or(production_id_is_valid)
+        && item
+            .facility_time_savings_seconds
             .is_none_or(|value| value <= JAVASCRIPT_MAX_SAFE_INTEGER)
         && matches!(
             item.character_skill_state.as_str(),
@@ -3872,6 +4006,8 @@ fn production_plan_query_response_is_valid(response: &ProductionPlanQueryRespons
             == "assigned-blueprint-before-active-before-latest-owner-job"
         && response.supply_modes_applied
         && response.supply_mode_rule == "stock-first-before-recursive-build"
+        && response.facility_modifiers_applied
+        && response.facility_modifier_rule == "explicit-basis-points-combined-before-single-ceil"
         && !response.remaining_modifiers_applied
 }
 
@@ -3915,6 +4051,15 @@ fn production_plan_mutation_is_valid(item: &ProductionPlanMutationResponse) -> b
         && item.blueprint_item_id.is_none_or(production_id_is_valid)
         && item.facility_id.is_none_or(production_id_is_valid)
         && item.material_location_id.is_none_or(production_id_is_valid)
+        && item
+            .facility_material_bonus_basis_points
+            .is_none_or(|value| value <= 5_000)
+        && item
+            .facility_time_bonus_basis_points
+            .is_none_or(|value| value <= 5_000)
+        && ((item.facility_material_bonus_basis_points.is_none())
+            == item.facility_time_bonus_basis_points.is_none())
+        && (item.facility_id.is_some() || item.facility_material_bonus_basis_points.is_none())
         && (item.material_location_id.is_none() || item.facility_id.is_some())
         && item.step_blueprint_assignments.len() <= 499
         && keys.len() == item.step_blueprint_assignments.len()
@@ -5703,6 +5848,8 @@ fn save_production_plan(
     mut step_blueprint_assignments: Vec<ProductionStepBlueprintInput>,
     facility_id: Option<u64>,
     material_location_id: Option<u64>,
+    facility_material_bonus_basis_points: Option<u16>,
+    facility_time_bonus_basis_points: Option<u16>,
     mut step_supply_modes: Vec<ProductionStepSupplyInput>,
     activity: String,
     product_type_id: u64,
@@ -5759,6 +5906,11 @@ fn save_production_plan(
         || material_location_id == Some(0)
         || material_location_id.is_some_and(|value| value > JAVASCRIPT_MAX_SAFE_INTEGER)
         || material_location_id.is_some() && facility_id.is_none()
+        || facility_material_bonus_basis_points.is_some_and(|value| value > 5_000)
+        || facility_time_bonus_basis_points.is_some_and(|value| value > 5_000)
+        || facility_material_bonus_basis_points.is_none()
+            != facility_time_bonus_basis_points.is_none()
+        || facility_id.is_none() && facility_material_bonus_basis_points.is_some()
         || step_blueprint_assignments.len() > 499
         || step_keys.len() != step_blueprint_assignments.len()
         || step_item_ids.len() != step_blueprint_assignments.len()
@@ -5806,6 +5958,8 @@ fn save_production_plan(
         "stepBlueprintAssignments": step_blueprint_assignments,
         "facilityId": facility_id,
         "materialLocationId": material_location_id,
+        "facilityMaterialBonusBasisPoints": facility_material_bonus_basis_points,
+        "facilityTimeBonusBasisPoints": facility_time_bonus_basis_points,
         "stepSupplyModes": step_supply_modes,
         "activity": activity,
         "productTypeId": product_type_id,
@@ -5835,6 +5989,8 @@ fn save_production_plan(
         || saved.step_blueprint_assignments != step_blueprint_assignments
         || saved.facility_id != facility_id
         || saved.material_location_id != material_location_id
+        || saved.facility_material_bonus_basis_points != facility_material_bonus_basis_points
+        || saved.facility_time_bonus_basis_points != facility_time_bonus_basis_points
         || saved.step_supply_modes != step_supply_modes
         || saved.activity != activity
         || saved.product_type_id != product_type_id
@@ -7670,6 +7826,9 @@ mod tests {
             material_location_name: None,
             material_location_path: None,
             location_selection_state: "unselected".to_owned(),
+            facility_material_bonus_basis_points: None,
+            facility_time_bonus_basis_points: None,
+            facility_modifier_state: "not-selected".to_owned(),
             blueprint_item_id: Some(7_001),
             blueprint_assignment_state: "ready".to_owned(),
             blueprint_kind: Some("copy".to_owned()),
@@ -7743,6 +7902,11 @@ mod tests {
                     character_skill_time_applied: true,
                     total_character_time_seconds: Some(14),
                     character_skill_time_savings_seconds: Some(6),
+                    facility_modifier_state: "not-selected".to_owned(),
+                    facility_material_bonus_basis_points: None,
+                    facility_time_bonus_basis_points: None,
+                    total_facility_time_seconds: None,
+                    facility_time_savings_seconds: None,
                     recipe_alternatives: 1,
                     material_efficiency: 0,
                     material_efficiency_applied: false,
@@ -7812,6 +7976,11 @@ mod tests {
                     character_skill_time_applied: true,
                     total_character_time_seconds: Some(109),
                     character_skill_time_savings_seconds: Some(51),
+                    facility_modifier_state: "not-selected".to_owned(),
+                    facility_material_bonus_basis_points: None,
+                    facility_time_bonus_basis_points: None,
+                    total_facility_time_seconds: None,
+                    facility_time_savings_seconds: None,
                     recipe_alternatives: 1,
                     material_efficiency: 10,
                     material_efficiency_applied: true,
@@ -7897,6 +8066,8 @@ mod tests {
             time_efficiency_savings_seconds: Some(40),
             total_character_time_seconds: Some(123),
             character_skill_time_savings_seconds: Some(57),
+            total_facility_time_seconds: None,
+            facility_time_savings_seconds: None,
             character_skill_state: "ready".to_owned(),
             skill_snapshot_id: Some(14),
             skill_sync_run_id: Some(15),

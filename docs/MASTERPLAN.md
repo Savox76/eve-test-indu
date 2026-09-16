@@ -2,9 +2,9 @@
 
 **Fassung:** 4.0 (lebendes Repository-Dokument)
 
-**Stand:** 15. September 2026
+**Stand:** 16. September 2026
 
-**Status:** Paket 38 – Bestandsquellen und Produktionsorte technisch abgeschlossen
+**Status:** Paket 39 – explizite Anlagenprofile und Anlagenzeit technisch abgeschlossen
 
 **Geltungsbereich:** `Savox76/eve-test-indu`
 
@@ -204,6 +204,7 @@ Die Reihenfolge ist verbindlicher als eine Kalenderangabe.
 | 36 | Blueprintzuordnung für Fertigungsketten | Jeder Fertigungsschritt kann ein persönliches BPO oder laufgeeignetes BPC eindeutig zuordnen; dessen ME/TE wirkt schrittgenau und berechnet die Kette neu |
 | 37 | Anlagen- und Jobbelege für Produktionsketten | Jeder Produktionsschritt verbindet den stärksten passenden persönlichen Job mit dem vollständigen Anlagen-Snapshot; Anlage, Systemkostenindex und Quellenzustände bleiben sichtbar, ohne unbekannte Modifikatoren zu erfinden |
 | 38 | Bestandsquellen und Produktionsorte | Vorprodukte können vollständig oder teilweise aus persönlichem Bestand stammen; Produktionsstation und echte, persönlich benannte Materialcontainer sind wählbar, updatefest und begrenzen Bestandsabgleich sowie Reservierungen ohne Schiffsladeräume nachvollziehbar |
+| 39 | Explizite Anlagenprofile und Anlagenzeit | Ein bewusst gespeichertes, aktivitätsgebundenes Material-/Zeitprofil der gewählten Anlage wirkt mit ME/TE und Charakter-Skills vor genau einer Aufrundung; unbekannte Boni bleiben sichtbar unkonfiguriert statt geschätzt |
 
 ### Aktueller Stand
 
@@ -244,7 +245,8 @@ Die Reihenfolge ist verbindlicher als eine Kalenderangabe.
 - **Abgeschlossen:** 36 – Jeder Fertigungs-Vorproduktschritt eines Produktionsziels kann ein persönliches BPO oder laufgeeignetes BPC aus dem letzten vollständigen Blueprint-Snapshot des ausführenden Charakters zuordnen. ME und TE wirken ausschließlich auf das exakte zugehörige Rezept; geänderte Zwischenbedarfe, Laufzahlen, Zeiten, Bruttomaterialien, Reservierungen und Fehlmengen werden deterministisch neu berechnet. Jede physische Item-ID bleibt innerhalb eines Ziels und zielübergreifend eindeutig. Schema 11 speichert die Zuordnungen updatefest und löscht sie mit dem Ziel.
 - **Abgeschlossen:** 37 – Jeder aufgelöste Produktionsschritt erhält den stärksten passenden Anlagenbeleg aus dem letzten vollständigen persönlichen Job-Snapshot des ausführenden Charakters und dem letzten vollständigen globalen Anlagen-Snapshot. Ein Job mit exakt zugeordnetem Blueprint-Item hat Vorrang vor einem aktiven und danach vor dem jüngsten typgleichen Job. Anlage, Zugriffsstatus, Sonnensystem, Sicherheitsraum, aktivitätsspezifischer Systemkostenindex sowie beide Quellenstände bleiben sichtbar; fehlende und nicht auflösbare Belege werden nicht ersetzt oder geschätzt. Das Schema bleibt bei Version 11.
 - **Abgeschlossen:** 38 – Jedes produzierbare Vorprodukt kann updatefest als `Bestand zuerst`, `Nur Bestand` oder `Vollständig bauen` geplant werden. Vorhandene T1- und andere Zwischenprodukte verkürzen dadurch die rekursive Fertigungskette; `Nur Bestand` erzeugt keinen Produktionsschritt und benötigt keinen Blueprint, weist aber eine mögliche Restfehlmenge aus. Eine gewählte persönliche Station oder Struktur und optional deren direkter Hangar beziehungsweise ein echter Lagercontainer begrenzen Bestandsabgleich und konfliktfreie Reservierungen exakt auf diese Quelle. Der tatsächliche EVE-Containername und die eindeutige Item-ID werden angezeigt; Schiffe und deren Laderäume werden an einer gewählten Anlage weder als Container angeboten noch als Produktionsbestand angerechnet. Ohne Auswahl bleibt das bisherige Verhalten über alle persönlichen Lagerorte erhalten. Schema 12 speichert Anlagen-, Lager- und Versorgungswahl updatefest.
-- **Als Nächstes:** Das nächste Fachpaket wird separat festgelegt. Anlagen-/Service-/Rigboni, Steuern, Preise und belastbare reale Fertigstellungszeiten bleiben bis zu eigenen Fachverträgen ausgeschlossen.
+- **Abgeschlossen:** 39 – Eine gewählte Produktionsanlage kann ein bewusst eingegebenes Material- und Zeitprofil in Hundertstelprozent erhalten. Der Materialfaktor wird mit dem schrittgenauen Blueprint-ME, der Zeitfaktor mit Blueprint-TE und aktiven Charakter-Skills multipliziert; erst danach wird je Material beziehungsweise Job einmal ganzzahlig aufgerundet. Das Profil gilt nur für Schritte derselben Aktivität, zeigt abweichende Aktivitäten ausdrücklich und wird niemals aus ESI, Jobs oder Strukturtypen geraten. Bestehende Ziele bleiben nach Schema-13-Migration unverändert und zeigen das Profil als nicht konfiguriert. Anlagenzeit und zusätzliche Ersparnis bleiben je Schritt und als belegbare Summe sichtbar.
+- **Als Nächstes:** Das nächste Fachpaket wird separat festgelegt. Automatische Struktur-/Service-/Rig-Erkennung, Systemkosten, Steuern, Preise und belastbare Endtermine bleiben bis zu eigenen Fachverträgen ausgeschlossen.
 - Architektur-Gate A0 ist vollständig erfüllt; `v0.2.0-alpha.1` bildet die erste freigegebene Alpha-Grundlage für die folgenden Produktionspakete.
 
 ## 13. Entscheidungs- und Quellenrang

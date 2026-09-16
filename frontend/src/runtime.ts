@@ -605,6 +605,7 @@ export type ProductionStepFacilityState = "ready" | "job-snapshot-missing" | "jo
 export type ProductionFacilityEvidenceKind = "none" | "assigned-blueprint-job" | "active-blueprint-type-job" | "latest-blueprint-type-job";
 export type ProductionSupplyMode = "stock-first" | "stock-only" | "build";
 export type ProductionLocationSelectionState = "unselected" | "ready" | "facility-missing" | "material-location-missing";
+export type ProductionFacilityModifierState = "not-selected" | "unconfigured" | "ready" | "activity-mismatch";
 export type ProductionPlanSortField = "priority" | "product" | "owner" | "activity" | "state" | "updated";
 export const productionActivities: readonly ProductionActivity[] = ["manufacturing", "reaction"];
 export const productionPlanStates: readonly ProductionPlanState[] = [
@@ -712,6 +713,11 @@ export interface ProductionStep {
   characterSkillTimeApplied: boolean;
   totalCharacterTimeSeconds: number | null;
   characterSkillTimeSavingsSeconds: number | null;
+  facilityModifierState: ProductionFacilityModifierState;
+  facilityMaterialBonusBasisPoints: number | null;
+  facilityTimeBonusBasisPoints: number | null;
+  totalFacilityTimeSeconds: number | null;
+  facilityTimeSavingsSeconds: number | null;
   recipeAlternatives: number;
   materialEfficiency: number;
   materialEfficiencyApplied: boolean;
@@ -861,6 +867,9 @@ export interface ProductionPlanRecord {
   materialLocationName: string | null;
   materialLocationPath: string | null;
   locationSelectionState: ProductionLocationSelectionState;
+  facilityMaterialBonusBasisPoints: number | null;
+  facilityTimeBonusBasisPoints: number | null;
+  facilityModifierState: Exclude<ProductionFacilityModifierState, "activity-mismatch">;
   blueprintItemId: number | null;
   blueprintAssignmentState: ProductionBlueprintAssignmentState;
   blueprintKind: "original" | "copy" | null;
@@ -894,6 +903,8 @@ export interface ProductionPlanRecord {
   timeEfficiencySavingsSeconds: number | null;
   totalCharacterTimeSeconds: number | null;
   characterSkillTimeSavingsSeconds: number | null;
+  totalFacilityTimeSeconds: number | null;
+  facilityTimeSavingsSeconds: number | null;
   characterSkillState: ProductionCharacterSkillState;
   skillSnapshotId: number | null;
   skillSyncRunId: number | null;
@@ -944,6 +955,8 @@ export interface ProductionPlanPage {
   facilityEvidenceRule: "assigned-blueprint-before-active-before-latest-owner-job";
   supplyModesApplied: true;
   supplyModeRule: "stock-first-before-recursive-build";
+  facilityModifiersApplied: true;
+  facilityModifierRule: "explicit-basis-points-combined-before-single-ceil";
   remainingModifiersApplied: false;
 }
 
@@ -955,6 +968,8 @@ export interface ProductionPlanInput {
   stepBlueprintAssignments: readonly ProductionStepBlueprintInput[];
   facilityId: number | null;
   materialLocationId: number | null;
+  facilityMaterialBonusBasisPoints: number | null;
+  facilityTimeBonusBasisPoints: number | null;
   stepSupplyModes: readonly ProductionStepSupplyInput[];
   activity: ProductionActivity;
   productTypeId: number;
@@ -3079,6 +3094,17 @@ function parseProductionStep(candidate: unknown, index: number): ProductionStep 
     !(candidate.totalCharacterTimeSeconds === null || isPositiveSafeInteger(candidate.totalCharacterTimeSeconds)) ||
     !(candidate.characterSkillTimeSavingsSeconds === null ||
       isNonNegativeSafeInteger(candidate.characterSkillTimeSavingsSeconds)) ||
+    !["not-selected", "unconfigured", "ready", "activity-mismatch"]
+      .includes(String(candidate.facilityModifierState)) ||
+    !(candidate.facilityMaterialBonusBasisPoints === null ||
+      isNonNegativeSafeInteger(candidate.facilityMaterialBonusBasisPoints) &&
+      Number(candidate.facilityMaterialBonusBasisPoints) <= 5_000) ||
+    !(candidate.facilityTimeBonusBasisPoints === null ||
+      isNonNegativeSafeInteger(candidate.facilityTimeBonusBasisPoints) &&
+      Number(candidate.facilityTimeBonusBasisPoints) <= 5_000) ||
+    !(candidate.totalFacilityTimeSeconds === null || isPositiveSafeInteger(candidate.totalFacilityTimeSeconds)) ||
+    !(candidate.facilityTimeSavingsSeconds === null ||
+      isNonNegativeSafeInteger(candidate.facilityTimeSavingsSeconds)) ||
     !Array.isArray(candidate.timeSkills) || !Array.isArray(candidate.materials) ||
     Number(candidate.outputQuantityPerRun) * Number(candidate.runs) !== Number(candidate.producedQuantity) ||
     Number(candidate.producedQuantity) - Number(candidate.requiredQuantity) !== Number(candidate.surplusQuantity) ||
@@ -3090,7 +3116,12 @@ function parseProductionStep(candidate: unknown, index: number): ProductionStep 
         BigInt(100 - Number(candidate.timeEfficiency)) + 99n) / 100n) ||
     Number(candidate.unmodifiedRuns) - Number(candidate.runs) !== Number(candidate.runsSavedByMaterialEfficiency) ||
     candidate.materialEfficiencyApplied !== (Number(candidate.materialEfficiency) > 0) ||
-    candidate.timeEfficiencyApplied !== (Number(candidate.timeEfficiency) > 0)
+    candidate.timeEfficiencyApplied !== (Number(candidate.timeEfficiency) > 0) ||
+    (candidate.facilityModifierState === "ready"
+      ? candidate.facilityMaterialBonusBasisPoints === null ||
+        candidate.facilityTimeBonusBasisPoints === null
+      : candidate.facilityMaterialBonusBasisPoints !== null ||
+        candidate.facilityTimeBonusBasisPoints !== null)
   ) {
     throw new Error("The native runtime returned invalid production steps.");
   }
@@ -3112,7 +3143,8 @@ function parseProductionStep(candidate: unknown, index: number): ProductionStep 
   }
   if (levelsMissing) {
     if (candidate.totalCharacterTimeSeconds !== null ||
-      candidate.characterSkillTimeSavingsSeconds !== null || candidate.characterSkillTimeApplied) {
+      candidate.characterSkillTimeSavingsSeconds !== null || candidate.characterSkillTimeApplied ||
+      candidate.totalFacilityTimeSeconds !== null || candidate.facilityTimeSavingsSeconds !== null) {
       throw new Error("The native runtime returned character time without skill evidence.");
     }
   } else {
@@ -3131,6 +3163,17 @@ function parseProductionStep(candidate: unknown, index: number): ProductionStep 
       candidate.characterSkillTimeApplied !==
         (expectedCharacterTime < Number(candidate.totalBlueprintTimeSeconds))
     ) throw new Error("The native runtime returned inconsistent character skill time.");
+    if (candidate.facilityModifierState === "ready") {
+      numerator *= BigInt(10_000 - Number(candidate.facilityTimeBonusBasisPoints));
+      denominator *= 10_000n;
+      const expectedFacilityTime = Number((numerator + denominator - 1n) / denominator);
+      if (
+        candidate.totalFacilityTimeSeconds !== expectedFacilityTime ||
+        expectedCharacterTime - expectedFacilityTime !== Number(candidate.facilityTimeSavingsSeconds)
+      ) throw new Error("The native runtime returned inconsistent facility time.");
+    } else if (candidate.totalFacilityTimeSeconds !== null || candidate.facilityTimeSavingsSeconds !== null) {
+      throw new Error("The native runtime returned facility time without an explicit modifier.");
+    }
   }
   const materials = candidate.materials.map((material): ProductionStepMaterial => {
     if (
@@ -3140,11 +3183,25 @@ function parseProductionStep(candidate: unknown, index: number): ProductionStep 
       !isPositiveSafeInteger(material.grossQuantity) ||
       !isNonNegativeSafeInteger(material.materialEfficiency) || Number(material.materialEfficiency) > 10 ||
       !isNonNegativeSafeInteger(material.materialEfficiencySavings) ||
-      typeof material.producedByPlan !== "boolean" ||
+      typeof material.producedByPlan !== "boolean"
+    ) {
+      throw new Error("The native runtime returned invalid production-step materials.");
+    }
+    const facilityFactor = candidate.facilityModifierState === "ready"
+      ? 10_000 - Number(candidate.facilityMaterialBonusBasisPoints)
+      : 10_000;
+    const materialNumerator = BigInt(material.unmodifiedGrossQuantity as number) *
+      BigInt(100 - Number(candidate.materialEfficiency)) * BigInt(facilityFactor);
+    const roundedMaterial = (materialNumerator + 999_999n) / 1_000_000n;
+    const expectedGross = Number(roundedMaterial < BigInt(candidate.runs as number)
+      ? BigInt(candidate.runs as number)
+      : roundedMaterial);
+    if (
       Number(material.quantityPerRun) * Number(candidate.runs) !== Number(material.unmodifiedGrossQuantity) ||
       Number(material.unmodifiedGrossQuantity) - Number(material.grossQuantity) !==
         Number(material.materialEfficiencySavings) ||
-      Number(material.materialEfficiency) !== Number(candidate.materialEfficiency)
+      Number(material.materialEfficiency) !== Number(candidate.materialEfficiency) ||
+      Number(material.grossQuantity) !== expectedGross
     ) {
       throw new Error("The native runtime returned invalid production-step materials.");
     }
@@ -3343,6 +3400,13 @@ function parseProductionPlanRecord(candidate: unknown): ProductionPlanRecord {
     !(candidate.materialLocationPath === null || isBoundedText(candidate.materialLocationPath, 12_800)) ||
     !["unselected", "ready", "facility-missing", "material-location-missing"]
       .includes(String(candidate.locationSelectionState)) ||
+    !(candidate.facilityMaterialBonusBasisPoints === null ||
+      isNonNegativeSafeInteger(candidate.facilityMaterialBonusBasisPoints) &&
+      Number(candidate.facilityMaterialBonusBasisPoints) <= 5_000) ||
+    !(candidate.facilityTimeBonusBasisPoints === null ||
+      isNonNegativeSafeInteger(candidate.facilityTimeBonusBasisPoints) &&
+      Number(candidate.facilityTimeBonusBasisPoints) <= 5_000) ||
+    !["not-selected", "unconfigured", "ready"].includes(String(candidate.facilityModifierState)) ||
     !(candidate.blueprintItemId === null || isPositiveSafeInteger(candidate.blueprintItemId)) ||
     !["ready", "unassigned", "snapshot-missing", "missing", "type-mismatch", "runs-insufficient"]
       .includes(String(candidate.blueprintAssignmentState)) ||
@@ -3375,6 +3439,9 @@ function parseProductionPlanRecord(candidate: unknown): ProductionPlanRecord {
       isPositiveSafeInteger(candidate.totalCharacterTimeSeconds)) ||
     !(candidate.characterSkillTimeSavingsSeconds === null ||
       isNonNegativeSafeInteger(candidate.characterSkillTimeSavingsSeconds)) ||
+    !(candidate.totalFacilityTimeSeconds === null || isPositiveSafeInteger(candidate.totalFacilityTimeSeconds)) ||
+    !(candidate.facilityTimeSavingsSeconds === null ||
+      isNonNegativeSafeInteger(candidate.facilityTimeSavingsSeconds)) ||
     !["ready", "snapshot-missing"].includes(String(candidate.characterSkillState)) ||
     !((candidate.skillSnapshotId === null && candidate.skillSyncRunId === null &&
       candidate.skillObservedAt === null) ||
@@ -3570,6 +3637,15 @@ function parseProductionPlanRecord(candidate: unknown): ProductionPlanRecord {
       : readyFacilitySteps > 0
         ? "partial"
         : "missing";
+  const facilityModifierConfigured = candidate.facilityModifierState === "ready";
+  const facilityModifierShapeValid = candidate.facilityModifierState === "not-selected"
+    ? candidate.facilityId === null && candidate.facilityMaterialBonusBasisPoints === null &&
+      candidate.facilityTimeBonusBasisPoints === null
+    : candidate.facilityModifierState === "unconfigured"
+      ? candidate.facilityId !== null && candidate.facilityMaterialBonusBasisPoints === null &&
+        candidate.facilityTimeBonusBasisPoints === null
+      : candidate.facilityId !== null && candidate.facilityMaterialBonusBasisPoints !== null &&
+        candidate.facilityTimeBonusBasisPoints !== null;
   if (
     ready !== (steps.length > 0 && candidate.totalBaseTimeSeconds !== null &&
       candidate.totalBlueprintTimeSeconds !== null && candidate.timeEfficiencySavingsSeconds !== null) ||
@@ -3597,13 +3673,29 @@ function parseProductionPlanRecord(candidate: unknown): ProductionPlanRecord {
         candidate.characterSkillTimeSavingsSeconds !== null ||
         steps.some((step) => step.totalCharacterTimeSeconds !== null ||
           step.characterSkillTimeSavingsSeconds !== null || step.characterSkillTimeApplied ||
-          step.timeSkills.some((skill) => skill.activeLevel !== null)))))) ||
+          step.timeSkills.some((skill) => skill.activeLevel !== null)))) ||
+      (ready && skillSnapshotAvailable && facilityModifierConfigured &&
+        steps.every((step) => step.facilityModifierState === "ready")
+        ? candidate.totalFacilityTimeSeconds === null || candidate.facilityTimeSavingsSeconds === null ||
+          steps.reduce((total, step) => total + Number(step.totalFacilityTimeSeconds), 0) !==
+            candidate.totalFacilityTimeSeconds ||
+          Number(candidate.totalCharacterTimeSeconds) - Number(candidate.totalFacilityTimeSeconds) !==
+            Number(candidate.facilityTimeSavingsSeconds)
+        : candidate.totalFacilityTimeSeconds !== null || candidate.facilityTimeSavingsSeconds !== null))) ||
     (!ready && (grossMaterials.length !== 0 || candidate.totalBaseTimeSeconds !== null ||
       supplyDecisions.length !== 0 ||
       candidate.totalBlueprintTimeSeconds !== null || candidate.timeEfficiencySavingsSeconds !== null ||
       candidate.totalCharacterTimeSeconds !== null || candidate.characterSkillTimeSavingsSeconds !== null)) ||
     ((candidate.state === "cycle") !== (candidate.cycleTypeIds.length > 0)) ||
     !locationSelectionValid ||
+    !facilityModifierShapeValid ||
+    steps.some((step) => candidate.facilityModifierState === "ready"
+      ? step.activity === candidate.activity
+        ? step.facilityModifierState !== "ready" ||
+          step.facilityMaterialBonusBasisPoints !== candidate.facilityMaterialBonusBasisPoints ||
+          step.facilityTimeBonusBasisPoints !== candidate.facilityTimeBonusBasisPoints
+        : step.facilityModifierState !== "activity-mismatch"
+      : step.facilityModifierState !== candidate.facilityModifierState) ||
     !supplyShapeValid ||
     new Set(supplyKeys).size !== supplyKeys.length ||
     candidate.inventoryState !== expectedInventoryState ||
@@ -3689,6 +3781,8 @@ function parseProductionPlanPage(candidate: unknown): ProductionPlanPage {
       "assigned-blueprint-before-active-before-latest-owner-job" ||
     candidate.supplyModesApplied !== true ||
     candidate.supplyModeRule !== "stock-first-before-recursive-build" ||
+    candidate.facilityModifiersApplied !== true ||
+    candidate.facilityModifierRule !== "explicit-basis-points-combined-before-single-ceil" ||
     candidate.remainingModifiersApplied !== false
   ) throw new Error("The native runtime returned invalid production-plan data.");
   const items = candidate.items.map(parseProductionPlanRecord);
@@ -3738,6 +3832,8 @@ export async function loadProductionPlans(
     facilityEvidenceRule: "assigned-blueprint-before-active-before-latest-owner-job",
     supplyModesApplied: true,
     supplyModeRule: "stock-first-before-recursive-build",
+    facilityModifiersApplied: true,
+    facilityModifierRule: "explicit-basis-points-combined-before-single-ceil",
     remainingModifiersApplied: false,
   };
   const page = parseProductionPlanPage(JSON.parse(await adapter.invoke("query_production_plans", {
@@ -3764,6 +3860,15 @@ function validateProductionPlanInput(input: ProductionPlanInput): ProductionPlan
     !(input.facilityId === null || isPositiveSafeInteger(input.facilityId)) ||
     !(input.materialLocationId === null || isPositiveSafeInteger(input.materialLocationId)) ||
     (input.materialLocationId !== null && input.facilityId === null) ||
+    !(input.facilityMaterialBonusBasisPoints === null ||
+      isNonNegativeSafeInteger(input.facilityMaterialBonusBasisPoints) &&
+      input.facilityMaterialBonusBasisPoints <= 5_000) ||
+    !(input.facilityTimeBonusBasisPoints === null ||
+      isNonNegativeSafeInteger(input.facilityTimeBonusBasisPoints) &&
+      input.facilityTimeBonusBasisPoints <= 5_000) ||
+    ((input.facilityMaterialBonusBasisPoints === null) !==
+      (input.facilityTimeBonusBasisPoints === null)) ||
+    (input.facilityId === null && input.facilityMaterialBonusBasisPoints !== null) ||
     !productionActivities.includes(input.activity) || !isPositiveSafeInteger(input.productTypeId) ||
     !isPositiveSafeInteger(input.targetQuantity) || !isNonNegativeSafeInteger(input.priority) ||
     input.priority > 999 || !(note === null || note.length <= 240) ||
@@ -3812,6 +3917,8 @@ export async function saveProductionPlan(
     blueprintTypeId: validated.blueprintTypeId, blueprintItemId: validated.blueprintItemId,
     stepBlueprintAssignments: validated.stepBlueprintAssignments,
     facilityId: validated.facilityId, materialLocationId: validated.materialLocationId,
+    facilityMaterialBonusBasisPoints: validated.facilityMaterialBonusBasisPoints,
+    facilityTimeBonusBasisPoints: validated.facilityTimeBonusBasisPoints,
     stepSupplyModes: validated.stepSupplyModes,
     activity: validated.activity,
     productTypeId: validated.productTypeId, targetQuantity: validated.targetQuantity,
@@ -3824,6 +3931,8 @@ export async function saveProductionPlan(
     candidate.blueprintItemId !== validated.blueprintItemId || candidate.activity !== validated.activity ||
     candidate.facilityId !== validated.facilityId ||
     candidate.materialLocationId !== validated.materialLocationId ||
+    candidate.facilityMaterialBonusBasisPoints !== validated.facilityMaterialBonusBasisPoints ||
+    candidate.facilityTimeBonusBasisPoints !== validated.facilityTimeBonusBasisPoints ||
     !Array.isArray(candidate.stepBlueprintAssignments) ||
     JSON.stringify(candidate.stepBlueprintAssignments) !== JSON.stringify(validated.stepBlueprintAssignments) ||
     !Array.isArray(candidate.stepSupplyModes) ||
