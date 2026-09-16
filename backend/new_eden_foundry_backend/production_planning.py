@@ -8,12 +8,14 @@ import sqlite3
 from collections import defaultdict, deque
 from dataclasses import dataclass
 from datetime import datetime
+from decimal import Decimal, InvalidOperation, ROUND_CEILING
 from typing import Any, Mapping
 
 from .character_skill_sync import CharacterSkillSyncError, validate_character_skills
 from .industry_facility_view import (
     IndustryFacilityViewError,
     industry_facility_index,
+    industry_price_index,
 )
 from .industry_job_evidence import (
     IndustryJobEvidenceError,
@@ -50,6 +52,7 @@ FACILITY_EVIDENCE_RULE = "assigned-blueprint-before-active-before-latest-owner-j
 SUPPLY_MODE_RULE = "stock-first-before-recursive-build"
 FACILITY_MODIFIER_RULE = "explicit-basis-points-combined-before-single-ceil"
 PURCHASE_LIST_RULE = "filtered-plans-sum-missing-by-type"
+INSTALLATION_COST_RULE = "base-material-adjusted-price-times-runs-system-index-plus-explicit-tax-ceil"
 INDUSTRY_SKILL_ID = 3380
 ADVANCED_INDUSTRY_SKILL_ID = 3388
 REACTIONS_SKILL_ID = 45746
@@ -95,6 +98,24 @@ FACILITY_MODIFIER_STATES = (
     "unconfigured",
     "ready",
     "activity-mismatch",
+)
+INSTALLATION_COST_STATES = (
+    "ready",
+    "not-selected",
+    "unconfigured",
+    "facility-snapshot-missing",
+    "facility-missing",
+    "facility-unavailable",
+    "cost-index-missing",
+    "price-snapshot-missing",
+    "price-missing",
+)
+PLAN_INSTALLATION_COST_STATES = (
+    "ready",
+    "partial",
+    "unconfigured",
+    "unavailable",
+    "not-applicable",
 )
 ACTIVE_JOB_STATUSES = ("active", "paused", "ready")
 PRODUCTION_JOB_ACTIVITY_IDS = {
@@ -257,6 +278,7 @@ def validate_production_plan_input(payload: Any) -> dict[str, Any]:
         "materialLocationId",
         "facilityMaterialBonusBasisPoints",
         "facilityTimeBonusBasisPoints",
+        "facilityTaxBasisPoints",
         "stepSupplyModes",
         "activity",
         "productTypeId",
@@ -273,6 +295,7 @@ def validate_production_plan_input(payload: Any) -> dict[str, Any]:
     material_location_id = payload["materialLocationId"]
     facility_material_bonus = payload["facilityMaterialBonusBasisPoints"]
     facility_time_bonus = payload["facilityTimeBonusBasisPoints"]
+    facility_tax = payload["facilityTaxBasisPoints"]
     raw_supply_modes = payload["stepSupplyModes"]
     note = payload["note"]
     if note is not None:
@@ -306,6 +329,10 @@ def validate_production_plan_input(payload: Any) -> dict[str, Any]:
         )
         or facility_id is None
         and facility_material_bonus is not None
+        or facility_tax is not None
+        and (not _non_negative_int(facility_tax) or facility_tax > 10_000)
+        or facility_id is None
+        and facility_tax is not None
         or not isinstance(raw_supply_modes, list)
         or len(raw_supply_modes) > MAX_STEP_SUPPLY_MODES
         or not _positive_int(payload["ownerCharacterId"])
@@ -647,6 +674,115 @@ def _facility_modifier_for_step(
     if activity != str(plan["activity"]):
         return "activity-mismatch", None, None
     return "ready", int(material_bonus), int(time_bonus)
+
+
+def _empty_installation_cost(
+    state: str,
+    facility_tax_basis_points: int | None,
+    price_source: Mapping[str, Any] | None,
+    *,
+    system_cost_index: float | None = None,
+    missing_type_ids: list[int] | None = None,
+) -> dict[str, Any]:
+    if state not in INSTALLATION_COST_STATES:
+        raise ProductionPlanningError("production_installation_cost_invalid")
+    return {
+        "state": state,
+        "estimatedItemValue": None,
+        "systemCostIndex": system_cost_index,
+        "systemCost": None,
+        "facilityTaxBasisPoints": facility_tax_basis_points,
+        "facilityTax": None,
+        "estimatedInstallationCost": None,
+        "missingAdjustedPriceTypeIds": sorted(missing_type_ids or []),
+        "priceSnapshotId": None if price_source is None else int(price_source["snapshotId"]),
+        "priceSyncRunId": None if price_source is None else int(price_source["syncRunId"]),
+        "priceObservedAt": None if price_source is None else str(price_source["observedAt"]),
+    }
+
+
+def _installation_cost_for_step(
+    plan: Mapping[str, Any],
+    recipe: Recipe,
+    runs: int,
+    facility_snapshot_available: bool,
+    facilities: Mapping[int, Mapping[str, Any]],
+    price_source: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    """Calculate a bounded, source-backed job-fee basis for one built step."""
+
+    facility_id = plan["facility_id"] if "facility_id" in plan.keys() else None
+    tax_value = (
+        plan["facility_tax_basis_points"]
+        if "facility_tax_basis_points" in plan.keys()
+        else None
+    )
+    tax = None if tax_value is None else int(tax_value)
+    if facility_id is None:
+        return _empty_installation_cost("not-selected", None, price_source)
+    if tax is None:
+        return _empty_installation_cost("unconfigured", None, price_source)
+    if not _non_negative_int(tax) or tax > 10_000:
+        raise ProductionPlanningError("production_installation_cost_invalid")
+    if not facility_snapshot_available:
+        return _empty_installation_cost("facility-snapshot-missing", tax, price_source)
+    facility = facilities.get(int(facility_id))
+    if facility is None:
+        return _empty_installation_cost("facility-missing", tax, price_source)
+    if facility["access"] not in {"public", "available"}:
+        return _empty_installation_cost("facility-unavailable", tax, price_source)
+    raw_index = facility["costIndices"].get(recipe.activity)
+    if raw_index is None:
+        return _empty_installation_cost("cost-index-missing", tax, price_source)
+    system_cost_index = float(raw_index)
+    if price_source is None:
+        return _empty_installation_cost(
+            "price-snapshot-missing",
+            tax,
+            None,
+            system_cost_index=system_cost_index,
+        )
+    adjusted_prices = price_source["adjustedPrices"]
+    missing = sorted(
+        material_type_id
+        for material_type_id, _material_name, _quantity in recipe.materials
+        if material_type_id not in adjusted_prices
+    )
+    if missing:
+        return _empty_installation_cost(
+            "price-missing",
+            tax,
+            price_source,
+            system_cost_index=system_cost_index,
+            missing_type_ids=missing,
+        )
+    try:
+        estimated_item_value = sum(
+            Decimal(str(adjusted_prices[material_type_id])) * base_quantity * runs
+            for material_type_id, _material_name, base_quantity in recipe.materials
+        )
+        system_cost = (
+            estimated_item_value * Decimal(str(system_cost_index))
+        ).to_integral_value(rounding=ROUND_CEILING)
+        facility_tax = (
+            estimated_item_value * Decimal(tax) / Decimal(10_000)
+        ).to_integral_value(rounding=ROUND_CEILING)
+        item_value = estimated_item_value.to_integral_value(rounding=ROUND_CEILING)
+        total = system_cost + facility_tax
+    except (InvalidOperation, OverflowError) as error:
+        raise ProductionPlanningError("production_installation_cost_invalid") from error
+    values = (item_value, system_cost, facility_tax, total)
+    if any(value < 0 or value > MAX_SAFE_INTEGER for value in values):
+        raise ProductionPlanningError("production_plan_calculation_overflow")
+    return {
+        **_empty_installation_cost(
+            "ready", tax, price_source, system_cost_index=system_cost_index
+        ),
+        "estimatedItemValue": int(item_value),
+        "systemCost": int(system_cost),
+        "facilityTax": int(facility_tax),
+        "estimatedInstallationCost": int(total),
+    }
 
 
 def _time_skills(
@@ -1882,6 +2018,13 @@ def _empty_resolution(
         "characterSkillTimeSavingsSeconds": None,
         "totalFacilityTimeSeconds": None,
         "facilityTimeSavingsSeconds": None,
+        "installationCostState": "not-applicable",
+        "estimatedItemValue": None,
+        "systemCost": None,
+        "facilityTax": None,
+        "estimatedInstallationCost": None,
+        "costedStepCount": 0,
+        "uncostedStepCount": 0,
         "facilityModifierState": modifier_state,
         "facilityMaterialBonusBasisPoints": material_bonus,
         "facilityTimeBonusBasisPoints": time_bonus,
@@ -1899,6 +2042,7 @@ def resolve_production_plan(
     skill_source: SkillSource | None | object = _SKILL_SOURCE_UNSET,
     job_source: Mapping[str, Any] | None | object = _JOB_SOURCE_UNSET,
     facility_context: tuple[bool, Mapping[int, Mapping[str, Any]]] | None = None,
+    price_source: Mapping[str, Any] | None | object = _JOB_SOURCE_UNSET,
     step_blueprint_assignments: Mapping[tuple[int, str, int], int] | None = None,
     step_supply_modes: Mapping[tuple[int, str, int], str] | None = None,
     inventory_source: InventorySource | None = None,
@@ -1936,6 +2080,10 @@ def resolve_production_plan(
     if facility_context is None:
         facility_context = _load_production_facilities(connection)
     facility_snapshot_available, facilities = facility_context
+    if price_source is _JOB_SOURCE_UNSET:
+        price_source = industry_price_index(connection)
+    if price_source is not None and not isinstance(price_source, Mapping):
+        raise ProductionPlanningError("production_price_snapshot_invalid")
     if step_blueprint_assignments is None:
         step_blueprint_assignments = (
             _step_blueprint_assignments(connection, int(plan["id"]))
@@ -2287,6 +2435,14 @@ def resolve_production_plan(
             facility_snapshot_available,
             facilities,
         )
+        step_installation_cost = _installation_cost_for_step(
+            plan,
+            recipe,
+            runs,
+            facility_snapshot_available,
+            facilities,
+            price_source,
+        )
         total_base_time = _checked_add(total_base_time, step_time)
         total_blueprint_time = _checked_add(
             total_blueprint_time, step_blueprint_time
@@ -2350,6 +2506,7 @@ def resolve_production_plan(
                 "materialEfficiencyApplied": material_efficiency > 0,
                 "blueprintAssignment": step_assignment,
                 "facilityEvidence": step_facility_evidence,
+                "installationCost": step_installation_cost,
                 "materials": direct_materials,
             }
         )
@@ -2378,6 +2535,36 @@ def resolve_production_plan(
         if ready_facilities > 0
         else "missing"
     )
+    ready_costs = [
+        step["installationCost"]
+        for step in execution_steps
+        if step["installationCost"]["state"] == "ready"
+    ]
+    uncosted_step_count = len(execution_steps) - len(ready_costs)
+    if not execution_steps:
+        installation_cost_state = "not-applicable"
+    elif len(ready_costs) == len(execution_steps):
+        installation_cost_state = "ready"
+    elif ready_costs:
+        installation_cost_state = "partial"
+    elif all(
+        step["installationCost"]["state"] == "unconfigured"
+        for step in execution_steps
+    ):
+        installation_cost_state = "unconfigured"
+    else:
+        installation_cost_state = "unavailable"
+
+    def sum_ready_cost(field: str) -> int | None:
+        if not ready_costs:
+            return None
+        total = 0
+        for cost in ready_costs:
+            value = cost[field]
+            if value is None:
+                raise ProductionPlanningError("production_installation_cost_invalid")
+            total = _checked_add(total, int(value))
+        return total
     (
         root_facility_modifier_state,
         root_facility_material_bonus,
@@ -2437,6 +2624,13 @@ def resolve_production_plan(
             if total_facility_time is None or total_character_time is None
             else total_character_time - total_facility_time
         ),
+        "installationCostState": installation_cost_state,
+        "estimatedItemValue": sum_ready_cost("estimatedItemValue"),
+        "systemCost": sum_ready_cost("systemCost"),
+        "facilityTax": sum_ready_cost("facilityTax"),
+        "estimatedInstallationCost": sum_ready_cost("estimatedInstallationCost"),
+        "costedStepCount": len(ready_costs),
+        "uncostedStepCount": uncosted_step_count,
         "facilityModifierState": root_facility_modifier_state,
         "facilityMaterialBonusBasisPoints": root_facility_material_bonus,
         "facilityTimeBonusBasisPoints": root_facility_time_bonus,
@@ -2520,7 +2714,8 @@ def _plan_rows(connection: sqlite3.Connection) -> list[sqlite3.Row]:
             "SELECT plan.id,plan.owner_character_id,COALESCE(character.alias,character.name) "
             "AS owner_name,plan.blueprint_type_id,plan.blueprint_item_id,plan.facility_id,"
             "plan.material_location_id,plan.facility_material_bonus_basis_points,"
-            "plan.facility_time_bonus_basis_points,plan.activity,plan.product_type_id,"
+            "plan.facility_time_bonus_basis_points,plan.facility_tax_basis_points,"
+            "plan.activity,plan.product_type_id,"
             "plan.target_quantity,plan.priority,plan.note,plan.created_at,plan.updated_at "
             "FROM production_plans plan JOIN characters character "
             "ON character.character_id=plan.owner_character_id ORDER BY plan.id"
@@ -2545,6 +2740,11 @@ def _serialize_plan(row: sqlite3.Row, resolution: Mapping[str, Any]) -> dict[str
             "facilityMaterialBonusBasisPoints"
         ],
         "facilityTimeBonusBasisPoints": resolution["facilityTimeBonusBasisPoints"],
+        "facilityTaxBasisPoints": (
+            None
+            if row["facility_tax_basis_points"] is None
+            else int(row["facility_tax_basis_points"])
+        ),
         "facilityModifierState": resolution["facilityModifierState"],
         "blueprintItemId": resolution["blueprintItemId"],
         "blueprintAssignmentState": resolution["blueprintAssignmentState"],
@@ -2583,6 +2783,13 @@ def _serialize_plan(row: sqlite3.Row, resolution: Mapping[str, Any]) -> dict[str
         ],
         "totalFacilityTimeSeconds": resolution["totalFacilityTimeSeconds"],
         "facilityTimeSavingsSeconds": resolution["facilityTimeSavingsSeconds"],
+        "installationCostState": resolution["installationCostState"],
+        "estimatedItemValue": resolution["estimatedItemValue"],
+        "systemCost": resolution["systemCost"],
+        "facilityTax": resolution["facilityTax"],
+        "estimatedInstallationCost": resolution["estimatedInstallationCost"],
+        "costedStepCount": resolution["costedStepCount"],
+        "uncostedStepCount": resolution["uncostedStepCount"],
         "characterSkillState": resolution["characterSkillState"],
         "skillSnapshotId": resolution["skillSnapshotId"],
         "skillSyncRunId": resolution["skillSyncRunId"],
@@ -2703,6 +2910,7 @@ def query_production_plans(connection: sqlite3.Connection, raw_query: Any) -> di
     skill_sources = _load_skill_sources(connection, plan_rows)
     job_sources = _load_production_job_sources(connection)
     facility_context = _load_production_facilities(connection)
+    price_source = industry_price_index(connection)
     inventory_sources = _load_inventory_sources(connection, plan_rows)
     reservations: dict[
         tuple[int, int, int, str, str, str], list[dict[str, Any]]
@@ -2728,6 +2936,7 @@ def query_production_plans(connection: sqlite3.Connection, raw_query: Any) -> di
             skill_source=skill_sources.get(owner_character_id),
             job_source=job_sources.get(owner_character_id),
             facility_context=facility_context,
+            price_source=price_source,
             step_blueprint_assignments=step_blueprint_assignments.get(plan_id, {}),
             step_supply_modes=step_supply_modes.get(plan_id, {}),
             inventory_source=inventory_source,
@@ -2828,6 +3037,8 @@ def query_production_plans(connection: sqlite3.Connection, raw_query: Any) -> di
         "facilityModifierRule": FACILITY_MODIFIER_RULE,
         "purchaseListApplied": True,
         "purchaseListRule": PURCHASE_LIST_RULE,
+        "installationCostsApplied": True,
+        "installationCostRule": INSTALLATION_COST_RULE,
         "remainingModifiersApplied": False,
     }
 
@@ -2899,6 +3110,7 @@ def save_production_plan(connection: sqlite3.Connection, raw_input: Any) -> dict
         "facility_time_bonus_basis_points": value[
             "facilityTimeBonusBasisPoints"
         ],
+        "facility_tax_basis_points": value["facilityTaxBasisPoints"],
         "activity": value["activity"],
         "product_type_id": value["productTypeId"],
         "target_quantity": value["targetQuantity"],
@@ -3002,13 +3214,15 @@ def save_production_plan(connection: sqlite3.Connection, raw_input: Any) -> dict
             cursor = connection.execute(
                 "INSERT INTO production_plans(owner_character_id,blueprint_type_id,blueprint_item_id,"
                 "facility_id,material_location_id,facility_material_bonus_basis_points,"
-                "facility_time_bonus_basis_points,activity,product_type_id,target_quantity,priority,note) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                "facility_time_bonus_basis_points,facility_tax_basis_points,activity,"
+                "product_type_id,target_quantity,priority,note) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (
                     value["ownerCharacterId"], value["blueprintTypeId"], value["blueprintItemId"],
                     value["facilityId"], value["materialLocationId"],
                     value["facilityMaterialBonusBasisPoints"],
                     value["facilityTimeBonusBasisPoints"],
+                    value["facilityTaxBasisPoints"],
                     value["activity"], value["productTypeId"], value["targetQuantity"],
                     value["priority"], value["note"],
                 ),
@@ -3018,13 +3232,15 @@ def save_production_plan(connection: sqlite3.Connection, raw_input: Any) -> dict
             cursor = connection.execute(
                 "UPDATE production_plans SET owner_character_id=?,blueprint_type_id=?,blueprint_item_id=?,"
                 "facility_id=?,material_location_id=?,facility_material_bonus_basis_points=?,"
-                "facility_time_bonus_basis_points=?,activity=?,product_type_id=?,target_quantity=?,priority=?,note=?,"
+                "facility_time_bonus_basis_points=?,facility_tax_basis_points=?,activity=?,"
+                "product_type_id=?,target_quantity=?,priority=?,note=?,"
                 "updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=?",
                 (
                     value["ownerCharacterId"], value["blueprintTypeId"], value["blueprintItemId"],
                     value["facilityId"], value["materialLocationId"],
                     value["facilityMaterialBonusBasisPoints"],
-                    value["facilityTimeBonusBasisPoints"], value["activity"],
+                    value["facilityTimeBonusBasisPoints"], value["facilityTaxBasisPoints"],
+                    value["activity"],
                     value["productTypeId"], value["targetQuantity"], value["priority"], value["note"],
                     value["planId"],
                 ),
@@ -3094,6 +3310,7 @@ def save_production_plan(connection: sqlite3.Connection, raw_input: Any) -> dict
         "facilityTimeBonusBasisPoints": value[
             "facilityTimeBonusBasisPoints"
         ],
+        "facilityTaxBasisPoints": value["facilityTaxBasisPoints"],
         "stepSupplyModes": value["stepSupplyModes"],
         "activity": value["activity"],
         "productTypeId": value["productTypeId"],

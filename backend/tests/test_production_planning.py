@@ -109,6 +109,7 @@ def plan_input(**changes: object) -> dict:
         "materialLocationId": None,
         "facilityMaterialBonusBasisPoints": None,
         "facilityTimeBonusBasisPoints": None,
+        "facilityTaxBasisPoints": None,
         "stepSupplyModes": [],
         "activity": "manufacturing",
         "productTypeId": 101,
@@ -320,6 +321,12 @@ class ProductionPlanningTests(unittest.TestCase):
                             {"category": "station", "id": 60_003_760, "name": "Synthetic Station"},
                         ],
                         "structures": [],
+                        "prices": [
+                            {"type_id": 111, "adjusted_price": 100.0, "average_price": 105.0},
+                            {"type_id": 121, "adjusted_price": 20.0, "average_price": 22.0},
+                            {"type_id": 900, "adjusted_price": 10.0, "average_price": 12.0},
+                            {"type_id": 901, "adjusted_price": 2.0, "average_price": 2.5},
+                        ],
                         "systems": [
                             {
                                 "solar_system_id": 30_000_142,
@@ -1366,6 +1373,79 @@ class ProductionPlanningTests(unittest.TestCase):
             page["facilityModifierRule"],
             "explicit-basis-points-combined-before-single-ceil",
         )
+
+    def test_installation_costs_use_adjusted_prices_system_index_and_explicit_tax(self) -> None:
+        import_industry_sde(self.db, **bundle())
+        asset_snapshot, _ = self.publish_assets(
+            7,
+            [{
+                "item_id": 7_001,
+                "type_id": 900,
+                "location_id": 60_003_760,
+                "quantity": 100,
+                "location_type": "station",
+                "location_flag": "Hangar",
+            }],
+            "2026-09-16T08:28:00Z",
+        )
+        self.publish_locations(
+            7, asset_snapshot, [7_001], "2026-09-16T08:29:00Z"
+        )
+        price_snapshot, price_run = self.publish_facilities(
+            "2026-09-16T08:30:00Z"
+        )
+
+        saved = save_production_plan(
+            self.db,
+            plan_input(
+                facilityId=60_003_760,
+                facilityTaxBasisPoints=100,
+            ),
+        )
+        page = query_production_plans(self.db, query())
+        record = page["items"][0]
+
+        self.assertEqual(saved["facilityTaxBasisPoints"], 100)
+        self.assertEqual(record["installationCostState"], "ready")
+        self.assertEqual(record["estimatedItemValue"], 1_330)
+        self.assertEqual(record["systemCost"], 18)
+        self.assertEqual(record["facilityTax"], 15)
+        self.assertEqual(record["estimatedInstallationCost"], 33)
+        self.assertEqual(record["costedStepCount"], 3)
+        self.assertEqual(record["uncostedStepCount"], 0)
+        self.assertEqual(
+            [step["installationCost"]["estimatedInstallationCost"] for step in record["steps"]],
+            [2, 13, 18],
+        )
+        self.assertTrue(all(
+            step["installationCost"]["state"] == "ready"
+            and step["installationCost"]["facilityTaxBasisPoints"] == 100
+            and step["installationCost"]["systemCostIndex"] == 0.0125
+            and step["installationCost"]["priceSnapshotId"] == price_snapshot
+            and step["installationCost"]["priceSyncRunId"] == price_run
+            for step in record["steps"]
+        ))
+        self.assertTrue(page["installationCostsApplied"])
+        self.assertEqual(
+            page["installationCostRule"],
+            "base-material-adjusted-price-times-runs-system-index-plus-explicit-tax-ceil",
+        )
+
+        save_production_plan(
+            self.db,
+            plan_input(
+                planId=saved["planId"],
+                facilityId=60_003_760,
+                facilityTaxBasisPoints=None,
+            ),
+        )
+        unconfigured = query_production_plans(self.db, query())["items"][0]
+        self.assertEqual(unconfigured["installationCostState"], "unconfigured")
+        self.assertIsNone(unconfigured["estimatedInstallationCost"])
+        self.assertTrue(all(
+            step["installationCost"]["state"] == "unconfigured"
+            for step in unconfigured["steps"]
+        ))
 
     def test_facility_profile_does_not_cross_activity_boundaries(self) -> None:
         mixed_bundle = bundle()

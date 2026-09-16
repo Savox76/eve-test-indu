@@ -192,6 +192,7 @@ class DatabaseFoundationTests(unittest.TestCase):
         self.assertIn("material_location_id", production_columns)
         self.assertIn("facility_material_bonus_basis_points", production_columns)
         self.assertIn("facility_time_bonus_basis_points", production_columns)
+        self.assertIn("facility_tax_basis_points", production_columns)
         self.assertIn("idx_production_plans_blueprint_item", production_indexes)
         self.assertIn(
             "idx_production_plan_step_blueprints_plan", step_blueprint_indexes

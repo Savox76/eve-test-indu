@@ -6,23 +6,26 @@ Alle bemerkenswerten Änderungen an New Eden Foundry werden hier festgehalten. D
 
 ### Neu hinzugefügt
 
-- Keine.
+- Paket 41 synchronisiert offizielle angepasste ESI-Preise gemeinsam mit der Anlagen- und Systemkostenbasis.
+- Produktionsziele können eine ausdrückliche Anlagensteuer speichern und zeigen je gebautem Schritt sowie als Summe Eingabewert, Systemkosten, Steuer und geschätzte Installationskostenbasis.
 
 ### Geändert
 
-- Keine.
+- Fehlende Preis-, Anlagen- oder Systemindexbelege bleiben als eigene Kostenstatus sichtbar; berechenbare Teilschritte werden getrennt von nicht berechenbaren Schritten gezählt.
+- Die native Brücke validiert nun außerdem den vollständigen Vertrag der in Paket 40 eingeführten Einkaufsliste.
 
 ### Behobene Fehler
 
-- Keine.
+- Die native Tauri-Brücke verwirft die Einkaufsliste aus Paket 40 beim Deserialisieren und erneuten Serialisieren nicht mehr.
 
 ### Bekannte Einschränkungen
 
-- Keine.
+- Marktpreise, Handelsort, SCC-Zuschlag und automatisch erkannte Struktur-/Service-/Rigmodifikatoren sind nicht Teil dieser Kostenbasis.
+- Die Alpha ist noch nicht produktiv code-signiert; SmartScreen kann deshalb weiterhin vor einem unbekannten Herausgeber warnen.
 
 ### Update und Datenbankmigration
 
-- Keine.
+- Schema 14 ergänzt `production_plans.facility_tax_basis_points`. Bestehende Ziele bleiben erhalten und zeigen die Kostenbasis bis zur ausdrücklichen Steuerkonfiguration als unkonfiguriert.
 
 ## 0.2.0-alpha.12 – 16. September 2026
 

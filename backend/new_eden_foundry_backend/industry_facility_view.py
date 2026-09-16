@@ -244,6 +244,28 @@ def industry_facility_index(connection: sqlite3.Connection) -> dict[int, dict[st
     return _facility_index(connection, *latest)
 
 
+def industry_price_index(connection: sqlite3.Connection) -> dict[str, Any] | None:
+    """Return the latest validated adjusted-price evidence for industry fees."""
+
+    latest = _latest_reference(connection)
+    if latest is None:
+        return None
+    row, payload = latest
+    prices = {
+        int(price["type_id"]): float(price["adjusted_price"])
+        for price in payload.get("prices", [])
+        if price["adjusted_price"] is not None
+    }
+    if not prices:
+        return None
+    return {
+        "snapshotId": int(row["id"]),
+        "syncRunId": int(row["sync_run_id"]),
+        "observedAt": str(row["observed_at"]),
+        "adjustedPrices": prices,
+    }
+
+
 def query_industry_facilities(
     connection: sqlite3.Connection,
     raw_query: Any,

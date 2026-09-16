@@ -385,6 +385,11 @@ const productionPlanPage: ProductionPlanPage = {
         facilitySnapshotId: 18, facilitySyncRunId: 19,
         facilityObservedAt: "2026-09-11T12:03:00Z",
       },
+      installationCost: { state: "not-selected", estimatedItemValue: null,
+        systemCostIndex: null, systemCost: null, facilityTaxBasisPoints: null,
+        facilityTax: null, estimatedInstallationCost: null,
+        missingAdjustedPriceTypeIds: [], priceSnapshotId: null, priceSyncRunId: null,
+        priceObservedAt: null },
       materials: [{ typeId: 900, typeName: "Synthetic Mineral", quantityPerRun: 5,
         unmodifiedGrossQuantity: 10, grossQuantity: 10, materialEfficiency: 0,
         materialEfficiencySavings: 0, producedByPlan: false }] }],
@@ -415,8 +420,12 @@ const productionPlanPage: ProductionPlanPage = {
     characterSkillState: "ready", skillSnapshotId: 14, skillSyncRunId: 15,
     skillObservedAt: "2026-09-11T12:01:00Z",
     facilityModifierState: "not-selected", facilityMaterialBonusBasisPoints: null,
-    facilityTimeBonusBasisPoints: null, totalFacilityTimeSeconds: null,
+    facilityTimeBonusBasisPoints: null, facilityTaxBasisPoints: null,
+    totalFacilityTimeSeconds: null,
     facilityTimeSavingsSeconds: null,
+    installationCostState: "unavailable", estimatedItemValue: null, systemCost: null,
+    facilityTax: null, estimatedInstallationCost: null, costedStepCount: 0,
+    uncostedStepCount: 1,
     facilityState: "ready",
     inventoryState: "shortage", assetSnapshotId: 8, assetSyncRunId: 9,
     assetObservedAt: "2026-09-11T12:00:00Z",
@@ -449,6 +458,8 @@ const productionPlanPage: ProductionPlanPage = {
   facilityModifierRule: "explicit-basis-points-combined-before-single-ceil",
   purchaseListApplied: true,
   purchaseListRule: "filtered-plans-sum-missing-by-type",
+  installationCostsApplied: true,
+  installationCostRule: "base-material-adjusted-price-times-runs-system-index-plus-explicit-tax-ceil",
   supplyModesApplied: true,
   supplyModeRule: "stock-first-before-recursive-build",
   remainingModifiersApplied: false,
@@ -1023,6 +1034,7 @@ describe("New Eden Foundry design preview", () => {
       planId: null, ownerCharacterId: 90_888_001, blueprintTypeId: 100, blueprintItemId: null,
       facilityId: null, materialLocationId: null,
       facilityMaterialBonusBasisPoints: null, facilityTimeBonusBasisPoints: null,
+      facilityTaxBasisPoints: null,
       stepBlueprintAssignments: [],
       stepSupplyModes: [],
       activity: "manufacturing", productTypeId: 101, targetQuantity: 2,
@@ -1255,6 +1267,7 @@ describe("New Eden Foundry design preview", () => {
       .find((item) => item.textContent?.includes(label))?.querySelector("input");
     fireEvent.change(numberInput("Anlagen-Materialbonus")!, { target: { value: "1.25" } });
     fireEvent.change(numberInput("Anlagen-Zeitbonus")!, { target: { value: "2.5" } });
+    fireEvent.change(numberInput("Anlagensteuer")!, { target: { value: "1.75" } });
     expect(screen.getByText(/Kein Blueprint für diesen Vorproduktschritt erforderlich/))
       .toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Änderungen speichern" }));
@@ -1262,6 +1275,7 @@ describe("New Eden Foundry design preview", () => {
     await waitFor(() => expect(productionPlanSaver).toHaveBeenCalledWith(expect.objectContaining({
       planId: 1, facilityId: 60_003_760, materialLocationId: 7_000,
       facilityMaterialBonusBasisPoints: 125, facilityTimeBonusBasisPoints: 250,
+      facilityTaxBasisPoints: 175,
       stepBlueprintAssignments: [],
       stepSupplyModes: [{ blueprintTypeId: 110, activity: "manufacturing",
         productTypeId: 111, supplyMode: "stock-only" }],
@@ -1348,7 +1362,7 @@ describe("New Eden Foundry design preview", () => {
     });
     const industryFacilitySyncer = vi.fn().mockResolvedValue({
       syncRunId: 1, facilities: 1, npcFacilities: 1, observedFacilities: 0,
-      restrictedStructures: 0, systems: 1, resolvedNames: 5,
+      restrictedStructures: 0, systems: 1, resolvedNames: 5, prices: 2,
     });
     render(
       <App
@@ -1571,7 +1585,7 @@ describe("New Eden Foundry design preview", () => {
     const industryFacilitiesLoader = vi.fn().mockResolvedValue(industryFacilityPage);
     const industryFacilitySyncer = vi.fn().mockResolvedValue({
       syncRunId: 12, facilities: 1, npcFacilities: 1, observedFacilities: 0,
-      restrictedStructures: 0, systems: 1, resolvedNames: 5,
+      restrictedStructures: 0, systems: 1, resolvedNames: 5, prices: 2,
     });
     render(<App runtimeLoader={() => nativeRuntime()} ssoStatusLoader={() => Promise.resolve(idleSso)}
       industryFacilitiesLoader={industryFacilitiesLoader}

@@ -9,6 +9,7 @@ from new_eden_foundry_backend.industry_facility_sync import (
     IndustryFacilitySyncError,
     sync_industry_facilities,
     validate_industry_facilities,
+    validate_industry_prices,
     validate_industry_systems,
 )
 from new_eden_foundry_backend.industry_facility_view import (
@@ -105,6 +106,13 @@ class FacilityClient:
             if self.fail_systems:
                 raise EsiClientError("esi-network-unavailable", retryable=True)
             return EsiResponse(200, [system()], {}, False)
+        if path == "/markets/prices/":
+            return EsiResponse(
+                200,
+                [{"type_id": 6_003, "adjusted_price": 12.5, "average_price": 13.0}],
+                {},
+                False,
+            )
         if path == f"/universe/structures/{STRUCTURE_ID}/":
             if self.structure == "restricted":
                 raise EsiClientError("esi-request-rejected", status=403)
@@ -185,9 +193,10 @@ class IndustryFacilityTests(unittest.TestCase):
                 result.observed_facilities,
                 result.restricted_structures,
                 result.systems,
+                result.prices,
                 result.resolved_names,
             ),
-            (2, 1, 1, 0, 1, 7),
+            (2, 1, 1, 0, 1, 1, 7),
         )
         self.assertIn(
             (f"/universe/structures/{STRUCTURE_ID}/", CHARACTER_ID, (STRUCTURE_SCOPE,)),
@@ -291,6 +300,13 @@ class IndustryFacilityTests(unittest.TestCase):
         ]
         with self.assertRaises(IndustryFacilitySyncError):
             validate_industry_systems([invalid_system])
+        with self.assertRaises(IndustryFacilitySyncError):
+            validate_industry_prices([
+                {"type_id": 6_003, "adjusted_price": 12.5},
+                {"type_id": 6_003, "adjusted_price": 13.0},
+            ])
+        with self.assertRaises(IndustryFacilitySyncError):
+            validate_industry_prices([{"type_id": 6_003, "adjusted_price": 0}])
         with self.assertRaises(IndustryFacilityViewError):
             query_industry_facilities(self.db, {"search": ""})
 

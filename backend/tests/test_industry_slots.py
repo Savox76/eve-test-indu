@@ -203,6 +203,7 @@ class IndustrySlotTests(unittest.TestCase):
                     "materialLocationId": None,
                     "facilityMaterialBonusBasisPoints": None,
                     "facilityTimeBonusBasisPoints": None,
+                    "facilityTaxBasisPoints": None,
                     "stepSupplyModes": [],
                     "activity": activity,
                     "productTypeId": 6_002,
