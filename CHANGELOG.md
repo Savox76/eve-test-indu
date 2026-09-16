@@ -6,10 +6,33 @@ Alle bemerkenswerten Änderungen an New Eden Foundry werden hier festgehalten. D
 
 ### Neu hinzugefügt
 
+- Keine.
+
+### Geändert
+
+- Keine.
+
+### Behobene Fehler
+
+- Keine.
+
+### Bekannte Einschränkungen
+
+- Keine.
+
+### Update und Datenbankmigration
+
+- Keine.
+
+## 0.2.0-alpha.10 – 16. September 2026
+
+### Neu hinzugefügt
+
 - Die Materiallager-Auswahl zeigt den tatsächlich in EVE vergebenen Namen eines persönlichen Containers zuerst und ergänzt zur eindeutigen Unterscheidung dessen Item-ID.
 
 ### Geändert
 
+- Die sichtbare Versionsnummer lautet `v0.2.0-alpha.10`.
 - Als Materiallager werden nur echte Lagercontainer an der gewählten Station oder Struktur angeboten. Schiffe und deren Laderäume erscheinen nicht mehr als Container.
 - Bei einer gewählten Station oder Struktur werden Bestände in Schiffsladeräumen nicht mehr als produktionsverfügbares Material angerechnet.
 
@@ -19,11 +42,13 @@ Alle bemerkenswerten Änderungen an New Eden Foundry werden hier festgehalten. D
 
 ### Bekannte Einschränkungen
 
-- Keine.
+- Die gewählte Produktionsstation ist derzeit Planungsort und Bestandsgrenze. Frühere oder laufende Job-/Anlagenbelege bleiben davon getrennt; Anlagen-, Service- und Rigboni, Steuern, Preise und reale Fertigstellungszeiten werden weiterhin nicht berechnet.
+- Die Alpha ist noch nicht produktiv code-signiert; SmartScreen kann deshalb weiterhin vor einem unbekannten Herausgeber warnen.
 
 ### Update und Datenbankmigration
 
 - Das Datenbankschema bleibt bei Version 12. Ein erneuter Asset-Abgleich aktualisiert die Containerbezeichnungen und Standortpfade ohne Migration.
+- Für ein Installer-Update die Anwendung vollständig schließen und die Option zum Löschen der Anwendungsdaten abgewählt lassen. Für ein portables Update die neue Alpha in einen neuen Ordner entpacken und den bisherigen `data`-Ordner bei geschlossener Anwendung übernehmen.
 
 ## 0.2.0-alpha.9 – 15. September 2026
 
