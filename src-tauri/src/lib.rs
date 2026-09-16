@@ -168,8 +168,13 @@ const PRODUCTION_INSTALLATION_COST_STATES: [&str; 9] = [
     "price-snapshot-missing",
     "price-missing",
 ];
-const PRODUCTION_PLAN_INSTALLATION_COST_STATES: [&str; 5] =
-    ["ready", "partial", "unconfigured", "unavailable", "not-applicable"];
+const PRODUCTION_PLAN_INSTALLATION_COST_STATES: [&str; 5] = [
+    "ready",
+    "partial",
+    "unconfigured",
+    "unavailable",
+    "not-applicable",
+];
 const PRODUCTION_PLAN_SORT_FIELDS: [&str; 6] = [
     "priority", "product", "owner", "activity", "state", "updated",
 ];
@@ -3151,15 +3156,19 @@ fn production_installation_cost_is_valid(cost: &ProductionInstallationCost) -> b
             .estimated_installation_cost
             .is_none_or(|value| value <= JAVASCRIPT_MAX_SAFE_INTEGER)
         && missing_ids.len() == cost.missing_adjusted_price_type_ids.len()
-        && missing_ids.iter().all(|value| production_id_is_valid(*value))
+        && missing_ids
+            .iter()
+            .all(|value| production_id_is_valid(*value))
         && if cost.state == "ready" {
             source_complete
                 && values_ready
                 && cost.system_cost_index.is_some()
                 && cost.facility_tax_basis_points.is_some()
-                && cost.system_cost.zip(cost.facility_tax).and_then(|(system, tax)| {
-                    system.checked_add(tax)
-                }) == cost.estimated_installation_cost
+                && cost
+                    .system_cost
+                    .zip(cost.facility_tax)
+                    .and_then(|(system, tax)| system.checked_add(tax))
+                    == cost.estimated_installation_cost
                 && cost.missing_adjusted_price_type_ids.is_empty()
         } else {
             values_missing
@@ -3370,8 +3379,7 @@ fn production_plan_record_is_valid(item: &ProductionPlanRecord) -> bool {
             && production_step_blueprint_assignment_is_valid(&step.blueprint_assignment)
             && production_facility_evidence_is_valid(&step.facility_evidence)
             && production_installation_cost_is_valid(&step.installation_cost)
-            && step.installation_cost.facility_tax_basis_points
-                == item.facility_tax_basis_points
+            && step.installation_cost.facility_tax_basis_points == item.facility_tax_basis_points
             && if step.blueprint_assignment.blueprint_assignment_state == "ready"
                 && step.activity == "manufacturing"
             {
@@ -4054,8 +4062,7 @@ fn production_plan_record_is_valid(item: &ProductionPlanRecord) -> bool {
             .facility_tax_basis_points
             .is_none_or(|value| value <= 10_000)
         && (item.facility_id.is_some() || item.facility_tax_basis_points.is_none())
-        && PRODUCTION_PLAN_INSTALLATION_COST_STATES
-            .contains(&item.installation_cost_state.as_str())
+        && PRODUCTION_PLAN_INSTALLATION_COST_STATES.contains(&item.installation_cost_state.as_str())
         && item
             .estimated_item_value
             .is_none_or(|value| value <= JAVASCRIPT_MAX_SAFE_INTEGER)
@@ -4176,9 +4183,7 @@ fn production_purchase_list_is_valid(list: &ProductionPurchaseList, plan_count: 
             .included_plan_count
             .checked_add(list.unresolved_plan_count)
             == Some(plan_count)
-        && (list.items.len() as u64)
-            .checked_add(list.omitted_item_count)
-            == Some(list.item_count)
+        && (list.items.len() as u64).checked_add(list.omitted_item_count) == Some(list.item_count)
         && represented_quantity.is_some_and(|quantity| {
             quantity <= list.total_quantity
                 && (list.omitted_item_count > 0 || quantity == list.total_quantity)
@@ -7217,8 +7222,7 @@ mod tests {
         IndustryJobSyncCharacterResponse, IndustryJobSyncResponse, IndustrySlotActivity,
         IndustrySlotQueryResponse, IndustrySlotRecord, ProductionBlueprintCandidate,
         ProductionFacilityEvidence, ProductionGrossMaterial, ProductionInstallationCost,
-        ProductionPlanRecord,
-        ProductionReservationClaim, ProductionStep, ProductionStepMaterial,
+        ProductionPlanRecord, ProductionReservationClaim, ProductionStep, ProductionStepMaterial,
         ProductionSupplyDecision, ProductionTimeSkill, ResearchPlanOwner,
         ResearchPlanQueryResponse, ResearchPlanRecord, ResearchPlanSummary, RuntimeDataSnapshot,
         ScopePackageStatus, SsoCharacterIdentity, SsoLoginStatus, WindowSizePreference,
