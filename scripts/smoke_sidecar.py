@@ -233,7 +233,7 @@ def main() -> int:
             database = health.get("database")
             if not isinstance(database, dict) or database.get("location") != "data/foundry.sqlite3":
                 raise RuntimeError("The sidecar reported an unexpected database location.")
-            if database.get("schemaVersion") != 12 or database.get("integrity") != "ok":
+            if database.get("schemaVersion") != 13 or database.get("integrity") != "ok":
                 raise RuntimeError("The sidecar database health is invalid.")
             if health.get("esiClient", {}).get("compatibilityDate") != "2026-09-09":
                 raise RuntimeError("The health response omitted the ESI compatibility date.")
@@ -459,8 +459,8 @@ def main() -> int:
             with contextlib.closing(sqlite3.connect(database_path)) as connection:
                 if connection.execute("PRAGMA quick_check").fetchone()[0] != "ok":
                     raise RuntimeError("The created SQLite database failed quick_check.")
-                if connection.execute("PRAGMA user_version").fetchone()[0] != 12:
-                    raise RuntimeError("The packaged sidecar did not migrate to schema 12.")
+                if connection.execute("PRAGMA user_version").fetchone()[0] != 13:
+                    raise RuntimeError("The packaged sidecar did not migrate to schema 13.")
                 marker = connection.execute(
                     "SELECT value FROM app_metadata WHERE key = 'smoke-marker'"
                 ).fetchone()[0]
