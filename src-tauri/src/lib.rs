@@ -155,12 +155,8 @@ const PRODUCTION_LOCATION_SELECTION_STATES: [&str; 4] = [
     "facility-missing",
     "material-location-missing",
 ];
-const PRODUCTION_FACILITY_MODIFIER_STATES: [&str; 4] = [
-    "not-selected",
-    "unconfigured",
-    "ready",
-    "activity-mismatch",
-];
+const PRODUCTION_FACILITY_MODIFIER_STATES: [&str; 4] =
+    ["not-selected", "unconfigured", "ready", "activity-mismatch"];
 const PRODUCTION_PLAN_SORT_FIELDS: [&str; 6] = [
     "priority", "product", "owner", "activity", "state", "updated",
 ];
@@ -3177,21 +3173,21 @@ fn production_location_option_is_valid(item: &ProductionFacilityOption) -> bool 
 
 fn production_plan_record_is_valid(item: &ProductionPlanRecord) -> bool {
     let steps_valid = item.steps.iter().enumerate().all(|(index, step)| {
-        let facility_modifier_shape_valid =
-            PRODUCTION_FACILITY_MODIFIER_STATES.contains(&step.facility_modifier_state.as_str())
-                && step
-                    .facility_material_bonus_basis_points
-                    .is_none_or(|value| value <= 5_000)
-                && step
-                    .facility_time_bonus_basis_points
-                    .is_none_or(|value| value <= 5_000)
-                && if step.facility_modifier_state == "ready" {
-                    step.facility_material_bonus_basis_points.is_some()
-                        && step.facility_time_bonus_basis_points.is_some()
-                } else {
-                    step.facility_material_bonus_basis_points.is_none()
-                        && step.facility_time_bonus_basis_points.is_none()
-                };
+        let facility_modifier_shape_valid = PRODUCTION_FACILITY_MODIFIER_STATES
+            .contains(&step.facility_modifier_state.as_str())
+            && step
+                .facility_material_bonus_basis_points
+                .is_none_or(|value| value <= 5_000)
+            && step
+                .facility_time_bonus_basis_points
+                .is_none_or(|value| value <= 5_000)
+            && if step.facility_modifier_state == "ready" {
+                step.facility_material_bonus_basis_points.is_some()
+                    && step.facility_time_bonus_basis_points.is_some()
+            } else {
+                step.facility_material_bonus_basis_points.is_none()
+                    && step.facility_time_bonus_basis_points.is_none()
+            };
         let facility_modifier_matches_plan = if item.facility_modifier_state == "ready" {
             if step.activity == item.activity {
                 step.facility_modifier_state == "ready"
@@ -3271,7 +3267,10 @@ fn production_plan_record_is_valid(item: &ProductionPlanRecord) -> bool {
             && step.materials.iter().all(|material| {
                 let facility_factor = if step.facility_modifier_state == "ready" {
                     10_000_u128
-                        - u128::from(step.facility_material_bonus_basis_points.unwrap_or_default())
+                        - u128::from(
+                            step.facility_material_bonus_basis_points
+                                .unwrap_or_default(),
+                        )
                 } else {
                     10_000_u128
                 };
@@ -3705,24 +3704,24 @@ fn production_plan_record_is_valid(item: &ProductionPlanRecord) -> bool {
         .steps
         .iter()
         .all(|step| step.facility_modifier_state == "ready");
-    let facility_time_shape_valid =
-        if ready && skill_source_available && item.facility_modifier_state == "ready"
-            && all_step_modifiers_ready
-        {
-            item.total_facility_time_seconds.is_some()
-                && item.facility_time_savings_seconds.is_some()
-                && item.steps.iter().try_fold(0_u64, |total, step| {
-                    total.checked_add(step.total_facility_time_seconds?)
-                }) == item.total_facility_time_seconds
-                && item
-                    .total_character_time_seconds
-                    .zip(item.total_facility_time_seconds)
-                    .and_then(|(character, facility)| character.checked_sub(facility))
-                    == item.facility_time_savings_seconds
-        } else {
-            item.total_facility_time_seconds.is_none()
-                && item.facility_time_savings_seconds.is_none()
-        };
+    let facility_time_shape_valid = if ready
+        && skill_source_available
+        && item.facility_modifier_state == "ready"
+        && all_step_modifiers_ready
+    {
+        item.total_facility_time_seconds.is_some()
+            && item.facility_time_savings_seconds.is_some()
+            && item.steps.iter().try_fold(0_u64, |total, step| {
+                total.checked_add(step.total_facility_time_seconds?)
+            }) == item.total_facility_time_seconds
+            && item
+                .total_character_time_seconds
+                .zip(item.total_facility_time_seconds)
+                .and_then(|(character, facility)| character.checked_sub(facility))
+                == item.facility_time_savings_seconds
+    } else {
+        item.total_facility_time_seconds.is_none() && item.facility_time_savings_seconds.is_none()
+    };
     let resolution_shape = if ready {
         item.build_number.is_some()
             && !item.steps.is_empty()
@@ -4008,8 +4007,7 @@ fn production_plan_query_response_is_valid(response: &ProductionPlanQueryRespons
         && response.supply_modes_applied
         && response.supply_mode_rule == "stock-first-before-recursive-build"
         && response.facility_modifiers_applied
-        && response.facility_modifier_rule
-            == "explicit-basis-points-combined-before-single-ceil"
+        && response.facility_modifier_rule == "explicit-basis-points-combined-before-single-ceil"
         && !response.remaining_modifiers_applied
 }
 
