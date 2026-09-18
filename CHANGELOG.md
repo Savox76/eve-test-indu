@@ -24,6 +24,34 @@ Alle bemerkenswerten Änderungen an New Eden Foundry werden hier festgehalten. D
 
 - Keine.
 
+## 0.2.0 – 18. September 2026
+
+### Neu hinzugefügt
+
+- Verbindliches Versionsmodell mit normalen Releases `vX.Y.Z` und optionalen, eindeutig bezeichneten Testversionen `vX.Y.Z-beta.N`.
+- Der Update-Manager verlangt gleichzeitig eine suffixlose Version, ein fehlendes GitHub-Pre-Release-Merkmal und alle vier vollständigen Windows-Dateien.
+
+### Geändert
+
+- Die sichtbare Versionsnummer lautet `v0.2.0`.
+- Die Updatekanal-Auswahl wurde entfernt; Betas bleiben ausschließlich manuelle Testversionen.
+- Release-Workflow, Masterplan, Release-Regeln und ADR-019 schreiben die Stable-/Beta-Trennung verbindlich fest.
+
+### Behobene Fehler
+
+- Betas können nicht mehr durch einen früher gewählten Kanal oder ein falsch gesetztes einzelnes GitHub-Merkmal als normales Update erscheinen.
+- Schema 15 setzt historische Kanalwerte `beta` und `preview` auf `stable` zurück.
+
+### Bekannte Einschränkungen
+
+- Download und Installation bleiben bis zu einer produktiv signierten Update- und Rollback-Kette manuell.
+- Die Windows-Pakete sind noch nicht produktiv code-signiert; SmartScreen kann deshalb weiterhin vor einem unbekannten Herausgeber warnen.
+
+### Update und Datenbankmigration
+
+- Schema 15 ändert ausschließlich die frühere Updatekanal-Einstellung; Fachdaten bleiben erhalten.
+- Installer und Portable verwenden weiterhin den sichtbaren Ordner `data` neben der Haupt-EXE.
+
 ## 0.2.0-alpha.13 – 16. September 2026
 
 ### Neu hinzugefügt

@@ -17,7 +17,7 @@ from .recovery import (
 
 
 BUSY_TIMEOUT_MILLISECONDS: Final = 5_000
-SCHEMA_VERSION: Final = 14
+SCHEMA_VERSION: Final = 15
 
 MIGRATIONS: Final = (
     (
@@ -433,6 +433,18 @@ MIGRATIONS: Final = (
                         facility_tax_basis_points IS NULL
                         OR facility_tax_basis_points BETWEEN 0 AND 10000
                     )
+            """,
+        ),
+    ),
+    (
+        15,
+        "stable_release_updates_only",
+        (
+            """
+            UPDATE app_settings
+            SET value = 'stable',
+                updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+            WHERE key = 'update_channel' AND value <> 'stable'
             """,
         ),
     ),

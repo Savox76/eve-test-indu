@@ -1671,7 +1671,7 @@ fn data_snapshot_is_valid(data: &RuntimeDataSnapshot) -> bool {
 }
 
 fn updater_snapshot_is_valid(updater: &RuntimeUpdaterSnapshot) -> bool {
-    matches!(updater.channel.as_str(), "stable" | "beta" | "preview")
+    updater.channel == "stable"
         && matches!(updater.manifest_state.as_str(), "verified" | "invalid")
         && !updater.public_distribution
 }
@@ -4416,7 +4416,7 @@ fn public_release_notice_is_valid(notice: &PublicReleaseNotice) -> bool {
         _ => false,
     };
     state_valid
-        && matches!(notice.channel.as_str(), "stable" | "beta" | "preview")
+        && notice.channel == "stable"
         && asset_text_is_valid(&notice.current_version, 80)
         && notice
             .latest_version
@@ -5544,7 +5544,7 @@ fn asset_sync_response_is_valid(response: &AssetSyncResponse) -> bool {
 
 #[tauri::command]
 fn set_update_channel(channel: String, state: State<'_, RuntimeState>) -> Result<String, String> {
-    if !matches!(channel.as_str(), "stable" | "beta" | "preview") {
+    if channel != "stable" {
         return Err("unsupported-update-channel".to_owned());
     }
     refresh_sidecar_status(&state);
