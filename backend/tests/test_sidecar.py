@@ -398,7 +398,7 @@ class SidecarIntegrationTests(unittest.TestCase):
             with opener.open(valid_request, timeout=3) as response:
                 health = json.loads(response.read())
             self.assertEqual(health["state"], "ready")
-            self.assertEqual(health["database"]["schemaVersion"], 14)
+            self.assertEqual(health["database"]["schemaVersion"], 15)
             self.assertEqual(health["database"]["location"], "data/foundry.sqlite3")
             self.assertIsNone(health["database"]["lastMigrationBackup"])
             self.assertEqual(health["data"]["state"], "empty")
@@ -835,7 +835,7 @@ class SidecarIntegrationTests(unittest.TestCase):
             update_settings_url = f"{base_url}/settings/update"
             put_request = urllib.request.Request(
                 update_settings_url,
-                data=json.dumps({"channel": "beta"}).encode(),
+                data=json.dumps({"channel": "stable"}).encode(),
                 method="PUT",
                 headers={
                     "Authorization": f"Bearer {SYNTHETIC_SESSION_TOKEN}",
@@ -844,13 +844,13 @@ class SidecarIntegrationTests(unittest.TestCase):
             )
             with opener.open(put_request, timeout=3) as response:
                 update_settings = json.loads(response.read())
-            self.assertEqual(update_settings["channel"], "beta")
+            self.assertEqual(update_settings["channel"], "stable")
             self.assertEqual(update_settings["manifestState"], "verified")
             self.assertFalse(update_settings["publicDistribution"])
 
             with opener.open(valid_request, timeout=3) as response:
                 updated_health = json.loads(response.read())
-            self.assertEqual(updated_health["updater"]["channel"], "beta")
+            self.assertEqual(updated_health["updater"]["channel"], "stable")
 
             appearance_url = f"{base_url}/settings/appearance"
             appearance_request = urllib.request.Request(
@@ -868,7 +868,7 @@ class SidecarIntegrationTests(unittest.TestCase):
 
             invalid_request = urllib.request.Request(
                 update_settings_url,
-                data=json.dumps({"channel": "nightly"}).encode(),
+                data=json.dumps({"channel": "beta"}).encode(),
                 method="PUT",
                 headers={
                     "Authorization": f"Bearer {SYNTHETIC_SESSION_TOKEN}",
@@ -889,7 +889,7 @@ class SidecarIntegrationTests(unittest.TestCase):
                 font_scale = connection.execute(
                     "SELECT value FROM app_settings WHERE key = 'font_scale'"
                 ).fetchone()[0]
-            self.assertEqual(channel, "beta")
+            self.assertEqual(channel, "stable")
             self.assertEqual(font_scale, "very-large")
 
             process.stdin.write('{"command":"shutdown"}\n')

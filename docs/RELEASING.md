@@ -4,28 +4,33 @@
 
 Eine Version wird nur bewusst, reproduzierbar und nach vollständig grünen Pflichtprüfungen veröffentlicht. GitHub-Actions-Artefakte sind weder Zwischenspeicher noch Vertriebsweg.
 
-## Release-Reife
+## Verbindliches Versionsmodell
 
-- **Alpha:** interne technische oder fachliche Erprobung; bekannte Lücken sind zulässig und dokumentiert.
-- **Beta:** Kernabläufe sind nutzbar; Migration, Wiederherstellung und Update werden geprüft.
-- **Stable:** alle zugehörigen Plattform-, Daten-, Sicherheits- und Nutzer-Gates sind erfüllt.
+- **Normales Release:** `vX.Y.Z`, in `package.json` ohne Namenszusatz und auf GitHub als normale, aktuelle Veröffentlichung markiert. Abgeschlossene Arbeitspakete werden grundsätzlich so veröffentlicht. Nur diese Releases werden vom Update-Manager angeboten.
+- **Beta:** `vX.Y.Z-beta.N` mit fortlaufender positiver Nummer, in Repository, Tag und Release-Titel ausdrücklich als `BETA` erkennbar und auf GitHub als Pre-Release markiert. Eine Beta dient ausschließlich der manuellen Vorabprüfung und wird vom Update-Manager immer übersprungen.
+- Andere Vorabkennzeichen wie `alpha`, `preview` oder `rc` sind für neue Versionen nicht zulässig. Historische Releases bleiben unverändert erhalten.
+- Nach erfolgreicher Beta-Prüfung wird die Zielversion ohne `-beta.N` als normales Release veröffentlicht. Die normale Version darf notwendige Korrekturen aus der Beta-Abnahme enthalten.
 
-## Lokale Updatekanäle
+Der Release-Workflow lehnt Versionen ab, die diesem Schema nicht entsprechen. Er versieht Betas mit einem eindeutigen `BETA`-Titel und dem GitHub-Pre-Release-Status; normale Releases werden als `Latest` veröffentlicht.
 
-Seit `v0.0.4-preview.1` kann die Desktop-App die Kanalpräferenz `stable`, `beta` oder `preview` lokal speichern. Das gebündelte Ed25519-signierte Testmanifest verweist weiterhin ausschließlich auf `updates.invalid`, und der Laufzeitstatus erzwingt `publicDistribution: false`.
+## Update-Erkennung
 
-Seit `v0.0.5-preview.13` prüft ein davon getrennter Hinweisweg beim Start und auf Nutzerwunsch die öffentliche Release-Liste des festen GitHub-Repositorys. Berücksichtigt werden nur zum Kanal passende Releases mit Installer, portabler ZIP und beiden exakt benannten SHA-256-Dateien. Die App öffnet ausschließlich die aus der validierten Version selbst gebildete GitHub-Release-URL. Sie lädt, entpackt und installiert kein Paket automatisch.
+Seit `v0.2.0` besitzt die Desktop-App genau einen öffentlichen Updatepfad für normale Releases. Ein gespeicherter historischer Kanalwert `beta` oder `preview` wird bei der Datenbankmigration auf `stable` zurückgesetzt; die Kanalwahl entfällt aus der Oberfläche.
+
+Beim Start und auf Nutzerwunsch prüft die App die öffentliche Release-Liste des festen GitHub-Repositorys. Berücksichtigt werden ausschließlich suffixlose Versionen, die auf GitHub nicht als Pre-Release markiert sind und Installer, portable ZIP sowie beide exakt benannten SHA-256-Dateien vollständig enthalten. Beide Bedingungen verhindern, dass eine Beta durch ein falsch gesetztes GitHub-Merkmal als normales Update erscheint. Die App öffnet ausschließlich die aus der validierten Version selbst gebildete GitHub-Release-URL. Sie lädt, entpackt und installiert kein Paket automatisch.
+
+Das historische Ed25519-signierte Offline-Testmanifest verweist weiterhin ausschließlich auf `updates.invalid`; der Laufzeitstatus erzwingt `publicDistribution: false`. Es ist nur ein Kryptografie-Test und kein auswählbarer Veröffentlichungsweg.
 
 Eine spätere Aktivierung benötigt ein eigenes geprüftes Arbeitspaket mit Produktionsendpunkt, getrennt verwaltetem privatem Produktionsschlüssel, Signierung der tatsächlichen Updatepakete, Rollback-Regeln und bestandenem Windows-Update-Gate. Ein privater Schlüssel darf niemals in Repository, Anwendung, portable ZIP oder GitHub-Actions-Log gelangen. Der öffentliche Prüfschlüssel darf in der Anwendung liegen.
 
 ## Pflichtablauf
 
-1. Zielversion, Kanal und enthaltenen Commit festlegen.
+1. Zielversion, Release-Art (normal oder Beta) und enthaltenen Commit festlegen.
 2. Sämtliche Pflichtchecks auf dem Release-Commit erfolgreich abschließen.
 3. Windows-Installer und portable ZIP im freigegebenen Workflow erzeugen und dort inhaltlich prüfen.
 4. Keine Zwischenprodukte über Actions-Artefakte hoch- oder herunterladen.
-5. Signaturen und Update-Manifeste prüfen, soweit der Kanal sie bereits verlangt.
-6. GitHub Release aus einem bewusst gesetzten Tag erstellen.
+5. Signaturen und Update-Manifeste prüfen, soweit die Release-Art sie bereits verlangt.
+6. GitHub Release aus einem bewusst gesetzten Tag erstellen; Betas als Pre-Release, normale Versionen als `Latest`.
 7. Nur die freigegebenen Pakete, Prüfsummen, Signaturen und Update-Manifeste direkt an dieses GitHub Release anhängen.
 8. Installation, Start und gegebenenfalls Migration auf dem freigegebenen Windows-Testgerät prüfen.
 

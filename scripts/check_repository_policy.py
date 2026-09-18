@@ -47,6 +47,7 @@ REQUIRED_ADRS = tuple(
         "0011-signed-update-channel-skeleton.md",
         "0012-fixed-eve-sso-registration-profile.md",
         "0013-update-stable-application-data.md",
+        "0019-stable-release-and-beta-policy.md",
     )
 )
 
@@ -184,6 +185,10 @@ def check_workflows(errors: list[str]) -> None:
             "scripts/scan_windows_packages.ps1",
             "requirements-build.txt",
             "gh release",
+            "New Eden Foundry BETA",
+            "X.Y.Z-beta.N",
+            "--prerelease",
+            "--latest",
         ):
             if marker not in release_content:
                 errors.append(
@@ -376,6 +381,15 @@ def check_application_release(errors: list[str]) -> None:
     if not isinstance(version, str) or not version:
         errors.append("package.json must define a non-empty version.")
         return
+    stable_version = re.fullmatch(r"(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)", version)
+    beta_version = re.fullmatch(
+        r"(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)-beta\.[1-9]\d*",
+        version,
+    )
+    if stable_version is None and beta_version is None:
+        errors.append(
+            "Application version must be X.Y.Z or an explicit X.Y.Z-beta.N test version."
+        )
 
     tauri_config_path = ROOT / "src-tauri" / "tauri.conf.json"
     if not tauri_config_path.is_file():

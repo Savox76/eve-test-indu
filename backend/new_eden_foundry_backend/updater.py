@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
-from typing import Callable, Final
+from typing import Callable, Final, Mapping
 from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
@@ -82,6 +82,8 @@ def set_update_channel(
         selected = channel if isinstance(channel, UpdateChannel) else UpdateChannel(channel)
     except ValueError as error:
         raise ValueError("The update channel is unsupported.") from error
+    if selected != UpdateChannel.STABLE:
+        raise ValueError("Only the stable release channel is supported.")
 
     cursor = connection.execute(
         """
@@ -300,17 +302,13 @@ def _release_assets_are_complete(release: Mapping[str, object], version: str) ->
 
 
 def check_public_releases(
-    channel: UpdateChannel | str,
     current_version: str,
     *,
     transport: Callable[[str], bytes] | None = None,
 ) -> dict[str, object]:
-    """Read-only release notice; it never downloads or applies application packages."""
+    """Report only complete normal releases; beta and other prereleases stay manual."""
 
-    try:
-        selected_channel = channel if isinstance(channel, UpdateChannel) else UpdateChannel(channel)
-    except ValueError as error:
-        raise PublicReleaseCheckError("public_release_channel_invalid") from error
+    selected_channel = UpdateChannel.STABLE
     current_key = _version_key(current_version)
     try:
         payload = json.loads((transport or _download_public_release_feed)(PUBLIC_RELEASES_URL))
@@ -343,14 +341,11 @@ def check_public_releases(
         expected_page = f"{PUBLIC_RELEASE_PAGE_PREFIX}{version}"
         if release.get("html_url") != expected_page or not _release_assets_are_complete(release, version):
             continue
-        allowed = (
-            selected_channel == UpdateChannel.PREVIEW
-            or selected_channel == UpdateChannel.STABLE
-            and not prerelease
-            or selected_channel == UpdateChannel.BETA
-            and (not prerelease or "-beta" in version)
-        )
-        if allowed:
+        # Both signals must identify a normal release. This prevents a beta tag
+        # from reaching the updater even if its GitHub prerelease flag is set
+        # incorrectly, and likewise rejects a stable-looking tag marked as a
+        # GitHub prerelease.
+        if not prerelease and "-" not in version:
             candidates.append((version_key, version, expected_page, published_at))
     if not candidates:
         return {

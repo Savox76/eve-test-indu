@@ -836,7 +836,7 @@ describe("New Eden Foundry design preview", () => {
   it("credits Savoxmedia as the app creator next to the version", () => {
     render(<App />);
 
-    expect(screen.getByText("v0.2.0-alpha.13")).toBeInTheDocument();
+    expect(screen.getByText("v0.2.0")).toBeInTheDocument();
     expect(screen.getByText("Savoxmedia")).toBeInTheDocument();
     expect(screen.getByText("Erstellt von", { exact: false })).toBeInTheDocument();
     expect(screen.queryByText("Lokaler Betreiber")).not.toBeInTheDocument();
@@ -943,26 +943,13 @@ describe("New Eden Foundry design preview", () => {
     expect(screen.queryByText("Lokaler Dienst fehlt im Programmordner")).not.toBeInTheDocument();
   });
 
-  it("stores a selected update channel while public downloads remain disabled", async () => {
-    const updateChannelSetter = vi.fn().mockResolvedValue({
-      channel: "beta",
-      manifestState: "verified",
-      publicDistribution: false,
-    });
-    render(
-      <App
-        runtimeLoader={() => nativeRuntime()}
-        updateChannelSetter={updateChannelSetter}
-      />,
-    );
+  it("shows the fixed normal-release policy without a beta selector", async () => {
+    render(<App runtimeLoader={() => nativeRuntime()} />);
 
-    const selector = await screen.findByRole("combobox", { name: "Update-Kanal auswählen" });
-    await waitFor(() => expect(selector).toBeEnabled());
-    fireEvent.change(selector, { target: { value: "beta" } });
-
-    await waitFor(() => expect(updateChannelSetter).toHaveBeenCalledWith("beta"));
-    expect(await screen.findByText(/Signiertes Testmanifest geprüft · Downloads noch deaktiviert/))
+    expect(await screen.findByText("Nur normale Releases · Betas werden übersprungen"))
       .toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "Update-Kanal auswählen" }))
+      .not.toBeInTheDocument();
   });
 
   it("shows the portable release notice and opens only its validated version", async () => {
@@ -971,20 +958,20 @@ describe("New Eden Foundry design preview", () => {
       <App
         runtimeLoader={() => nativeRuntime({ distribution: "portable" })}
         releaseNoticeChecker={() => Promise.resolve({
-          state: "available", channel: "preview", currentVersion: "0.0.5-preview.13",
-          latestVersion: "0.0.5-preview.14",
-          releaseUrl: "https://github.com/Savox76/eve-test-indu/releases/tag/v0.0.5-preview.14",
+          state: "available", channel: "stable", currentVersion: "0.2.0",
+          latestVersion: "0.2.1",
+          releaseUrl: "https://github.com/Savox76/eve-test-indu/releases/tag/v0.2.1",
           publishedAt: "2026-09-11T12:00:00Z", automaticInstall: false, errorCode: null,
         })}
         releaseDownloadsOpener={releaseDownloadsOpener}
       />,
     );
 
-    expect(await screen.findByText("Version 0.0.5-preview.14 ist verfügbar")).toBeInTheDocument();
+    expect(await screen.findByText("Version 0.2.1 ist verfügbar")).toBeInTheDocument();
     expect(screen.getByText(/Portable: Die ZIP vollständig an einen beliebigen beschreibbaren Ort/))
       .toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Release öffnen" }));
-    expect(releaseDownloadsOpener).toHaveBeenCalledWith("0.0.5-preview.14");
+    expect(releaseDownloadsOpener).toHaveBeenCalledWith("0.2.1");
   });
 
   it("renders and creates a deterministic production goal", async () => {
