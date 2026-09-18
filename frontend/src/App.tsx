@@ -92,6 +92,7 @@ import {
   openReleaseDownloads,
   saveProductionPlan,
   saveResearchPlan,
+  setDesktopUpdateChannel,
   setDesktopFontScale,
   startEveSso,
   updateEveCharacter,
@@ -161,6 +162,8 @@ import {
   type SsoLoginStatus,
   type SsoScopePackage,
   type SortDirection,
+  type UpdateChannel,
+  type UpdaterStatus,
   type AppearanceStatus,
   blueprintPageSize,
   characterSkillPageSize,
@@ -330,18 +333,30 @@ const copy = {
     dataAge: "Datenalter",
     noDataAge: "noch kein Datenstand",
     updates: {
-      label: "Updates",
-      normalOnly: "Nur normale Releases · Betas werden übersprungen",
+      label: "Update-Kanal",
+      select: "Update-Kanal auswählen",
+      channels: {
+        stable: "Offiziell",
+        beta: "Beta",
+        preview: "Vorschau / Test",
+      },
+      verified: "Signiertes Testmanifest geprüft",
+      invalid: "Testmanifest ungültig · Updates gesperrt",
+      checking: "Testmanifest wird geprüft",
+      unavailable: "Updater derzeit nicht verfügbar",
+      disabled: "Downloads noch deaktiviert",
       checkingRelease: "GitHub-Releases werden geprüft …",
       releaseAvailable: "Version {version} ist verfügbar",
       releaseCurrent: "Diese Version ist aktuell",
-      releaseUnavailable: "Kein vollständiges normales Release gefunden",
+      releaseUnavailable: "Für diesen Kanal wurde kein vollständiges Release gefunden",
       releaseError: "Release-Prüfung derzeit nicht möglich",
       checkNow: "Jetzt prüfen",
       openRelease: "Release öffnen",
       portableHint: "Portable: Die ZIP vollständig an einen beliebigen beschreibbaren Ort entpacken – Desktop, USB-Stick oder eigener Ordner. Keine Installation und kein Installationsordner nötig. Für Updates den vorhandenen Ordner data sichern und übernehmen.",
       installedHint: "Installer: App schließen und die neue Setup-Datei starten. Den Haken zum Löschen der Anwendungsdaten nicht setzen. Datenbank und Sicherungen liegen sichtbar im Unterordner data des Installationsordners.",
       signedBoundary: "Automatische Installation bleibt bis zur produktiv signierten Updatekette gesperrt.",
+      saving: "Kanal wird gespeichert …",
+      saveError: "Kanal konnte nicht gespeichert werden",
       desktopOnly: "In der Desktop-App wählbar",
     },
     sso: {
@@ -1090,7 +1105,7 @@ const copy = {
     },
     planned: "Geplant",
     previewOnly: "Noch ohne Live-Funktion",
-    footerVersion: "v0.2.0",
+    footerVersion: "v0.2.0-alpha.13",
   },
   en: {
     nav: {
@@ -1193,18 +1208,30 @@ const copy = {
     dataAge: "Data age",
     noDataAge: "no data yet",
     updates: {
-      label: "Updates",
-      normalOnly: "Normal releases only · betas are skipped",
+      label: "Update channel",
+      select: "Select update channel",
+      channels: {
+        stable: "Official",
+        beta: "Beta",
+        preview: "Preview / test",
+      },
+      verified: "Signed test manifest verified",
+      invalid: "Test manifest invalid · updates blocked",
+      checking: "Checking test manifest",
+      unavailable: "Updater is currently unavailable",
+      disabled: "Downloads remain disabled",
       checkingRelease: "Checking GitHub releases …",
       releaseAvailable: "Version {version} is available",
       releaseCurrent: "This version is current",
-      releaseUnavailable: "No complete normal release was found",
+      releaseUnavailable: "No complete release was found for this channel",
       releaseError: "Release check is currently unavailable",
       checkNow: "Check now",
       openRelease: "Open release",
       portableHint: "Portable: fully extract the ZIP to any writable location – desktop, USB drive, or another folder. No installation or installer directory is required. For updates, back up and retain the existing data folder.",
       installedHint: "Installer: close the app and run the new setup. Do not select the checkbox that deletes application data. The database and backups are visible in the data subfolder of the installation directory.",
       signedBoundary: "Automatic installation remains blocked until the production-signed update chain is available.",
+      saving: "Saving channel …",
+      saveError: "Channel could not be saved",
       desktopOnly: "Selectable in the desktop app",
     },
     sso: {
@@ -1953,7 +1980,7 @@ const copy = {
     },
     planned: "Planned",
     previewOnly: "No live function yet",
-    footerVersion: "v0.2.0",
+    footerVersion: "v0.2.0-alpha.13",
   },
 } as const;
 
@@ -2102,6 +2129,7 @@ function DataStateNotice({
 
 export function App({
   runtimeLoader = loadDesktopRuntimeStatus,
+  updateChannelSetter = setDesktopUpdateChannel,
   releaseNoticeChecker = checkForUpdates,
   releaseDownloadsOpener = openReleaseDownloads,
   ssoStarter = startEveSso,
@@ -2138,6 +2166,7 @@ export function App({
   fontScaleSetter = setDesktopFontScale,
 }: {
   runtimeLoader?: () => Promise<DesktopRuntimeStatus>;
+  updateChannelSetter?: (channel: UpdateChannel) => Promise<UpdaterStatus>;
   releaseNoticeChecker?: () => Promise<PublicReleaseNotice>;
   releaseDownloadsOpener?: (version: string | null) => Promise<void>;
   ssoStarter?: (scopePackages: SsoScopePackage[]) => Promise<SsoLoginStatus>;
@@ -2195,6 +2224,8 @@ export function App({
     "overview-scope", "all",
     (value): value is OverviewScopeId => value === "all" || Number.isSafeInteger(value) && Number(value) > 0,
   );
+  const [savingUpdateChannel, setSavingUpdateChannel] = useState(false);
+  const [updateChannelError, setUpdateChannelError] = useState(false);
   const [releaseNotice, setReleaseNotice] = useState<PublicReleaseNotice | null>(null);
   const [releaseChecking, setReleaseChecking] = useState(false);
   const [ssoStatus, setSsoStatus] = useState(initialSsoStatus);
@@ -2404,6 +2435,7 @@ export function App({
   const runtimePresentationState =
     runtimeStatus.state === "ready" ? runtimeStatus.sidecar : runtimeStatus.state;
   const localData = runtimeStatus.state === "ready" ? runtimeStatus.data : null;
+  const updater = runtimeStatus.state === "ready" ? runtimeStatus.updater : null;
   const reconnectCharacters = characters.filter((character) =>
     character.credentialState !== "stored" ||
     character.scopePackages.some((scopePackage) => scopePackage.status !== "granted"));
@@ -2448,6 +2480,24 @@ export function App({
     setActiveModule(id);
     setQuery("");
     setSearchFocused(false);
+  };
+
+  const chooseUpdateChannel = async (channel: UpdateChannel) => {
+    if (runtimeStatus.state !== "ready" || runtimeStatus.sidecar !== "ready") return;
+    setSavingUpdateChannel(true);
+    setUpdateChannelError(false);
+    try {
+      const nextUpdater = await updateChannelSetter(channel);
+      setRuntimeStatus((current) => current.state === "ready"
+        ? { ...current, updater: nextUpdater }
+        : current);
+      setReleaseNotice(null);
+      window.setTimeout(() => void refreshReleaseNotice(), 0);
+    } catch {
+      setUpdateChannelError(true);
+    } finally {
+      setSavingUpdateChannel(false);
+    }
   };
 
   const changeFontScale = async (direction: -1 | 1) => {
@@ -2556,7 +2606,30 @@ export function App({
             <RefreshCw size={14} aria-hidden="true" />
             <span>{t.updates.label}</span>
           </div>
-          <small>{t.updates.normalOnly}</small>
+          <select
+            value={updater?.channel ?? "stable"}
+            onChange={(event) => void chooseUpdateChannel(event.target.value as UpdateChannel)}
+            disabled={
+              savingUpdateChannel ||
+              runtimeStatus.state !== "ready" ||
+              runtimeStatus.sidecar !== "ready" ||
+              updater?.manifestState !== "verified"
+            }
+            aria-label={t.updates.select}
+          >
+            {(["stable", "beta", "preview"] as const).map((channel) => (
+              <option value={channel} key={channel}>{t.updates.channels[channel]}</option>
+            ))}
+          </select>
+          <small className={updateChannelError || updater?.manifestState === "invalid" ? "is-error" : ""}>
+            {updateChannelError
+              ? t.updates.saveError
+              : savingUpdateChannel
+                ? t.updates.saving
+                : updater
+                  ? `${t.updates[updater.manifestState]} · ${t.updates.disabled}`
+                  : t.updates.desktopOnly}
+          </small>
           <div className="update-channel__notice" role="status">
             <strong>
               {releaseChecking

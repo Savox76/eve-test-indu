@@ -21,7 +21,7 @@ from new_eden_foundry_backend.updater import (
 )
 
 
-def release(version: str, *, prerelease: bool = False, complete: bool = True) -> dict:
+def release(version: str, *, prerelease: bool = True, complete: bool = True) -> dict:
     names = [
         f"New.Eden.Foundry_{version}_x64-setup.exe",
         f"New.Eden.Foundry_{version}_x64-setup.exe.sha256",
@@ -51,18 +51,17 @@ class UpdatePreferencesTests(unittest.TestCase):
         self.connection.close()
         self.temporary_directory.cleanup()
 
-    def test_stable_is_the_only_supported_public_update_channel(self) -> None:
+    def test_stable_is_the_safe_default_and_channel_changes_persist(self) -> None:
         self.assertEqual(read_update_channel(self.connection), UpdateChannel.STABLE)
 
-        selected = set_update_channel(self.connection, "stable")
+        selected = set_update_channel(self.connection, "beta")
 
-        self.assertEqual(selected, UpdateChannel.STABLE)
-        self.assertEqual(read_update_channel(self.connection), UpdateChannel.STABLE)
+        self.assertEqual(selected, UpdateChannel.BETA)
+        self.assertEqual(read_update_channel(self.connection), UpdateChannel.BETA)
 
-    def test_beta_preview_and_unknown_channels_do_not_change_the_preference(self) -> None:
-        for channel in ("beta", "preview", "nightly"):
-            with self.subTest(channel=channel), self.assertRaises(ValueError):
-                set_update_channel(self.connection, channel)
+    def test_unsupported_channel_does_not_change_the_saved_preference(self) -> None:
+        with self.assertRaisesRegex(ValueError, "unsupported"):
+            set_update_channel(self.connection, "nightly")
 
         self.assertEqual(read_update_channel(self.connection), UpdateChannel.STABLE)
 
@@ -139,69 +138,63 @@ class PublicReleaseNoticeTests(unittest.TestCase):
 
         return load
 
-    def test_reports_newest_complete_normal_release(self) -> None:
+    def test_preview_channel_reports_newest_complete_release(self) -> None:
         notice = check_public_releases(
-            "0.2.0",
+            "preview",
+            "0.0.5-preview.12",
             transport=self.transport([
-                release("0.2.0"),
-                release("0.2.1"),
-                release("0.2.2", complete=False),
+                release("0.0.5-preview.12"),
+                release("0.0.5-preview.13"),
+                release("0.0.5-preview.14", complete=False),
             ]),
         )
         self.assertEqual(notice["state"], "available")
-        self.assertEqual(notice["latestVersion"], "0.2.1")
-        self.assertEqual(notice["channel"], "stable")
+        self.assertEqual(notice["latestVersion"], "0.0.5-preview.13")
         self.assertFalse(notice["automaticInstall"])
 
-    def test_beta_installation_advances_to_its_normal_release(self) -> None:
+    def test_preview_channel_advances_from_preview_candidate_to_alpha(self) -> None:
         notice = check_public_releases(
-            "0.3.0-beta.2",
+            "preview",
+            "0.0.5-preview.28",
             transport=self.transport([
-                release("0.3.0-beta.2", prerelease=True),
-                release("0.3.0"),
+                release("0.0.5-preview.28"),
+                release("0.2.0-alpha.1"),
             ]),
         )
 
         self.assertEqual(notice["state"], "available")
-        self.assertEqual(notice["latestVersion"], "0.3.0")
+        self.assertEqual(notice["latestVersion"], "0.2.0-alpha.1")
         self.assertEqual(
             notice["releaseUrl"],
-            "https://github.com/Savox76/eve-test-indu/releases/tag/v0.3.0",
+            "https://github.com/Savox76/eve-test-indu/releases/tag/v0.2.0-alpha.1",
         )
         self.assertFalse(notice["automaticInstall"])
 
-    def test_beta_tags_are_ignored_even_if_github_flag_is_wrong(self) -> None:
+    def test_stable_channel_ignores_prereleases(self) -> None:
         notice = check_public_releases(
-            "0.2.0",
+            "stable",
+            "0.0.4",
             transport=self.transport([
-                release("0.3.0-beta.1", prerelease=True),
-                release("0.4.0-beta.1", prerelease=False),
-                release("0.2.0"),
+                release("0.0.5-preview.13"),
+                release("0.0.4", prerelease=False),
             ]),
         )
         self.assertEqual(notice["state"], "current")
-        self.assertEqual(notice["latestVersion"], "0.2.0")
-
-    def test_stable_tag_marked_as_prerelease_is_ignored(self) -> None:
-        notice = check_public_releases(
-            "0.2.0",
-            transport=self.transport([release("0.2.1", prerelease=True)]),
-        )
-
-        self.assertEqual(notice["state"], "unavailable")
-        self.assertIsNone(notice["latestVersion"])
+        self.assertEqual(notice["latestVersion"], "0.0.4")
 
     def test_untrusted_release_url_and_invalid_payload_are_ignored_or_rejected(self) -> None:
         wrong = release("0.0.5-preview.13")
         wrong["html_url"] = "https://example.invalid/release"
         notice = check_public_releases(
-            "0.2.0",
+            "preview",
+            "0.0.5-preview.12",
             transport=self.transport([wrong]),
         )
         self.assertEqual(notice["state"], "unavailable")
         with self.assertRaisesRegex(PublicReleaseCheckError, "response_invalid"):
             check_public_releases(
-                "0.2.0",
+                "preview",
+                "0.0.5-preview.12",
                 transport=lambda _url: b"{}",
             )
 

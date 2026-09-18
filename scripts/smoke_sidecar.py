@@ -233,7 +233,7 @@ def main() -> int:
             database = health.get("database")
             if not isinstance(database, dict) or database.get("location") != "data/foundry.sqlite3":
                 raise RuntimeError("The sidecar reported an unexpected database location.")
-            if database.get("schemaVersion") != 15 or database.get("integrity") != "ok":
+            if database.get("schemaVersion") != 14 or database.get("integrity") != "ok":
                 raise RuntimeError("The sidecar database health is invalid.")
             if health.get("esiClient", {}).get("compatibilityDate") != "2026-09-09":
                 raise RuntimeError("The health response omitted the ESI compatibility date.")
@@ -418,26 +418,27 @@ def main() -> int:
                 raise RuntimeError("The packaged PKCE login could not be cancelled.")
             backup_name = database.get("lastMigrationBackup")
             if not isinstance(backup_name, str) or not backup_name.startswith(
-                "foundry-schema-v0005-to-v0015-"
+                "foundry-schema-v0005-to-v0014-"
             ):
                 raise RuntimeError("The packaged migration did not report its backup.")
 
             update_request = urllib.request.Request(
                 f"http://127.0.0.1:{int(ready['port'])}/settings/update",
-                data=json.dumps({"channel": "beta"}).encode("utf-8"),
+                data=json.dumps({"channel": "preview"}).encode("utf-8"),
                 method="PUT",
                 headers={
                     "Authorization": f"Bearer {token}",
                     "Content-Type": "application/json",
                 },
             )
-            try:
-                opener.open(update_request, timeout=3)
-            except urllib.error.HTTPError as error:
-                if error.code != 422:
-                    raise RuntimeError("The packaged beta-channel rejection is invalid.") from error
-            else:
-                raise RuntimeError("The packaged updater accepted a beta channel.")
+            with opener.open(update_request, timeout=3) as response:
+                update_settings = json.loads(response.read())
+            if (
+                update_settings.get("channel") != "preview"
+                or update_settings.get("manifestState") != "verified"
+                or update_settings.get("publicDistribution") is not False
+            ):
+                raise RuntimeError("The packaged update-channel preference is invalid.")
 
             appearance_request = urllib.request.Request(
                 f"http://127.0.0.1:{int(ready['port'])}/settings/appearance",
@@ -458,8 +459,8 @@ def main() -> int:
             with contextlib.closing(sqlite3.connect(database_path)) as connection:
                 if connection.execute("PRAGMA quick_check").fetchone()[0] != "ok":
                     raise RuntimeError("The created SQLite database failed quick_check.")
-                if connection.execute("PRAGMA user_version").fetchone()[0] != 15:
-                    raise RuntimeError("The packaged sidecar did not migrate to schema 15.")
+                if connection.execute("PRAGMA user_version").fetchone()[0] != 14:
+                    raise RuntimeError("The packaged sidecar did not migrate to schema 14.")
                 marker = connection.execute(
                     "SELECT value FROM app_metadata WHERE key = 'smoke-marker'"
                 ).fetchone()[0]
@@ -481,7 +482,7 @@ def main() -> int:
                 ).fetchone()
             if (
                 marker != SYNTHETIC_MIGRATION_MARKER
-                or update_channel != "stable"
+                or update_channel != "preview"
                 or font_scale != "very-large"
                 or "alias" not in character_columns
                 or backup_record[0] != backup_name

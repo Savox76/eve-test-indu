@@ -279,20 +279,20 @@ describe("desktop runtime status", () => {
   it("stores a selected update channel through native IPC", async () => {
     const invoke = vi.fn<RuntimeAdapter["invoke"]>().mockResolvedValue(
       JSON.stringify({
-        channel: "stable",
+        channel: "beta",
         manifestState: "verified",
         publicDistribution: false,
       }),
     );
 
     await expect(
-      setDesktopUpdateChannel("stable", { isAvailable: () => true, invoke }),
+      setDesktopUpdateChannel("beta", { isAvailable: () => true, invoke }),
     ).resolves.toEqual({
-      channel: "stable",
+      channel: "beta",
       manifestState: "verified",
       publicDistribution: false,
     });
-    expect(invoke).toHaveBeenCalledWith("set_update_channel", { channel: "stable" });
+    expect(invoke).toHaveBeenCalledWith("set_update_channel", { channel: "beta" });
   });
 
   it("stores one of five global font-size stages through native IPC", async () => {
@@ -614,14 +614,14 @@ describe("desktop runtime status", () => {
   it("rejects updater responses that enable public distribution", async () => {
     const invoke = vi.fn<RuntimeAdapter["invoke"]>().mockResolvedValue(
       JSON.stringify({
-        channel: "stable",
+        channel: "preview",
         manifestState: "verified",
         publicDistribution: true,
       }),
     );
 
     await expect(
-      setDesktopUpdateChannel("stable", { isAvailable: () => true, invoke }),
+      setDesktopUpdateChannel("preview", { isAvailable: () => true, invoke }),
     ).rejects.toThrow("invalid updater metadata");
   });
 
@@ -1237,9 +1237,9 @@ describe("desktop runtime status", () => {
   });
 
   it("validates advisory update notices and opens only a release version", async () => {
-    const notice = { state: "available", channel: "stable", currentVersion: "0.2.0",
-      latestVersion: "0.2.1",
-      releaseUrl: "https://github.com/Savox76/eve-test-indu/releases/tag/v0.2.1",
+    const notice = { state: "available", channel: "preview", currentVersion: "0.0.5-preview.12",
+      latestVersion: "0.0.5-preview.13",
+      releaseUrl: "https://github.com/Savox76/eve-test-indu/releases/tag/v0.0.5-preview.13",
       publishedAt: "2026-09-11T12:00:00Z", automaticInstall: false, errorCode: null };
     const invoke = vi.fn<RuntimeAdapter["invoke"]>().mockResolvedValueOnce(JSON.stringify(notice));
     await expect(checkForUpdates({ isAvailable: () => true, invoke })).resolves.toEqual(notice);
@@ -1247,7 +1247,7 @@ describe("desktop runtime status", () => {
     await expect(openReleaseDownloads(notice.latestVersion, { isAvailable: () => true, invoke }))
       .resolves.toBeUndefined();
     expect(invoke).toHaveBeenLastCalledWith("open_release_downloads", {
-      version: "0.2.1",
+      version: "0.0.5-preview.13",
     });
   });
 

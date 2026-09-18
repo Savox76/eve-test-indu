@@ -14,14 +14,13 @@ ADRs halten Entscheidungen fest, die Architektur, Sicherheit, Datenmodell, Betri
 | [008](0008-jita-first-market-adapters.md) | Jita-first mit austauschbaren Marktadaptern | Angenommen |
 | [009](0009-multi-character-scopes-and-local-account-groups.md) | Charaktergebundene EVE-Zugänge mit lokalen Kontogruppen und Gesamtansicht | Angenommen |
 | [010](0010-program-folder-storage.md) | Sichtbare Datenhaltung im Programmordner | Teilweise ersetzt durch ADR-013 |
-| [011](0011-signed-update-channel-skeleton.md) | Lokale Updatekanäle und signiertes Testmanifest ohne Verteilung | Teilweise ersetzt durch ADR-019 |
+| [011](0011-signed-update-channel-skeleton.md) | Lokale Updatekanäle und signiertes Testmanifest ohne Verteilung | Angenommen |
 | [012](0012-fixed-eve-sso-registration-profile.md) | Festes öffentliches EVE-SSO-Registrierungsprofil | Angenommen |
 | [013](0013-update-stable-application-data.md) | Updatefeste Anwendungsdaten für Installer und Portable | Angenommen |
 | [014](0014-automatic-asset-refresh-and-type-name-cache.md) | Cache-first Startabgleich und persistente öffentliche Typnamen | Angenommen |
 | [015](0015-automatic-required-sso-scopes.md) | Vollständige benötigte SSO-Pakete automatisch anfordern und Scope-Drift sichtbar machen | Angenommen |
 | [016](0016-evidence-based-industry-job-correlation.md) | Persönliche Industrieaufträge belegbasiert mit Blueprint- und Asset-Snapshots korrelieren | Angenommen |
-| [017](0017-public-release-advisory-and-portable-updates.md) | Öffentlicher Release-Hinweis und sicherer manueller Portable-Updatepfad | Teilweise ersetzt durch ADR-019 |
+| [017](0017-public-release-advisory-and-portable-updates.md) | Öffentlicher Release-Hinweis und sicherer manueller Portable-Updatepfad | Angenommen |
 | [018](0018-unified-program-folder-storage.md) | Einheitlicher Datenordner neben Installer- und Portable-EXE | Angenommen |
-| [019](0019-stable-release-and-beta-policy.md) | Normale Releases im Updatepfad, eindeutig getrennte manuelle Betas | Angenommen |
 
 Neue ADRs verwenden vierstellige laufende Nummern und die Abschnitte **Kontext**, **Entscheidung**, **Folgen**, **Verifikation** und **Referenzen**.

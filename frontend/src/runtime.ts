@@ -10,7 +10,7 @@ export type LocalDataState =
   | "error";
 
 export type LastSyncStatus = "never" | "running" | "completed" | "failed" | "cancelled";
-export type UpdateChannel = "stable";
+export type UpdateChannel = "stable" | "beta" | "preview";
 export type FontScale = "very-small" | "small" | "normal" | "large" | "very-large";
 export type ManifestState = "checking" | "verified" | "invalid" | "unavailable";
 export type DesktopDistribution = "installed" | "portable";
@@ -1268,7 +1268,7 @@ const lastSyncStatuses: readonly LastSyncStatus[] = [
   "failed",
   "cancelled",
 ];
-const updateChannels: readonly UpdateChannel[] = ["stable"];
+const updateChannels: readonly UpdateChannel[] = ["stable", "beta", "preview"];
 export const fontScales: readonly FontScale[] = [
   "very-small",
   "small",
