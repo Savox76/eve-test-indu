@@ -445,12 +445,14 @@ def create_application(
 
     @app.get("/updates/check")
     def get_public_release_notice() -> dict[str, object]:
+        with closing(connect_database(storage.database_path)) as connection:
+            selected_channel = read_update_channel(connection)
         try:
-            return check_public_releases(project_version())
+            return check_public_releases(selected_channel, project_version())
         except PublicReleaseCheckError as error:
             return {
                 "state": "error",
-                "channel": UpdateChannel.STABLE.value,
+                "channel": selected_channel.value,
                 "currentVersion": project_version(),
                 "latestVersion": None,
                 "releaseUrl": None,

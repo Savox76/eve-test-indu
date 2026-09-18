@@ -2,9 +2,9 @@
 
 **Fassung:** 4.0 (lebendes Repository-Dokument)
 
-**Stand:** 18. September 2026
+**Stand:** 16. September 2026
 
-**Status:** Paket 42 – verbindliches Stable-/Beta-Versionsmodell abgeschlossen
+**Status:** Paket 41 – belegte Installationskostenbasis technisch abgeschlossen
 
 **Geltungsbereich:** `Savox76/eve-test-indu`
 
@@ -50,7 +50,7 @@ EVE Mail, Discord-Integration, Buyback-Automatisierung, T3 und Mehrbenutzerbetri
 - Eine zweite gestartete Instanz fokussiert die vorhandene Instanz und startet keinen zweiten Sidecar.
 - Datenbank und Backups liegen sichtbar unter `data` im Programmordner. Ein nicht beschreibbarer Ordner ist ein Startfehler; es gibt keinen versteckten Ausweichpfad.
 - Die UI startet aus dem Cache und zeigt Start-, Offline-, veraltete und fehlerhafte Zustände ausdrücklich.
-- Der öffentliche Updatepfad berücksichtigt ausschließlich vollständige normale Releases `vX.Y.Z`. Betas `vX.Y.Z-beta.N` sind im Repository und auf GitHub eindeutig als Pre-Release markierte manuelle Testversionen und werden vom Update-Manager immer übersprungen. Historische Kanalpräferenzen werden auf `stable` normalisiert. Download und Installation bleiben bis zur produktiv signierten Updatekette deaktiviert; das signierte Offline-Testmanifest bleibt als Kryptografie-Gate erhalten.
+- Der gewählte Updatekanal wird lokal gespeichert. Ein öffentlicher GitHub-Release-Abruf informiert über ein vollständig veröffentlichtes neueres Paket und zeigt die passende Installer- oder Portable-Anleitung. Download und Installation bleiben bis zur produktiv signierten Updatekette deaktiviert; das signierte Offline-Testmanifest bleibt als Kryptografie-Gate erhalten.
 - Die globale Schriftgröße ist in fünf Stufen wählbar und wird als nicht geheime Einstellung in derselben Datenbank im Programmordner gespeichert.
 - Updates und Deinstallation ersetzen beziehungsweise entfernen Programmdateien, lassen `data` jedoch stehen. Das Entfernen eines Charakters und eine spätere vollständige Datenlöschung bleiben davon getrennte, bewusste Vorgänge.
 - Linux und macOS erhalten erst nach Windows eigene Freigabe-Gates.
@@ -127,7 +127,6 @@ Der SDE-Import ist versioniert und atomar. Typen, Gruppen, Kategorien, Blueprint
 - Freigegebene Installer, portable Pakete, Prüfsummen, Signaturen und Update-Manifeste dürfen ausschließlich direkt an das zugehörige GitHub Release angehängt werden.
 - GitHub stellt bei jedem Release automatisch Quellcodearchive des zugehörigen Tags bereit; diese sind keine Actions-Artefakte.
 - Jedes Release beschreibt: neu hinzugefügt, geändert, behobene Fehler, bekannte Einschränkungen sowie Update und Datenbankmigration.
-- Abgeschlossene Arbeitspakete werden als normale Version `vX.Y.Z` veröffentlicht. Eine optionale Beta trägt ausschließlich das Schema `vX.Y.Z-beta.N`, ist als GitHub-Pre-Release markiert und dient nur der manuellen Vorabprüfung.
 - Ein Release entsteht nur aus einem bewusst freigegebenen Tag nach vollständig grünen Pflichtprüfungen.
 
 Die Einzelheiten stehen in [RELEASING.md](RELEASING.md).
@@ -150,15 +149,15 @@ Eine Änderung ist fertig, wenn:
 | Phase | Inhalt | Ergebnis |
 |---|---|---|
 | 0 – Entscheidungen | ADRs, Repository, synthetische Demo, CI-Grundschutz, registrierbare SSO-Parameter | freigegebene Architekturgrundlage |
-| 1 – Vertikaler Kern | Tauri, Sidecar, Port/Token, SQLite, Migration, Single Instance, Installer | 0.1.x |
+| 1 – Vertikaler Kern | Tauri, Sidecar, Port/Token, SQLite, Migration, Single Instance, Installer | 0.1.0 interne Technik-Alpha |
 | 2 – SSO & Charaktere | PKCE, Callback, JWT, Keyring, Rotation, Charakterverwaltung | 0.1.x |
-| 3 – Sync & Assets | ESI-Client, Cache, Limits, SDE-Basis, Assets, Orte, Suche, Deltas | 0.2.x |
+| 3 – Sync & Assets | ESI-Client, Cache, Limits, SDE-Basis, Assets, Orte, Suche, Deltas | 0.2.0 Alpha |
 | 4 – Blueprints & Jobs | BPO/BPC, ME/TE, Jobs, Skills, Anlagen, Forschung | 0.3.0 |
-| 5 – Produktion | Solver, Bestand, Reservierung, Kosten, Zeit, Reaktionen, Multibuy | 0.4.x |
-| 6 – T2-Invention | Kopieren, Datacores, Decryptoren, Wahrscheinlichkeit, BPC-Lager | 0.5.x |
-| 7 – Markt | Jita-Adapter, Tiefe, Historie, Reichweite, Scanner, Fallback | 0.6.x |
-| 8 – Projekte | Fittings, Doktrinen, Bauprojekte, Fortschritt und Reservierung | 0.7.x |
-| 9 – PI | Kolonien, Timer, Lager, Versorgung, P0–P4, CPU/Powergrid | 0.8.x |
+| 5 – Produktion | Solver, Bestand, Reservierung, Kosten, Zeit, Reaktionen, Multibuy | 0.4.0 Beta |
+| 6 – T2-Invention | Kopieren, Datacores, Decryptoren, Wahrscheinlichkeit, BPC-Lager | 0.5.0 Beta |
+| 7 – Markt | Jita-Adapter, Tiefe, Historie, Reichweite, Scanner, Fallback | 0.6.0 Beta |
+| 8 – Projekte | Fittings, Doktrinen, Bauprojekte, Fortschritt und Reservierung | 0.7.0 Beta |
+| 9 – PI | Kolonien, Timer, Lager, Versorgung, P0–P4, CPU/Powergrid | 0.8.0 Beta |
 | 10 – Härtung | Performance, Barrierearmut, Updates, Migrationen, Windows-Gate | 1.0.0 Stable |
 
 Die Reihenfolge ist verbindlicher als eine Kalenderangabe.
@@ -176,7 +175,7 @@ Die Reihenfolge ist verbindlicher als eine Kalenderangabe.
 | 07 | SQLite-Grundlage | Foreign Keys, WAL, `busy_timeout`, Basismigration und Integritätscheck automatisiert geprüft |
 | 08 | Migration-Backup | Testmigration erzeugt eine konsistente Sicherung und kann wiederhergestellt werden |
 | 09 | Startzustände | UI startet cache-first und zeigt Sidecar-, DB- und Offlinefehler verständlich |
-| 10 | Updater-Skelett | signiertes Testmanifest geprüft; noch keine automatische öffentliche Verteilung |
+| 10 | Updater-Skelett | Kanal wählbar; signiertes Testmanifest geprüft; noch keine öffentliche Verteilung |
 | 11 | SSO-App-Registrierung | exakte Callback-URI, Client-ID, Scopes und Entwicklerkontakt dokumentiert |
 | 12 | PKCE-Login | Systembrowser, `state`, Challenge/Verifier, Timeout und Abbruch getestet |
 | 13 | JWT-Validierung | JWKS, Issuer, Audience, Ablauf und Charakter-ID geprüft |
@@ -188,7 +187,7 @@ Die Reihenfolge ist verbindlicher als eine Kalenderangabe.
 | 19 | Standortauflösung | Containerpfad, Station, Struktur-403 und Zyklen bestehen synthetische Golden-Fälle |
 | 20 | Asset-UI | Suche, Filter, Besitzer, Standort, Menge, Datenalter und CSV bei 100.000 Zeilen flüssig |
 | 21 | Asset-Deltas | nur vollständige Läufe erzeugen nachvollziehbare Änderungen; Jobkorrelation vorbereitet |
-| 22 | Erste reguläre Freigabe | Phase-3-Gates grün; Installation und Update auf freigegebenem Windows-Testgerät bestanden |
+| 22 | Erste Alpha-Freigabe | Phase-3-Gates grün; Installation und Update auf freigegebenem Windows-Testgerät bestanden |
 | 23 | Blueprint-Bestand | BPO/BPC werden charaktergetrennt vollständig synchronisiert und mit Namen, ME/TE, Läufen, Besitzer, Ort, Alter, Suche, Filter und Sortierung angezeigt |
 | 24 | Charakter-Jobs | persönliche Industrieaufträge werden vollständig synchronisiert, mit Blueprint- und Asset-Änderungen nachvollziehbar korreliert und nach Status dargestellt |
 | 25 | Charakter-Skills | vollständige trainierte und aktive Skillstände werden charaktergetrennt synchronisiert und als Grundlage für spätere Machbarkeits- und Lückenprüfungen dargestellt |
@@ -208,7 +207,6 @@ Die Reihenfolge ist verbindlicher als eine Kalenderangabe.
 | 39 | Explizite Anlagenprofile und Anlagenzeit | Ein bewusst gespeichertes, aktivitätsgebundenes Material-/Zeitprofil der gewählten Anlage wirkt mit ME/TE und Charakter-Skills vor genau einer Aufrundung; unbekannte Boni bleiben sichtbar unkonfiguriert statt geschätzt |
 | 40 | Zielübergreifende Einkaufsliste und EVE-Multibuy | Die konfliktfreien Fehlmengen aller aktuell gefilterten Ziele werden typweise aggregiert, unvollständige Quellstände sichtbar ausgeschlossen und als direkt kopierbare EVE-Multibuy-Liste ausgegeben |
 | 41 | Belegte Installationskostenbasis | Offizielle angepasste ESI-Preise, aktivitätsspezifischer Systemkostenindex und eine ausdrücklich gespeicherte Anlagensteuer ergeben je gebautem Schritt eine quellenbelegte Kostenbasis; fehlende Preise oder Belege bleiben sichtbar statt geschätzt |
-| 42 | Stable-/Beta-Versionsmodell | Normale Releases sind suffixlose, vom Update-Manager erkannte GitHub-Releases; Betas sind eindeutig benannte Pre-Releases und bleiben vom Updatepfad ausgeschlossen |
 
 ### Aktueller Stand
 
@@ -219,7 +217,7 @@ Die Reihenfolge ist verbindlicher als eine Kalenderangabe.
 - **Abgeschlossen:** 07 – die SQLite-Grundlage aktiviert und prüft Foreign Keys, WAL und `busy_timeout`, wendet eine versionierte Basismigration an und führt automatisierte Integritäts- sowie Parallelzugriffstests aus.
 - **Abgeschlossen:** 08 – ausstehende Migrationen erzeugen zuerst einen konsistenten, eigenständigen und SHA-256-geprüften Snapshot unter `data\backups`. Sicherungsfehler lassen das Schema unverändert; Migrationsfehler lösen eine geprüfte automatische Wiederherstellung aus. Die fünf neuesten Snapshots bleiben erhalten.
 - **Abgeschlossen:** 09 – der lokale Startpfad bewertet nur Snapshots vollständig abgeschlossener Läufe und zeigt Laden, Aktualisieren, leer, aktuell, veraltet, offline und fehlerhaft zweisprachig mit Datenalter. Vorhandene Cache-Daten bleiben bei Ablauf oder Folgfehlern sichtbar; echte Nutzdaten folgen mit ESI.
-- **Abgeschlossen:** 10 – ein gebündeltes Ed25519-signiertes Testmanifest wird streng und offline geprüft. Seit ADR-017 fragt ein getrennter Hinweisweg die öffentliche GitHub-Release-Liste ab und öffnet ausschließlich die fest abgeleitete Release-Seite; ADR-019 begrenzt diesen Pfad auf vollständige normale Releases und entfernt die historische Kanalwahl. Download und Installation bleiben deaktiviert.
+- **Abgeschlossen:** 10 – die Desktop-Oberfläche kann `stable`, `beta` und `preview` wählen und speichert die Präferenz in Schema 5. Ein gebündeltes Ed25519-signiertes Testmanifest wird streng und offline geprüft. Seit ADR-017 fragt ein getrennter Hinweisweg die öffentliche GitHub-Release-Liste ab, berücksichtigt nur vollständige Releases und öffnet ausschließlich die fest abgeleitete Release-Seite; Download und Installation bleiben deaktiviert.
 - **Abgeschlossen:** 11 – Callback-URI, öffentliche Client-ID, Entwicklerkontakt und funktionsbezogene Scopepakete sind im EVE Developers Portal registriert, verbindlich dokumentiert, maschinenlesbar hinterlegt, im Sidecar-Paket enthalten und gegen Drift getestet.
 - **Abgeschlossen:** 12 – die Desktop-App startet EVE SSO im Systembrowser, erzeugt je Versuch unabhängigen kryptografischen `state` und PKCE-Verifier mit `S256`, prüft den Rückruf am festen Callback und beendet Listener und Geheimnisse bei Fehler, Drei-Minuten-Timeout, Abbruch oder App-Ende. Jeder Charakter wird einzeln autorisiert; seit ADR-015 wird dabei der vollständige aktuell benötigte Paketsatz automatisch angefordert.
 - **Abgeschlossen:** 13 – der Sidecar tauscht den einmaligen Code ohne Client Secret per PKCE aus, bezieht Token- und JWKS-Endpunkte aus streng begrenzten EVE-Metadaten und prüft `RS256`-Signatur, Schlüssel-ID, Issuer, beide Audience-Werte, Ablauf, Charakter-Subject, Name und Scopes. Nur danach werden Identität und Scope-Status idempotent in SQLite gespeichert und in der echten Charakterliste angezeigt.
@@ -252,9 +250,8 @@ Die Reihenfolge ist verbindlicher als eine Kalenderangabe.
 - **Abgeschlossen:** 39 – Eine gewählte Produktionsanlage kann ein bewusst eingegebenes Material- und Zeitprofil in Hundertstelprozent erhalten. Der Materialfaktor wird mit dem schrittgenauen Blueprint-ME, der Zeitfaktor mit Blueprint-TE und aktiven Charakter-Skills multipliziert; erst danach wird je Material beziehungsweise Job einmal ganzzahlig aufgerundet. Das Profil gilt nur für Schritte derselben Aktivität, zeigt abweichende Aktivitäten ausdrücklich und wird niemals aus ESI, Jobs oder Strukturtypen geraten. Bestehende Ziele bleiben nach Schema-13-Migration unverändert und zeigen das Profil als nicht konfiguriert. Anlagenzeit und zusätzliche Ersparnis bleiben je Schritt und als belegbare Summe sichtbar.
 - **Abgeschlossen:** 40 – Die Produktionsabfrage aggregiert nach Anwendung von Suche, Besitzer-, Aktivitäts- und Statusfilter alle bereits konfliktfrei berechneten Fehlmengen stabil nach Typ-ID. Physische Fehlmenge und durch vorrangige Ziele gebundene Menge bleiben getrennt; die Oberfläche zeigt Materialarten, Gesamtmenge und beteiligte Ziele und kopiert den vollständigen belegten Ausschnitt im EVE-Multibuy-Format. Ziele ohne auflösbares Rezept oder vollständigen Asset-Snapshot werden gezählt und ausdrücklich als nicht enthalten markiert. Sortierung und Seitenauswahl verändern die Einkaufsliste nicht. Das Schema bleibt bei Version 13.
 - **Abgeschlossen:** 41 – Der vollständige Anlagen-Snapshot enthält zusätzlich die offiziellen angepassten Preise aus ESI. Für jeden tatsächlich gebauten Schritt wird der geschätzte Eingabewert aus unveränderten SDE-Basismaterialmengen und Läufen gebildet; Systemkostenindex und ausdrücklich gespeicherte Anlagensteuer werden getrennt aufgerundet und samt Preis-, Anlagen- und Systembeleg ausgewiesen. Zielebene und Oberfläche aggregieren ausschließlich berechenbare Schritte und unterscheiden `ready`, `partial`, `unconfigured`, `unavailable` und `not-applicable`. Schema 14 ergänzt die optionale Anlagensteuer in Basispunkten; bestehende Ziele bleiben bewusst unkonfiguriert.
-- **Abgeschlossen:** 42 – Das verbindliche Versionsmodell erlaubt für neue Versionen nur normale Releases `vX.Y.Z` und ausdrücklich als GitHub-Pre-Release markierte Betas `vX.Y.Z-beta.N`. Der Update-Manager prüft doppelt auf suffixlose Version und fehlendes Pre-Release-Merkmal. Schema 15 normalisiert historische Kanalwerte auf `stable`; die Kanalwahl entfällt aus der Oberfläche. Release-Workflow, Tests, Dokumentation und ADR-019 sichern die Regel ab.
 - **Als Nächstes:** Das nächste Fachpaket wird separat festgelegt. Marktpreise, Handelsort, SCC-Zuschlag, automatisch erkannte Struktur-/Service-/Rigmodifikatoren, Transport und belastbare Endtermine bleiben bis zu eigenen Fachverträgen ausgeschlossen.
-- Architektur-Gate A0 ist vollständig erfüllt; `v0.2.0` bildet die erste normale Release-Grundlage für die folgenden Produktionspakete.
+- Architektur-Gate A0 ist vollständig erfüllt; `v0.2.0-alpha.1` bildet die erste freigegebene Alpha-Grundlage für die folgenden Produktionspakete.
 
 ## 13. Entscheidungs- und Quellenrang
 

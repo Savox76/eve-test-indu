@@ -128,9 +128,6 @@ class DatabaseFoundationTests(unittest.TestCase):
                 ("synthetic-upgrade", "preserved"),
             )
             connection.execute(
-                "UPDATE app_settings SET value = 'beta' WHERE key = 'update_channel'"
-            )
-            connection.execute(
                 """
                 INSERT INTO characters (
                     character_id, account_group_id, name, enabled
