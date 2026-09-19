@@ -10,6 +10,29 @@ Alle bemerkenswerten Änderungen an New Eden Foundry werden hier festgehalten. D
 
 ### Geändert
 
+- Keine.
+
+### Behobene Fehler
+
+- Keine.
+
+### Bekannte Einschränkungen
+
+- Keine.
+
+### Update und Datenbankmigration
+
+- Keine.
+
+## 0.2.0-alpha.14 – 19. September 2026
+
+### Neu hinzugefügt
+
+- Keine.
+
+### Geändert
+
+- Die sichtbare Versionsnummer lautet `v0.2.0-alpha.14`.
 - Der globale Datenstatus nennt bei bekannten Synchronisationsfehlern jetzt die betroffene Quelle und einen sicheren technischen Fehlercode.
 - Persönliche Blueprints zeigen nach der Asset-Standortauflösung den lesbaren Stations- und Containerpfad statt nur einer Standort-ID.
 
@@ -20,11 +43,13 @@ Alle bemerkenswerten Änderungen an New Eden Foundry werden hier festgehalten. D
 
 ### Bekannte Einschränkungen
 
-- Keine.
+- Ein lesbarer Blueprint-Standortpfad setzt einen abgeschlossenen Asset- und Standort-Snapshot voraus; bis dahin bleiben Standortflag und ID sichtbar.
+- Die Alpha ist noch nicht produktiv code-signiert; SmartScreen kann deshalb weiterhin vor einem unbekannten Herausgeber warnen.
 
 ### Update und Datenbankmigration
 
-- Keine.
+- Das Datenbankschema bleibt bei Version 14; bestehende Charaktere, Einstellungen, Pläne und Snapshots bleiben unverändert erhalten.
+- Für ein Installer-Update die Anwendung vollständig schließen und die Option zum Löschen der Anwendungsdaten abgewählt lassen. Für ein portables Update die neue Alpha in einen neuen Ordner entpacken und den bisherigen `data`-Ordner bei geschlossener Anwendung übernehmen.
 
 ## 0.2.0-alpha.13 – 16. September 2026
 
