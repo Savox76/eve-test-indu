@@ -109,7 +109,7 @@ class FacilityClient:
         if path == "/markets/prices/":
             return EsiResponse(
                 200,
-                [{"type_id": 6_003, "adjusted_price": 12.5, "average_price": 13.0}],
+                [{"type_id": 6_003, "adjusted_price": 0.0, "average_price": 13.0}],
                 {},
                 False,
             )
@@ -305,8 +305,12 @@ class IndustryFacilityTests(unittest.TestCase):
                 {"type_id": 6_003, "adjusted_price": 12.5},
                 {"type_id": 6_003, "adjusted_price": 13.0},
             ])
+        self.assertEqual(
+            validate_industry_prices([{"type_id": 6_003, "adjusted_price": 0}]),
+            [{"type_id": 6_003, "adjusted_price": 0.0, "average_price": None}],
+        )
         with self.assertRaises(IndustryFacilitySyncError):
-            validate_industry_prices([{"type_id": 6_003, "adjusted_price": 0}])
+            validate_industry_prices([{"type_id": 6_003, "adjusted_price": -0.01}])
         with self.assertRaises(IndustryFacilityViewError):
             query_industry_facilities(self.db, {"search": ""})
 

@@ -137,6 +137,7 @@ const blueprintPage: BlueprintPage = {
     ownerCharacterId: 90_888_001, ownerName: "Builder", kind: "copy",
     materialEfficiency: 8, timeEfficiency: 16, runs: 12,
     locationId: 60_003_760, locationFlag: "Hangar",
+    locationPath: "Jita / Jita IV - Moon 4 / Blueprint Box",
     observedAt: "2026-09-10T10:00:00Z", ageSeconds: 3_600 }],
   total: 1, offset: 0, limit: 100,
   owners: [{ characterId: 90_888_001, name: "Builder" }],
@@ -885,6 +886,28 @@ describe("New Eden Foundry design preview", () => {
     expect(screen.getByText("18.42 B")).toBeInTheDocument();
   });
 
+  it("identifies the failed sync source in the local-data notice", async () => {
+    render(
+      <App
+        runtimeLoader={() => nativeRuntime({
+          data: {
+            state: "error",
+            hasCachedData: true,
+            observedAt: "2026-09-09T07:00:00Z",
+            expiresAt: "2026-09-09T07:05:00Z",
+            ageSeconds: 7_200,
+            lastSyncStatus: "failed",
+            errorCode: "industry-facilities/industry-price-payload-invalid",
+          },
+        })}
+      />,
+    );
+
+    expect(await screen.findByText("Synchronisierung gestört")).toBeInTheDocument();
+    expect(screen.getByText(/Industrieanlagen: ungültige EVE-Marktpreisdaten/)).toBeInTheDocument();
+    expect(screen.getByText(/industry-facilities\/industry-price-payload-invalid/)).toBeInTheDocument();
+  });
+
   it("explains a program-folder startup failure without showing an absolute path", async () => {
     render(
       <App
@@ -1468,6 +1491,7 @@ describe("New Eden Foundry design preview", () => {
     ));
     expect(await screen.findByText("BPC")).toBeInTheDocument();
     expect(screen.getByText("12")).toBeInTheDocument();
+    expect(screen.getByText("Jita / Jita IV - Moon 4 / Blueprint Box")).toBeInTheDocument();
     fireEvent.change(screen.getByPlaceholderText("Blueprint, Besitzer, Ort oder ID suchen"), {
       target: { value: "Bantam" },
     });

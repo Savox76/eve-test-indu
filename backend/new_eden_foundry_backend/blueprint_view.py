@@ -11,6 +11,7 @@ from typing import Any, Mapping
 MAX_SAFE_INTEGER = 9_007_199_254_740_991
 MAX_PAGE_SIZE = 200
 SORT_FIELDS = ("type", "owner", "kind", "me", "te", "runs", "age")
+LOCATION_STATUSES = ("resolved", "restricted", "unresolved", "cycle")
 
 
 class BlueprintViewError(RuntimeError):
@@ -67,6 +68,87 @@ def _enabled_owners(connection: sqlite3.Connection) -> list[dict[str, object]]:
             """
         )
     ]
+
+
+def _latest_location_paths(
+    connection: sqlite3.Connection,
+    character_id: int,
+) -> dict[int, str]:
+    row = connection.execute(
+        """
+        SELECT cached_snapshots.payload_json
+        FROM cached_snapshots
+        JOIN sync_runs ON sync_runs.id = cached_snapshots.sync_run_id
+        WHERE cached_snapshots.resource = ? AND sync_runs.status = 'completed'
+        ORDER BY cached_snapshots.observed_at DESC, cached_snapshots.id DESC
+        LIMIT 1
+        """,
+        (f"asset_locations:{character_id}",),
+    ).fetchone()
+    if row is None:
+        return {}
+    try:
+        payload = json.loads(str(row["payload_json"]))
+    except (TypeError, ValueError, json.JSONDecodeError) as error:
+        raise BlueprintViewError("blueprint_location_snapshot_invalid") from error
+    if (
+        not isinstance(payload, Mapping)
+        or payload.get("characterId") != character_id
+        or not isinstance(payload.get("locations"), list)
+    ):
+        raise BlueprintViewError("blueprint_location_snapshot_invalid")
+    result: dict[int, str] = {}
+    for location in payload["locations"]:
+        if not isinstance(location, Mapping):
+            raise BlueprintViewError("blueprint_location_snapshot_invalid")
+        item_id = location.get("itemId")
+        path = location.get("path")
+        if (
+            isinstance(item_id, bool)
+            or not isinstance(item_id, int)
+            or not 0 < item_id <= MAX_SAFE_INTEGER
+            or item_id in result
+            or location.get("status") not in LOCATION_STATUSES
+            or not isinstance(path, list)
+            or not 0 < len(path) <= 64
+        ):
+            raise BlueprintViewError("blueprint_location_snapshot_invalid")
+        labels: list[str] = []
+        for node in path:
+            if not isinstance(node, Mapping):
+                raise BlueprintViewError("blueprint_location_snapshot_invalid")
+            location_id = node.get("locationId")
+            kind = node.get("kind")
+            name = node.get("name")
+            access = node.get("access")
+            type_id = node.get("typeId")
+            if (
+                isinstance(location_id, bool)
+                or not isinstance(location_id, int)
+                or not 0 < location_id <= MAX_SAFE_INTEGER
+                or not isinstance(kind, str)
+                or not kind.strip()
+                or len(kind.strip()) > 40
+                or not isinstance(access, str)
+                or not access.strip()
+                or len(access.strip()) > 40
+                or not (
+                    name is None
+                    or isinstance(name, str)
+                    and bool(name.strip())
+                    and len(name.strip()) <= 200
+                )
+                or not (
+                    type_id is None
+                    or not isinstance(type_id, bool)
+                    and isinstance(type_id, int)
+                    and 0 < type_id <= MAX_SAFE_INTEGER
+                )
+            ):
+                raise BlueprintViewError("blueprint_location_snapshot_invalid")
+            labels.append(name.strip() if isinstance(name, str) else f"{kind.strip()} #{location_id}")
+        result[item_id] = " / ".join(labels)
+    return result
 
 
 def query_blueprints(
@@ -132,6 +214,7 @@ def query_blueprints(
         }
         if query["ownerCharacterId"] is not None and query["ownerCharacterId"] != character_id:
             continue
+        location_paths = _latest_location_paths(connection, character_id)
         observed_values.append(observed_text)
         seen: set[int] = set()
         for item in payload["blueprints"]:
@@ -155,13 +238,15 @@ def query_blueprints(
             if query["kind"] is not None and query["kind"] != kind:
                 continue
             type_name = names.get(type_id, f"Type #{type_id}")
-            if tokens and not all(token in f"{type_name} {owner_name} {item_id} {type_id} {location_id} {flag}".casefold() for token in tokens):
+            location_path = location_paths.get(item_id)
+            if tokens and not all(token in f"{type_name} {owner_name} {item_id} {type_id} {location_id} {flag} {location_path or ''}".casefold() for token in tokens):
                 continue
             rows.append({
                 "itemId": item_id, "typeId": type_id, "typeName": type_name,
                 "ownerCharacterId": character_id, "ownerName": owner_name,
                 "kind": kind, "materialEfficiency": me, "timeEfficiency": te,
                 "runs": runs, "locationId": location_id, "locationFlag": flag,
+                "locationPath": location_path,
                 "observedAt": observed_text, "ageSeconds": age,
             })
     getters = {

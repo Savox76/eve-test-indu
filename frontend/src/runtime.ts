@@ -246,6 +246,7 @@ export interface BlueprintRecord {
   runs: number;
   locationId: number;
   locationFlag: string;
+  locationPath: string | null;
   observedAt: string;
   ageSeconds: number;
 }
@@ -2373,6 +2374,7 @@ function parseBlueprintPage(candidate: unknown): BlueprintPage {
       !Number.isInteger(item.timeEfficiency) || Number(item.timeEfficiency) < 0 || Number(item.timeEfficiency) > 20 ||
       !Number.isSafeInteger(item.runs) || Number(item.runs) < -1 ||
       !isPositiveSafeInteger(item.locationId) || !isBoundedText(item.locationFlag, 100) ||
+      !(item.locationPath === null || isBoundedText(item.locationPath, 16_000)) ||
       !isBoundedText(item.observedAt, 64) || !isNonNegativeSafeInteger(item.ageSeconds)
     ) throw new Error("The native runtime returned invalid blueprint records.");
     return item as unknown as BlueprintRecord;

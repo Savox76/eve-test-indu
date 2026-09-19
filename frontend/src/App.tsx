@@ -2087,17 +2087,33 @@ function DataStateNotice({
   state,
   hasCachedData,
   ageSeconds,
+  errorCode,
   locale,
   t,
 }: {
   state: LocalDataState;
   hasCachedData: boolean;
   ageSeconds: number | null;
+  errorCode: string | null;
   locale: Locale;
   t: Translation;
 }) {
   const statusCopy = t.dataStatus[state];
-  const detail = hasCachedData ? statusCopy.detail : statusCopy.noDataDetail;
+  let detail: string = hasCachedData ? statusCopy.detail : statusCopy.noDataDetail;
+  if (errorCode !== null) {
+    const reason = ({
+      "network-unavailable": locale === "de"
+        ? "EVE-Verbindung nicht erreichbar"
+        : "EVE connection unavailable",
+      "industry-facilities/industry-price-payload-invalid": locale === "de"
+        ? "Industrieanlagen: ungültige EVE-Marktpreisdaten"
+        : "Industry facilities: invalid EVE market-price data",
+      "sync-failed": locale === "de"
+        ? "Synchronisationsquelle nicht näher bestimmbar"
+        : "Synchronization source could not be identified further",
+    } as Record<string, string>)[errorCode] ?? (locale === "de" ? "Technischer Fehler" : "Technical failure");
+    detail = `${detail} · ${reason} (${errorCode})`;
+  }
   const Icon = state === "fresh"
     ? CircleCheck
     : state === "stale"
@@ -2863,6 +2879,7 @@ export function App({
             state={localData.state}
             hasCachedData={localData.hasCachedData}
             ageSeconds={localData.ageSeconds}
+            errorCode={localData.errorCode}
             locale={locale}
             t={t}
           />
@@ -4390,7 +4407,7 @@ function BlueprintWorkspace({
           : page ? <div className="asset-table-wrap"><table className="asset-table blueprint-table"><thead><tr>
               <th>{header("type", t.blueprints.type)}</th><th>{header("owner", t.blueprints.owner)}</th><th>{header("kind", t.blueprints.kind)}</th><th>{header("me", t.blueprints.me)}</th><th>{header("te", t.blueprints.te)}</th><th>{header("runs", t.blueprints.runs)}</th><th>{t.blueprints.location}</th><th>{header("age", t.blueprints.age)}</th>
             </tr></thead><tbody>{page.items.map((item) => <tr key={item.itemId}>
-              <td><strong>{item.typeName}</strong><small>Type #{item.typeId}</small></td><td>{item.ownerName}</td><td><span className={`status-pill status-pill--${item.kind === "original" ? "good" : "info"}`}>{item.kind === "original" ? "BPO" : "BPC"}</span></td><td className="asset-table__number">{item.materialEfficiency}</td><td className="asset-table__number">{item.timeEfficiency}</td><td className="asset-table__number">{item.runs === -1 ? t.blueprints.unlimited : numberFormat.format(item.runs)}</td><td><strong>{item.locationFlag}</strong><small>#{item.locationId}</small></td><td>{formatDataAge(item.ageSeconds, locale)}</td>
+              <td><strong>{item.typeName}</strong><small>Type #{item.typeId}</small></td><td>{item.ownerName}</td><td><span className={`status-pill status-pill--${item.kind === "original" ? "good" : "info"}`}>{item.kind === "original" ? "BPO" : "BPC"}</span></td><td className="asset-table__number">{item.materialEfficiency}</td><td className="asset-table__number">{item.timeEfficiency}</td><td className="asset-table__number">{item.runs === -1 ? t.blueprints.unlimited : numberFormat.format(item.runs)}</td><td><strong>{item.locationPath || item.locationFlag}</strong><small>{item.locationFlag} · #{item.locationId}</small></td><td>{formatDataAge(item.ageSeconds, locale)}</td>
             </tr>)}</tbody></table></div> : null}
         {view === "positions" && page && total > 0 && <div className="asset-pagination"><span>{range}</span><div><button type="button" onClick={() => setOffset(Math.max(0, offset - blueprintPageSize))} disabled={offset === 0}>{t.blueprints.previous}</button><button type="button" onClick={() => setOffset(offset + blueprintPageSize)} disabled={offset + blueprintPageSize >= total}>{t.blueprints.next}</button></div></div>}
       </section>

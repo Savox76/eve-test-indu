@@ -91,7 +91,7 @@ def _price(value: Any) -> float:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise IndustryFacilitySyncError("industry_price_payload_invalid")
     normalized = float(value)
-    if not math.isfinite(normalized) or not 0 < normalized <= MAX_SAFE_INTEGER:
+    if not math.isfinite(normalized) or not 0 <= normalized <= MAX_SAFE_INTEGER:
         raise IndustryFacilitySyncError("industry_price_payload_invalid")
     return normalized
 

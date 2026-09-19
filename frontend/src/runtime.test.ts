@@ -744,6 +744,7 @@ describe("desktop runtime status", () => {
       items: [{ itemId: 9, typeId: 681, typeName: "Bantam Blueprint", ownerCharacterId: 7,
         ownerName: "Pilot", kind: "original", materialEfficiency: 10, timeEfficiency: 20,
         runs: -1, locationId: 60_003_760, locationFlag: "Hangar",
+        locationPath: "Jita / Jita IV - Moon 4",
         observedAt: "2026-09-10T00:00:00Z", ageSeconds: 1 }],
       total: 1, offset: 0, limit: 100, owners: [{ characterId: 7, name: "Pilot" }],
       snapshots: [{ characterId: 7, name: "Pilot", state: "available", itemCount: 1,
