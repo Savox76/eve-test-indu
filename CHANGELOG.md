@@ -10,11 +10,13 @@ Alle bemerkenswerten Änderungen an New Eden Foundry werden hier festgehalten. D
 
 ### Geändert
 
-- Keine.
+- Der globale Datenstatus nennt bei bekannten Synchronisationsfehlern jetzt die betroffene Quelle und einen sicheren technischen Fehlercode.
+- Persönliche Blueprints zeigen nach der Asset-Standortauflösung den lesbaren Stations- und Containerpfad statt nur einer Standort-ID.
 
 ### Behobene Fehler
 
-- Keine.
+- Offizielle ESI-Marktpreise mit dem gültigen Wert `0.0` werden nicht mehr als ungültig verworfen; die Synchronisierung der Industrieanlagen kann dadurch vollständig veröffentlicht werden.
+- ESI-Netzwerkfehler werden im globalen Datenstatus als Offline-Zustand statt als nicht näher bestimmbarer Synchronisationsfehler eingeordnet.
 
 ### Bekannte Einschränkungen
 

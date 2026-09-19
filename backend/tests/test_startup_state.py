@@ -182,6 +182,43 @@ class CacheFirstStartupStateTests(unittest.TestCase):
         self.assertNotIn("sensitive", str(state.as_api_payload()))
         self.assertTrue(state.has_cached_data)
 
+    def test_known_sync_failure_exposes_a_safe_source_and_reason(self) -> None:
+        self.connection.execute(
+            """
+            INSERT INTO sync_runs (
+                source, status, started_at, completed_at, error_code
+            ) VALUES ('industry_facilities', 'failed', ?, ?, ?)
+            """,
+            (
+                "2026-09-09T11:59:30Z",
+                "2026-09-09T11:59:45Z",
+                "industry_price_payload_invalid",
+            ),
+        )
+
+        state = inspect_startup_data_state(self.connection, now=NOW)
+
+        self.assertEqual(state.state, "error")
+        self.assertEqual(
+            state.error_code,
+            "industry-facilities/industry-price-payload-invalid",
+        )
+
+    def test_esi_network_failure_is_classified_as_offline(self) -> None:
+        self.connection.execute(
+            """
+            INSERT INTO sync_runs (
+                source, status, started_at, completed_at, error_code
+            ) VALUES ('character_assets', 'failed', ?, ?, 'esi-network-unavailable')
+            """,
+            ("2026-09-09T11:59:30Z", "2026-09-09T11:59:45Z"),
+        )
+
+        state = inspect_startup_data_state(self.connection, now=NOW)
+
+        self.assertEqual(state.state, "offline")
+        self.assertEqual(state.error_code, "network-unavailable")
+
     def test_running_refresh_keeps_completed_cache_visible(self) -> None:
         self.add_run(
             "completed",

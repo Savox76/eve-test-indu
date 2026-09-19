@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+import json
 from pathlib import Path
 import tempfile
 import unittest
@@ -41,6 +42,40 @@ class BlueprintTests(unittest.TestCase):
         self.db.close()
         self.temp.cleanup()
 
+    def publish_location_path(self, item_id: int) -> None:
+        observed_at = "2026-09-10T00:00:01Z"
+        run = self.db.execute(
+            """
+            INSERT INTO sync_runs(source,status,started_at,completed_at,data_timestamp,character_id)
+            VALUES('asset_locations','completed',?,?,?,?)
+            """,
+            (observed_at, observed_at, observed_at, 90000001),
+        )
+        self.db.execute(
+            """
+            INSERT INTO cached_snapshots(sync_run_id,resource,payload_json,observed_at)
+            VALUES(?,?,?,?)
+            """,
+            (
+                int(run.lastrowid),
+                "asset_locations:90000001",
+                json.dumps({
+                    "characterId": 90000001,
+                    "assetSnapshotId": 42,
+                    "locations": [{
+                        "itemId": item_id,
+                        "status": "resolved",
+                        "path": [
+                            {"locationId": 30000142, "kind": "solar_system", "name": "Jita", "access": "available", "typeId": None},
+                            {"locationId": 60003760, "kind": "station", "name": "Jita IV - Moon 4", "access": "available", "typeId": 1531},
+                            {"locationId": 99000001, "kind": "item", "name": "Blueprint Box", "access": "available", "typeId": 17365},
+                        ],
+                    }],
+                }),
+                observed_at,
+            ),
+        )
+
     def test_syncs_all_pages_and_exposes_bpo_bpc_read_model(self):
         client = FakeClient([
             [blueprint(1, 681), blueprint(3, 683, quantity=4)],
@@ -50,11 +85,17 @@ class BlueprintTests(unittest.TestCase):
         self.assertEqual((result.pages, result.blueprints, result.type_ids), (2, 3, (681, 682, 683)))
         self.assertEqual(client.last_scope, ("esi-characters.read_blueprints.v1",))
         self.db.execute("INSERT INTO resolved_type_names(type_id,name) VALUES(681,'Bantam Blueprint')")
+        self.publish_location_path(1)
         query = {"search": "", "ownerCharacterId": None, "kind": None, "offset": 0,
                  "limit": 100, "sortBy": "type", "sortDirection": "asc"}
         page = query_blueprints(self.db, query, now=datetime(2026, 9, 10, tzinfo=timezone.utc))
         self.assertEqual(page["total"], 3)
         self.assertEqual(page["items"][0]["typeName"], "Bantam Blueprint")
+        self.assertEqual(
+            page["items"][0]["locationPath"],
+            "Jita / Jita IV - Moon 4 / Blueprint Box",
+        )
+        self.assertIsNone(next(item for item in page["items"] if item["itemId"] == 2)["locationPath"])
         self.assertEqual({item["kind"] for item in page["items"]}, {"original", "copy"})
         self.assertEqual(next(item for item in page["items"] if item["itemId"] == 3)["kind"], "original")
         self.assertEqual(next(item for item in page["items"] if item["kind"] == "copy")["runs"], 7)

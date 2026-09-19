@@ -14,8 +14,16 @@ OFFLINE_ERROR_CODES: Final = frozenset(
         "network-timeout",
         "dns-unavailable",
         "esi-unavailable",
+        "esi-network-unavailable",
+        "esi-retry-exhausted",
     }
 )
+PUBLIC_SYNC_FAILURE_CODES: Final = {
+    (
+        "industry_facilities",
+        "industry_price_payload_invalid",
+    ): "industry-facilities/industry-price-payload-invalid",
+}
 SYNC_STATUSES: Final = frozenset({"running", "completed", "failed", "cancelled"})
 DATA_STATES: Final = frozenset(
     {"loading", "refreshing", "empty", "fresh", "stale", "offline", "error"}
@@ -100,7 +108,7 @@ def inspect_startup_data_state(
 
     latest_run = connection.execute(
         """
-        SELECT status, error_code
+        SELECT source, status, error_code
         FROM sync_runs
         ORDER BY started_at DESC, id DESC
         LIMIT 1
@@ -166,7 +174,11 @@ def inspect_startup_data_state(
             error_code = "network-unavailable"
         else:
             state = "error"
-            error_code = "sync-failed"
+            raw_source = None if latest_run is None else latest_run["source"]
+            error_code = PUBLIC_SYNC_FAILURE_CODES.get(
+                (raw_source, raw_error_code),
+                "sync-failed",
+            )
     elif latest_snapshot is None:
         state = "empty"
         error_code = None

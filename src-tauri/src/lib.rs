@@ -472,6 +472,7 @@ struct BlueprintRecord {
     runs: i64,
     location_id: u64,
     location_flag: String,
+    location_path: Option<String>,
     observed_at: String,
     age_seconds: u64,
 }
@@ -1969,6 +1970,10 @@ fn blueprint_query_response_is_valid(response: &BlueprintQueryResponse) -> bool 
                 && item.location_id > 0
                 && item.location_id <= JAVASCRIPT_MAX_SAFE_INTEGER
                 && asset_text_is_valid(&item.location_flag, 100)
+                && item
+                    .location_path
+                    .as_ref()
+                    .is_none_or(|value| asset_text_is_valid(value, 16_000))
                 && asset_text_is_valid(&item.observed_at, 64)
         })
 }
