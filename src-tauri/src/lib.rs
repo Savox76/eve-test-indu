@@ -1401,6 +1401,10 @@ struct AssetDeltaRecord {
     location_type_after: Option<String>,
     location_flag_before: Option<String>,
     location_flag_after: Option<String>,
+    location_status_before: Option<String>,
+    location_status_after: Option<String>,
+    location_path_before: Option<String>,
+    location_path_after: Option<String>,
     previous_asset_snapshot_id: u64,
     current_asset_snapshot_id: u64,
     current_asset_sync_run_id: u64,
@@ -1422,6 +1426,63 @@ struct AssetDeltaSummary {
 struct AssetDeltaQueryResponse {
     items: Vec<AssetDeltaRecord>,
     total: u64,
+    offset: u64,
+    limit: u64,
+    owners: Vec<AssetOwner>,
+    change_types: Vec<String>,
+    summary: AssetDeltaSummary,
+    has_baseline: bool,
+    observed_at: Option<String>,
+    age_seconds: Option<u64>,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AssetDeltaCorrelationSummary {
+    linked: u64,
+    ambiguous: u64,
+    unmatched: u64,
+    unavailable: u64,
+    #[serde(rename = "not-applicable")]
+    not_applicable: u64,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AssetDeltaGroupRecord {
+    group_id: String,
+    type_id: u64,
+    type_name: String,
+    owner_character_id: u64,
+    owner_name: String,
+    change_types: Vec<String>,
+    event_count: u64,
+    item_count: u64,
+    quantity_before: u64,
+    quantity_after: u64,
+    quantity_delta: i64,
+    location_count_before: u64,
+    location_count_after: u64,
+    location_id_before: Option<u64>,
+    location_id_after: Option<u64>,
+    location_flag_before: Option<String>,
+    location_flag_after: Option<String>,
+    location_path_before: Option<String>,
+    location_path_after: Option<String>,
+    previous_asset_snapshot_id: u64,
+    current_asset_snapshot_id: u64,
+    current_asset_sync_run_id: u64,
+    observed_at: String,
+    age_seconds: u64,
+    job_correlation_summary: AssetDeltaCorrelationSummary,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AssetDeltaGroupQueryResponse {
+    items: Vec<AssetDeltaGroupRecord>,
+    total: u64,
+    event_total: u64,
     offset: u64,
     limit: u64,
     owners: Vec<AssetOwner>,
@@ -4685,6 +4746,35 @@ fn asset_delta_response_is_valid(response: &AssetDeltaQueryResponse) -> bool {
                     .location_flag_after
                     .as_ref()
                     .is_none_or(|value| asset_text_is_valid(value, 100))
+                && event
+                    .location_status_before
+                    .as_deref()
+                    .is_none_or(|value| {
+                        matches!(value, "resolved" | "restricted" | "unresolved" | "cycle")
+                    })
+                && event
+                    .location_status_after
+                    .as_deref()
+                    .is_none_or(|value| {
+                        matches!(value, "resolved" | "restricted" | "unresolved" | "cycle")
+                    })
+                && event
+                    .location_path_before
+                    .as_ref()
+                    .is_none_or(|value| asset_text_is_valid(value, 16_000))
+                && event
+                    .location_path_after
+                    .as_ref()
+                    .is_none_or(|value| asset_text_is_valid(value, 16_000))
+                && (event.location_path_before.is_none()
+                    || event.location_status_before.is_some())
+                && (event.location_path_after.is_none()
+                    || event.location_status_after.is_some())
+                && (event.quantity_before.is_some()
+                    || event.location_status_before.is_none()
+                        && event.location_path_before.is_none())
+                && (event.quantity_after.is_some()
+                    || event.location_status_after.is_none() && event.location_path_after.is_none())
                 && event.previous_asset_snapshot_id > 0
                 && event.current_asset_snapshot_id > 0
                 && event.current_asset_sync_run_id > 0
@@ -4733,6 +4823,131 @@ fn asset_delta_response_is_valid(response: &AssetDeltaQueryResponse) -> bool {
                             && !event.job_correlation.location_matched
                     }
                 }
+        })
+}
+
+fn asset_delta_group_response_is_valid(response: &AssetDeltaGroupQueryResponse) -> bool {
+    let owner_ids = response
+        .owners
+        .iter()
+        .map(|owner| owner.character_id)
+        .collect::<HashSet<_>>();
+    let group_ids = response
+        .items
+        .iter()
+        .map(|group| group.group_id.as_str())
+        .collect::<HashSet<_>>();
+    response.limit > 0
+        && response.limit <= MAX_ASSET_PAGE_SIZE
+        && response.total <= response.event_total
+        && response.event_total <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && response.offset <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && response.items.len() as u64 <= response.limit
+        && response.items.len() as u64 <= response.total
+        && response
+            .change_types
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>()
+            == ASSET_DELTA_CHANGE_TYPES
+        && group_ids.len() == response.items.len()
+        && owner_ids.len() == response.owners.len()
+        && response.observed_at.is_some() == response.age_seconds.is_some()
+        && response.has_baseline == response.observed_at.is_some()
+        && response
+            .observed_at
+            .as_ref()
+            .is_none_or(|value| asset_text_is_valid(value, 64))
+        && [
+            response.summary.added,
+            response.summary.removed,
+            response.summary.quantity,
+            response.summary.location,
+        ]
+        .into_iter()
+        .all(|value| value <= response.event_total && value <= JAVASCRIPT_MAX_SAFE_INTEGER)
+        && response.owners.iter().all(|owner| {
+            owner.character_id > 0
+                && owner.character_id <= JAVASCRIPT_MAX_SAFE_INTEGER
+                && asset_text_is_valid(&owner.name, 100)
+        })
+        && response.items.iter().all(|group| {
+            let correlation_total = [
+                group.job_correlation_summary.linked,
+                group.job_correlation_summary.ambiguous,
+                group.job_correlation_summary.unmatched,
+                group.job_correlation_summary.unavailable,
+                group.job_correlation_summary.not_applicable,
+            ]
+            .into_iter()
+            .try_fold(0_u64, |sum, value| sum.checked_add(value));
+            group.group_id.len() == 64
+                && group
+                    .group_id
+                    .bytes()
+                    .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+                && group.type_id > 0
+                && group.type_id <= JAVASCRIPT_MAX_SAFE_INTEGER
+                && owner_ids.contains(&group.owner_character_id)
+                && asset_text_is_valid(&group.type_name, 220)
+                && asset_text_is_valid(&group.owner_name, 100)
+                && !group.change_types.is_empty()
+                && group.change_types.len() <= ASSET_DELTA_CHANGE_TYPES.len()
+                && group
+                    .change_types
+                    .iter()
+                    .all(|value| ASSET_DELTA_CHANGE_TYPES.contains(&value.as_str()))
+                && group.change_types.iter().collect::<HashSet<_>>().len()
+                    == group.change_types.len()
+                && group.event_count > 0
+                && group.event_count <= JAVASCRIPT_MAX_SAFE_INTEGER
+                && group.item_count > 0
+                && group.item_count <= group.event_count
+                && group.quantity_before <= JAVASCRIPT_MAX_SAFE_INTEGER
+                && group.quantity_after <= JAVASCRIPT_MAX_SAFE_INTEGER
+                && i128::from(group.quantity_after) - i128::from(group.quantity_before)
+                    == i128::from(group.quantity_delta)
+                && group.quantity_delta.unsigned_abs() <= JAVASCRIPT_MAX_SAFE_INTEGER
+                && group.location_count_before <= group.event_count
+                && group.location_count_after <= group.event_count
+                && group.location_id_before.is_some() == (group.location_count_before == 1)
+                && group.location_flag_before.is_some() == (group.location_count_before == 1)
+                && group.location_id_after.is_some() == (group.location_count_after == 1)
+                && group.location_flag_after.is_some() == (group.location_count_after == 1)
+                && group
+                    .location_id_before
+                    .is_none_or(|value| value > 0 && value <= JAVASCRIPT_MAX_SAFE_INTEGER)
+                && group
+                    .location_id_after
+                    .is_none_or(|value| value > 0 && value <= JAVASCRIPT_MAX_SAFE_INTEGER)
+                && group
+                    .location_flag_before
+                    .as_ref()
+                    .is_none_or(|value| asset_text_is_valid(value, 100))
+                && group
+                    .location_flag_after
+                    .as_ref()
+                    .is_none_or(|value| asset_text_is_valid(value, 100))
+                && group
+                    .location_path_before
+                    .as_ref()
+                    .is_none_or(|value| {
+                        group.location_count_before == 1 && asset_text_is_valid(value, 16_000)
+                    })
+                && group
+                    .location_path_after
+                    .as_ref()
+                    .is_none_or(|value| {
+                        group.location_count_after == 1 && asset_text_is_valid(value, 16_000)
+                    })
+                && group.previous_asset_snapshot_id > 0
+                && group.previous_asset_snapshot_id <= JAVASCRIPT_MAX_SAFE_INTEGER
+                && group.current_asset_snapshot_id > 0
+                && group.current_asset_snapshot_id <= JAVASCRIPT_MAX_SAFE_INTEGER
+                && group.current_asset_sync_run_id > 0
+                && group.current_asset_sync_run_id <= JAVASCRIPT_MAX_SAFE_INTEGER
+                && asset_text_is_valid(&group.observed_at, 64)
+                && correlation_total == Some(group.event_count)
         })
 }
 
@@ -6774,6 +6989,71 @@ fn query_asset_deltas(
     change_type: Option<String>,
     offset: u64,
     limit: u64,
+    type_id: Option<u64>,
+    previous_asset_snapshot_id: Option<u64>,
+    current_asset_snapshot_id: Option<u64>,
+    state: State<'_, RuntimeState>,
+) -> Result<String, String> {
+    let group_values = [
+        type_id,
+        previous_asset_snapshot_id,
+        current_asset_snapshot_id,
+    ];
+    if search.chars().count() > MAX_ASSET_SEARCH_CHARACTERS
+        || search.trim() != search
+        || owner_character_id == Some(0)
+        || owner_character_id.is_some_and(|value| value > JAVASCRIPT_MAX_SAFE_INTEGER)
+        || change_type
+            .as_deref()
+            .is_some_and(|value| !ASSET_DELTA_CHANGE_TYPES.contains(&value))
+        || limit == 0
+        || limit > MAX_ASSET_PAGE_SIZE
+        || offset > JAVASCRIPT_MAX_SAFE_INTEGER
+        || (group_values.iter().any(Option::is_some)
+            && !group_values.iter().all(|value| {
+                value.is_some_and(|inner| inner > 0 && inner <= JAVASCRIPT_MAX_SAFE_INTEGER)
+            }))
+    {
+        return Err("asset-delta-query-invalid".to_owned());
+    }
+    refresh_sidecar_status(&state);
+    let body = serde_json::json!({
+        "search": search,
+        "ownerCharacterId": owner_character_id,
+        "changeType": change_type,
+        "offset": offset,
+        "limit": limit,
+        "typeId": type_id,
+        "previousAssetSnapshotId": previous_asset_snapshot_id,
+        "currentAssetSnapshotId": current_asset_snapshot_id,
+    })
+    .to_string();
+    let response = {
+        let sidecar = state
+            .sidecar
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let process = sidecar
+            .as_ref()
+            .ok_or_else(|| "sidecar-unavailable".to_owned())?;
+        sidecar_json_request(process, "POST", "/assets/deltas/query", &body)
+            .map_err(str::to_owned)?
+    };
+    let page: AssetDeltaQueryResponse =
+        serde_json::from_str(&response).map_err(|_| "sidecar-response-invalid".to_owned())?;
+    if !asset_delta_response_is_valid(&page) || page.offset != offset || page.limit != limit {
+        return Err("sidecar-response-invalid".to_owned());
+    }
+    serde_json::to_string(&page).map_err(|_| "status-serialization-failed".to_owned())
+}
+
+#[tauri::command]
+fn query_asset_delta_groups(
+    search: String,
+    owner_character_id: Option<u64>,
+    change_type: Option<String>,
+    offset: u64,
+    limit: u64,
     state: State<'_, RuntimeState>,
 ) -> Result<String, String> {
     if search.chars().count() > MAX_ASSET_SEARCH_CHARACTERS
@@ -6806,12 +7086,15 @@ fn query_asset_deltas(
         let process = sidecar
             .as_ref()
             .ok_or_else(|| "sidecar-unavailable".to_owned())?;
-        sidecar_json_request(process, "POST", "/assets/deltas/query", &body)
+        sidecar_json_request(process, "POST", "/assets/deltas/groups/query", &body)
             .map_err(str::to_owned)?
     };
-    let page: AssetDeltaQueryResponse =
+    let page: AssetDeltaGroupQueryResponse =
         serde_json::from_str(&response).map_err(|_| "sidecar-response-invalid".to_owned())?;
-    if !asset_delta_response_is_valid(&page) || page.offset != offset || page.limit != limit {
+    if !asset_delta_group_response_is_valid(&page)
+        || page.offset != offset
+        || page.limit != limit
+    {
         return Err("sidecar-response-invalid".to_owned());
     }
     serde_json::to_string(&page).map_err(|_| "status-serialization-failed".to_owned())
@@ -7179,6 +7462,7 @@ pub fn run() {
             query_character_skills,
             export_assets_csv,
             query_asset_deltas,
+            query_asset_delta_groups,
             update_eve_character,
             delete_eve_character,
             create_account_group,
@@ -7207,7 +7491,8 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::{
-        account_group_record_is_valid, asset_delta_response_is_valid,
+        account_group_record_is_valid, asset_delta_group_response_is_valid,
+        asset_delta_response_is_valid,
         asset_export_response_is_valid, asset_query_response_is_valid,
         asset_summary_query_response_is_valid, authorization_url_is_valid,
         character_skill_query_response_is_valid, character_skill_sync_response_is_valid,
@@ -7217,9 +7502,11 @@ mod tests {
         migrate_to_program_directory_storage, production_plan_record_is_valid, read_window_size,
         release_page_url, research_plan_query_response_is_valid, sidecar_startup_error_code,
         sidecar_startup_error_is_retryable, sso_login_status_is_valid, write_window_size,
-        AccountGroupRecord, AssetDeltaCorrelation, AssetDeltaQueryResponse, AssetDeltaRecord,
-        AssetDeltaSummary, AssetExportResponse, AssetLocationNode, AssetOwner, AssetQueryResponse,
-        AssetRecord, AssetSummaryOwner, AssetSummaryQueryResponse, AssetSummaryRecord,
+        AccountGroupRecord, AssetDeltaCorrelation, AssetDeltaCorrelationSummary,
+        AssetDeltaGroupQueryResponse, AssetDeltaGroupRecord, AssetDeltaQueryResponse,
+        AssetDeltaRecord, AssetDeltaSummary, AssetExportResponse, AssetLocationNode, AssetOwner,
+        AssetQueryResponse, AssetRecord, AssetSummaryOwner, AssetSummaryQueryResponse,
+        AssetSummaryRecord,
         CharacterSkillQueryResponse, CharacterSkillRecord, CharacterSkillSyncCharacterResponse,
         CharacterSkillSyncResponse, EveCharacterRecord, IndustryAssetCorrelation,
         IndustryBlueprintCorrelation, IndustryFacilityQueryResponse, IndustryFacilityRecord,
@@ -7714,6 +8001,10 @@ mod tests {
                 location_type_after: Some("station".to_owned()),
                 location_flag_before: Some("SyntheticHangar".to_owned()),
                 location_flag_after: Some("SyntheticHangar".to_owned()),
+                location_status_before: Some("resolved".to_owned()),
+                location_status_after: Some("resolved".to_owned()),
+                location_path_before: Some("Synthetic System / Input Hangar".to_owned()),
+                location_path_after: Some("Synthetic System / Input Hangar".to_owned()),
                 previous_asset_snapshot_id: 4,
                 current_asset_snapshot_id: 6,
                 current_asset_sync_run_id: 9,
@@ -7757,6 +8048,72 @@ mod tests {
 
         let invalid = AssetDeltaQueryResponse { limit: 201, ..page };
         assert!(!asset_delta_response_is_valid(&invalid));
+
+        let grouped_page = AssetDeltaGroupQueryResponse {
+            items: vec![AssetDeltaGroupRecord {
+                group_id: "b".repeat(64),
+                type_id: 98_001,
+                type_name: "Synthetic Input".to_owned(),
+                owner_character_id: 90_888_001,
+                owner_name: "Builder".to_owned(),
+                change_types: vec!["quantity".to_owned()],
+                event_count: 2,
+                item_count: 2,
+                quantity_before: 17,
+                quantity_after: 9,
+                quantity_delta: -8,
+                location_count_before: 1,
+                location_count_after: 1,
+                location_id_before: Some(60_888_001),
+                location_id_after: Some(60_888_002),
+                location_flag_before: Some("AutoFit".to_owned()),
+                location_flag_after: Some("AutoFit".to_owned()),
+                location_path_before: Some("Synthetic System / Input Box".to_owned()),
+                location_path_after: Some("Synthetic System / Output Box".to_owned()),
+                previous_asset_snapshot_id: 4,
+                current_asset_snapshot_id: 6,
+                current_asset_sync_run_id: 9,
+                observed_at: "2026-09-10T11:00:00Z".to_owned(),
+                age_seconds: 60,
+                job_correlation_summary: AssetDeltaCorrelationSummary {
+                    linked: 0,
+                    ambiguous: 0,
+                    unmatched: 2,
+                    unavailable: 0,
+                    not_applicable: 0,
+                },
+            }],
+            total: 1,
+            event_total: 2,
+            offset: 0,
+            limit: 50,
+            owners: vec![AssetOwner {
+                character_id: 90_888_001,
+                name: "Builder".to_owned(),
+            }],
+            change_types: vec![
+                "added".to_owned(),
+                "removed".to_owned(),
+                "quantity".to_owned(),
+                "location".to_owned(),
+            ],
+            summary: AssetDeltaSummary {
+                added: 0,
+                removed: 0,
+                quantity: 2,
+                location: 0,
+            },
+            has_baseline: true,
+            observed_at: Some("2026-09-10T11:00:00Z".to_owned()),
+            age_seconds: Some(60),
+        };
+        assert!(asset_delta_group_response_is_valid(&grouped_page));
+
+        let invalid_grouped = AssetDeltaGroupQueryResponse {
+            event_total: 1,
+            ..grouped_page
+        };
+        assert!(!asset_delta_group_response_is_valid(&invalid_grouped));
     }
 
     #[test]
