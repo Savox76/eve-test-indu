@@ -35,6 +35,9 @@ class AssetDeltaQuery:
     change_type: str | None = None
     offset: int = 0
     limit: int = DEFAULT_DELTA_PAGE_SIZE
+    type_id: int | None = None
+    previous_asset_snapshot_id: int | None = None
+    current_asset_snapshot_id: int | None = None
 
 
 def validate_asset_delta_query(
@@ -44,6 +47,9 @@ def validate_asset_delta_query(
     change_type: Any = None,
     offset: Any = 0,
     limit: Any = DEFAULT_DELTA_PAGE_SIZE,
+    type_id: Any = None,
+    previous_asset_snapshot_id: Any = None,
+    current_asset_snapshot_id: Any = None,
 ) -> AssetDeltaQuery:
     if not isinstance(search, str) or len(search) > MAX_SEARCH_LENGTH:
         raise AssetDeltaError("asset_delta_query_invalid")
@@ -55,6 +61,21 @@ def validate_asset_delta_query(
     ):
         raise AssetDeltaError("asset_delta_query_invalid")
     if change_type is not None and change_type not in DELTA_CHANGE_TYPES:
+        raise AssetDeltaError("asset_delta_query_invalid")
+    group_values = (type_id, previous_asset_snapshot_id, current_asset_snapshot_id)
+    if any(value is not None for value in group_values) and not all(
+        value is not None for value in group_values
+    ):
+        raise AssetDeltaError("asset_delta_query_invalid")
+    if any(
+        value is not None
+        and (
+            isinstance(value, bool)
+            or not isinstance(value, int)
+            or not 0 < value <= MAX_SAFE_INTEGER
+        )
+        for value in group_values
+    ):
         raise AssetDeltaError("asset_delta_query_invalid")
     if (
         isinstance(offset, bool)
@@ -71,6 +92,9 @@ def validate_asset_delta_query(
         change_type,
         offset,
         limit,
+        type_id,
+        previous_asset_snapshot_id,
+        current_asset_snapshot_id,
     )
 
 
@@ -386,6 +410,82 @@ def _delta_snapshots(connection: sqlite3.Connection) -> Iterable[sqlite3.Row]:
     )
 
 
+def _asset_location_paths(
+    connection: sqlite3.Connection,
+    character_id: int,
+) -> dict[int, dict[int, tuple[str, str | None]]]:
+    """Return the newest complete path map for every historical asset snapshot."""
+    rows = connection.execute(
+        """
+        SELECT cached_snapshots.payload_json
+        FROM cached_snapshots
+        JOIN sync_runs ON sync_runs.id = cached_snapshots.sync_run_id
+        WHERE cached_snapshots.resource=? AND sync_runs.status='completed'
+          AND sync_runs.source='asset_locations'
+        ORDER BY cached_snapshots.observed_at DESC, cached_snapshots.id DESC
+        """,
+        (f"asset_locations:{character_id}",),
+    ).fetchall()
+    snapshots: dict[int, dict[int, tuple[str, str | None]]] = {}
+    for row in rows:
+        payload = _json_object(row["payload_json"])
+        asset_snapshot_id = _positive_integer(payload.get("assetSnapshotId"))
+        if asset_snapshot_id in snapshots:
+            continue
+        raw_locations = payload.get("locations")
+        if payload.get("characterId") != character_id or not isinstance(raw_locations, list):
+            raise AssetDeltaError("asset_delta_location_snapshot_invalid")
+        locations: dict[int, tuple[str, str | None]] = {}
+        for raw_location in raw_locations:
+            if not isinstance(raw_location, Mapping):
+                raise AssetDeltaError("asset_delta_location_snapshot_invalid")
+            item_id = _positive_integer(raw_location.get("itemId"))
+            status = raw_location.get("status")
+            path = raw_location.get("path")
+            if (
+                status not in {"resolved", "restricted", "unresolved", "cycle"}
+                or not isinstance(path, list)
+                or len(path) > 64
+                or item_id in locations
+            ):
+                raise AssetDeltaError("asset_delta_location_snapshot_invalid")
+            labels: list[str] = []
+            for node in path:
+                if not isinstance(node, Mapping):
+                    raise AssetDeltaError("asset_delta_location_snapshot_invalid")
+                node_id = _positive_integer(node.get("locationId"))
+                kind = _bounded_text(node.get("kind"), 40)
+                access = _bounded_text(node.get("access"), 40)
+                name = node.get("name")
+                type_id = node.get("typeId")
+                if (
+                    name is not None
+                    and (
+                        not isinstance(name, str)
+                        or not name.strip()
+                        or name.strip() != name
+                        or len(name) > 200
+                    )
+                    or type_id is not None
+                    and (
+                        isinstance(type_id, bool)
+                        or not isinstance(type_id, int)
+                        or not 0 < type_id <= MAX_SAFE_INTEGER
+                    )
+                ):
+                    raise AssetDeltaError("asset_delta_location_snapshot_invalid")
+                # Reading these values is intentional: all stored nodes remain fail-closed.
+                if not access:
+                    raise AssetDeltaError("asset_delta_location_snapshot_invalid")
+                labels.append(str(name) if name is not None else f"{kind} #{node_id}")
+            path_label = " / ".join(labels)
+            if len(path_label) > 16_000:
+                raise AssetDeltaError("asset_delta_location_snapshot_invalid")
+            locations[item_id] = (str(status), path_label or None)
+        snapshots[asset_snapshot_id] = locations
+    return snapshots
+
+
 def _type_names(connection: sqlite3.Connection) -> dict[int, str]:
     has_sde = connection.execute(
         "SELECT 1 FROM sqlite_master WHERE type='table' AND name='sde_types'"
@@ -404,7 +504,7 @@ def _type_names(connection: sqlite3.Connection) -> dict[int, str]:
     return names
 
 
-def query_asset_deltas(
+def _read_asset_delta_events(
     connection: sqlite3.Connection,
     query: AssetDeltaQuery,
     *,
@@ -416,6 +516,9 @@ def query_asset_deltas(
         change_type=query.change_type,
         offset=query.offset,
         limit=query.limit,
+        type_id=query.type_id,
+        previous_asset_snapshot_id=query.previous_asset_snapshot_id,
+        current_asset_snapshot_id=query.current_asset_snapshot_id,
     )
     current_time = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
     type_names = _type_names(connection)
@@ -429,6 +532,7 @@ def query_asset_deltas(
     latest_observed_at: str | None = None
     has_baseline = False
     seen_event_ids: set[str] = set()
+    location_paths: dict[int, dict[int, dict[int, tuple[str, str | None]]]] = {}
 
     for row in _delta_snapshots(connection):
         character_id = int(row["character_id"])
@@ -468,6 +572,9 @@ def query_asset_deltas(
             raise AssetDeltaError("asset_delta_snapshot_invalid")
         if query.owner_character_id is not None and character_id != query.owner_character_id:
             continue
+        if character_id not in location_paths:
+            location_paths[character_id] = _asset_location_paths(connection, character_id)
+        character_locations = location_paths[character_id]
         if latest_observed_at is None:
             latest_observed_at = current_observed_at
         has_baseline = True
@@ -477,6 +584,12 @@ def query_asset_deltas(
                 raise AssetDeltaError("asset_delta_snapshot_invalid")
             seen_event_ids.add(str(event["eventId"]))
             if query.change_type is not None and query.change_type not in event["changeTypes"]:
+                continue
+            if query.type_id is not None and (
+                int(event["typeId"]) != query.type_id
+                or payload.get("previousAssetSnapshotId") != query.previous_asset_snapshot_id
+                or payload.get("currentAssetSnapshotId") != query.current_asset_snapshot_id
+            ):
                 continue
             persisted_correlation = event["jobCorrelation"]
             if not isinstance(persisted_correlation, Mapping):
@@ -495,6 +608,28 @@ def query_asset_deltas(
                 ),
             )
             type_name = type_names.get(int(event["typeId"]), f"Type #{event['typeId']}")
+            item_id = int(event["itemId"])
+            previous_id = _nullable_positive(payload.get("previousAssetSnapshotId"))
+            current_id = _positive_integer(payload.get("currentAssetSnapshotId"))
+            before_location = (
+                None
+                if previous_id is None
+                else character_locations.get(previous_id, {}).get(item_id)
+            )
+            after_location = character_locations.get(current_id, {}).get(item_id)
+            if (
+                event["quantityBefore"] is not None
+                and previous_id in character_locations
+                and before_location is None
+                or event["quantityAfter"] is not None
+                and current_id in character_locations
+                and after_location is None
+            ):
+                raise AssetDeltaError("asset_delta_location_snapshot_invalid")
+            location_status_before = None if before_location is None else before_location[0]
+            location_path_before = None if before_location is None else before_location[1]
+            location_status_after = None if after_location is None else after_location[0]
+            location_path_after = None if after_location is None else after_location[1]
             if search_tokens:
                 haystack = " ".join(
                     (
@@ -508,6 +643,8 @@ def query_asset_deltas(
                         str(event["locationFlagAfter"] or ""),
                         str(event["locationIdBefore"] or ""),
                         str(event["locationIdAfter"] or ""),
+                        str(location_path_before or ""),
+                        str(location_path_after or ""),
                         " ".join(str(value) for value in event["jobCorrelation"]["jobIds"]),
                     )
                 ).casefold()
@@ -521,8 +658,12 @@ def query_asset_deltas(
                     "typeName": type_name,
                     "ownerCharacterId": character_id,
                     "ownerName": owner_name,
-                    "previousAssetSnapshotId": payload.get("previousAssetSnapshotId"),
-                    "currentAssetSnapshotId": _positive_integer(payload.get("currentAssetSnapshotId")),
+                    "locationStatusBefore": location_status_before,
+                    "locationPathBefore": location_path_before,
+                    "locationStatusAfter": location_status_after,
+                    "locationPathAfter": location_path_after,
+                    "previousAssetSnapshotId": previous_id,
+                    "currentAssetSnapshotId": current_id,
                     "currentAssetSyncRunId": _positive_integer(payload.get("currentAssetSyncRunId")),
                     "observedAt": observed_at,
                     "ageSeconds": age_seconds,
@@ -550,8 +691,6 @@ def query_asset_deltas(
         ),
         reverse=True,
     )
-    total = len(events)
-    page = events[query.offset : query.offset + query.limit]
     summary = {
         change_type: sum(change_type in event["changeTypes"] for event in events)
         for change_type in DELTA_CHANGE_TYPES
@@ -568,14 +707,186 @@ def query_asset_deltas(
         else max(0, int((current_time - _parse_timestamp(latest_observed_at)).total_seconds()))
     )
     return {
-        "items": page,
-        "total": total,
-        "offset": query.offset,
-        "limit": query.limit,
+        "events": events,
         "owners": owner_options,
         "changeTypes": list(DELTA_CHANGE_TYPES),
         "summary": summary,
         "hasBaseline": has_baseline,
         "observedAt": latest_observed_at,
         "ageSeconds": age_seconds,
+    }
+
+
+def query_asset_deltas(
+    connection: sqlite3.Connection,
+    query: AssetDeltaQuery,
+    *,
+    now: datetime | None = None,
+) -> dict[str, object]:
+    result = _read_asset_delta_events(connection, query, now=now)
+    events = result.pop("events")
+    if not isinstance(events, list):
+        raise AssetDeltaError("asset_delta_snapshot_invalid")
+    return {
+        "items": events[query.offset : query.offset + query.limit],
+        "total": len(events),
+        "offset": query.offset,
+        "limit": query.limit,
+        **result,
+    }
+
+
+def _checked_group_quantity(value: int) -> int:
+    if abs(value) > MAX_SAFE_INTEGER:
+        raise AssetDeltaError("asset_delta_group_overflow")
+    return value
+
+
+def query_asset_delta_groups(
+    connection: sqlite3.Connection,
+    query: AssetDeltaQuery,
+    *,
+    now: datetime | None = None,
+) -> dict[str, object]:
+    """Group filtered events before pagination without weakening their audit evidence."""
+    if any(
+        value is not None
+        for value in (
+            query.type_id,
+            query.previous_asset_snapshot_id,
+            query.current_asset_snapshot_id,
+        )
+    ):
+        raise AssetDeltaError("asset_delta_query_invalid")
+    result = _read_asset_delta_events(connection, query, now=now)
+    events = result.pop("events")
+    if not isinstance(events, list):
+        raise AssetDeltaError("asset_delta_snapshot_invalid")
+    grouped: dict[tuple[int, int, int, int], dict[str, Any]] = {}
+    for event in events:
+        previous_id = int(event["previousAssetSnapshotId"])
+        current_id = int(event["currentAssetSnapshotId"])
+        key = (
+            int(event["ownerCharacterId"]),
+            int(event["typeId"]),
+            previous_id,
+            current_id,
+        )
+        group = grouped.get(key)
+        if group is None:
+            group_id = _event_id(
+                {
+                    "ownerCharacterId": key[0],
+                    "typeId": key[1],
+                    "previousAssetSnapshotId": key[2],
+                    "currentAssetSnapshotId": key[3],
+                }
+            )
+            group = {
+                "groupId": group_id,
+                "typeId": key[1],
+                "typeName": event["typeName"],
+                "ownerCharacterId": key[0],
+                "ownerName": event["ownerName"],
+                "changeTypes": set(),
+                "eventCount": 0,
+                "itemIds": set(),
+                "quantityBefore": 0,
+                "quantityAfter": 0,
+                "quantityDelta": 0,
+                "locationsBefore": set(),
+                "locationsAfter": set(),
+                "previousAssetSnapshotId": previous_id,
+                "currentAssetSnapshotId": current_id,
+                "currentAssetSyncRunId": event["currentAssetSyncRunId"],
+                "observedAt": event["observedAt"],
+                "ageSeconds": event["ageSeconds"],
+                "correlations": {
+                    "linked": 0,
+                    "ambiguous": 0,
+                    "unmatched": 0,
+                    "unavailable": 0,
+                    "not-applicable": 0,
+                },
+            }
+            grouped[key] = group
+        group["eventCount"] += 1
+        group["itemIds"].add(int(event["itemId"]))
+        group["changeTypes"].update(event["changeTypes"])
+        group["quantityBefore"] = _checked_group_quantity(
+            int(group["quantityBefore"]) + int(event["quantityBefore"] or 0)
+        )
+        group["quantityAfter"] = _checked_group_quantity(
+            int(group["quantityAfter"]) + int(event["quantityAfter"] or 0)
+        )
+        group["quantityDelta"] = _checked_group_quantity(
+            int(group["quantityDelta"]) + int(event["quantityDelta"])
+        )
+        for side in ("Before", "After"):
+            location_id = event[f"locationId{side}"]
+            if location_id is not None:
+                group[f"locations{side}"].add(
+                    (
+                        int(location_id),
+                        event[f"locationType{side}"],
+                        event[f"locationFlag{side}"],
+                        event[f"locationPath{side}"],
+                    )
+                )
+        state = str(event["jobCorrelation"]["state"])
+        group["correlations"][state] += 1
+
+    groups: list[dict[str, object]] = []
+    for group in grouped.values():
+        before_locations = group.pop("locationsBefore")
+        after_locations = group.pop("locationsAfter")
+        item_ids = group.pop("itemIds")
+        change_types = group.pop("changeTypes")
+
+        def single_location(
+            values: set[tuple[int, str | None, str | None, str | None]],
+        ) -> tuple[int | None, str | None, str | None]:
+            if len(values) != 1:
+                return None, None, None
+            location_id, _location_type, flag, path = next(iter(values))
+            return location_id, flag, path
+
+        before_id, before_flag, before_path = single_location(before_locations)
+        after_id, after_flag, after_path = single_location(after_locations)
+        correlation_summary = group.pop("correlations")
+        groups.append(
+            {
+                **group,
+                "changeTypes": [
+                    change_type
+                    for change_type in DELTA_CHANGE_TYPES
+                    if change_type in change_types
+                ],
+                "itemCount": len(item_ids),
+                "locationCountBefore": len(before_locations),
+                "locationCountAfter": len(after_locations),
+                "locationIdBefore": before_id,
+                "locationIdAfter": after_id,
+                "locationFlagBefore": before_flag,
+                "locationFlagAfter": after_flag,
+                "locationPathBefore": before_path,
+                "locationPathAfter": after_path,
+                "jobCorrelationSummary": correlation_summary,
+            }
+        )
+    groups.sort(
+        key=lambda group: (
+            _parse_timestamp(group["observedAt"]),
+            str(group["typeName"]).casefold(),
+            str(group["groupId"]),
+        ),
+        reverse=True,
+    )
+    return {
+        "items": groups[query.offset : query.offset + query.limit],
+        "total": len(groups),
+        "eventTotal": len(events),
+        "offset": query.offset,
+        "limit": query.limit,
+        **result,
     }
