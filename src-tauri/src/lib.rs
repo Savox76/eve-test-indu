@@ -4380,18 +4380,12 @@ fn production_purchase_market_item_is_valid(item: &ProductionPurchaseListItem) -
     if item.market_state == "snapshot-missing" {
         return all_missing;
     }
-    let (
-        Some(covered),
-        Some(uncovered),
-        Some(order_count),
-        purchase_cost,
-    ) = (
+    let (Some(covered), Some(uncovered), Some(order_count), purchase_cost) = (
         item.covered_quantity,
         item.uncovered_quantity,
         item.used_order_count,
         item.purchase_cost_cents,
-    )
-    else {
+    ) else {
         return false;
     };
     if covered.checked_add(uncovered) != Some(item.quantity) {
@@ -4531,10 +4525,7 @@ fn production_purchase_list_is_valid(list: &ProductionPurchaseList, plan_count: 
         && list.state == expected_state
         && list.market_hubs.len() == MARKET_HUB_IDS.len()
         && hub_ids == MARKET_HUB_IDS
-        && list
-            .market_hubs
-            .iter()
-            .all(production_market_hub_is_valid)
+        && list.market_hubs.iter().all(production_market_hub_is_valid)
         && production_market_hub_is_valid(&list.market_hub)
         && selected_hub_count == 1
         && list.market_price_rule == "selected-hub-lowest-sell-orders-volume-weighted-cents"
