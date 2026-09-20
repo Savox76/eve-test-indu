@@ -516,6 +516,9 @@ class SidecarIntegrationTests(unittest.TestCase):
                         "changeType": None,
                         "offset": 0,
                         "limit": 50,
+                        "typeId": None,
+                        "previousAssetSnapshotId": None,
+                        "currentAssetSnapshotId": None,
                     }
                 ).encode(),
                 method="POST",
@@ -530,6 +533,31 @@ class SidecarIntegrationTests(unittest.TestCase):
             self.assertEqual(delta_page["total"], 0)
             self.assertEqual(delta_page["limit"], 50)
             self.assertFalse(delta_page["hasBaseline"])
+
+            delta_group_query_request = urllib.request.Request(
+                f"{base_url}/assets/deltas/groups/query",
+                data=json.dumps(
+                    {
+                        "search": "",
+                        "ownerCharacterId": None,
+                        "changeType": None,
+                        "offset": 0,
+                        "limit": 50,
+                    }
+                ).encode(),
+                method="POST",
+                headers={
+                    "Authorization": f"Bearer {SYNTHETIC_SESSION_TOKEN}",
+                    "Content-Type": "application/json",
+                },
+            )
+            with opener.open(delta_group_query_request, timeout=3) as response:
+                delta_group_page = json.loads(response.read())
+            self.assertEqual(delta_group_page["items"], [])
+            self.assertEqual(delta_group_page["total"], 0)
+            self.assertEqual(delta_group_page["eventTotal"], 0)
+            self.assertEqual(delta_group_page["limit"], 50)
+            self.assertFalse(delta_group_page["hasBaseline"])
 
             blueprint_query_request = urllib.request.Request(
                 f"{base_url}/blueprints/query",
