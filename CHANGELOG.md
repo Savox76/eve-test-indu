@@ -6,11 +6,34 @@ Alle bemerkenswerten Änderungen an New Eden Foundry werden hier festgehalten. D
 
 ### Neu hinzugefügt
 
+- Keine.
+
+### Geändert
+
+- Keine.
+
+### Behobene Fehler
+
+- Keine.
+
+### Bekannte Einschränkungen
+
+- Keine.
+
+### Update und Datenbankmigration
+
+- Keine.
+
+## 0.2.0-alpha.17 – 20. September 2026
+
+### Neu hinzugefügt
+
 - Paket 44 ergänzt stationsexakte Sofortkaufpreise aus öffentlichen ESI-Sell-Orders für Jita, Amarr, Dodixie, Hek und Rens; Jita bleibt der persistierte Standard.
 - Die Einkaufsliste zeigt je Material Preisabdeckung, gewichteten Einheitspreis, verwendete Ordertiefe und reale Sofortkaufkosten sowie den zusätzlichen Kapitalbedarf einschließlich vollständiger Installationskosten.
 
 ### Geändert
 
+- Die sichtbare Versionsnummer lautet `v0.2.0-alpha.17`.
 - Es wird ausschließlich die ausdrücklich ausgewählte Handelsstation abgefragt; ein fehlender oder fehlerhafter Stand fällt niemals stillschweigend auf Jita oder einen anderen Hub zurück.
 - Marktstände werden für höchstens 250 aktuell fehlende Typen vollständig paginiert, 15 Minuten lang als aktuell eingestuft und erst nach vollständiger Validierung atomar veröffentlicht.
 
@@ -26,6 +49,7 @@ Alle bemerkenswerten Änderungen an New Eden Foundry werden hier festgehalten. D
 ### Update und Datenbankmigration
 
 - Das Datenbankschema bleibt bei Version 14; bestehende Charaktere, Einstellungen, Ziele und Snapshots bleiben unverändert erhalten.
+- Für ein Installer-Update die Anwendung vollständig schließen und die Option zum Löschen der Anwendungsdaten abgewählt lassen. Für ein portables Update die neue Alpha in einen neuen Ordner entpacken und den bisherigen `data`-Ordner bei geschlossener Anwendung übernehmen.
 
 ## 0.2.0-alpha.16 – 20. September 2026
 
