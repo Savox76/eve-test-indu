@@ -6,13 +6,11 @@ Alle bemerkenswerten Änderungen an New Eden Foundry werden hier festgehalten. D
 
 ### Neu hinzugefügt
 
-- Paket 42 gruppiert Asset-Änderungen standardmäßig nach Besitzer, Typ und Snapshotvergleich und bietet einen begrenzt geladenen Drill-down auf die zugehörigen Einzelereignisse.
-- Historische Asset-Änderungen zeigen die exakt zum damaligen Asset-Snapshot gehörenden Stations-, Struktur- und Containerpfade, sofern ein vollständiger Standort-Snapshot vorliegt.
+- Keine.
 
 ### Geändert
 
-- Die ungegruppte Ereignisansicht bleibt per Umschalter verfügbar; Gruppierung und Filterung erfolgen serverseitig vor der Pagination.
-- Das rohe ESI-Bereichsflag `AutoFit` erscheint nur noch als sekundärer technischer Nachweis und wird verständlich als Containerbereich eingeordnet.
+- Keine.
 
 ### Behobene Fehler
 
@@ -25,6 +23,33 @@ Alle bemerkenswerten Änderungen an New Eden Foundry werden hier festgehalten. D
 ### Update und Datenbankmigration
 
 - Keine.
+
+## 0.2.0-alpha.15 – 20. September 2026
+
+### Neu hinzugefügt
+
+- Paket 42 gruppiert Asset-Änderungen standardmäßig nach Besitzer, Typ und Snapshotvergleich und bietet einen begrenzt geladenen Drill-down auf die zugehörigen Einzelereignisse.
+- Historische Asset-Änderungen zeigen die exakt zum damaligen Asset-Snapshot gehörenden Stations-, Struktur- und Containerpfade, sofern ein vollständiger Standort-Snapshot vorliegt.
+
+### Geändert
+
+- Die sichtbare Versionsnummer lautet `v0.2.0-alpha.15`.
+- Die ungegruppte Ereignisansicht bleibt per Umschalter verfügbar; Gruppierung und Filterung erfolgen serverseitig vor der Pagination.
+- Das rohe ESI-Bereichsflag `AutoFit` erscheint nur noch als sekundärer technischer Nachweis und wird verständlich als Containerbereich eingeordnet.
+
+### Behobene Fehler
+
+- Nicht auflösbare historische Standorte lassen den Änderungsverlauf nicht mehr vollständig scheitern; Flag und Location-ID bleiben ohne erfundenen Pfad sichtbar.
+
+### Bekannte Einschränkungen
+
+- Ein historischer lesbarer Standortpfad setzt einen vollständigen Standort-Snapshot für den jeweiligen Asset-Snapshot voraus; andernfalls bleiben Bereichsflag und Location-ID sichtbar.
+- Die Alpha ist noch nicht produktiv code-signiert; SmartScreen kann deshalb weiterhin vor einem unbekannten Herausgeber warnen.
+
+### Update und Datenbankmigration
+
+- Das Datenbankschema bleibt bei Version 14; bestehende Charaktere, Einstellungen, Pläne und Snapshots bleiben unverändert erhalten.
+- Für ein Installer-Update die Anwendung vollständig schließen und die Option zum Löschen der Anwendungsdaten abgewählt lassen. Für ein portables Update die neue Alpha in einen neuen Ordner entpacken und den bisherigen `data`-Ordner bei geschlossener Anwendung übernehmen.
 
 ## 0.2.0-alpha.14 – 19. September 2026
 
