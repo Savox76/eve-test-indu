@@ -4,7 +4,7 @@
 
 **Stand:** 20. September 2026
 
-**Status:** Paket 43 – vollständige Installationskosten mit offiziellem SCC-Zuschlag technisch abgeschlossen
+**Status:** Paket 44 – Multi-Hub-Sofortkaufpreise und realer Einkaufsbedarf technisch abgeschlossen
 
 **Geltungsbereich:** `Savox76/eve-test-indu`
 
@@ -209,6 +209,7 @@ Die Reihenfolge ist verbindlicher als eine Kalenderangabe.
 | 41 | Belegte Installationskostenbasis | Offizielle angepasste ESI-Preise, aktivitätsspezifischer Systemkostenindex und eine ausdrücklich gespeicherte Anlagensteuer ergeben je gebautem Schritt eine quellenbelegte Kostenbasis; fehlende Preise oder Belege bleiben sichtbar statt geschätzt |
 | 42 | Gruppierte Asset-Änderungen und historische Standortpfade | Asset-Änderungen werden vor Pagination nach Besitzer, Typ und Snapshotvergleich gruppiert; aufklappbare Einzelereignisse zeigen die exakt historischen Standortpfade und behandeln rohe ESI-Bereichsflags nur als sekundären Nachweis |
 | 43 | Vollständige Installationskosten mit SCC-Zuschlag | Der offizielle SCC-Zuschlag von 4 Prozent wird je gebautem Job aus dem ungerundeten Eingabewert berechnet, separat auf volle ISK aufgerundet und neben Systemkosten sowie ausdrücklicher Anlagensteuer bis zur Zielsumme nachvollziehbar ausgewiesen |
+| 44 | Multi-Hub-Sofortkaufpreise und realer Einkaufsbedarf | Die Fehlmengen werden am ausdrücklich gewählten Hub Jita, Amarr, Dodixie, Hek oder Rens aus vollständig paginierten stationsexakten Sell Orders nach realer Markttiefe bepreist; Abdeckung, Quellenstand, Gesamtkaufpreis und zusätzlicher Kapitalbedarf bleiben nachvollziehbar |
 
 ### Aktueller Stand
 
@@ -254,7 +255,8 @@ Die Reihenfolge ist verbindlicher als eine Kalenderangabe.
 - **Abgeschlossen:** 41 – Der vollständige Anlagen-Snapshot enthält zusätzlich die offiziellen angepassten Preise aus ESI. Für jeden tatsächlich gebauten Schritt wird der geschätzte Eingabewert aus unveränderten SDE-Basismaterialmengen und Läufen gebildet; Systemkostenindex und ausdrücklich gespeicherte Anlagensteuer werden getrennt aufgerundet und samt Preis-, Anlagen- und Systembeleg ausgewiesen. Zielebene und Oberfläche aggregieren ausschließlich berechenbare Schritte und unterscheiden `ready`, `partial`, `unconfigured`, `unavailable` und `not-applicable`. Schema 14 ergänzt die optionale Anlagensteuer in Basispunkten; bestehende Ziele bleiben bewusst unkonfiguriert.
 - **Abgeschlossen:** 42 – Der Asset-Änderungsverlauf gruppiert standardmäßig alle gefilterten Ereignisse vor der Seitenteilung nach Besitzer, Typ und Snapshotvergleich. Gruppen weisen betroffene Items, Ereignisse, Mengen, Standorte und Jobkorrelationszustände aus und laden ihre exakt gefilterten Einzelereignisse begrenzt nach. Die historischen, zum jeweiligen Asset-Snapshot gehörenden vollständigen Standortpfade werden als Hauptangabe gezeigt; Location-ID und das rohe ESI-Flag wie `AutoFit` bleiben sekundäre Belege. Ein Umschalter erhält die ungegruppte Ereignisansicht. Das Schema bleibt bei Version 14.
 - **Abgeschlossen:** 43 – Jeder tatsächlich gebaute Produktionsschritt berechnet zusätzlich zu Systemkosten und ausdrücklicher Anlagensteuer den offiziellen SCC-Zuschlag von 4 Prozent aus demselben ungerundeten EVE-Eingabewert. Alle drei Gebühren werden jobweise getrennt auf volle ISK aufgerundet, in DE/EN einzeln dargestellt und erst danach zur vollständigen geschätzten Installationskostensumme addiert. Der native Vertrag weist den festen Satz aus und verwirft abweichende Antworten. Das Schema bleibt bei Version 14.
-- **Als Nächstes:** Das nächste Fachpaket wird separat festgelegt. Live-Marktpreise, Handelsort, automatisch erkannte Struktur-/Service-/Rigmodifikatoren, Transport und belastbare Endtermine bleiben bis zu eigenen Fachverträgen ausgeschlossen.
+- **Abgeschlossen:** 44 – Jita, Amarr, Dodixie, Hek und Rens sind als getrennte, stationsexakte Marktprofile verfügbar; Jita bleibt der lokal persistierte Standard. Für höchstens 250 aktuell fehlende Typen lädt die Anwendung nur den gewählten Hub, paginiert dessen öffentliche Sell Orders vollständig und veröffentlicht den neuen Stand erst atomar nach strikter Validierung. Die Einkaufsliste verbraucht die günstigsten Orders bis zur benötigten Menge, weist Voll-, Teil- und Nichtdeckung, gewichteten Einheitspreis, Gesamtkaufpreis, Quelle und Alter aus und addiert den Kaufpreis nur bei vollständiger Deckung zu den belegten Installationskosten. Ein Fehler erhält den letzten vollständigen Hub-Snapshot; ein Hubwechsel fällt nie still auf Jita zurück. Das Schema bleibt bei Version 14.
+- **Als Nächstes:** Das nächste Fachpaket wird separat festgelegt. Automatischer Hubvergleich, Buy Orders, Verkaufs-/Gewinnrechnung, Transport, automatisch erkannte Struktur-/Service-/Rigmodifikatoren und belastbare Endtermine bleiben bis zu eigenen Fachverträgen ausgeschlossen.
 - Architektur-Gate A0 ist vollständig erfüllt; `v0.2.0-alpha.1` bildet die erste freigegebene Alpha-Grundlage für die folgenden Produktionspakete.
 
 ## 13. Entscheidungs- und Quellenrang

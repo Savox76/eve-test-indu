@@ -6,11 +6,13 @@ Alle bemerkenswerten Änderungen an New Eden Foundry werden hier festgehalten. D
 
 ### Neu hinzugefügt
 
-- Keine.
+- Paket 44 ergänzt stationsexakte Sofortkaufpreise aus öffentlichen ESI-Sell-Orders für Jita, Amarr, Dodixie, Hek und Rens; Jita bleibt der persistierte Standard.
+- Die Einkaufsliste zeigt je Material Preisabdeckung, gewichteten Einheitspreis, verwendete Ordertiefe und reale Sofortkaufkosten sowie den zusätzlichen Kapitalbedarf einschließlich vollständiger Installationskosten.
 
 ### Geändert
 
-- Keine.
+- Es wird ausschließlich die ausdrücklich ausgewählte Handelsstation abgefragt; ein fehlender oder fehlerhafter Stand fällt niemals stillschweigend auf Jita oder einen anderen Hub zurück.
+- Marktstände werden für höchstens 250 aktuell fehlende Typen vollständig paginiert, 15 Minuten lang als aktuell eingestuft und erst nach vollständiger Validierung atomar veröffentlicht.
 
 ### Behobene Fehler
 
@@ -18,11 +20,12 @@ Alle bemerkenswerten Änderungen an New Eden Foundry werden hier festgehalten. D
 
 ### Bekannte Einschränkungen
 
-- Keine.
+- Automatischer Preisvergleich zwischen Hubs, Buy Orders, Verkaufs-/Gewinnrechnung, Transportkosten und automatisch erkannte Struktur-/Service-/Rigmodifikatoren sind nicht enthalten.
+- Die Alpha ist noch nicht produktiv code-signiert; SmartScreen kann deshalb weiterhin vor einem unbekannten Herausgeber warnen.
 
 ### Update und Datenbankmigration
 
-- Keine.
+- Das Datenbankschema bleibt bei Version 14; bestehende Charaktere, Einstellungen, Ziele und Snapshots bleiben unverändert erhalten.
 
 ## 0.2.0-alpha.16 – 20. September 2026
 

@@ -176,6 +176,17 @@ const PRODUCTION_PLAN_INSTALLATION_COST_STATES: [&str; 5] = [
     "not-applicable",
 ];
 const SCC_SURCHARGE_BASIS_POINTS: u16 = 400;
+const MARKET_HUB_IDS: [&str; 5] = ["jita", "amarr", "dodixie", "hek", "rens"];
+const MARKET_ITEM_STATES: [&str; 4] = ["ready", "partial", "unavailable", "snapshot-missing"];
+const MARKET_PRICING_STATES: [&str; 6] = [
+    "ready",
+    "partial",
+    "unavailable",
+    "snapshot-missing",
+    "stale",
+    "empty",
+];
+const MARKET_PRICE_TYPE_LIMIT: u64 = 250;
 const PRODUCTION_PLAN_SORT_FIELDS: [&str; 6] = [
     "priority", "product", "owner", "activity", "state", "updated",
 ];
@@ -680,6 +691,17 @@ struct IndustryFacilitySyncResponse {
     systems: u64,
     prices: u64,
     resolved_names: u64,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct MarketPriceSyncResponse {
+    sync_run_id: u64,
+    hub_id: String,
+    type_count: u64,
+    order_count: u64,
+    page_count: u64,
+    observed_at: String,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -1224,6 +1246,25 @@ struct ProductionPurchaseListItem {
     inventory_shortage_quantity: u64,
     reservation_conflict_quantity: u64,
     plan_count: u64,
+    market_state: String,
+    covered_quantity: Option<u64>,
+    uncovered_quantity: Option<u64>,
+    used_order_count: Option<u64>,
+    lowest_unit_price_cents: Option<u64>,
+    weighted_unit_price_cents: Option<u64>,
+    purchase_cost_cents: Option<u64>,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ProductionMarketHub {
+    hub_id: String,
+    name: String,
+    station_id: u64,
+    station_name: String,
+    solar_system_id: u64,
+    region_id: u64,
+    priority: u8,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -1236,6 +1277,23 @@ struct ProductionPurchaseList {
     included_plan_count: u64,
     unresolved_plan_count: u64,
     omitted_item_count: u64,
+    market_hub: ProductionMarketHub,
+    market_hubs: Vec<ProductionMarketHub>,
+    market_price_rule: String,
+    market_price_type_limit: u64,
+    pricing_state: String,
+    market_snapshot_id: Option<u64>,
+    market_sync_run_id: Option<u64>,
+    market_observed_at: Option<String>,
+    market_age_seconds: Option<u64>,
+    fully_covered_item_count: u64,
+    partially_covered_item_count: u64,
+    unavailable_item_count: u64,
+    snapshot_missing_item_count: u64,
+    total_purchase_cost_cents: u64,
+    installation_cost_state: String,
+    estimated_installation_cost: Option<u64>,
+    additional_capital_need_cents: Option<u64>,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -1271,6 +1329,8 @@ struct ProductionPlanQueryResponse {
     facility_modifier_rule: String,
     purchase_list_applied: bool,
     purchase_list_rule: String,
+    market_prices_applied: bool,
+    market_price_rule: String,
     installation_costs_applied: bool,
     installation_cost_rule: String,
     remaining_modifiers_applied: bool,
@@ -2475,6 +2535,18 @@ fn industry_facility_sync_response_is_valid(response: &IndustryFacilitySyncRespo
         && response.prices <= JAVASCRIPT_MAX_SAFE_INTEGER
         && response.resolved_names > 0
         && response.resolved_names <= JAVASCRIPT_MAX_SAFE_INTEGER
+}
+
+fn market_price_sync_response_is_valid(response: &MarketPriceSyncResponse) -> bool {
+    response.sync_run_id > 0
+        && response.sync_run_id <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && MARKET_HUB_IDS.contains(&response.hub_id.as_str())
+        && response.type_count > 0
+        && response.type_count <= MARKET_PRICE_TYPE_LIMIT
+        && response.order_count <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && response.page_count >= response.type_count
+        && response.page_count <= response.type_count.saturating_mul(1_000)
+        && asset_text_is_valid(&response.observed_at, 64)
 }
 
 fn industry_slot_activity_is_valid(item: &IndustrySlotActivity, index: usize) -> bool {
@@ -4243,6 +4315,115 @@ fn production_plan_record_is_valid(item: &ProductionPlanRecord) -> bool {
         && resolution_shape
 }
 
+fn production_market_hub_is_valid(hub: &ProductionMarketHub) -> bool {
+    let expected = match hub.hub_id.as_str() {
+        "jita" => (
+            "Jita",
+            60_003_760,
+            "Jita IV - Moon 4 - Caldari Navy Assembly Plant",
+            30_000_142,
+            10_000_002,
+            0,
+        ),
+        "amarr" => (
+            "Amarr",
+            60_008_494,
+            "Amarr VIII (Oris) - Emperor Family Academy",
+            30_002_187,
+            10_000_043,
+            1,
+        ),
+        "dodixie" => (
+            "Dodixie",
+            60_011_866,
+            "Dodixie IX - Moon 20 - Federation Navy Assembly Plant",
+            30_002_659,
+            10_000_032,
+            2,
+        ),
+        "hek" => (
+            "Hek",
+            60_005_686,
+            "Hek VIII - Moon 12 - Boundless Creation Factory",
+            30_002_053,
+            10_000_042,
+            3,
+        ),
+        "rens" => (
+            "Rens",
+            60_004_588,
+            "Rens VI - Moon 8 - Brutor Tribe Treasury",
+            30_002_510,
+            10_000_030,
+            4,
+        ),
+        _ => return false,
+    };
+    hub.name == expected.0
+        && hub.station_id == expected.1
+        && hub.station_name == expected.2
+        && hub.solar_system_id == expected.3
+        && hub.region_id == expected.4
+        && hub.priority == expected.5
+}
+
+fn production_purchase_market_item_is_valid(item: &ProductionPurchaseListItem) -> bool {
+    if !MARKET_ITEM_STATES.contains(&item.market_state.as_str()) {
+        return false;
+    }
+    let all_missing = item.covered_quantity.is_none()
+        && item.uncovered_quantity.is_none()
+        && item.used_order_count.is_none()
+        && item.lowest_unit_price_cents.is_none()
+        && item.weighted_unit_price_cents.is_none()
+        && item.purchase_cost_cents.is_none();
+    if item.market_state == "snapshot-missing" {
+        return all_missing;
+    }
+    let (
+        Some(covered),
+        Some(uncovered),
+        Some(order_count),
+        purchase_cost,
+    ) = (
+        item.covered_quantity,
+        item.uncovered_quantity,
+        item.used_order_count,
+        item.purchase_cost_cents,
+    )
+    else {
+        return false;
+    };
+    if covered.checked_add(uncovered) != Some(item.quantity) {
+        return false;
+    }
+    if item.market_state == "unavailable" {
+        return covered == 0
+            && uncovered == item.quantity
+            && order_count == 0
+            && item.lowest_unit_price_cents.is_none()
+            && item.weighted_unit_price_cents.is_none()
+            && purchase_cost == Some(0);
+    }
+    let (Some(lowest), Some(weighted), Some(cost)) = (
+        item.lowest_unit_price_cents,
+        item.weighted_unit_price_cents,
+        purchase_cost,
+    ) else {
+        return false;
+    };
+    covered > 0
+        && order_count > 0
+        && lowest > 0
+        && weighted >= lowest
+        && cost > 0
+        && cost
+            .checked_add(covered - 1)
+            .is_some_and(|value| value / covered == weighted)
+        && ((item.market_state == "ready" && uncovered == 0)
+            || (item.market_state == "partial" && uncovered > 0))
+}
+
 fn production_purchase_list_is_valid(list: &ProductionPurchaseList, plan_count: u64) -> bool {
     let type_ids = list
         .items
@@ -4260,6 +4441,75 @@ fn production_purchase_list_is_valid(list: &ProductionPurchaseList, plan_count: 
         "empty"
     } else {
         "ready"
+    };
+    let market_source_ready = list.market_snapshot_id.is_some()
+        && list.market_sync_run_id.is_some()
+        && list
+            .market_observed_at
+            .as_ref()
+            .is_some_and(|value| asset_text_is_valid(value, 64))
+        && list.market_age_seconds.is_some();
+    let market_source_missing = list.market_snapshot_id.is_none()
+        && list.market_sync_run_id.is_none()
+        && list.market_observed_at.is_none()
+        && list.market_age_seconds.is_none();
+    let market_state_counts = list.items.iter().fold([0_u64; 4], |mut counts, item| {
+        if let Some(index) = MARKET_ITEM_STATES
+            .iter()
+            .position(|state| *state == item.market_state)
+        {
+            counts[index] += 1;
+        }
+        counts
+    });
+    let total_purchase_cost = list.items.iter().try_fold(0_u64, |total, item| {
+        total.checked_add(item.purchase_cost_cents.unwrap_or(0))
+    });
+    let hub_ids = list
+        .market_hubs
+        .iter()
+        .map(|hub| hub.hub_id.as_str())
+        .collect::<Vec<_>>();
+    let selected_hub_count = list
+        .market_hubs
+        .iter()
+        .filter(|hub| hub.hub_id == list.market_hub.hub_id)
+        .count();
+    let pricing_shape = match list.pricing_state.as_str() {
+        "empty" => list.items.is_empty(),
+        "snapshot-missing" => {
+            !list.items.is_empty()
+                && market_source_missing
+                && market_state_counts[3] == list.items.len() as u64
+        }
+        "ready" => {
+            !list.items.is_empty()
+                && list.state == "ready"
+                && market_source_ready
+                && market_state_counts[0] == list.items.len() as u64
+        }
+        "unavailable" => {
+            !list.items.is_empty()
+                && market_source_ready
+                && market_state_counts[2] == list.items.len() as u64
+        }
+        "stale" => !list.items.is_empty() && market_source_ready,
+        "partial" => !list.items.is_empty() && market_source_ready,
+        _ => false,
+    };
+    let installation_shape = match list.installation_cost_state.as_str() {
+        "ready" | "partial" => list.estimated_installation_cost.is_some(),
+        "unavailable" | "not-applicable" => list.estimated_installation_cost.is_none(),
+        _ => false,
+    };
+    let expected_additional_capital = if list.installation_cost_state == "ready"
+        && matches!(list.pricing_state.as_str(), "ready" | "empty")
+    {
+        list.estimated_installation_cost
+            .and_then(|value| value.checked_mul(100))
+            .and_then(|value| value.checked_add(list.total_purchase_cost_cents))
+    } else {
+        None
     };
     matches!(list.state.as_str(), "ready" | "empty" | "incomplete")
         && list.items.len() <= 1_000
@@ -4279,6 +4529,26 @@ fn production_purchase_list_is_valid(list: &ProductionPurchaseList, plan_count: 
                 && (list.omitted_item_count > 0 || quantity == list.total_quantity)
         })
         && list.state == expected_state
+        && list.market_hubs.len() == MARKET_HUB_IDS.len()
+        && hub_ids == MARKET_HUB_IDS
+        && list
+            .market_hubs
+            .iter()
+            .all(production_market_hub_is_valid)
+        && production_market_hub_is_valid(&list.market_hub)
+        && selected_hub_count == 1
+        && list.market_price_rule == "selected-hub-lowest-sell-orders-volume-weighted-cents"
+        && list.market_price_type_limit == MARKET_PRICE_TYPE_LIMIT
+        && MARKET_PRICING_STATES.contains(&list.pricing_state.as_str())
+        && (market_source_ready || market_source_missing)
+        && pricing_shape
+        && list.fully_covered_item_count == market_state_counts[0]
+        && list.partially_covered_item_count == market_state_counts[1]
+        && list.unavailable_item_count == market_state_counts[2]
+        && list.snapshot_missing_item_count == market_state_counts[3]
+        && total_purchase_cost == Some(list.total_purchase_cost_cents)
+        && installation_shape
+        && list.additional_capital_need_cents == expected_additional_capital
         && list.items.iter().all(|item| {
             production_id_is_valid(item.type_id)
                 && asset_text_is_valid(&item.type_name, 200)
@@ -4291,6 +4561,7 @@ fn production_purchase_list_is_valid(list: &ProductionPurchaseList, plan_count: 
                     == Some(item.quantity)
                 && production_id_is_valid(item.plan_count)
                 && item.plan_count <= plan_count
+                && production_purchase_market_item_is_valid(item)
         })
 }
 
@@ -4388,6 +4659,9 @@ fn production_plan_query_response_is_valid(response: &ProductionPlanQueryRespons
         && production_purchase_list_is_valid(&response.purchase_list, response.total)
         && response.purchase_list_applied
         && response.purchase_list_rule == "filtered-plans-sum-missing-by-type"
+        && response.market_prices_applied
+        && response.market_price_rule
+            == "selected-hub-lowest-sell-orders-volume-weighted-cents"
         && response.installation_costs_applied
         && response.installation_cost_rule
             == "base-material-adjusted-price-times-runs-system-index-plus-explicit-tax-plus-scc-4-percent-ceil"
@@ -6311,6 +6585,7 @@ fn query_production_plans(
     limit: u64,
     sort_by: String,
     sort_direction: String,
+    market_hub_id: String,
     state: State<'_, RuntimeState>,
 ) -> Result<String, String> {
     if search.chars().count() > MAX_ASSET_SEARCH_CHARACTERS
@@ -6328,6 +6603,7 @@ fn query_production_plans(
         || limit > 100
         || !PRODUCTION_PLAN_SORT_FIELDS.contains(&sort_by.as_str())
         || !SORT_DIRECTIONS.contains(&sort_direction.as_str())
+        || !MARKET_HUB_IDS.contains(&market_hub_id.as_str())
     {
         return Err("production-plan-query-invalid".to_owned());
     }
@@ -6341,6 +6617,7 @@ fn query_production_plans(
         "limit": limit,
         "sortBy": sort_by,
         "sortDirection": sort_direction,
+        "marketHubId": market_hub_id,
     })
     .to_string();
     let response = {
@@ -6359,10 +6636,61 @@ fn query_production_plans(
     if !production_plan_query_response_is_valid(&page)
         || page.offset != offset
         || page.limit != limit
+        || page.purchase_list.market_hub.hub_id != market_hub_id
     {
         return Err("sidecar-response-invalid".to_owned());
     }
     serde_json::to_string(&page).map_err(|_| "status-serialization-failed".to_owned())
+}
+
+#[tauri::command]
+fn sync_market_prices(
+    market_hub_id: String,
+    mut type_ids: Vec<u64>,
+    state: State<'_, RuntimeState>,
+) -> Result<String, String> {
+    let requested_type_count = type_ids.len();
+    type_ids.sort_unstable();
+    type_ids.dedup();
+    if !MARKET_HUB_IDS.contains(&market_hub_id.as_str())
+        || type_ids.is_empty()
+        || type_ids.len() != requested_type_count
+        || type_ids.len() as u64 > MARKET_PRICE_TYPE_LIMIT
+        || type_ids
+            .iter()
+            .any(|type_id| *type_id == 0 || *type_id > JAVASCRIPT_MAX_SAFE_INTEGER)
+    {
+        return Err("market-price-request-invalid".to_owned());
+    }
+    refresh_sidecar_status(&state);
+    let body = serde_json::json!({
+        "hubId": market_hub_id,
+        "typeIds": type_ids,
+    })
+    .to_string();
+    let response = {
+        let sidecar = state
+            .sidecar
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let process = sidecar
+            .as_ref()
+            .ok_or_else(|| "sidecar-unavailable".to_owned())?;
+        sidecar_json_request_with_timeout(
+            process,
+            "POST",
+            "/market-prices/sync",
+            &body,
+            ASSET_SYNC_TIMEOUT,
+        )
+        .map_err(str::to_owned)?
+    };
+    let result: MarketPriceSyncResponse =
+        serde_json::from_str(&response).map_err(|_| "sidecar-response-invalid".to_owned())?;
+    if !market_price_sync_response_is_valid(&result) || result.hub_id != market_hub_id {
+        return Err("sidecar-response-invalid".to_owned());
+    }
+    serde_json::to_string(&result).map_err(|_| "status-serialization-failed".to_owned())
 }
 
 #[tauri::command]
@@ -7458,6 +7786,7 @@ pub fn run() {
             query_industry_slots,
             query_production_catalog,
             query_production_plans,
+            sync_market_prices,
             save_production_plan,
             delete_production_plan,
             check_for_updates,

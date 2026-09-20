@@ -382,6 +382,24 @@ const productionCatalogPage: ProductionCatalogPage = {
   activities: ["manufacturing", "reaction"], buildNumber: "synthetic-production-1",
 };
 
+const productionMarketHubs: ProductionPlanPage["purchaseList"]["marketHubs"] = [
+  { hubId: "jita", name: "Jita", stationId: 60_003_760,
+    stationName: "Jita IV - Moon 4 - Caldari Navy Assembly Plant",
+    solarSystemId: 30_000_142, regionId: 10_000_002, priority: 0 },
+  { hubId: "amarr", name: "Amarr", stationId: 60_008_494,
+    stationName: "Amarr VIII (Oris) - Emperor Family Academy",
+    solarSystemId: 30_002_187, regionId: 10_000_043, priority: 1 },
+  { hubId: "dodixie", name: "Dodixie", stationId: 60_011_866,
+    stationName: "Dodixie IX - Moon 20 - Federation Navy Assembly Plant",
+    solarSystemId: 30_002_659, regionId: 10_000_032, priority: 2 },
+  { hubId: "hek", name: "Hek", stationId: 60_005_686,
+    stationName: "Hek VIII - Moon 12 - Boundless Creation Factory",
+    solarSystemId: 30_002_053, regionId: 10_000_042, priority: 3 },
+  { hubId: "rens", name: "Rens", stationId: 60_004_588,
+    stationName: "Rens VI - Moon 8 - Brutor Tribe Treasury",
+    solarSystemId: 30_002_510, regionId: 10_000_030, priority: 4 },
+];
+
 const productionPlanPage: ProductionPlanPage = {
   items: [{ planId: 1, ownerCharacterId: 90_888_001, ownerName: "Builder",
     blueprintTypeId: 100, blueprintName: "Synthetic Hull Blueprint",
@@ -496,9 +514,18 @@ const productionPlanPage: ProductionPlanPage = {
     "complexity-limit": 0 }, buildNumber: "synthetic-production-1",
   purchaseList: { state: "ready", items: [{ typeId: 900,
     typeName: "Synthetic Mineral", quantity: 2, inventoryShortageQuantity: 0,
-    reservationConflictQuantity: 2, planCount: 1 }], itemCount: 1,
+    reservationConflictQuantity: 2, planCount: 1, marketState: "snapshot-missing",
+    coveredQuantity: null, uncoveredQuantity: null, usedOrderCount: null,
+    lowestUnitPriceCents: null, weightedUnitPriceCents: null, purchaseCostCents: null }], itemCount: 1,
     totalQuantity: 2, includedPlanCount: 1, unresolvedPlanCount: 0,
-    omittedItemCount: 0 },
+    omittedItemCount: 0, marketHub: productionMarketHubs[0], marketHubs: productionMarketHubs,
+    marketPriceRule: "selected-hub-lowest-sell-orders-volume-weighted-cents",
+    marketPriceTypeLimit: 250, pricingState: "snapshot-missing",
+    marketSnapshotId: null, marketSyncRunId: null, marketObservedAt: null,
+    marketAgeSeconds: null, fullyCoveredItemCount: 0, partiallyCoveredItemCount: 0,
+    unavailableItemCount: 0, snapshotMissingItemCount: 1, totalPurchaseCostCents: 0,
+    installationCostState: "unavailable", estimatedInstallationCost: null,
+    additionalCapitalNeedCents: null },
   inventoryApplied: true, reservationsApplied: true,
   reservationRule: "priority-desc-created-asc-plan-id-asc",
   blueprintMaterialEfficiencyApplied: true,
@@ -515,6 +542,8 @@ const productionPlanPage: ProductionPlanPage = {
   facilityModifierRule: "explicit-basis-points-combined-before-single-ceil",
   purchaseListApplied: true,
   purchaseListRule: "filtered-plans-sum-missing-by-type",
+  marketPricesApplied: true,
+  marketPriceRule: "selected-hub-lowest-sell-orders-volume-weighted-cents",
   installationCostsApplied: true,
   installationCostRule: "base-material-adjusted-price-times-runs-system-index-plus-explicit-tax-plus-scc-4-percent-ceil",
   supplyModesApplied: true,
@@ -1156,6 +1185,42 @@ describe("New Eden Foundry design preview", () => {
     }));
   });
 
+  it("persists an explicit trade hub and refreshes only that hub", async () => {
+    const amarrPage: ProductionPlanPage = {
+      ...productionPlanPage,
+      purchaseList: {
+        ...productionPlanPage.purchaseList,
+        marketHub: productionMarketHubs[1],
+      },
+    };
+    const productionPlansLoader = vi.fn().mockImplementation((query) => Promise.resolve(
+      query.marketHubId === "amarr" ? amarrPage : productionPlanPage,
+    ));
+    const marketPriceSyncer = vi.fn().mockResolvedValue({
+      syncRunId: 27, hubId: "amarr", typeCount: 1, orderCount: 3, pageCount: 1,
+      observedAt: "2026-09-20T18:00:00Z",
+    });
+    render(<App runtimeLoader={() => nativeRuntime()}
+      productionPlansLoader={productionPlansLoader}
+      marketPriceSyncer={marketPriceSyncer} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Produktion" }));
+    const hub = await screen.findByRole("combobox", { name: "Handelsstation" });
+    expect(hub).toHaveValue("jita");
+    fireEvent.change(hub, { target: { value: "amarr" } });
+
+    await waitFor(() => expect(productionPlansLoader).toHaveBeenLastCalledWith(
+      expect.objectContaining({ marketHubId: "amarr" }),
+    ));
+    expect(await screen.findByText(/Amarr VIII \(Oris\) - Emperor Family Academy/))
+      .toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Preise aktualisieren" }));
+    await waitFor(() => expect(marketPriceSyncer).toHaveBeenCalledWith("amarr", [900]));
+    expect(window.localStorage.getItem("new-eden-foundry.ui.production.market-hub"))
+      .toBe(JSON.stringify("amarr"));
+    expect(await screen.findByText("1 Materialpreise für Amarr aktualisiert.")).toBeInTheDocument();
+  });
+
   it("shows the official SCC surcharge separately in complete installation costs", async () => {
     const base = productionPlanPage.items[0];
     const installationCost = {
@@ -1282,8 +1347,12 @@ describe("New Eden Foundry design preview", () => {
     const hiddenPage: ProductionPlanPage = {
       ...productionPlanPage,
       items: [], total: 0,
-      purchaseList: { state: "empty", items: [], itemCount: 0, totalQuantity: 0,
-        includedPlanCount: 0, unresolvedPlanCount: 0, omittedItemCount: 0 },
+      purchaseList: { ...productionPlanPage.purchaseList,
+        state: "empty", items: [], itemCount: 0, totalQuantity: 0,
+        includedPlanCount: 0, unresolvedPlanCount: 0, omittedItemCount: 0,
+        pricingState: "empty", fullyCoveredItemCount: 0, partiallyCoveredItemCount: 0,
+        unavailableItemCount: 0, snapshotMissingItemCount: 0,
+        installationCostState: "not-applicable" },
       summary: { ready: 0, "sde-unavailable": 0, "recipe-missing": 0, cycle: 0,
         "complexity-limit": 0 },
     };

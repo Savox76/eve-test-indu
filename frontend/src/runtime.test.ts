@@ -38,6 +38,7 @@ import {
   syncCharacterSkills,
   syncIndustryJobs,
   syncIndustryFacilities,
+  syncMarketPrices,
   updateEveCharacter,
   type ProductionFacilityEvidence,
   type ProductionPlanPage,
@@ -1128,6 +1129,23 @@ describe("desktop runtime status", () => {
       assetObservedAt: "2026-09-11T12:00:00Z",
       createdAt: "2026-09-11T12:00:00Z", updatedAt: "2026-09-11T12:00:00Z",
     };
+    const marketHubs: ProductionPlanPage["purchaseList"]["marketHubs"] = [
+      { hubId: "jita", name: "Jita", stationId: 60_003_760,
+        stationName: "Jita IV - Moon 4 - Caldari Navy Assembly Plant",
+        solarSystemId: 30_000_142, regionId: 10_000_002, priority: 0 },
+      { hubId: "amarr", name: "Amarr", stationId: 60_008_494,
+        stationName: "Amarr VIII (Oris) - Emperor Family Academy",
+        solarSystemId: 30_002_187, regionId: 10_000_043, priority: 1 },
+      { hubId: "dodixie", name: "Dodixie", stationId: 60_011_866,
+        stationName: "Dodixie IX - Moon 20 - Federation Navy Assembly Plant",
+        solarSystemId: 30_002_659, regionId: 10_000_032, priority: 2 },
+      { hubId: "hek", name: "Hek", stationId: 60_005_686,
+        stationName: "Hek VIII - Moon 12 - Boundless Creation Factory",
+        solarSystemId: 30_002_053, regionId: 10_000_042, priority: 3 },
+      { hubId: "rens", name: "Rens", stationId: 60_004_588,
+        stationName: "Rens VI - Moon 8 - Brutor Tribe Treasury",
+        solarSystemId: 30_002_510, regionId: 10_000_030, priority: 4 },
+    ];
     const page: ProductionPlanPage = { items: [plan], total: 1, offset: 0, limit: 50,
       owners: [{ characterId: 7, name: "Pilot" }], activities: ["manufacturing", "reaction"],
       locationOptions: [{ ownerCharacterId: 7, facilityId: 60_003_760,
@@ -1143,9 +1161,19 @@ describe("desktop runtime status", () => {
         "complexity-limit": 0 },
       purchaseList: { state: "ready", items: [{ typeId: 901,
         typeName: "Synthetic Ore", quantity: 3, inventoryShortageQuantity: 3,
-        reservationConflictQuantity: 0, planCount: 1 }], itemCount: 1,
+        reservationConflictQuantity: 0, planCount: 1, marketState: "ready",
+        coveredQuantity: 3, uncoveredQuantity: 0, usedOrderCount: 2,
+        lowestUnitPriceCents: 100, weightedUnitPriceCents: 200,
+        purchaseCostCents: 600 }], itemCount: 1,
         totalQuantity: 3, includedPlanCount: 1, unresolvedPlanCount: 0,
-        omittedItemCount: 0 }, buildNumber: "synthetic-production-1",
+        omittedItemCount: 0, marketHub: marketHubs[0], marketHubs,
+        marketPriceRule: "selected-hub-lowest-sell-orders-volume-weighted-cents",
+        marketPriceTypeLimit: 250, pricingState: "ready", marketSnapshotId: 20,
+        marketSyncRunId: 21, marketObservedAt: "2026-09-11T12:04:00Z",
+        marketAgeSeconds: 30, fullyCoveredItemCount: 1, partiallyCoveredItemCount: 0,
+        unavailableItemCount: 0, snapshotMissingItemCount: 0, totalPurchaseCostCents: 600,
+        installationCostState: "unavailable", estimatedInstallationCost: null,
+        additionalCapitalNeedCents: null }, buildNumber: "synthetic-production-1",
       inventoryApplied: true, reservationsApplied: true,
       reservationRule: "priority-desc-created-asc-plan-id-asc",
       blueprintMaterialEfficiencyApplied: true,
@@ -1162,6 +1190,8 @@ describe("desktop runtime status", () => {
       facilityModifierRule: "explicit-basis-points-combined-before-single-ceil",
       purchaseListApplied: true,
       purchaseListRule: "filtered-plans-sum-missing-by-type",
+      marketPricesApplied: true,
+      marketPriceRule: "selected-hub-lowest-sell-orders-volume-weighted-cents",
       installationCostsApplied: true,
       installationCostRule: "base-material-adjusted-price-times-runs-system-index-plus-explicit-tax-plus-scc-4-percent-ceil",
       supplyModesApplied: true,
@@ -1169,11 +1199,19 @@ describe("desktop runtime status", () => {
       remainingModifiersApplied: false };
     invoke.mockResolvedValueOnce(JSON.stringify(page));
     const query = { search: "", ownerCharacterId: null, activity: null, state: null,
-      offset: 0, limit: 50, sortBy: "priority", sortDirection: "desc" } as const;
+      offset: 0, limit: 50, sortBy: "priority", sortDirection: "desc", marketHubId: "jita" } as const;
     await expect(loadProductionPlans(query, { isAvailable: () => true, invoke })).resolves.toEqual(page);
     expect(invoke).toHaveBeenLastCalledWith("query_production_plans", expect.objectContaining({
-      planState: null, sortBy: "priority",
+      planState: null, sortBy: "priority", marketHubId: "jita",
     }));
+    const marketSync = { syncRunId: 22, hubId: "jita", typeCount: 1,
+      orderCount: 2, pageCount: 1, observedAt: "2026-09-11T12:05:00Z" } as const;
+    invoke.mockResolvedValueOnce(JSON.stringify(marketSync));
+    await expect(syncMarketPrices("jita", [901], { isAvailable: () => true, invoke }))
+      .resolves.toEqual(marketSync);
+    expect(invoke).toHaveBeenLastCalledWith("sync_market_prices", {
+      marketHubId: "jita", typeIds: [901],
+    });
 
     const pricedPage = JSON.parse(JSON.stringify(page)) as typeof page;
     const pricedPlan = pricedPage.items[0];

@@ -2,6 +2,7 @@ from pathlib import Path
 import json
 import tempfile
 import unittest
+from datetime import datetime, timezone
 
 from new_eden_foundry_backend.database import connect_database, initialize_database
 from new_eden_foundry_backend.production_planning import (
@@ -93,6 +94,7 @@ def query(**changes: object) -> dict:
         "limit": 50,
         "sortBy": "priority",
         "sortDirection": "desc",
+        "marketHubId": "jita",
     }
     result.update(changes)
     return result
@@ -343,6 +345,51 @@ class ProductionPlanningTests(unittest.TestCase):
         )
         return int(snapshot.lastrowid), int(run.lastrowid)
 
+    def publish_market_prices(
+        self,
+        orders: list[dict[str, int]],
+        requested_type_ids: list[int],
+        *,
+        hub_id: str = "jita",
+    ) -> tuple[int, int]:
+        observed_at = (
+            datetime.now(timezone.utc)
+            .isoformat(timespec="milliseconds")
+            .replace("+00:00", "Z")
+        )
+        source = f"market_prices:{hub_id}"
+        run = self.db.execute(
+            "INSERT INTO sync_runs(source,status,started_at,completed_at,data_timestamp) "
+            "VALUES(?,'completed',?,?,?)",
+            (source, observed_at, observed_at, observed_at),
+        )
+        snapshot = self.db.execute(
+            "INSERT INTO cached_snapshots(sync_run_id,resource,payload_json,observed_at) "
+            "VALUES(?,?,?,?)",
+            (
+                int(run.lastrowid),
+                source,
+                json.dumps(
+                    {
+                        "formatVersion": 1,
+                        "hubId": hub_id,
+                        "requestedTypeIds": sorted(requested_type_ids),
+                        "pageCount": len(requested_type_ids),
+                        "orders": sorted(
+                            orders,
+                            key=lambda order: (
+                                order["typeId"],
+                                order["priceCents"],
+                                order["orderId"],
+                            ),
+                        ),
+                    }
+                ),
+                observed_at,
+            ),
+        )
+        return int(snapshot.lastrowid), int(run.lastrowid)
+
     def publish_locations(
         self,
         character_id: int,
@@ -525,15 +572,41 @@ class ProductionPlanningTests(unittest.TestCase):
         self.assertEqual(
             page["purchaseListRule"], "filtered-plans-sum-missing-by-type"
         )
-        self.assertEqual(page["purchaseList"], {
-            "state": "incomplete",
-            "items": [],
-            "itemCount": 0,
-            "totalQuantity": 0,
-            "includedPlanCount": 0,
-            "unresolvedPlanCount": 1,
-            "omittedItemCount": 0,
-        })
+        self.assertEqual(
+            {
+                key: page["purchaseList"][key]
+                for key in (
+                    "state",
+                    "items",
+                    "itemCount",
+                    "totalQuantity",
+                    "includedPlanCount",
+                    "unresolvedPlanCount",
+                    "omittedItemCount",
+                    "pricingState",
+                    "installationCostState",
+                    "additionalCapitalNeedCents",
+                )
+            },
+            {
+                "state": "incomplete",
+                "items": [],
+                "itemCount": 0,
+                "totalQuantity": 0,
+                "includedPlanCount": 0,
+                "unresolvedPlanCount": 1,
+                "omittedItemCount": 0,
+                "pricingState": "empty",
+                "installationCostState": "not-applicable",
+                "additionalCapitalNeedCents": None,
+            },
+        )
+        self.assertEqual(page["purchaseList"]["marketHub"]["hubId"], "jita")
+        self.assertEqual(
+            [hub["hubId"] for hub in page["purchaseList"]["marketHubs"]],
+            ["jita", "amarr", "dodixie", "hek", "rens"],
+        )
+        self.assertTrue(page["marketPricesApplied"])
         self.assertEqual(page["summary"]["ready"], 1)
         record = page["items"][0]
         self.assertEqual(record["state"], "ready")
@@ -620,24 +693,55 @@ class ProductionPlanningTests(unittest.TestCase):
         second = save_production_plan(
             self.db, plan_input(priority=50, note="Second batch")
         )
+        market_snapshot, market_run = self.publish_market_prices(
+            [
+                {
+                    "orderId": 1,
+                    "typeId": 900,
+                    "locationId": 60_003_760,
+                    "systemId": 30_000_142,
+                    "priceCents": 10_000,
+                    "volumeRemain": 10,
+                },
+                {
+                    "orderId": 2,
+                    "typeId": 900,
+                    "locationId": 60_003_760,
+                    "systemId": 30_000_142,
+                    "priceCents": 12_500,
+                    "volumeRemain": 40,
+                },
+            ],
+            [900],
+        )
 
         page = query_production_plans(self.db, query())
-        self.assertEqual(page["purchaseList"], {
-            "state": "ready",
-            "items": [{
+        purchase = page["purchaseList"]
+        self.assertEqual(purchase["state"], "ready")
+        self.assertEqual(purchase["pricingState"], "ready")
+        self.assertEqual(purchase["marketSnapshotId"], market_snapshot)
+        self.assertEqual(purchase["marketSyncRunId"], market_run)
+        self.assertEqual(purchase["totalPurchaseCostCents"], 525_000)
+        self.assertEqual(purchase["installationCostState"], "unavailable")
+        self.assertIsNone(purchase["additionalCapitalNeedCents"])
+        self.assertEqual(
+            purchase["items"],
+            [{
                 "typeId": 900,
                 "typeName": "Synthetic Mineral",
                 "quantity": 44,
                 "inventoryShortageQuantity": 34,
                 "reservationConflictQuantity": 10,
                 "planCount": 2,
+                "marketState": "ready",
+                "coveredQuantity": 44,
+                "uncoveredQuantity": 0,
+                "usedOrderCount": 2,
+                "lowestUnitPriceCents": 10_000,
+                "weightedUnitPriceCents": 11_932,
+                "purchaseCostCents": 525_000,
             }],
-            "itemCount": 1,
-            "totalQuantity": 44,
-            "includedPlanCount": 2,
-            "unresolvedPlanCount": 0,
-            "omittedItemCount": 0,
-        })
+        )
         self.assertEqual(
             [item["planId"] for item in page["items"]],
             [first["planId"], second["planId"]],
@@ -648,6 +752,49 @@ class ProductionPlanningTests(unittest.TestCase):
         self.assertEqual(filtered["purchaseList"]["items"][0]["quantity"], 17)
         self.assertEqual(filtered["purchaseList"]["items"][0]["planCount"], 1)
         self.assertEqual(filtered["purchaseList"]["includedPlanCount"], 1)
+        self.assertEqual(filtered["purchaseList"]["totalPurchaseCostCents"], 187_500)
+
+    def test_selected_market_hub_never_falls_back_to_jita(self) -> None:
+        import_industry_sde(self.db, **bundle())
+        self.publish_assets(7, [], "2026-09-16T10:00:00Z")
+        save_production_plan(self.db, plan_input())
+        self.publish_market_prices(
+            [{
+                "orderId": 1,
+                "typeId": 900,
+                "locationId": 60_003_760,
+                "systemId": 30_000_142,
+                "priceCents": 100,
+                "volumeRemain": 100,
+            }],
+            [900],
+        )
+
+        missing = query_production_plans(self.db, query(marketHubId="amarr"))[
+            "purchaseList"
+        ]
+        self.assertEqual(missing["marketHub"]["hubId"], "amarr")
+        self.assertEqual(missing["pricingState"], "snapshot-missing")
+        self.assertEqual(missing["items"][0]["marketState"], "snapshot-missing")
+
+        amarr_snapshot, _ = self.publish_market_prices(
+            [{
+                "orderId": 2,
+                "typeId": 900,
+                "locationId": 60_008_494,
+                "systemId": 30_002_187,
+                "priceCents": 200,
+                "volumeRemain": 100,
+            }],
+            [900],
+            hub_id="amarr",
+        )
+        priced = query_production_plans(self.db, query(marketHubId="amarr"))[
+            "purchaseList"
+        ]
+        self.assertEqual(priced["marketSnapshotId"], amarr_snapshot)
+        self.assertEqual(priced["pricingState"], "ready")
+        self.assertEqual(priced["items"][0]["lowestUnitPriceCents"], 200)
 
     def test_selected_container_and_stock_only_intermediate_skip_blueprint_step(self) -> None:
         import_industry_sde(self.db, **bundle())
@@ -1412,6 +1559,9 @@ class ProductionPlanningTests(unittest.TestCase):
         self.assertEqual(record["facilityTax"], 15)
         self.assertEqual(record["sccSurcharge"], 55)
         self.assertEqual(record["estimatedInstallationCost"], 88)
+        self.assertEqual(page["purchaseList"]["pricingState"], "empty")
+        self.assertEqual(page["purchaseList"]["estimatedInstallationCost"], 88)
+        self.assertEqual(page["purchaseList"]["additionalCapitalNeedCents"], 8_800)
         self.assertEqual(record["costedStepCount"], 3)
         self.assertEqual(record["uncostedStepCount"], 0)
         self.assertEqual(
@@ -2011,6 +2161,7 @@ class ProductionPlanningTests(unittest.TestCase):
             query(state="invented"),
             query(sortBy="quantity"),
             query(ownerCharacterId=True),
+            query(marketHubId="unknown"),
         ]
         for payload in invalid_queries:
             with self.subTest(payload=payload):

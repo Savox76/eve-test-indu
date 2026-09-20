@@ -22,6 +22,14 @@ from .industry_job_evidence import (
     load_latest_job_snapshots,
     parse_timestamp,
 )
+from .market_prices import (
+    MARKET_HUBS,
+    MARKET_PRICE_RULE,
+    MAX_MARKET_TYPE_IDS,
+    MarketPriceError,
+    latest_market_price_snapshot,
+    market_hub,
+)
 from .sde import (
     MAX_SAFE_INTEGER,
     SUPPORTED_BLUEPRINT_ACTIVITIES,
@@ -221,6 +229,7 @@ def validate_production_plan_query(payload: Any) -> dict[str, Any]:
         "limit",
         "sortBy",
         "sortDirection",
+        "marketHubId",
     }
     if not isinstance(payload, Mapping) or set(payload) != expected:
         raise ProductionPlanningError("production_plan_query_invalid")
@@ -231,6 +240,10 @@ def validate_production_plan_query(payload: Any) -> dict[str, Any]:
     owner = payload["ownerCharacterId"]
     activity = payload["activity"]
     state = payload["state"]
+    try:
+        selected_market_hub = market_hub(payload["marketHubId"])
+    except MarketPriceError as error:
+        raise ProductionPlanningError("production_plan_query_invalid") from error
     if (
         owner is not None
         and not _positive_int(owner)
@@ -248,6 +261,7 @@ def validate_production_plan_query(payload: Any) -> dict[str, Any]:
     return {
         **payload,
         "search": search,
+        "marketHubId": selected_market_hub["hubId"],
     }
 
 
@@ -2819,8 +2833,68 @@ def _serialize_plan(row: sqlite3.Row, resolution: Mapping[str, Any]) -> dict[str
     }
 
 
-def _purchase_list(records: list[dict[str, Any]]) -> dict[str, Any]:
-    """Aggregate conflict-free missing quantities for the current plan filters."""
+def _market_quote(
+    type_id: int,
+    quantity: int,
+    market_snapshot: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    if market_snapshot is None or type_id not in market_snapshot["requestedTypeIds"]:
+        return {
+            "marketState": "snapshot-missing",
+            "coveredQuantity": None,
+            "uncoveredQuantity": None,
+            "usedOrderCount": None,
+            "lowestUnitPriceCents": None,
+            "weightedUnitPriceCents": None,
+            "purchaseCostCents": None,
+        }
+    orders = market_snapshot["ordersByType"].get(type_id, [])
+    if not orders:
+        return {
+            "marketState": "unavailable",
+            "coveredQuantity": 0,
+            "uncoveredQuantity": quantity,
+            "usedOrderCount": 0,
+            "lowestUnitPriceCents": None,
+            "weightedUnitPriceCents": None,
+            "purchaseCostCents": 0,
+        }
+    remaining = quantity
+    covered = 0
+    cost_cents = 0
+    used_orders = 0
+    for order in orders:
+        if remaining <= 0:
+            break
+        take = min(remaining, int(order["volumeRemain"]))
+        if take <= 0:
+            continue
+        cost_cents = _checked_add(
+            cost_cents,
+            _checked_multiply(take, int(order["priceCents"])),
+        )
+        covered = _checked_add(covered, take)
+        remaining -= take
+        used_orders += 1
+    if covered == 0:
+        raise ProductionPlanningError("production_purchase_market_invalid")
+    return {
+        "marketState": "ready" if remaining == 0 else "partial",
+        "coveredQuantity": covered,
+        "uncoveredQuantity": remaining,
+        "usedOrderCount": used_orders,
+        "lowestUnitPriceCents": int(orders[0]["priceCents"]),
+        "weightedUnitPriceCents": (cost_cents + covered - 1) // covered,
+        "purchaseCostCents": cost_cents,
+    }
+
+
+def _purchase_list(
+    records: list[dict[str, Any]],
+    market_snapshot: Mapping[str, Any] | None,
+    selected_hub: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Aggregate shortages and price their immediate purchase at one selected hub."""
 
     aggregated: dict[int, dict[str, Any]] = {}
     included_plan_count = 0
@@ -2878,6 +2952,11 @@ def _purchase_list(records: list[dict[str, Any]]) -> dict[str, Any]:
         total_quantity = _checked_add(total_quantity, int(item["quantity"]))
     items: list[dict[str, Any]] = []
     for item in visible:
+        quote = _market_quote(
+            int(item["typeId"]),
+            int(item["quantity"]),
+            market_snapshot,
+        )
         items.append(
             {
                 "typeId": int(item["typeId"]),
@@ -2890,6 +2969,7 @@ def _purchase_list(records: list[dict[str, Any]]) -> dict[str, Any]:
                     item["reservationConflictQuantity"]
                 ),
                 "planCount": len(item["planIds"]),
+                **quote,
             }
         )
     state = (
@@ -2899,6 +2979,58 @@ def _purchase_list(records: list[dict[str, Any]]) -> dict[str, Any]:
         if items
         else "empty"
     )
+    market_states = [str(item["marketState"]) for item in items]
+    total_purchase_cost_cents = 0
+    for item in items:
+        if item["purchaseCostCents"] is not None:
+            total_purchase_cost_cents = _checked_add(
+                total_purchase_cost_cents,
+                int(item["purchaseCostCents"]),
+            )
+    source = market_snapshot
+    pricing_state = (
+        "empty"
+        if not items
+        else "snapshot-missing"
+        if source is None
+        else "stale"
+        if source["stale"]
+        else "ready"
+        if state == "ready" and all(value == "ready" for value in market_states)
+        else "unavailable"
+        if market_states and all(value == "unavailable" for value in market_states)
+        else "partial"
+    )
+    included_records = [
+        record
+        for record in records
+        if record["state"] == "ready" and record["inventoryState"] != "snapshot-missing"
+    ]
+    installation_values = [
+        int(record["estimatedInstallationCost"])
+        for record in included_records
+        if record["installationCostState"] == "ready"
+        and record["estimatedInstallationCost"] is not None
+    ]
+    installation_cost = 0
+    for value in installation_values:
+        installation_cost = _checked_add(installation_cost, value)
+    installation_state = (
+        "not-applicable"
+        if not included_records
+        else "ready"
+        if len(installation_values) == len(included_records)
+        else "partial"
+        if installation_values
+        else "unavailable"
+    )
+    estimated_installation_cost = installation_cost if installation_values else None
+    additional_capital_need_cents = None
+    if installation_state == "ready" and pricing_state in {"ready", "empty"}:
+        additional_capital_need_cents = _checked_add(
+            total_purchase_cost_cents,
+            _checked_multiply(installation_cost, 100),
+        )
     return {
         "state": state,
         "items": items,
@@ -2907,6 +3039,23 @@ def _purchase_list(records: list[dict[str, Any]]) -> dict[str, Any]:
         "includedPlanCount": included_plan_count,
         "unresolvedPlanCount": unresolved_plan_count,
         "omittedItemCount": omitted_item_count,
+        "marketHub": dict(selected_hub),
+        "marketHubs": [dict(hub) for hub in MARKET_HUBS],
+        "marketPriceRule": MARKET_PRICE_RULE,
+        "marketPriceTypeLimit": MAX_MARKET_TYPE_IDS,
+        "pricingState": pricing_state,
+        "marketSnapshotId": None if source is None else int(source["snapshotId"]),
+        "marketSyncRunId": None if source is None else int(source["syncRunId"]),
+        "marketObservedAt": None if source is None else str(source["observedAt"]),
+        "marketAgeSeconds": None if source is None else int(source["ageSeconds"]),
+        "fullyCoveredItemCount": market_states.count("ready"),
+        "partiallyCoveredItemCount": market_states.count("partial"),
+        "unavailableItemCount": market_states.count("unavailable"),
+        "snapshotMissingItemCount": market_states.count("snapshot-missing"),
+        "totalPurchaseCostCents": total_purchase_cost_cents,
+        "installationCostState": installation_state,
+        "estimatedInstallationCost": estimated_installation_cost,
+        "additionalCapitalNeedCents": additional_capital_need_cents,
     }
 
 
@@ -2990,7 +3139,15 @@ def query_production_plans(connection: sqlite3.Connection, raw_query: Any) -> di
     summary = {state: sum(record["state"] == state for record in records) for state in PLAN_STATES}
     if query["state"] is not None:
         records = [record for record in records if record["state"] == query["state"]]
-    purchase_list = _purchase_list(records)
+    try:
+        selected_market_hub = market_hub(query["marketHubId"])
+        market_snapshot = latest_market_price_snapshot(
+            connection,
+            str(selected_market_hub["hubId"]),
+        )
+    except MarketPriceError as error:
+        raise ProductionPlanningError("production_purchase_market_invalid") from error
+    purchase_list = _purchase_list(records, market_snapshot, selected_market_hub)
     sort_keys = {
         "product": lambda item: (str(item["productName"]).casefold(), item["productTypeId"], item["planId"]),
         "owner": lambda item: (str(item["ownerName"]).casefold(), item["ownerCharacterId"], item["planId"]),
@@ -3052,6 +3209,8 @@ def query_production_plans(connection: sqlite3.Connection, raw_query: Any) -> di
         "facilityModifierRule": FACILITY_MODIFIER_RULE,
         "purchaseListApplied": True,
         "purchaseListRule": PURCHASE_LIST_RULE,
+        "marketPricesApplied": True,
+        "marketPriceRule": MARKET_PRICE_RULE,
         "installationCostsApplied": True,
         "installationCostRule": INSTALLATION_COST_RULE,
         "remainingModifiersApplied": False,

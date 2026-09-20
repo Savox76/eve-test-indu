@@ -74,6 +74,11 @@ from .location_resolution import (
     LocationResolutionError,
     resolve_latest_character_asset_locations,
 )
+from .market_prices import (
+    MarketPriceError,
+    sync_market_prices,
+    validate_market_price_sync_request,
+)
 from .official_sde import install_bundled_industry_sde
 from .production_planning import (
     ProductionPlanningError,
@@ -989,6 +994,49 @@ def create_application(
         except Exception:
             return JSONResponse(status_code=500, content={"detail": "production_plan_query_failed"})
         return JSONResponse(content=result)
+
+    @app.post("/market-prices/sync")
+    async def post_market_price_sync(request: Request) -> JSONResponse:
+        try:
+            payload = await request.json()
+        except Exception:
+            return JSONResponse(
+                status_code=422,
+                content={"detail": "market_price_request_invalid"},
+            )
+        try:
+            validate_market_price_sync_request(payload)
+            with closing(connect_database(storage.database_path)) as connection:
+                synced = sync_market_prices(connection, esi_client, payload)
+        except MarketPriceError as error:
+            code = str(error)
+            return JSONResponse(
+                status_code=422 if code in {
+                    "market_price_request_invalid",
+                    "market_price_hub_invalid",
+                } else 500,
+                content={"detail": code},
+            )
+        except EsiClientError as error:
+            return JSONResponse(
+                status_code=503,
+                content={"detail": public_sync_error_code(error)},
+            )
+        except Exception:
+            return JSONResponse(
+                status_code=500,
+                content={"detail": "market_price_sync_failed"},
+            )
+        return JSONResponse(
+            content={
+                "syncRunId": synced.sync_run_id,
+                "hubId": synced.hub_id,
+                "typeCount": synced.type_count,
+                "orderCount": synced.order_count,
+                "pageCount": synced.page_count,
+                "observedAt": synced.observed_at,
+            }
+        )
 
     @app.post("/production-plans/save")
     async def post_production_plan_save(request: Request) -> JSONResponse:
