@@ -6,11 +6,13 @@ Alle bemerkenswerten Änderungen an New Eden Foundry werden hier festgehalten. D
 
 ### Neu hinzugefügt
 
-- Keine.
+- Paket 43 ergänzt den offiziellen SCC-Zuschlag von 4 Prozent für jeden tatsächlich gebauten Produktionsschritt.
+- Produktionsziel und Einzelschritte zeigen Eingabewert, Systemkosten, Anlagensteuer, SCC-Zuschlag und vollständige geschätzte Installationskosten getrennt an.
 
 ### Geändert
 
-- Keine.
+- Die Kostenberechnung rundet Systemkosten, Anlagensteuer und SCC-Zuschlag je Job getrennt auf volle ISK und addiert erst danach die vollständigen Installationskosten.
+- Der native API-Vertrag weist den festen SCC-Satz ausdrücklich aus und verwirft abweichende oder unvollständige Kostenantworten.
 
 ### Behobene Fehler
 
@@ -18,11 +20,12 @@ Alle bemerkenswerten Änderungen an New Eden Foundry werden hier festgehalten. D
 
 ### Bekannte Einschränkungen
 
-- Keine.
+- Live-Marktpreise, Handelsort, Transportkosten sowie automatisch erkannte Struktur-, Service- und Rigmodifikatoren sind weiterhin nicht enthalten.
+- Die Alpha ist noch nicht produktiv code-signiert; SmartScreen kann deshalb weiterhin vor einem unbekannten Herausgeber warnen.
 
 ### Update und Datenbankmigration
 
-- Keine.
+- Das Datenbankschema bleibt bei Version 14; bestehende Charaktere, Einstellungen, Ziele und Snapshots bleiben unverändert erhalten.
 
 ## 0.2.0-alpha.15 – 20. September 2026
 

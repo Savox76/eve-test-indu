@@ -1047,7 +1047,8 @@ describe("desktop runtime status", () => {
         facilityEvidence: missingFacilityEvidence,
         installationCost: { state: "not-selected", estimatedItemValue: null,
           systemCostIndex: null, systemCost: null, facilityTaxBasisPoints: null,
-          facilityTax: null, estimatedInstallationCost: null,
+          facilityTax: null, sccSurchargeBasisPoints: 400, sccSurcharge: null,
+          estimatedInstallationCost: null,
           missingAdjustedPriceTypeIds: [], priceSnapshotId: null, priceSyncRunId: null,
           priceObservedAt: null },
         materials: [{ typeId: 901, typeName: "Synthetic Ore",
@@ -1081,7 +1082,8 @@ describe("desktop runtime status", () => {
         facilityEvidence: missingFacilityEvidence,
         installationCost: { state: "not-selected", estimatedItemValue: null,
           systemCostIndex: null, systemCost: null, facilityTaxBasisPoints: null,
-          facilityTax: null, estimatedInstallationCost: null,
+          facilityTax: null, sccSurchargeBasisPoints: 400, sccSurcharge: null,
+          estimatedInstallationCost: null,
           missingAdjustedPriceTypeIds: [], priceSnapshotId: null, priceSyncRunId: null,
           priceObservedAt: null },
         materials: [{ typeId: 111, typeName: "Synthetic Component",
@@ -1119,7 +1121,8 @@ describe("desktop runtime status", () => {
       totalFacilityTimeSeconds: null,
       facilityTimeSavingsSeconds: null,
       installationCostState: "unavailable", estimatedItemValue: null, systemCost: null,
-      facilityTax: null, estimatedInstallationCost: null, costedStepCount: 0,
+      facilityTax: null, sccSurcharge: null, estimatedInstallationCost: null,
+      costedStepCount: 0,
       uncostedStepCount: 2,
       inventoryState: "shortage", assetSnapshotId: 8, assetSyncRunId: 9,
       assetObservedAt: "2026-09-11T12:00:00Z",
@@ -1160,7 +1163,7 @@ describe("desktop runtime status", () => {
       purchaseListApplied: true,
       purchaseListRule: "filtered-plans-sum-missing-by-type",
       installationCostsApplied: true,
-      installationCostRule: "base-material-adjusted-price-times-runs-system-index-plus-explicit-tax-ceil",
+      installationCostRule: "base-material-adjusted-price-times-runs-system-index-plus-explicit-tax-plus-scc-4-percent-ceil",
       supplyModesApplied: true,
       supplyModeRule: "stock-first-before-recursive-build",
       remainingModifiersApplied: false };
@@ -1171,6 +1174,49 @@ describe("desktop runtime status", () => {
     expect(invoke).toHaveBeenLastCalledWith("query_production_plans", expect.objectContaining({
       planState: null, sortBy: "priority",
     }));
+
+    const pricedPage = JSON.parse(JSON.stringify(page)) as typeof page;
+    const pricedPlan = pricedPage.items[0];
+    pricedPlan.facilityId = 60_003_760;
+    pricedPlan.facilityName = "Synthetic Station";
+    pricedPlan.locationSelectionState = "ready";
+    pricedPlan.facilityModifierState = "unconfigured";
+    pricedPlan.facilityTaxBasisPoints = 100;
+    pricedPlan.installationCostState = "ready";
+    pricedPlan.estimatedItemValue = 1_000;
+    pricedPlan.systemCost = 13;
+    pricedPlan.facilityTax = 10;
+    pricedPlan.sccSurcharge = 40;
+    pricedPlan.estimatedInstallationCost = 63;
+    pricedPlan.costedStepCount = 2;
+    pricedPlan.uncostedStepCount = 0;
+    pricedPlan.steps.forEach((step, index) => {
+      step.facilityModifierState = "unconfigured";
+      step.installationCost = {
+        state: "ready",
+        estimatedItemValue: index === 0 ? 400 : 600,
+        systemCostIndex: 0.0125,
+        systemCost: index === 0 ? 5 : 8,
+        facilityTaxBasisPoints: 100,
+        facilityTax: index === 0 ? 4 : 6,
+        sccSurchargeBasisPoints: 400,
+        sccSurcharge: index === 0 ? 16 : 24,
+        estimatedInstallationCost: index === 0 ? 25 : 38,
+        missingAdjustedPriceTypeIds: [],
+        priceSnapshotId: 18,
+        priceSyncRunId: 19,
+        priceObservedAt: "2026-09-11T12:03:00Z",
+      };
+    });
+    invoke.mockResolvedValueOnce(JSON.stringify(pricedPage));
+    await expect(loadProductionPlans(query, { isAvailable: () => true, invoke }))
+      .resolves.toEqual(pricedPage);
+    const staleSccContract = JSON.parse(JSON.stringify(pricedPage)) as typeof pricedPage;
+    staleSccContract.items[0].steps[0].installationCost.sccSurchargeBasisPoints = 150 as 400;
+    invoke.mockResolvedValueOnce(JSON.stringify(staleSccContract));
+    await expect(loadProductionPlans(query, { isAvailable: () => true, invoke }))
+      .rejects.toThrow("invalid production installation costs");
+
     const inconsistentPurchaseList = JSON.parse(JSON.stringify(page)) as typeof page;
     inconsistentPurchaseList.purchaseList.items[0].quantity = 4;
     invoke.mockResolvedValueOnce(JSON.stringify(inconsistentPurchaseList));

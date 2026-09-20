@@ -442,7 +442,8 @@ const productionPlanPage: ProductionPlanPage = {
       },
       installationCost: { state: "not-selected", estimatedItemValue: null,
         systemCostIndex: null, systemCost: null, facilityTaxBasisPoints: null,
-        facilityTax: null, estimatedInstallationCost: null,
+        facilityTax: null, sccSurchargeBasisPoints: 400, sccSurcharge: null,
+        estimatedInstallationCost: null,
         missingAdjustedPriceTypeIds: [], priceSnapshotId: null, priceSyncRunId: null,
         priceObservedAt: null },
       materials: [{ typeId: 900, typeName: "Synthetic Mineral", quantityPerRun: 5,
@@ -479,7 +480,8 @@ const productionPlanPage: ProductionPlanPage = {
     totalFacilityTimeSeconds: null,
     facilityTimeSavingsSeconds: null,
     installationCostState: "unavailable", estimatedItemValue: null, systemCost: null,
-    facilityTax: null, estimatedInstallationCost: null, costedStepCount: 0,
+    facilityTax: null, sccSurcharge: null, estimatedInstallationCost: null,
+    costedStepCount: 0,
     uncostedStepCount: 1,
     facilityState: "ready",
     inventoryState: "shortage", assetSnapshotId: 8, assetSyncRunId: 9,
@@ -514,7 +516,7 @@ const productionPlanPage: ProductionPlanPage = {
   purchaseListApplied: true,
   purchaseListRule: "filtered-plans-sum-missing-by-type",
   installationCostsApplied: true,
-  installationCostRule: "base-material-adjusted-price-times-runs-system-index-plus-explicit-tax-ceil",
+  installationCostRule: "base-material-adjusted-price-times-runs-system-index-plus-explicit-tax-plus-scc-4-percent-ceil",
   supplyModesApplied: true,
   supplyModeRule: "stock-first-before-recursive-build",
   remainingModifiersApplied: false,
@@ -1152,6 +1154,46 @@ describe("New Eden Foundry design preview", () => {
       activity: "manufacturing", productTypeId: 101, targetQuantity: 2,
       priority: 0, note: null,
     }));
+  });
+
+  it("shows the official SCC surcharge separately in complete installation costs", async () => {
+    const base = productionPlanPage.items[0];
+    const installationCost = {
+      state: "ready" as const,
+      estimatedItemValue: 1_000,
+      systemCostIndex: 0.0125,
+      systemCost: 13,
+      facilityTaxBasisPoints: 100,
+      facilityTax: 10,
+      sccSurchargeBasisPoints: 400 as const,
+      sccSurcharge: 40,
+      estimatedInstallationCost: 63,
+      missingAdjustedPriceTypeIds: [],
+      priceSnapshotId: 18,
+      priceSyncRunId: 19,
+      priceObservedAt: "2026-09-11T12:03:00Z",
+    };
+    const page: ProductionPlanPage = {
+      ...productionPlanPage,
+      items: [{
+        ...base,
+        installationCostState: "ready",
+        estimatedItemValue: 1_000,
+        systemCost: 13,
+        facilityTax: 10,
+        sccSurcharge: 40,
+        estimatedInstallationCost: 63,
+        costedStepCount: 1,
+        uncostedStepCount: 0,
+        steps: [{ ...base.steps[0], installationCost }],
+      }],
+    };
+    render(<App runtimeLoader={() => nativeRuntime()}
+      productionPlansLoader={() => Promise.resolve(page)} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Produktion" }));
+    expect(await screen.findAllByText(/SCC \(4 %\) 40/)).toHaveLength(2);
+    expect(screen.getAllByText(/Geschätzt 63 ISK/)).toHaveLength(2);
   });
 
   it("assigns a suitable personal blueprint to a production goal", async () => {

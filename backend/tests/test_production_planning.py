@@ -1374,7 +1374,7 @@ class ProductionPlanningTests(unittest.TestCase):
             "explicit-basis-points-combined-before-single-ceil",
         )
 
-    def test_installation_costs_use_adjusted_prices_system_index_and_explicit_tax(self) -> None:
+    def test_installation_costs_include_system_tax_and_official_scc_surcharge(self) -> None:
         import_industry_sde(self.db, **bundle())
         asset_snapshot, _ = self.publish_assets(
             7,
@@ -1410,16 +1410,18 @@ class ProductionPlanningTests(unittest.TestCase):
         self.assertEqual(record["estimatedItemValue"], 1_330)
         self.assertEqual(record["systemCost"], 18)
         self.assertEqual(record["facilityTax"], 15)
-        self.assertEqual(record["estimatedInstallationCost"], 33)
+        self.assertEqual(record["sccSurcharge"], 55)
+        self.assertEqual(record["estimatedInstallationCost"], 88)
         self.assertEqual(record["costedStepCount"], 3)
         self.assertEqual(record["uncostedStepCount"], 0)
         self.assertEqual(
             [step["installationCost"]["estimatedInstallationCost"] for step in record["steps"]],
-            [2, 13, 18],
+            [5, 34, 49],
         )
         self.assertTrue(all(
             step["installationCost"]["state"] == "ready"
             and step["installationCost"]["facilityTaxBasisPoints"] == 100
+            and step["installationCost"]["sccSurchargeBasisPoints"] == 400
             and step["installationCost"]["systemCostIndex"] == 0.0125
             and step["installationCost"]["priceSnapshotId"] == price_snapshot
             and step["installationCost"]["priceSyncRunId"] == price_run
@@ -1428,7 +1430,8 @@ class ProductionPlanningTests(unittest.TestCase):
         self.assertTrue(page["installationCostsApplied"])
         self.assertEqual(
             page["installationCostRule"],
-            "base-material-adjusted-price-times-runs-system-index-plus-explicit-tax-ceil",
+            "base-material-adjusted-price-times-runs-system-index-plus-explicit-tax-"
+            "plus-scc-4-percent-ceil",
         )
 
         save_production_plan(
