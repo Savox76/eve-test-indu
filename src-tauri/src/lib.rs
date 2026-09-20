@@ -7506,7 +7506,8 @@ mod tests {
         industry_facility_query_response_is_valid, industry_facility_sync_response_is_valid,
         industry_job_query_response_is_valid, industry_job_sync_response_is_valid,
         industry_slot_query_response_is_valid, migrate_to_program_directory_storage,
-        production_plan_record_is_valid, read_window_size, release_page_url,
+        production_installation_cost_is_valid, production_plan_record_is_valid, read_window_size,
+        release_page_url,
         research_plan_query_response_is_valid, sidecar_startup_error_code,
         sidecar_startup_error_is_retryable, sso_login_status_is_valid, write_window_size,
         AccountGroupRecord, AssetDeltaCorrelation, AssetDeltaCorrelationSummary,
@@ -7527,7 +7528,7 @@ mod tests {
         WindowSizePreference, ADVANCED_INDUSTRY_SKILL_ID, ASSET_LOCATION_STATUSES,
         INDUSTRY_COST_ACTIVITIES, INDUSTRY_FACILITY_ACCESS_STATES, INDUSTRY_FACILITY_KINDS,
         INDUSTRY_SECURITY_CLASSES, INDUSTRY_SKILL_ID, INDUSTRY_SLOT_ACTIVITIES,
-        RESEARCH_PLAN_ACTIVITIES, RESEARCH_PLAN_STATES,
+        RESEARCH_PLAN_ACTIVITIES, RESEARCH_PLAN_STATES, SCC_SURCHARGE_BASIS_POINTS,
     };
     use std::fs;
     use std::path::{Path, PathBuf};
