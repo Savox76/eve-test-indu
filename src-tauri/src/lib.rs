@@ -4746,18 +4746,12 @@ fn asset_delta_response_is_valid(response: &AssetDeltaQueryResponse) -> bool {
                     .location_flag_after
                     .as_ref()
                     .is_none_or(|value| asset_text_is_valid(value, 100))
-                && event
-                    .location_status_before
-                    .as_deref()
-                    .is_none_or(|value| {
-                        matches!(value, "resolved" | "restricted" | "unresolved" | "cycle")
-                    })
-                && event
-                    .location_status_after
-                    .as_deref()
-                    .is_none_or(|value| {
-                        matches!(value, "resolved" | "restricted" | "unresolved" | "cycle")
-                    })
+                && event.location_status_before.as_deref().is_none_or(|value| {
+                    matches!(value, "resolved" | "restricted" | "unresolved" | "cycle")
+                })
+                && event.location_status_after.as_deref().is_none_or(|value| {
+                    matches!(value, "resolved" | "restricted" | "unresolved" | "cycle")
+                })
                 && event
                     .location_path_before
                     .as_ref()
@@ -4766,10 +4760,8 @@ fn asset_delta_response_is_valid(response: &AssetDeltaQueryResponse) -> bool {
                     .location_path_after
                     .as_ref()
                     .is_none_or(|value| asset_text_is_valid(value, 16_000))
-                && (event.location_path_before.is_none()
-                    || event.location_status_before.is_some())
-                && (event.location_path_after.is_none()
-                    || event.location_status_after.is_some())
+                && (event.location_path_before.is_none() || event.location_status_before.is_some())
+                && (event.location_path_after.is_none() || event.location_status_after.is_some())
                 && (event.quantity_before.is_some()
                     || event.location_status_before.is_none()
                         && event.location_path_before.is_none())
@@ -4928,18 +4920,12 @@ fn asset_delta_group_response_is_valid(response: &AssetDeltaGroupQueryResponse) 
                     .location_flag_after
                     .as_ref()
                     .is_none_or(|value| asset_text_is_valid(value, 100))
-                && group
-                    .location_path_before
-                    .as_ref()
-                    .is_none_or(|value| {
-                        group.location_count_before == 1 && asset_text_is_valid(value, 16_000)
-                    })
-                && group
-                    .location_path_after
-                    .as_ref()
-                    .is_none_or(|value| {
-                        group.location_count_after == 1 && asset_text_is_valid(value, 16_000)
-                    })
+                && group.location_path_before.as_ref().is_none_or(|value| {
+                    group.location_count_before == 1 && asset_text_is_valid(value, 16_000)
+                })
+                && group.location_path_after.as_ref().is_none_or(|value| {
+                    group.location_count_after == 1 && asset_text_is_valid(value, 16_000)
+                })
                 && group.previous_asset_snapshot_id > 0
                 && group.previous_asset_snapshot_id <= JAVASCRIPT_MAX_SAFE_INTEGER
                 && group.current_asset_snapshot_id > 0
@@ -7091,10 +7077,7 @@ fn query_asset_delta_groups(
     };
     let page: AssetDeltaGroupQueryResponse =
         serde_json::from_str(&response).map_err(|_| "sidecar-response-invalid".to_owned())?;
-    if !asset_delta_group_response_is_valid(&page)
-        || page.offset != offset
-        || page.limit != limit
-    {
+    if !asset_delta_group_response_is_valid(&page) || page.offset != offset || page.limit != limit {
         return Err("sidecar-response-invalid".to_owned());
     }
     serde_json::to_string(&page).map_err(|_| "status-serialization-failed".to_owned())
@@ -7492,36 +7475,35 @@ pub fn run() {
 mod tests {
     use super::{
         account_group_record_is_valid, asset_delta_group_response_is_valid,
-        asset_delta_response_is_valid,
-        asset_export_response_is_valid, asset_query_response_is_valid,
-        asset_summary_query_response_is_valid, authorization_url_is_valid,
-        character_skill_query_response_is_valid, character_skill_sync_response_is_valid,
-        eve_character_record_is_valid, industry_facility_query_response_is_valid,
-        industry_facility_sync_response_is_valid, industry_job_query_response_is_valid,
-        industry_job_sync_response_is_valid, industry_slot_query_response_is_valid,
-        migrate_to_program_directory_storage, production_plan_record_is_valid, read_window_size,
-        release_page_url, research_plan_query_response_is_valid, sidecar_startup_error_code,
+        asset_delta_response_is_valid, asset_export_response_is_valid,
+        asset_query_response_is_valid, asset_summary_query_response_is_valid,
+        authorization_url_is_valid, character_skill_query_response_is_valid,
+        character_skill_sync_response_is_valid, eve_character_record_is_valid,
+        industry_facility_query_response_is_valid, industry_facility_sync_response_is_valid,
+        industry_job_query_response_is_valid, industry_job_sync_response_is_valid,
+        industry_slot_query_response_is_valid, migrate_to_program_directory_storage,
+        production_plan_record_is_valid, read_window_size, release_page_url,
+        research_plan_query_response_is_valid, sidecar_startup_error_code,
         sidecar_startup_error_is_retryable, sso_login_status_is_valid, write_window_size,
         AccountGroupRecord, AssetDeltaCorrelation, AssetDeltaCorrelationSummary,
         AssetDeltaGroupQueryResponse, AssetDeltaGroupRecord, AssetDeltaQueryResponse,
         AssetDeltaRecord, AssetDeltaSummary, AssetExportResponse, AssetLocationNode, AssetOwner,
         AssetQueryResponse, AssetRecord, AssetSummaryOwner, AssetSummaryQueryResponse,
-        AssetSummaryRecord,
-        CharacterSkillQueryResponse, CharacterSkillRecord, CharacterSkillSyncCharacterResponse,
-        CharacterSkillSyncResponse, EveCharacterRecord, IndustryAssetCorrelation,
-        IndustryBlueprintCorrelation, IndustryFacilityQueryResponse, IndustryFacilityRecord,
-        IndustryFacilitySyncResponse, IndustryJobQueryResponse, IndustryJobRecord,
-        IndustryJobSyncCharacterResponse, IndustryJobSyncResponse, IndustrySlotActivity,
-        IndustrySlotQueryResponse, IndustrySlotRecord, ProductionBlueprintCandidate,
-        ProductionFacilityEvidence, ProductionGrossMaterial, ProductionInstallationCost,
-        ProductionPlanRecord, ProductionReservationClaim, ProductionStep, ProductionStepMaterial,
-        ProductionSupplyDecision, ProductionTimeSkill, ResearchPlanOwner,
-        ResearchPlanQueryResponse, ResearchPlanRecord, ResearchPlanSummary, RuntimeDataSnapshot,
-        ScopePackageStatus, SsoCharacterIdentity, SsoLoginStatus, WindowSizePreference,
-        ADVANCED_INDUSTRY_SKILL_ID, ASSET_LOCATION_STATUSES, INDUSTRY_COST_ACTIVITIES,
-        INDUSTRY_FACILITY_ACCESS_STATES, INDUSTRY_FACILITY_KINDS, INDUSTRY_SECURITY_CLASSES,
-        INDUSTRY_SKILL_ID, INDUSTRY_SLOT_ACTIVITIES, RESEARCH_PLAN_ACTIVITIES,
-        RESEARCH_PLAN_STATES,
+        AssetSummaryRecord, CharacterSkillQueryResponse, CharacterSkillRecord,
+        CharacterSkillSyncCharacterResponse, CharacterSkillSyncResponse, EveCharacterRecord,
+        IndustryAssetCorrelation, IndustryBlueprintCorrelation, IndustryFacilityQueryResponse,
+        IndustryFacilityRecord, IndustryFacilitySyncResponse, IndustryJobQueryResponse,
+        IndustryJobRecord, IndustryJobSyncCharacterResponse, IndustryJobSyncResponse,
+        IndustrySlotActivity, IndustrySlotQueryResponse, IndustrySlotRecord,
+        ProductionBlueprintCandidate, ProductionFacilityEvidence, ProductionGrossMaterial,
+        ProductionInstallationCost, ProductionPlanRecord, ProductionReservationClaim,
+        ProductionStep, ProductionStepMaterial, ProductionSupplyDecision, ProductionTimeSkill,
+        ResearchPlanOwner, ResearchPlanQueryResponse, ResearchPlanRecord, ResearchPlanSummary,
+        RuntimeDataSnapshot, ScopePackageStatus, SsoCharacterIdentity, SsoLoginStatus,
+        WindowSizePreference, ADVANCED_INDUSTRY_SKILL_ID, ASSET_LOCATION_STATUSES,
+        INDUSTRY_COST_ACTIVITIES, INDUSTRY_FACILITY_ACCESS_STATES, INDUSTRY_FACILITY_KINDS,
+        INDUSTRY_SECURITY_CLASSES, INDUSTRY_SKILL_ID, INDUSTRY_SLOT_ACTIVITIES,
+        RESEARCH_PLAN_ACTIVITIES, RESEARCH_PLAN_STATES,
     };
     use std::fs;
     use std::path::{Path, PathBuf};
