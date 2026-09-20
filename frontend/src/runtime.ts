@@ -662,6 +662,9 @@ export type ProductionLocationSelectionState = "unselected" | "ready" | "facilit
 export type ProductionFacilityModifierState = "not-selected" | "unconfigured" | "ready" | "activity-mismatch";
 export type ProductionInstallationCostState = "ready" | "not-selected" | "unconfigured" | "facility-snapshot-missing" | "facility-missing" | "facility-unavailable" | "cost-index-missing" | "price-snapshot-missing" | "price-missing";
 export type ProductionPlanInstallationCostState = "ready" | "partial" | "unconfigured" | "unavailable" | "not-applicable";
+export type MarketHubId = "jita" | "amarr" | "dodixie" | "hek" | "rens";
+export type ProductionMarketItemState = "ready" | "partial" | "unavailable" | "snapshot-missing";
+export type ProductionMarketPricingState = "ready" | "partial" | "unavailable" | "snapshot-missing" | "stale" | "empty";
 export type ProductionPlanSortField = "priority" | "product" | "owner" | "activity" | "state" | "updated";
 export const productionActivities: readonly ProductionActivity[] = ["manufacturing", "reaction"];
 export const productionPlanStates: readonly ProductionPlanState[] = [
@@ -672,6 +675,25 @@ export const productionInventoryStates: readonly ProductionInventoryState[] = [
 ];
 export const productionPlanSortFields: readonly ProductionPlanSortField[] = [
   "priority", "product", "owner", "activity", "state", "updated",
+];
+export const marketHubIds: readonly MarketHubId[] = ["jita", "amarr", "dodixie", "hek", "rens"];
+export const marketPriceTypeLimit = 250;
+const expectedMarketHubs: readonly ProductionMarketHub[] = [
+  { hubId: "jita", name: "Jita", stationId: 60_003_760,
+    stationName: "Jita IV - Moon 4 - Caldari Navy Assembly Plant",
+    solarSystemId: 30_000_142, regionId: 10_000_002, priority: 0 },
+  { hubId: "amarr", name: "Amarr", stationId: 60_008_494,
+    stationName: "Amarr VIII (Oris) - Emperor Family Academy",
+    solarSystemId: 30_002_187, regionId: 10_000_043, priority: 1 },
+  { hubId: "dodixie", name: "Dodixie", stationId: 60_011_866,
+    stationName: "Dodixie IX - Moon 20 - Federation Navy Assembly Plant",
+    solarSystemId: 30_002_659, regionId: 10_000_032, priority: 2 },
+  { hubId: "hek", name: "Hek", stationId: 60_005_686,
+    stationName: "Hek VIII - Moon 12 - Boundless Creation Factory",
+    solarSystemId: 30_002_053, regionId: 10_000_042, priority: 3 },
+  { hubId: "rens", name: "Rens", stationId: 60_004_588,
+    stationName: "Rens VI - Moon 8 - Brutor Tribe Treasury",
+    solarSystemId: 30_002_510, regionId: 10_000_030, priority: 4 },
 ];
 export const productionPlanPageSize = 50;
 export const productionCatalogPageSize = 50;
@@ -864,6 +886,23 @@ export interface ProductionPurchaseListItem {
   inventoryShortageQuantity: number;
   reservationConflictQuantity: number;
   planCount: number;
+  marketState: ProductionMarketItemState;
+  coveredQuantity: number | null;
+  uncoveredQuantity: number | null;
+  usedOrderCount: number | null;
+  lowestUnitPriceCents: number | null;
+  weightedUnitPriceCents: number | null;
+  purchaseCostCents: number | null;
+}
+
+export interface ProductionMarketHub {
+  hubId: MarketHubId;
+  name: string;
+  stationId: number;
+  stationName: string;
+  solarSystemId: number;
+  regionId: number;
+  priority: number;
 }
 
 export interface ProductionPurchaseList {
@@ -874,6 +913,23 @@ export interface ProductionPurchaseList {
   includedPlanCount: number;
   unresolvedPlanCount: number;
   omittedItemCount: number;
+  marketHub: ProductionMarketHub;
+  marketHubs: ProductionMarketHub[];
+  marketPriceRule: "selected-hub-lowest-sell-orders-volume-weighted-cents";
+  marketPriceTypeLimit: 250;
+  pricingState: ProductionMarketPricingState;
+  marketSnapshotId: number | null;
+  marketSyncRunId: number | null;
+  marketObservedAt: string | null;
+  marketAgeSeconds: number | null;
+  fullyCoveredItemCount: number;
+  partiallyCoveredItemCount: number;
+  unavailableItemCount: number;
+  snapshotMissingItemCount: number;
+  totalPurchaseCostCents: number;
+  installationCostState: ProductionPlanInstallationCostState;
+  estimatedInstallationCost: number | null;
+  additionalCapitalNeedCents: number | null;
 }
 
 export interface ProductionReservationClaim {
@@ -1030,6 +1086,7 @@ export interface ProductionPlanQuery {
   limit: number;
   sortBy: ProductionPlanSortField;
   sortDirection: SortDirection;
+  marketHubId: MarketHubId;
 }
 
 export interface ProductionPlanPage {
@@ -1063,9 +1120,20 @@ export interface ProductionPlanPage {
   facilityModifierRule: "explicit-basis-points-combined-before-single-ceil";
   purchaseListApplied: true;
   purchaseListRule: "filtered-plans-sum-missing-by-type";
+  marketPricesApplied: true;
+  marketPriceRule: "selected-hub-lowest-sell-orders-volume-weighted-cents";
   installationCostsApplied: true;
   installationCostRule: "base-material-adjusted-price-times-runs-system-index-plus-explicit-tax-plus-scc-4-percent-ceil";
   remainingModifiersApplied: false;
+}
+
+export interface MarketPriceSyncResult {
+  syncRunId: number;
+  hubId: MarketHubId;
+  typeCount: number;
+  orderCount: number;
+  pageCount: number;
+  observedAt: string;
 }
 
 export interface ProductionPlanInput {
@@ -4103,13 +4171,28 @@ function validateProductionPlanQuery(query: ProductionPlanQuery): ProductionPlan
     !(query.state === null || productionPlanStates.includes(query.state)) ||
     !isNonNegativeSafeInteger(query.offset) || !Number.isSafeInteger(query.limit) ||
     query.limit < 1 || query.limit > 100 || !productionPlanSortFields.includes(query.sortBy) ||
-    !["asc", "desc"].includes(query.sortDirection)
+    !["asc", "desc"].includes(query.sortDirection) || !marketHubIds.includes(query.marketHubId)
   ) throw new Error("The production-plan query is invalid.");
   return { ...query, search };
 }
 
 function emptyProductionSummary(): Record<ProductionPlanState, number> {
   return Object.fromEntries(productionPlanStates.map((state) => [state, 0])) as Record<ProductionPlanState, number>;
+}
+
+function parseProductionMarketHub(candidate: unknown): ProductionMarketHub {
+  if (
+    !isRecord(candidate) || !marketHubIds.includes(candidate.hubId as MarketHubId) ||
+    !isBoundedText(candidate.name, 80) || !isPositiveSafeInteger(candidate.stationId) ||
+    !isBoundedText(candidate.stationName, 200) || !isPositiveSafeInteger(candidate.solarSystemId) ||
+    !isPositiveSafeInteger(candidate.regionId) || !isNonNegativeSafeInteger(candidate.priority) ||
+    Number(candidate.priority) >= expectedMarketHubs.length
+  ) throw new Error("The native runtime returned an invalid market hub.");
+  const expected = expectedMarketHubs[Number(candidate.priority)];
+  if (Object.entries(expected).some(([key, value]) => candidate[key] !== value)) {
+    throw new Error("The native runtime returned an inconsistent market hub.");
+  }
+  return candidate as unknown as ProductionMarketHub;
 }
 
 function parseProductionPurchaseList(candidate: unknown, planCount: number): ProductionPurchaseList {
@@ -4120,8 +4203,30 @@ function parseProductionPurchaseList(candidate: unknown, planCount: number): Pro
     !isNonNegativeSafeInteger(candidate.totalQuantity) ||
     !isNonNegativeSafeInteger(candidate.includedPlanCount) ||
     !isNonNegativeSafeInteger(candidate.unresolvedPlanCount) ||
-    !isNonNegativeSafeInteger(candidate.omittedItemCount)
+    !isNonNegativeSafeInteger(candidate.omittedItemCount) ||
+    !Array.isArray(candidate.marketHubs) || candidate.marketHubs.length !== expectedMarketHubs.length ||
+    candidate.marketPriceRule !== "selected-hub-lowest-sell-orders-volume-weighted-cents" ||
+    candidate.marketPriceTypeLimit !== marketPriceTypeLimit ||
+    !["ready", "partial", "unavailable", "snapshot-missing", "stale", "empty"]
+      .includes(String(candidate.pricingState)) ||
+    !(candidate.marketSnapshotId === null || isPositiveSafeInteger(candidate.marketSnapshotId)) ||
+    !(candidate.marketSyncRunId === null || isPositiveSafeInteger(candidate.marketSyncRunId)) ||
+    !(candidate.marketObservedAt === null || isBoundedText(candidate.marketObservedAt, 64)) ||
+    !(candidate.marketAgeSeconds === null || isNonNegativeSafeInteger(candidate.marketAgeSeconds)) ||
+    !isNonNegativeSafeInteger(candidate.fullyCoveredItemCount) ||
+    !isNonNegativeSafeInteger(candidate.partiallyCoveredItemCount) ||
+    !isNonNegativeSafeInteger(candidate.unavailableItemCount) ||
+    !isNonNegativeSafeInteger(candidate.snapshotMissingItemCount) ||
+    !isNonNegativeSafeInteger(candidate.totalPurchaseCostCents) ||
+    !["ready", "partial", "unavailable", "not-applicable"]
+      .includes(String(candidate.installationCostState)) ||
+    !(candidate.estimatedInstallationCost === null ||
+      isNonNegativeSafeInteger(candidate.estimatedInstallationCost)) ||
+    !(candidate.additionalCapitalNeedCents === null ||
+      isNonNegativeSafeInteger(candidate.additionalCapitalNeedCents))
   ) throw new Error("The native runtime returned an invalid production purchase list.");
+  const marketHub = parseProductionMarketHub(candidate.marketHub);
+  const marketHubs = candidate.marketHubs.map(parseProductionMarketHub);
   const items = candidate.items.map((item): ProductionPurchaseListItem => {
     if (
       !isRecord(item) || !isPositiveSafeInteger(item.typeId) ||
@@ -4130,21 +4235,81 @@ function parseProductionPurchaseList(candidate: unknown, planCount: number): Pro
       !isNonNegativeSafeInteger(item.reservationConflictQuantity) ||
       !isPositiveSafeInteger(item.planCount) ||
       Number(item.inventoryShortageQuantity) + Number(item.reservationConflictQuantity) !==
-        Number(item.quantity) || Number(item.planCount) > planCount
+        Number(item.quantity) || Number(item.planCount) > planCount ||
+      !["ready", "partial", "unavailable", "snapshot-missing"].includes(String(item.marketState)) ||
+      !(item.coveredQuantity === null || isNonNegativeSafeInteger(item.coveredQuantity)) ||
+      !(item.uncoveredQuantity === null || isNonNegativeSafeInteger(item.uncoveredQuantity)) ||
+      !(item.usedOrderCount === null || isNonNegativeSafeInteger(item.usedOrderCount)) ||
+      !(item.lowestUnitPriceCents === null || isPositiveSafeInteger(item.lowestUnitPriceCents)) ||
+      !(item.weightedUnitPriceCents === null || isPositiveSafeInteger(item.weightedUnitPriceCents)) ||
+      !(item.purchaseCostCents === null || isNonNegativeSafeInteger(item.purchaseCostCents))
     ) throw new Error("The native runtime returned an invalid production purchase-list item.");
+    const allMissing = item.coveredQuantity === null && item.uncoveredQuantity === null &&
+      item.usedOrderCount === null && item.lowestUnitPriceCents === null &&
+      item.weightedUnitPriceCents === null && item.purchaseCostCents === null;
+    const quoteKnown = item.coveredQuantity !== null && item.uncoveredQuantity !== null &&
+      item.usedOrderCount !== null && item.purchaseCostCents !== null &&
+      Number(item.coveredQuantity) + Number(item.uncoveredQuantity) === Number(item.quantity);
+    const priced = quoteKnown && Number(item.coveredQuantity) > 0 && Number(item.usedOrderCount) > 0 &&
+      item.lowestUnitPriceCents !== null && item.weightedUnitPriceCents !== null &&
+      Number(item.weightedUnitPriceCents) >= Number(item.lowestUnitPriceCents) &&
+      Number(item.purchaseCostCents) > 0 &&
+      Math.ceil(Number(item.purchaseCostCents) / Number(item.coveredQuantity)) ===
+        Number(item.weightedUnitPriceCents);
+    if (
+      (item.marketState === "snapshot-missing" && !allMissing) ||
+      (item.marketState === "unavailable" && !(quoteKnown && item.coveredQuantity === 0 &&
+        item.uncoveredQuantity === item.quantity && item.usedOrderCount === 0 &&
+        item.lowestUnitPriceCents === null && item.weightedUnitPriceCents === null &&
+        item.purchaseCostCents === 0)) ||
+      (item.marketState === "ready" && !(priced && item.uncoveredQuantity === 0)) ||
+      (item.marketState === "partial" && !(priced && Number(item.uncoveredQuantity) > 0))
+    ) throw new Error("The native runtime returned inconsistent purchase-list pricing.");
     return item as unknown as ProductionPurchaseListItem;
   });
   const incomplete = Number(candidate.unresolvedPlanCount) > 0 || Number(candidate.omittedItemCount) > 0;
   const representedQuantity = items.reduce((total, item) => total + item.quantity, 0);
+  const stateCounts = {
+    ready: items.filter((item) => item.marketState === "ready").length,
+    partial: items.filter((item) => item.marketState === "partial").length,
+    unavailable: items.filter((item) => item.marketState === "unavailable").length,
+    missing: items.filter((item) => item.marketState === "snapshot-missing").length,
+  };
+  const sourceReady = isPositiveSafeInteger(candidate.marketSnapshotId) &&
+    isPositiveSafeInteger(candidate.marketSyncRunId) && isBoundedText(candidate.marketObservedAt, 64) &&
+    isNonNegativeSafeInteger(candidate.marketAgeSeconds);
+  const sourceMissing = candidate.marketSnapshotId === null && candidate.marketSyncRunId === null &&
+    candidate.marketObservedAt === null && candidate.marketAgeSeconds === null;
+  const totalPurchaseCost = items.reduce((total, item) => total + (item.purchaseCostCents ?? 0), 0);
+  const pricingShape = candidate.pricingState === "empty" ? items.length === 0
+    : candidate.pricingState === "snapshot-missing" ? items.length > 0 && sourceMissing && stateCounts.missing === items.length
+      : candidate.pricingState === "ready" ? candidate.state === "ready" && sourceReady && stateCounts.ready === items.length
+        : candidate.pricingState === "unavailable" ? items.length > 0 && sourceReady &&
+          stateCounts.unavailable === items.length
+          : sourceReady && items.length > 0;
+  const installationShape = ["ready", "partial"].includes(String(candidate.installationCostState))
+    ? candidate.estimatedInstallationCost !== null : candidate.estimatedInstallationCost === null;
+  const expectedCapital = candidate.installationCostState === "ready" &&
+    ["ready", "empty"].includes(String(candidate.pricingState))
+    ? Number(candidate.totalPurchaseCostCents) + Number(candidate.estimatedInstallationCost) * 100 : null;
   if (
     Number(candidate.includedPlanCount) + Number(candidate.unresolvedPlanCount) !== planCount ||
     Number(candidate.itemCount) !== items.length + Number(candidate.omittedItemCount) ||
     Number(candidate.totalQuantity) < representedQuantity ||
     (Number(candidate.omittedItemCount) === 0 && Number(candidate.totalQuantity) !== representedQuantity) ||
     new Set(items.map((item) => item.typeId)).size !== items.length ||
-    candidate.state !== (incomplete ? "incomplete" : items.length > 0 ? "ready" : "empty")
+    candidate.state !== (incomplete ? "incomplete" : items.length > 0 ? "ready" : "empty") ||
+    marketHubs.some((hub, index) => hub.hubId !== marketHubIds[index]) ||
+    !marketHubs.some((hub) => hub.hubId === marketHub.hubId) ||
+    (!sourceReady && !sourceMissing) || !pricingShape || !installationShape ||
+    candidate.fullyCoveredItemCount !== stateCounts.ready ||
+    candidate.partiallyCoveredItemCount !== stateCounts.partial ||
+    candidate.unavailableItemCount !== stateCounts.unavailable ||
+    candidate.snapshotMissingItemCount !== stateCounts.missing ||
+    candidate.totalPurchaseCostCents !== totalPurchaseCost ||
+    candidate.additionalCapitalNeedCents !== expectedCapital
   ) throw new Error("The native runtime returned inconsistent production purchase-list data.");
-  return { ...candidate, items } as unknown as ProductionPurchaseList;
+  return { ...candidate, items, marketHub, marketHubs } as unknown as ProductionPurchaseList;
 }
 
 function parseProductionPlanPage(candidate: unknown): ProductionPlanPage {
@@ -4181,6 +4346,8 @@ function parseProductionPlanPage(candidate: unknown): ProductionPlanPage {
     candidate.facilityModifierRule !== "explicit-basis-points-combined-before-single-ceil" ||
     candidate.purchaseListApplied !== true ||
     candidate.purchaseListRule !== "filtered-plans-sum-missing-by-type" ||
+    candidate.marketPricesApplied !== true ||
+    candidate.marketPriceRule !== "selected-hub-lowest-sell-orders-volume-weighted-cents" ||
     candidate.installationCostsApplied !== true ||
     candidate.installationCostRule !==
       "base-material-adjusted-price-times-runs-system-index-plus-explicit-tax-" +
@@ -4223,6 +4390,16 @@ export async function loadProductionPlans(
     summary: emptyProductionSummary(), purchaseList: {
       state: "empty", items: [], itemCount: 0, totalQuantity: 0,
       includedPlanCount: 0, unresolvedPlanCount: 0, omittedItemCount: 0,
+      marketHub: { ...expectedMarketHubs[marketHubIds.indexOf(validated.marketHubId)] },
+      marketHubs: expectedMarketHubs.map((hub) => ({ ...hub })),
+      marketPriceRule: "selected-hub-lowest-sell-orders-volume-weighted-cents",
+      marketPriceTypeLimit,
+      pricingState: "empty", marketSnapshotId: null, marketSyncRunId: null,
+      marketObservedAt: null, marketAgeSeconds: null,
+      fullyCoveredItemCount: 0, partiallyCoveredItemCount: 0,
+      unavailableItemCount: 0, snapshotMissingItemCount: 0,
+      totalPurchaseCostCents: 0, installationCostState: "not-applicable",
+      estimatedInstallationCost: null, additionalCapitalNeedCents: null,
     }, buildNumber: null, inventoryApplied: true,
     reservationsApplied: true, reservationRule: "priority-desc-created-asc-plan-id-asc",
     blueprintMaterialEfficiencyApplied: true,
@@ -4242,6 +4419,8 @@ export async function loadProductionPlans(
     facilityModifierRule: "explicit-basis-points-combined-before-single-ceil",
     purchaseListApplied: true,
     purchaseListRule: "filtered-plans-sum-missing-by-type",
+    marketPricesApplied: true,
+    marketPriceRule: "selected-hub-lowest-sell-orders-volume-weighted-cents",
     installationCostsApplied: true,
     installationCostRule: "base-material-adjusted-price-times-runs-system-index-plus-explicit-tax-plus-scc-4-percent-ceil",
     remainingModifiersApplied: false,
@@ -4250,11 +4429,45 @@ export async function loadProductionPlans(
     search: validated.search, ownerCharacterId: validated.ownerCharacterId,
     activity: validated.activity, planState: validated.state, offset: validated.offset,
     limit: validated.limit, sortBy: validated.sortBy, sortDirection: validated.sortDirection,
+    marketHubId: validated.marketHubId,
   })));
-  if (page.offset !== validated.offset || page.limit !== validated.limit) {
+  if (page.offset !== validated.offset || page.limit !== validated.limit ||
+      page.purchaseList.marketHub.hubId !== validated.marketHubId) {
     throw new Error("The native runtime returned a different production-plan window.");
   }
   return page;
+}
+
+export async function syncMarketPrices(
+  marketHubId: MarketHubId,
+  typeIds: readonly number[],
+  adapter: RuntimeAdapter = tauriAdapter,
+): Promise<MarketPriceSyncResult> {
+  if (!marketHubIds.includes(marketHubId) || typeIds.length > marketPriceTypeLimit ||
+      typeIds.some((typeId) => !isPositiveSafeInteger(typeId)) ||
+      new Set(typeIds).size !== typeIds.length) {
+    throw new Error("The market-price sync request is invalid.");
+  }
+  if (!adapter.isAvailable()) {
+    throw new Error("Market-price sync is available only in the desktop application.");
+  }
+  const candidate: unknown = JSON.parse(await adapter.invoke("sync_market_prices", {
+    marketHubId,
+    typeIds: [...typeIds].sort((left, right) => left - right),
+  }));
+  if (
+    !isRecord(candidate) || !isPositiveSafeInteger(candidate.syncRunId) ||
+    !marketHubIds.includes(candidate.hubId as MarketHubId) ||
+    !isNonNegativeSafeInteger(candidate.typeCount) ||
+    !isNonNegativeSafeInteger(candidate.orderCount) ||
+    !isNonNegativeSafeInteger(candidate.pageCount) ||
+    !isBoundedText(candidate.observedAt, 64) ||
+    candidate.hubId !== marketHubId || Number(candidate.typeCount) !== typeIds.length ||
+    (typeIds.length > 0 && Number(candidate.pageCount) < typeIds.length)
+  ) {
+    throw new Error("The native runtime returned an invalid market-price sync result.");
+  }
+  return candidate as unknown as MarketPriceSyncResult;
 }
 
 function validateProductionPlanInput(input: ProductionPlanInput): ProductionPlanInput {

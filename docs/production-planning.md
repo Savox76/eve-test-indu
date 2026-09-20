@@ -1,6 +1,6 @@
 # Produktionsplanung
 
-Paket 30 ergänzt lokale, updatefeste Fertigungs- und Reaktionsziele. Paket 31 gleicht deren äußeren Materialbedarf mit vollständigen persönlichen Asset-Snapshots ab. Paket 32 reserviert denselben Bestand konfliktfrei zwischen allen Zielen eines Charakters. Paket 33 ordnet einem Ziel optional ein konkretes persönliches Blueprint-Item zu und wendet dessen belegten ME-Wert auf den Wurzel-Fertigungsschritt an. Paket 34 bezieht zusätzlich dessen belegten TE-Wert in die Blueprint-Zeit des Zielschritts ein. Paket 35 wendet die aktuell wirksamen Industrie- und Reaktions-Skills des ausführenden Charakters auf jeden passenden Schritt an. Paket 36 erweitert die persönliche Blueprintzuordnung und ihre ME-/TE-Wirkung auf jeden Fertigungsschritt der Kette. Paket 37 verbindet jeden Schritt mit einem belegten persönlichen Job und dessen Anlagenstand. Paket 38 lässt vorhandene Vorprodukte die Kette verkürzen und bindet Bestand sowie Reservierungen wahlweise an eine Produktionsstation und ein Materiallager. Paket 39 ergänzt ein ausdrücklich gespeichertes Material-/Zeitprofil dieser Anlage und berechnet die daraus folgende Anlagenzeit. Paket 40 aggregiert die konfliktfreien Fehlmengen der aktuell gefilterten Ziele zu einer kopierbaren EVE-Multibuy-Liste. Paket 41 berechnet aus offiziellen angepassten Preisen, dem belegten Systemkostenindex und einer ausdrücklich gespeicherten Anlagensteuer eine quellengebundene Installationskostenbasis. Paket 43 vervollständigt diese Kosten um den offiziellen SCC-Zuschlag von 4 Prozent. Die Planung verwendet ausschließlich vollständige, belegte Snapshots und explizite Planeingaben, verändert keine Daten in EVE und startet keine Industrieaufträge.
+Paket 30 ergänzt lokale, updatefeste Fertigungs- und Reaktionsziele. Paket 31 gleicht deren äußeren Materialbedarf mit vollständigen persönlichen Asset-Snapshots ab. Paket 32 reserviert denselben Bestand konfliktfrei zwischen allen Zielen eines Charakters. Paket 33 ordnet einem Ziel optional ein konkretes persönliches Blueprint-Item zu und wendet dessen belegten ME-Wert auf den Wurzel-Fertigungsschritt an. Paket 34 bezieht zusätzlich dessen belegten TE-Wert in die Blueprint-Zeit des Zielschritts ein. Paket 35 wendet die aktuell wirksamen Industrie- und Reaktions-Skills des ausführenden Charakters auf jeden passenden Schritt an. Paket 36 erweitert die persönliche Blueprintzuordnung und ihre ME-/TE-Wirkung auf jeden Fertigungsschritt der Kette. Paket 37 verbindet jeden Schritt mit einem belegten persönlichen Job und dessen Anlagenstand. Paket 38 lässt vorhandene Vorprodukte die Kette verkürzen und bindet Bestand sowie Reservierungen wahlweise an eine Produktionsstation und ein Materiallager. Paket 39 ergänzt ein ausdrücklich gespeichertes Material-/Zeitprofil dieser Anlage und berechnet die daraus folgende Anlagenzeit. Paket 40 aggregiert die konfliktfreien Fehlmengen der aktuell gefilterten Ziele zu einer kopierbaren EVE-Multibuy-Liste. Paket 41 berechnet aus offiziellen angepassten Preisen, dem belegten Systemkostenindex und einer ausdrücklich gespeicherten Anlagensteuer eine quellengebundene Installationskostenbasis. Paket 43 vervollständigt diese Kosten um den offiziellen SCC-Zuschlag von 4 Prozent. Paket 44 bepreist den realen Einkaufsbedarf aus der Sell-Order-Tiefe der ausdrücklich gewählten Handelsstation. Die Planung verwendet ausschließlich vollständige, belegte Snapshots und explizite Planeingaben, verändert keine Daten in EVE und startet keine Industrieaufträge.
 
 ## Persistentes Ziel
 
@@ -174,7 +174,29 @@ Paket 40 bildet die Einkaufsliste aus `missingQuantity`, nachdem der vollständi
 
 Die Ausgabe ist nur dann `ready`, wenn jeder gefilterte Plan ein auflösbares Rezept und einen vollständigen Asset-Snapshot besitzt. `empty` bedeutet eine vollständig belegte Auswahl ohne Fehlmengen. `incomplete` nennt ausdrücklich die Zahl der nicht einbezogenen Ziele; ein fehlender Snapshot oder ein blockiertes Rezept wird niemals als Fehlmenge null ausgelegt. Bis zu 1.000 Materialarten werden übertragen. Wird diese Grenze überschritten, nennt die Antwort die ausgelassenen Typen und deaktiviert das Kopieren, statt eine gekürzte Liste als vollständig auszugeben.
 
-Der Kopiertext enthält pro Zeile den offiziellen Typnamen und die aggregierte Menge im Format `Typname Menge`. Er kann direkt in EVE Multibuy eingefügt werden. Preise, Handelsort, Gebühren oder Kaufentscheidungen werden dabei nicht erfunden.
+Der Kopiertext enthält pro Zeile den offiziellen Typnamen und die aggregierte Menge im Format `Typname Menge`. Er kann direkt in EVE Multibuy eingefügt werden. Die Hub- und Preisangaben sind davon getrennte Quellenbelege und verändern das Multibuy-Format nicht.
+
+## Multi-Hub-Sofortkaufpreise und Kapitalbedarf
+
+Paket 44 führt fünf feste, getrennt validierte Marktprofile. Jita ist der persistierte Standard und besitzt die höchste Bedienpriorität; ein ausdrücklich gewählter anderer Hub bleibt jedoch erhalten und fällt bei fehlenden Daten oder Fehlern niemals stillschweigend auf Jita zurück.
+
+| Hub | Station-ID | Sonnensystem | Region |
+| --- | ---: | ---: | ---: |
+| Jita | `60003760` | `30000142` | `10000002` |
+| Amarr | `60008494` | `30002187` | `10000043` |
+| Dodixie | `60011866` | `30002659` | `10000032` |
+| Hek | `60005686` | `30002053` | `10000042` |
+| Rens | `60004588` | `30002510` | `10000030` |
+
+Die interne Route `/market-prices/sync` akzeptiert genau einen Hub und 1 bis 250 eindeutige positive Typ-IDs. Die Oberfläche übergibt ausschließlich die aktuell gefilterten Fehlmengentypen. Für jeden Typ wird `/markets/{region_id}/orders/` mit `order_type=sell` vollständig über `X-Pages` gelesen. Veröffentlicht werden ausschließlich Orders mit exakt passender Stations- und Sonnensystem-ID. Order-IDs, Typen, Mengen und Preise werden streng begrenzt; der Preis wird verlustfrei in ISK-Cent überführt. Ein Lauf erzeugt erst nach vollständiger Pagination und Validierung atomar einen neuen Hub-Snapshot. Fehlerläufe bleiben getrennt und verdrängen den letzten vollständigen Stand nicht.
+
+Für einen Materialbedarf werden die Sell Orders nach Preis und Order-ID aufsteigend verbraucht. Es gelten:
+
+1. `purchaseCostCents = sum(entnommeneMenge × priceCents)`
+2. `weightedUnitPriceCents = ceil(purchaseCostCents / coveredQuantity)`
+3. `additionalCapitalNeedCents = totalPurchaseCostCents + estimatedInstallationCost × 100`
+
+`ready` bedeutet vollständige Deckung der Fehlmenge, `partial` eine belegte Teilleistung und `unavailable` keine passende Sell Order im vollständigen Snapshot. `snapshot-missing` unterscheidet einen noch nicht abgefragten Typ oder Hub. Ein Snapshot gilt nach 15 Minuten als `stale`; seine belegten Werte bleiben sichtbar, werden aber nicht als aktueller vollständiger Kapitalbedarf ausgegeben. Der zusätzliche Kapitalbedarf erscheint nur, wenn sämtliche Fehlmengen vollständig bepreist und alle einbezogenen Ziele vollständig mit Installationskosten belegt sind. Teilpreise oder fehlende Installationskosten werden nicht als Gesamtsumme ausgegeben.
 
 ## Vollständige belegte Installationskosten
 
@@ -194,14 +216,14 @@ Blueprint-ME und Anlagen-Materialboni verändern die tatsächlich benötigten Ei
 
 ## Bewusste Berechnungsgrenze
 
-Paket 43 berechnet Bruttobedarf einschließlich des belegten Blueprint-ME und des expliziten Anlagen-Materialbonus jedes tatsächlich gebauten passenden Schritts, die mit dessen belegtem TE und Anlagen-Zeitbonus veränderte Zeit, die persönliche Skillzeit, gewählte Bestandsquellen und konfliktfreie zielbezogene Reservierungen. Die daraus belegten Fehlmengen werden für die aktuellen Filter zu einer Einkaufsliste aggregiert. Vorhandene Vorprodukte können die Kette teilweise oder vollständig ersetzen. Zusätzlich werden passende persönliche Job- und Anlagenbelege samt aktivitätsspezifischem Systemkostenindex sowie die oben beschriebenen vollständigen belegten Installationskosten dargestellt. Noch nicht einbezogen werden:
+Paket 44 berechnet Bruttobedarf einschließlich des belegten Blueprint-ME und des expliziten Anlagen-Materialbonus jedes tatsächlich gebauten passenden Schritts, die mit dessen belegtem TE und Anlagen-Zeitbonus veränderte Zeit, die persönliche Skillzeit, gewählte Bestandsquellen und konfliktfreie zielbezogene Reservierungen. Die daraus belegten Fehlmengen werden für die aktuellen Filter zu einer Einkaufsliste aggregiert und am gewählten Markt-Hub nach realer Sell-Order-Tiefe bepreist. Vorhandene Vorprodukte können die Kette teilweise oder vollständig ersetzen. Zusätzlich werden passende persönliche Job- und Anlagenbelege samt aktivitätsspezifischem Systemkostenindex sowie die oben beschriebenen vollständigen belegten Installationskosten dargestellt. Noch nicht einbezogen werden:
 
 - persönliche Blueprint-ME-/TE-Modifikatoren für Reaktionen,
 - automatisch erkannte Struktur-, Service- und Rigboni,
-- Marktpreise, Handelsort und Kaufentscheidung,
+- automatischer Hubvergleich, Buy Orders sowie Verkaufs- oder Gewinnrechnung,
 - Transportkosten und reale Kalenderbelegung.
 
-Die API bestätigt die aktiven Verträge mit `inventoryApplied: true`, `reservationsApplied: true`, `reservationRule: priority-desc-created-asc-plan-id-asc`, `blueprintMaterialEfficiencyApplied: true`, `materialEfficiencyRule: max-runs-ceil-base-runs-percent`, `blueprintTimeEfficiencyApplied: true`, `timeEfficiencyRule: max-one-ceil-base-runs-percent`, `blueprintChainAssignmentsApplied: true`, `blueprintChainAssignmentRule: explicit-per-recipe-unique-item`, `characterSkillTimeApplied: true`, `characterSkillTimeRule: job-wide-ceil-industry-4-advanced-industry-3-reactions-4-active-levels`, `facilityEvidenceApplied: true`, `facilityEvidenceRule: assigned-blueprint-before-active-before-latest-owner-job`, `supplyModesApplied: true`, `supplyModeRule: stock-first-before-recursive-build`, `facilityModifiersApplied: true`, `facilityModifierRule: explicit-basis-points-combined-before-single-ceil`, `purchaseListApplied: true`, `purchaseListRule: filtered-plans-sum-missing-by-type`, `installationCostsApplied: true` und `installationCostRule: base-material-adjusted-price-times-runs-system-index-plus-explicit-tax-plus-scc-4-percent-ceil`. Die verbleibende Modifikatorgrenze bleibt `remainingModifiersApplied: false`. Damit ist die bekannte universelle Gebührenkomponente vollständig; unbekannte reale Struktur-/Service-/Rigmodifikatoren werden weiterhin nicht erfunden. Die Zeit bleibt ohne Kalenderbelegung und Transport kein realer Endtermin.
+Die API bestätigt die aktiven Verträge mit `inventoryApplied: true`, `reservationsApplied: true`, `reservationRule: priority-desc-created-asc-plan-id-asc`, `blueprintMaterialEfficiencyApplied: true`, `materialEfficiencyRule: max-runs-ceil-base-runs-percent`, `blueprintTimeEfficiencyApplied: true`, `timeEfficiencyRule: max-one-ceil-base-runs-percent`, `blueprintChainAssignmentsApplied: true`, `blueprintChainAssignmentRule: explicit-per-recipe-unique-item`, `characterSkillTimeApplied: true`, `characterSkillTimeRule: job-wide-ceil-industry-4-advanced-industry-3-reactions-4-active-levels`, `facilityEvidenceApplied: true`, `facilityEvidenceRule: assigned-blueprint-before-active-before-latest-owner-job`, `supplyModesApplied: true`, `supplyModeRule: stock-first-before-recursive-build`, `facilityModifiersApplied: true`, `facilityModifierRule: explicit-basis-points-combined-before-single-ceil`, `purchaseListApplied: true`, `purchaseListRule: filtered-plans-sum-missing-by-type`, `marketPricesApplied: true`, `marketPriceRule: selected-hub-lowest-sell-orders-volume-weighted-cents`, `installationCostsApplied: true` und `installationCostRule: base-material-adjusted-price-times-runs-system-index-plus-explicit-tax-plus-scc-4-percent-ceil`. Die verbleibende Modifikatorgrenze bleibt `remainingModifiersApplied: false`. Damit ist die bekannte universelle Gebührenkomponente vollständig; unbekannte reale Struktur-/Service-/Rigmodifikatoren werden weiterhin nicht erfunden. Die Zeit bleibt ohne Kalenderbelegung und Transport kein realer Endtermin.
 
 ## Arbeitsvorrat und Bedienung
 
@@ -209,7 +231,7 @@ Die Produktionsplanung befindet sich unter **Produktion & Reaktionen**. Die Ausw
 
 Die Industrie-Slotübersicht zählt ein auflösbares Ziel als **laufend**, wenn derselbe Charakter einen aktiven, pausierten oder abholbereiten Job mit passender Aktivität und Blueprint-Typ-ID besitzt. Sonst ist es **geplant**. Nicht auflösbare Ziele sind **blockiert**. Ein Fertigzustand wird nicht aus Bestand oder Jobhistorie erfunden und bleibt daher null.
 
-Die authentifizierten internen Routen `/production-plans/catalog`, `/production-plans/query`, `/production-plans/save` und `/production-plans/delete` besitzen strikte, begrenzte Verträge. Sidecar, Tauri und Frontend validieren ihre Antworten unabhängig voneinander.
+Die authentifizierten internen Routen `/production-plans/catalog`, `/production-plans/query`, `/production-plans/save`, `/production-plans/delete` und `/market-prices/sync` besitzen strikte, begrenzte Verträge. Sidecar, Tauri und Frontend validieren ihre Antworten unabhängig voneinander.
 
 ## Quelle
 

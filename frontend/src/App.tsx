@@ -84,11 +84,13 @@ import {
   loadProductionCatalog,
   loadProductionPlans,
   loadResearchPlans,
+  marketHubIds,
   syncAssets,
   syncBlueprints,
   syncCharacterSkills,
   syncIndustryFacilities,
   syncIndustryJobs,
+  syncMarketPrices,
   renameAccountGroup,
   openReleaseDownloads,
   saveProductionPlan,
@@ -143,6 +145,8 @@ import {
   type IndustrySlotActivityKey,
   type IndustrySlotPage,
   type IndustrySlotQuery,
+  type MarketHubId,
+  type MarketPriceSyncResult,
   type ResearchPlanInput,
   type ResearchPlanPage,
   type ResearchPlanQuery,
@@ -929,7 +933,7 @@ const copy = {
       kicker: "PRODUKTIONSPLANUNG",
       title: "Fertigungs- und Reaktionsziele",
       subtitle: "Persistente Ziele werden in Schritte aufgelöst und konfliktfrei aus dem letzten vollständigen Asset-Snapshot reserviert.",
-      boundary: "Der Bestand des ausführenden Charakters wird lokal und zielübergreifend reserviert. Persönliche Blueprints, ME/TE und aktive Charakter-Skills werden schrittgenau angewendet. Anlagenboni und Steuern stammen nur aus ausdrücklich gespeicherten Planwerten; die Installationskostenbasis nutzt offizielle angepasste Preise und Systemkostenindizes. Marktpreise und unbekannte Anlagenmodifikatoren werden nicht geraten.",
+      boundary: "Der Bestand des ausführenden Charakters wird lokal und zielübergreifend reserviert. Persönliche Blueprints, ME/TE und aktive Charakter-Skills werden schrittgenau angewendet. Anlagenboni und Steuern stammen nur aus ausdrücklich gespeicherten Planwerten; die Installationskostenbasis nutzt offizielle angepasste Preise und Systemkostenindizes. Sofortkaufpreise stammen ausschließlich aus Sell Orders der ausgewählten Handelsstation.",
       purchaseTitle: "Einkaufsliste / EVE Multibuy",
       purchaseSubtitle: "Aggregiert die konfliktfreien Fehlmengen aller aktuell gefilterten Produktionsziele.",
       purchaseStateLabels: { ready: "Vollständig", empty: "Keine Fehlmengen", incomplete: "Unvollständig" },
@@ -942,6 +946,27 @@ const copy = {
       purchaseCopyError: "Die Multibuy-Liste konnte nicht kopiert werden.",
       purchaseItemSummary: "{quantity} benötigt · {plans} Ziele",
       purchaseBreakdown: "{inventory} physisch fehlend · {conflict} durch Reservierungen gebunden",
+      marketHub: "Handelsstation",
+      marketRefresh: "Preise aktualisieren",
+      marketRefreshing: "Preise werden geladen …",
+      marketRefreshSuccess: "{types} Materialpreise für {hub} aktualisiert.",
+      marketRefreshError: "Die Sell Orders der ausgewählten Handelsstation konnten nicht aktualisiert werden. Der letzte vollständige Stand bleibt erhalten.",
+      marketStation: "Nur Sell Orders an {station}",
+      marketPricingStateLabels: {
+        ready: "Vollständig bepreist", partial: "Teilweise gedeckt", unavailable: "Keine Sell Orders",
+        "snapshot-missing": "Preise fehlen", stale: "Preise veraltet", empty: "Keine Fehlmengen",
+      },
+      marketSource: "Markt-Snapshot #{snapshot} · Lauf #{run} · {age} alt",
+      marketNoSource: "Für diese Handelsstation wurde noch kein Markt-Snapshot geladen.",
+      marketStale: "Der Preisstand ist älter als 15 Minuten. Vor dem Einkauf aktualisieren.",
+      marketLimit: "Für eine gezielte Abfrage sind höchstens {limit} Materialarten erlaubt. Grenze die Produktionsziele mit den Filtern weiter ein.",
+      marketCoverage: "{covered} von {required} Einheiten gedeckt · {orders} Sell Orders",
+      marketWeightedPrice: "Gewichteter Sofortkaufpreis {price} ISK je Einheit",
+      marketUnavailable: "An dieser Handelsstation ist aktuell keine passende Sell Order belegt.",
+      purchaseCost: "Sofortkauf",
+      installationCost: "Installation",
+      additionalCapital: "Zusätzlicher Kapitalbedarf",
+      capitalUnavailable: "Der gesamte Kapitalbedarf wird erst bei vollständigen Markt- und Installationskosten angezeigt.",
       build: "SDE-Build {build}",
       searchRecipe: "Produkt oder Blueprint suchen",
       activity: "Aktivität",
@@ -1817,7 +1842,7 @@ const copy = {
       kicker: "PRODUCTION PLANNING",
       title: "Manufacturing and reaction goals",
       subtitle: "Persistent goals are expanded into steps and reserved conflict-free from the latest complete asset snapshot.",
-      boundary: "Stock owned by the executing character is reserved locally across all goals. Personal blueprints, ME/TE and active character skills are applied per step. Facility bonuses and taxes come only from explicitly saved plan values; the installation-cost basis uses official adjusted prices and system cost indices. Market prices and unknown facility modifiers are never guessed.",
+      boundary: "Stock owned by the executing character is reserved locally across all goals. Personal blueprints, ME/TE and active character skills are applied per step. Facility bonuses and taxes come only from explicitly saved plan values; the installation-cost basis uses official adjusted prices and system cost indices. Immediate-buy prices come exclusively from sell orders at the selected trade station.",
       purchaseTitle: "Purchase list / EVE Multibuy",
       purchaseSubtitle: "Aggregates the conflict-free shortages of every currently filtered production goal.",
       purchaseStateLabels: { ready: "Complete", empty: "No shortages", incomplete: "Incomplete" },
@@ -1830,6 +1855,27 @@ const copy = {
       purchaseCopyError: "The Multibuy list could not be copied.",
       purchaseItemSummary: "{quantity} required · {plans} goals",
       purchaseBreakdown: "{inventory} physically missing · {conflict} held by reservations",
+      marketHub: "Trade station",
+      marketRefresh: "Refresh prices",
+      marketRefreshing: "Loading prices …",
+      marketRefreshSuccess: "Updated {types} material prices for {hub}.",
+      marketRefreshError: "The sell orders at the selected trade station could not be refreshed. The last complete snapshot is retained.",
+      marketStation: "Sell orders at {station} only",
+      marketPricingStateLabels: {
+        ready: "Fully priced", partial: "Partially covered", unavailable: "No sell orders",
+        "snapshot-missing": "Prices missing", stale: "Prices stale", empty: "No shortages",
+      },
+      marketSource: "Market snapshot #{snapshot} · run #{run} · {age} old",
+      marketNoSource: "No market snapshot has been loaded for this trade station yet.",
+      marketStale: "The price snapshot is older than 15 minutes. Refresh it before buying.",
+      marketLimit: "A targeted request supports at most {limit} material types. Narrow the production goals with the filters.",
+      marketCoverage: "{covered} of {required} units covered · {orders} sell orders",
+      marketWeightedPrice: "Weighted immediate-buy price {price} ISK per unit",
+      marketUnavailable: "No matching sell order is evidenced at this trade station.",
+      purchaseCost: "Immediate buy",
+      installationCost: "Installation",
+      additionalCapital: "Additional capital required",
+      capitalUnavailable: "Total capital required appears once market and installation costs are complete.",
       build: "SDE build {build}",
       searchRecipe: "Search product or blueprint",
       activity: "Activity",
@@ -2206,6 +2252,7 @@ export function App({
   industrySlotsLoader = loadIndustrySlots,
   productionCatalogLoader = loadProductionCatalog,
   productionPlansLoader = loadProductionPlans,
+  marketPriceSyncer = syncMarketPrices,
   productionPlanSaver = saveProductionPlan,
   productionPlanDeleter = deleteProductionPlan,
   researchPlansLoader = loadResearchPlans,
@@ -2246,6 +2293,10 @@ export function App({
   industrySlotsLoader?: (query: IndustrySlotQuery) => Promise<IndustrySlotPage>;
   productionCatalogLoader?: (query: ProductionCatalogQuery) => Promise<ProductionCatalogPage>;
   productionPlansLoader?: (query: ProductionPlanQuery) => Promise<ProductionPlanPage>;
+  marketPriceSyncer?: (
+    marketHubId: MarketHubId,
+    typeIds: readonly number[],
+  ) => Promise<MarketPriceSyncResult>;
   productionPlanSaver?: (input: ProductionPlanInput) => Promise<unknown>;
   productionPlanDeleter?: (planId: number) => Promise<void>;
   researchPlansLoader?: (query: ResearchPlanQuery) => Promise<ResearchPlanPage>;
@@ -2972,6 +3023,7 @@ export function App({
             characters={characters}
             loadCatalog={productionCatalogLoader}
             loadPlans={productionPlansLoader}
+            syncMarketPrices={marketPriceSyncer}
             savePlan={productionPlanSaver}
             deletePlan={productionPlanDeleter}
           />
@@ -5495,7 +5547,8 @@ function ResearchPlanningPanel({
 }
 
 function ProductionWorkspace({
-  available, locale, t, characters, loadCatalog, loadPlans, savePlan, deletePlan,
+  available, locale, t, characters, loadCatalog, loadPlans, syncMarketPrices: syncPrices,
+  savePlan, deletePlan,
 }: {
   available: boolean;
   locale: Locale;
@@ -5503,6 +5556,10 @@ function ProductionWorkspace({
   characters: EveCharacter[];
   loadCatalog: (query: ProductionCatalogQuery) => Promise<ProductionCatalogPage>;
   loadPlans: (query: ProductionPlanQuery) => Promise<ProductionPlanPage>;
+  syncMarketPrices: (
+    marketHubId: MarketHubId,
+    typeIds: readonly number[],
+  ) => Promise<MarketPriceSyncResult>;
   savePlan: (input: ProductionPlanInput) => Promise<unknown>;
   deletePlan: (planId: number) => Promise<void>;
 }) {
@@ -5530,11 +5587,17 @@ function ProductionWorkspace({
   const [planState, setPlanState] = useStoredState<ProductionPlanState | null>("production.state", null, (value): value is ProductionPlanState | null => value === null || ["ready", "sde-unavailable", "recipe-missing", "cycle", "complexity-limit"].includes(String(value)));
   const [sortBy, setSortBy] = useStoredState<ProductionPlanSortField>("production.sort", "priority", (value): value is ProductionPlanSortField => ["priority", "product", "owner", "activity", "state", "updated"].includes(String(value)));
   const [sortDirection, setSortDirection] = useStoredState<SortDirection>("production.direction", "desc", (value): value is SortDirection => value === "asc" || value === "desc");
+  const [marketHubId, setMarketHubId] = useStoredState<MarketHubId>(
+    "production.market-hub", "jita",
+    (value): value is MarketHubId => marketHubIds.includes(value as MarketHubId),
+  );
   const [planOffset, setPlanOffset] = useState(0);
   const [plans, setPlans] = useState<ProductionPlanPage | null>(null);
   const [plansLoading, setPlansLoading] = useState(false);
   const [plansFailed, setPlansFailed] = useState(false);
   const [purchaseCopyState, setPurchaseCopyState] = useState<"idle" | "copied" | "error">("idle");
+  const [marketSyncState, setMarketSyncState] = useState<"idle" | "busy" | "success" | "error">("idle");
+  const [marketSyncResult, setMarketSyncResult] = useState<MarketPriceSyncResult | null>(null);
   const [revision, setRevision] = useState(0);
   const [busyId, setBusyId] = useState<number | "new" | null>(null);
   const [mutationState, setMutationState] = useState<"saved" | "deleted" | "error" | null>(null);
@@ -5546,6 +5609,9 @@ function ProductionWorkspace({
     supplyModes: Record<string, ProductionSupplyMode>; quantity: number; priority: number; note: string;
   }>>({});
   const numberFormat = useMemo(() => new Intl.NumberFormat(locale === "de" ? "de-DE" : "en-US"), [locale]);
+  const iskFormat = useMemo(() => new Intl.NumberFormat(locale === "de" ? "de-DE" : "en-US", {
+    minimumFractionDigits: 2, maximumFractionDigits: 2,
+  }), [locale]);
   const percentFormat = useMemo(
     () => new Intl.NumberFormat(locale === "de" ? "de-DE" : "en-US", {
       style: "percent", maximumFractionDigits: 4,
@@ -5624,7 +5690,8 @@ function ProductionWorkspace({
     setPlansLoading(true);
     setPlansFailed(false);
     void loadPlans({ search: appliedPlanSearch, ownerCharacterId: planOwner, activity: planActivity,
-      state: planState, offset: planOffset, limit: productionPlanPageSize, sortBy, sortDirection })
+      state: planState, offset: planOffset, limit: productionPlanPageSize, sortBy, sortDirection,
+      marketHubId })
       .then((page) => {
         if (!active) return;
         if (page.total > 0 && page.offset >= page.total) {
@@ -5653,7 +5720,7 @@ function ProductionWorkspace({
       .catch(() => { if (active) setPlansFailed(true); })
       .finally(() => { if (active) setPlansLoading(false); });
     return () => { active = false; };
-  }, [appliedPlanSearch, available, loadPlans, planActivity, planOffset, planOwner,
+  }, [appliedPlanSearch, available, loadPlans, marketHubId, planActivity, planOffset, planOwner,
     planState, revision, sortBy, sortDirection]);
 
   const createGoal = async () => {
@@ -5781,6 +5848,26 @@ function ProductionWorkspace({
       setPurchaseCopyState("error");
     }
   };
+  const refreshMarketPrices = async () => {
+    const purchaseList = plans?.purchaseList;
+    if (!purchaseList || purchaseList.marketHub.hubId !== marketHubId ||
+        purchaseList.items.length === 0 ||
+        purchaseList.items.length > purchaseList.marketPriceTypeLimit ||
+        marketSyncState === "busy") return;
+    setMarketSyncState("busy");
+    setMarketSyncResult(null);
+    try {
+      const result = await syncPrices(
+        marketHubId,
+        purchaseList.items.map((item) => item.typeId),
+      );
+      setMarketSyncResult(result);
+      setMarketSyncState("success");
+      setRevision((value) => value + 1);
+    } catch {
+      setMarketSyncState("error");
+    }
+  };
   const planTotal = plans?.total ?? 0;
   const planFrom = planTotal === 0 ? 0 : planOffset + 1;
   const planTo = Math.min(planOffset + (plans?.items.length ?? 0), planTotal);
@@ -5842,11 +5929,30 @@ function ProductionWorkspace({
         </div>
         {plans && <section className="production-purchase-list" aria-label={t.productionPlanning.purchaseTitle}>
           <header><div><h3>{t.productionPlanning.purchaseTitle}</h3><p>{t.productionPlanning.purchaseSubtitle}</p></div><span className={`status-pill status-pill--${plans.purchaseList.state === "ready" || plans.purchaseList.state === "empty" ? "good" : "warn"}`}>{t.productionPlanning.purchaseStateLabels[plans.purchaseList.state]}</span></header>
+          <div className="production-market-controls">
+            <label><span>{t.productionPlanning.marketHub}</span><select value={marketHubId} onChange={(event) => { setMarketHubId(event.target.value as MarketHubId); setPlanOffset(0); setMarketSyncState("idle"); setMarketSyncResult(null); }}>{plans.purchaseList.marketHubs.map((hub) => <option key={hub.hubId} value={hub.hubId}>{hub.name}</option>)}</select></label>
+            <div><strong>{plans.purchaseList.marketHub.name}</strong><small>{t.productionPlanning.marketStation.replace("{station}", plans.purchaseList.marketHub.stationName)}</small></div>
+            <button type="button" className="secondary-button" onClick={() => void refreshMarketPrices()} disabled={marketSyncState === "busy" || plans.purchaseList.marketHub.hubId !== marketHubId || plans.purchaseList.items.length === 0 || plans.purchaseList.items.length > plans.purchaseList.marketPriceTypeLimit}>{marketSyncState === "busy" ? <RefreshCw className="spin" size={15} /> : <Download size={15} />}{marketSyncState === "busy" ? t.productionPlanning.marketRefreshing : t.productionPlanning.marketRefresh}</button>
+          </div>
+          <div className="production-market-evidence">
+            <span className={`status-pill status-pill--${plans.purchaseList.pricingState === "ready" || plans.purchaseList.pricingState === "empty" ? "good" : plans.purchaseList.pricingState === "partial" ? "info" : "warn"}`}>{t.productionPlanning.marketPricingStateLabels[plans.purchaseList.pricingState]}</span>
+            <small>{plans.purchaseList.marketSnapshotId === null ? t.productionPlanning.marketNoSource : t.productionPlanning.marketSource.replace("{snapshot}", String(plans.purchaseList.marketSnapshotId)).replace("{run}", String(plans.purchaseList.marketSyncRunId)).replace("{age}", formatDataAge(plans.purchaseList.marketAgeSeconds ?? 0, locale))}</small>
+          </div>
+          {plans.purchaseList.pricingState === "stale" && <p className="production-purchase-list__warning"><AlertTriangle size={14} />{t.productionPlanning.marketStale}</p>}
+          {plans.purchaseList.items.length > plans.purchaseList.marketPriceTypeLimit && <p className="production-purchase-list__warning"><AlertTriangle size={14} />{t.productionPlanning.marketLimit.replace("{limit}", numberFormat.format(plans.purchaseList.marketPriceTypeLimit))}</p>}
+          {marketSyncState === "success" && marketSyncResult !== null && <p className="production-purchase-list__copy-state" role="status">{t.productionPlanning.marketRefreshSuccess.replace("{types}", numberFormat.format(marketSyncResult.typeCount)).replace("{hub}", plans.purchaseList.marketHub.name)}</p>}
+          {marketSyncState === "error" && <p className="production-purchase-list__copy-state is-error" role="status">{t.productionPlanning.marketRefreshError}</p>}
           <div className="production-purchase-list__summary"><strong>{t.productionPlanning.purchaseSummary.replace("{items}", numberFormat.format(plans.purchaseList.itemCount)).replace("{quantity}", numberFormat.format(plans.purchaseList.totalQuantity)).replace("{plans}", numberFormat.format(plans.purchaseList.includedPlanCount))}</strong><button type="button" className="secondary-button" onClick={() => void copyPurchaseList()} disabled={plans.purchaseList.items.length === 0 || plans.purchaseList.omittedItemCount > 0}><Copy size={15} />{t.productionPlanning.purchaseCopy}</button></div>
+          <div className="production-capital-summary">
+            <span><small>{t.productionPlanning.purchaseCost}</small><strong>{["ready", "partial", "stale", "empty"].includes(plans.purchaseList.pricingState) ? `${iskFormat.format(plans.purchaseList.totalPurchaseCostCents / 100)} ISK` : "—"}</strong></span>
+            <span><small>{t.productionPlanning.installationCost}</small><strong>{plans.purchaseList.estimatedInstallationCost === null ? "—" : `${iskFormat.format(plans.purchaseList.estimatedInstallationCost)} ISK`}</strong></span>
+            <span className="production-capital-summary__total"><small>{t.productionPlanning.additionalCapital}</small><strong>{plans.purchaseList.additionalCapitalNeedCents === null ? "—" : `${iskFormat.format(plans.purchaseList.additionalCapitalNeedCents / 100)} ISK`}</strong></span>
+          </div>
+          {plans.purchaseList.additionalCapitalNeedCents === null && plans.purchaseList.items.length > 0 && <p className="production-purchase-list__empty">{t.productionPlanning.capitalUnavailable}</p>}
           {plans.purchaseList.unresolvedPlanCount > 0 && <p className="production-purchase-list__warning"><AlertTriangle size={14} />{t.productionPlanning.purchaseIncomplete.replace("{plans}", numberFormat.format(plans.purchaseList.unresolvedPlanCount))}</p>}
           {plans.purchaseList.omittedItemCount > 0 && <p className="production-purchase-list__warning"><AlertTriangle size={14} />{t.productionPlanning.purchaseOmitted.replace("{items}", numberFormat.format(plans.purchaseList.omittedItemCount))}</p>}
           {purchaseCopyState !== "idle" && <p className={`production-purchase-list__copy-state ${purchaseCopyState === "error" ? "is-error" : ""}`} role="status">{purchaseCopyState === "copied" ? t.productionPlanning.purchaseCopied : t.productionPlanning.purchaseCopyError}</p>}
-          {plans.purchaseList.items.length === 0 ? <p className="production-purchase-list__empty">{t.productionPlanning.purchaseEmpty}</p> : <details><summary>{t.productionPlanning.purchaseTitle} · {numberFormat.format(plans.purchaseList.items.length)}</summary><ul>{plans.purchaseList.items.map((item) => <li key={item.typeId}><span><strong>{item.typeName}</strong><small>Type #{item.typeId}</small></span><span><strong>{t.productionPlanning.purchaseItemSummary.replace("{quantity}", numberFormat.format(item.quantity)).replace("{plans}", numberFormat.format(item.planCount))}</strong><small>{t.productionPlanning.purchaseBreakdown.replace("{inventory}", numberFormat.format(item.inventoryShortageQuantity)).replace("{conflict}", numberFormat.format(item.reservationConflictQuantity))}</small></span></li>)}</ul></details>}
+          {plans.purchaseList.items.length === 0 ? <p className="production-purchase-list__empty">{t.productionPlanning.purchaseEmpty}</p> : <details><summary>{t.productionPlanning.purchaseTitle} · {numberFormat.format(plans.purchaseList.items.length)}</summary><ul>{plans.purchaseList.items.map((item) => <li key={item.typeId}><span><strong>{item.typeName}</strong><small>Type #{item.typeId}</small><small>{t.productionPlanning.purchaseBreakdown.replace("{inventory}", numberFormat.format(item.inventoryShortageQuantity)).replace("{conflict}", numberFormat.format(item.reservationConflictQuantity))}</small></span><span><strong>{item.purchaseCostCents === null ? t.productionPlanning.marketPricingStateLabels[item.marketState] : `${iskFormat.format(item.purchaseCostCents / 100)} ISK`}</strong><small>{t.productionPlanning.purchaseItemSummary.replace("{quantity}", numberFormat.format(item.quantity)).replace("{plans}", numberFormat.format(item.planCount))}</small>{item.coveredQuantity !== null && item.usedOrderCount !== null && <small>{t.productionPlanning.marketCoverage.replace("{covered}", numberFormat.format(item.coveredQuantity)).replace("{required}", numberFormat.format(item.quantity)).replace("{orders}", numberFormat.format(item.usedOrderCount))}</small>}{item.weightedUnitPriceCents !== null && <small>{t.productionPlanning.marketWeightedPrice.replace("{price}", iskFormat.format(item.weightedUnitPriceCents / 100))}</small>}{item.marketState === "unavailable" && <small>{t.productionPlanning.marketUnavailable}</small>}</span></li>)}</ul></details>}
         </section>}
         {!available ? <div className="asset-empty"><Database size={22} />{t.productionPlanning.queryError}</div>
           : plansFailed ? <div className="asset-empty asset-empty--error"><AlertTriangle size={22} />{t.productionPlanning.queryError}</div>

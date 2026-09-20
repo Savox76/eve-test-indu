@@ -710,6 +710,7 @@ class SidecarIntegrationTests(unittest.TestCase):
                     "search": "", "ownerCharacterId": None, "activity": None,
                     "state": None, "offset": 0, "limit": 50,
                     "sortBy": "priority", "sortDirection": "desc",
+                    "marketHubId": "jita",
                 }).encode(),
                 method="POST",
                 headers={
@@ -747,7 +748,33 @@ class SidecarIntegrationTests(unittest.TestCase):
                 production_plans["characterSkillTimeRule"],
                 "job-wide-ceil-industry-4-advanced-industry-3-reactions-4-active-levels",
             )
+            self.assertTrue(production_plans["marketPricesApplied"])
+            self.assertEqual(
+                production_plans["purchaseList"]["marketHub"]["hubId"],
+                "jita",
+            )
+            self.assertEqual(
+                [hub["hubId"] for hub in production_plans["purchaseList"]["marketHubs"]],
+                ["jita", "amarr", "dodixie", "hek", "rens"],
+            )
             self.assertFalse(production_plans["remainingModifiersApplied"])
+
+            invalid_market_request = urllib.request.Request(
+                f"{base_url}/market-prices/sync",
+                data=json.dumps({"hubId": "jita", "typeIds": []}).encode(),
+                method="POST",
+                headers={
+                    "Authorization": f"Bearer {SYNTHETIC_SESSION_TOKEN}",
+                    "Content-Type": "application/json",
+                },
+            )
+            with self.assertRaises(urllib.error.HTTPError) as market_error:
+                opener.open(invalid_market_request, timeout=3)
+            self.assertEqual(market_error.exception.code, 422)
+            self.assertEqual(
+                json.loads(market_error.exception.read())["detail"],
+                "market_price_request_invalid",
+            )
 
             research_query_request = urllib.request.Request(
                 f"{base_url}/research-plans/query",
