@@ -10,6 +10,7 @@ from new_eden_foundry_backend.asset_delta import (
     AssetDeltaError,
     AssetDeltaQuery,
     build_asset_delta_payload,
+    query_asset_delta_groups,
     query_asset_deltas,
     validate_asset_delta_query,
 )
@@ -32,12 +33,13 @@ def asset(
     quantity: int = 1,
     location_id: int = STATION_ID,
     location_flag: str = "SyntheticHangar",
+    location_type: str = "station",
 ) -> dict[str, object]:
     return {
         "item_id": item_id,
         "type_id": type_id,
         "location_id": location_id,
-        "location_type": "station",
+        "location_type": location_type,
         "location_flag": location_flag,
         "quantity": quantity,
     }
@@ -96,6 +98,62 @@ class AssetDeltaTests(unittest.TestCase):
             (f"asset_deltas:{CHARACTER_ID}",),
         ).fetchall()
         return [json.loads(str(row[0])) for row in rows]
+
+    def insert_location_snapshot(
+        self,
+        asset_snapshot_id: int,
+        asset_sync_run_id: int,
+        paths: dict[int, list[tuple[int, str, str]]],
+        *,
+        statuses: dict[int, str] | None = None,
+    ) -> None:
+        observed_at = "2026-09-10T12:00:00Z"
+        run = self.database.execute(
+            "INSERT INTO sync_runs(source,status,started_at,completed_at,data_timestamp,character_id) "
+            "VALUES('asset_locations','completed',?,?,?,?)",
+            (observed_at, observed_at, observed_at, CHARACTER_ID),
+        )
+        locations = []
+        for item_id, nodes in paths.items():
+            status = (statuses or {}).get(item_id, "resolved")
+            locations.append(
+                {
+                    "itemId": item_id,
+                    "status": status,
+                    "path": [
+                        {
+                            "locationId": location_id,
+                            "kind": kind,
+                            "name": name,
+                            "access": "available",
+                            "typeId": None,
+                        }
+                        for location_id, kind, name in nodes
+                    ],
+                    "errorCode": None,
+                }
+            )
+        payload = {
+            "characterId": CHARACTER_ID,
+            "assetSnapshotId": asset_snapshot_id,
+            "assetSyncRunId": asset_sync_run_id,
+            "assetObservedAt": observed_at,
+            "locations": locations,
+            "summary": {
+                state: sum(location["status"] == state for location in locations)
+                for state in ("resolved", "restricted", "unresolved", "cycle")
+            },
+        }
+        self.database.execute(
+            "INSERT INTO cached_snapshots(sync_run_id,resource,payload_json,observed_at) VALUES(?,?,?,?)",
+            (
+                int(run.lastrowid),
+                f"asset_locations:{CHARACTER_ID}",
+                json.dumps(payload),
+                observed_at,
+            ),
+        )
+        self.database.commit()
 
     def test_first_complete_snapshot_creates_an_empty_baseline(self) -> None:
         result = sync_character_assets(
@@ -224,6 +282,121 @@ class AssetDeltaTests(unittest.TestCase):
         self.assertEqual(event["jobCorrelation"]["direction"], "outbound")
         self.assertEqual(page["limit"], 1)
         self.assertTrue(page["hasBaseline"])
+
+    def test_groups_before_pagination_and_resolves_historical_location_paths(self) -> None:
+        first = sync_character_assets(
+            self.database,
+            FakeClient([
+                asset(1, quantity=3, location_id=8_000_001, location_flag="AutoFit", location_type="item"),
+                asset(2, quantity=4, location_id=8_000_001, location_flag="AutoFit", location_type="item"),
+            ]),
+            CHARACTER_ID,
+        )
+        first_snapshot = self.database.execute(
+            "SELECT id FROM cached_snapshots WHERE resource=? ORDER BY id DESC LIMIT 1",
+            (f"character_assets:{CHARACTER_ID}",),
+        ).fetchone()
+        self.insert_location_snapshot(
+            int(first_snapshot[0]),
+            first.sync_run_id,
+            {
+                1: [(STATION_ID, "station", "Synthetic Delta Station"), (8_000_001, "container", "Input Box")],
+                2: [(STATION_ID, "station", "Synthetic Delta Station"), (8_000_001, "container", "Input Box")],
+            },
+        )
+        second = sync_character_assets(
+            self.database,
+            FakeClient([
+                asset(1, quantity=5, location_id=8_000_002, location_flag="AutoFit", location_type="item"),
+                asset(2, quantity=6, location_id=8_000_002, location_flag="AutoFit", location_type="item"),
+            ]),
+            CHARACTER_ID,
+        )
+        second_snapshot = self.database.execute(
+            "SELECT id FROM cached_snapshots WHERE resource=? ORDER BY id DESC LIMIT 1",
+            (f"character_assets:{CHARACTER_ID}",),
+        ).fetchone()
+        self.insert_location_snapshot(
+            int(second_snapshot[0]),
+            second.sync_run_id,
+            {
+                1: [(STATION_ID, "station", "Synthetic Delta Station"), (8_000_002, "container", "Output Box")],
+                2: [(STATION_ID, "station", "Synthetic Delta Station"), (8_000_002, "container", "Output Box")],
+            },
+        )
+
+        page = query_asset_delta_groups(
+            self.database,
+            AssetDeltaQuery(search="Output Box", limit=1),
+            now=datetime(2026, 9, 10, 18, 0, tzinfo=timezone.utc),
+        )
+
+        self.assertEqual((page["total"], page["eventTotal"], len(page["items"])), (1, 2, 1))
+        group = page["items"][0]
+        self.assertEqual((group["itemCount"], group["eventCount"]), (2, 2))
+        self.assertEqual((group["quantityBefore"], group["quantityAfter"], group["quantityDelta"]), (7, 11, 4))
+        self.assertEqual(group["locationCountBefore"], 1)
+        self.assertEqual(group["locationCountAfter"], 1)
+        self.assertEqual(group["locationFlagBefore"], "AutoFit")
+        self.assertEqual(group["locationPathBefore"], "Synthetic Delta Station / Input Box")
+        self.assertEqual(group["locationPathAfter"], "Synthetic Delta Station / Output Box")
+        self.assertEqual(sum(group["jobCorrelationSummary"].values()), 2)
+
+        details = query_asset_deltas(
+            self.database,
+            AssetDeltaQuery(
+                search="Output Box",
+                owner_character_id=CHARACTER_ID,
+                offset=0,
+                limit=1,
+                type_id=TYPE_ID,
+                previous_asset_snapshot_id=int(first_snapshot[0]),
+                current_asset_snapshot_id=int(second_snapshot[0]),
+            ),
+        )
+        self.assertEqual(details["total"], 2)
+        self.assertEqual(len(details["items"]), 1)
+        self.assertEqual(details["items"][0]["locationPathAfter"], "Synthetic Delta Station / Output Box")
+
+    def test_historical_unresolved_locations_keep_flag_and_id_without_inventing_path(self) -> None:
+        first = sync_character_assets(
+            self.database,
+            FakeClient([asset(1, quantity=3, location_id=8_000_001, location_flag="AutoFit", location_type="item")]),
+            CHARACTER_ID,
+        )
+        first_snapshot_id = int(self.database.execute(
+            "SELECT id FROM cached_snapshots WHERE resource=? ORDER BY id DESC LIMIT 1",
+            (f"character_assets:{CHARACTER_ID}",),
+        ).fetchone()[0])
+        self.insert_location_snapshot(
+            first_snapshot_id,
+            first.sync_run_id,
+            {1: []},
+            statuses={1: "unresolved"},
+        )
+        second = sync_character_assets(
+            self.database,
+            FakeClient([asset(1, quantity=5, location_id=8_000_001, location_flag="AutoFit", location_type="item")]),
+            CHARACTER_ID,
+        )
+        second_snapshot_id = int(self.database.execute(
+            "SELECT id FROM cached_snapshots WHERE resource=? ORDER BY id DESC LIMIT 1",
+            (f"character_assets:{CHARACTER_ID}",),
+        ).fetchone()[0])
+        self.insert_location_snapshot(
+            second_snapshot_id,
+            second.sync_run_id,
+            {1: []},
+            statuses={1: "unresolved"},
+        )
+
+        event = query_asset_deltas(self.database, AssetDeltaQuery())["items"][0]
+
+        self.assertEqual(event["locationStatusBefore"], "unresolved")
+        self.assertEqual(event["locationStatusAfter"], "unresolved")
+        self.assertIsNone(event["locationPathBefore"])
+        self.assertIsNone(event["locationPathAfter"])
+        self.assertEqual(event["locationFlagAfter"], "AutoFit")
 
     def test_deterministic_payload_and_strict_query_validation(self) -> None:
         before = {"characterId": CHARACTER_ID, "assets": [asset(1, quantity=3)]}

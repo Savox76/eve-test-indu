@@ -2,9 +2,9 @@
 
 **Fassung:** 4.0 (lebendes Repository-Dokument)
 
-**Stand:** 16. September 2026
+**Stand:** 19. September 2026
 
-**Status:** Paket 41 – belegte Installationskostenbasis technisch abgeschlossen
+**Status:** Paket 42 – gruppierte Asset-Änderungen und historische Standortpfade technisch abgeschlossen
 
 **Geltungsbereich:** `Savox76/eve-test-indu`
 
@@ -207,6 +207,7 @@ Die Reihenfolge ist verbindlicher als eine Kalenderangabe.
 | 39 | Explizite Anlagenprofile und Anlagenzeit | Ein bewusst gespeichertes, aktivitätsgebundenes Material-/Zeitprofil der gewählten Anlage wirkt mit ME/TE und Charakter-Skills vor genau einer Aufrundung; unbekannte Boni bleiben sichtbar unkonfiguriert statt geschätzt |
 | 40 | Zielübergreifende Einkaufsliste und EVE-Multibuy | Die konfliktfreien Fehlmengen aller aktuell gefilterten Ziele werden typweise aggregiert, unvollständige Quellstände sichtbar ausgeschlossen und als direkt kopierbare EVE-Multibuy-Liste ausgegeben |
 | 41 | Belegte Installationskostenbasis | Offizielle angepasste ESI-Preise, aktivitätsspezifischer Systemkostenindex und eine ausdrücklich gespeicherte Anlagensteuer ergeben je gebautem Schritt eine quellenbelegte Kostenbasis; fehlende Preise oder Belege bleiben sichtbar statt geschätzt |
+| 42 | Gruppierte Asset-Änderungen und historische Standortpfade | Asset-Änderungen werden vor Pagination nach Besitzer, Typ und Snapshotvergleich gruppiert; aufklappbare Einzelereignisse zeigen die exakt historischen Standortpfade und behandeln rohe ESI-Bereichsflags nur als sekundären Nachweis |
 
 ### Aktueller Stand
 
@@ -250,6 +251,7 @@ Die Reihenfolge ist verbindlicher als eine Kalenderangabe.
 - **Abgeschlossen:** 39 – Eine gewählte Produktionsanlage kann ein bewusst eingegebenes Material- und Zeitprofil in Hundertstelprozent erhalten. Der Materialfaktor wird mit dem schrittgenauen Blueprint-ME, der Zeitfaktor mit Blueprint-TE und aktiven Charakter-Skills multipliziert; erst danach wird je Material beziehungsweise Job einmal ganzzahlig aufgerundet. Das Profil gilt nur für Schritte derselben Aktivität, zeigt abweichende Aktivitäten ausdrücklich und wird niemals aus ESI, Jobs oder Strukturtypen geraten. Bestehende Ziele bleiben nach Schema-13-Migration unverändert und zeigen das Profil als nicht konfiguriert. Anlagenzeit und zusätzliche Ersparnis bleiben je Schritt und als belegbare Summe sichtbar.
 - **Abgeschlossen:** 40 – Die Produktionsabfrage aggregiert nach Anwendung von Suche, Besitzer-, Aktivitäts- und Statusfilter alle bereits konfliktfrei berechneten Fehlmengen stabil nach Typ-ID. Physische Fehlmenge und durch vorrangige Ziele gebundene Menge bleiben getrennt; die Oberfläche zeigt Materialarten, Gesamtmenge und beteiligte Ziele und kopiert den vollständigen belegten Ausschnitt im EVE-Multibuy-Format. Ziele ohne auflösbares Rezept oder vollständigen Asset-Snapshot werden gezählt und ausdrücklich als nicht enthalten markiert. Sortierung und Seitenauswahl verändern die Einkaufsliste nicht. Das Schema bleibt bei Version 13.
 - **Abgeschlossen:** 41 – Der vollständige Anlagen-Snapshot enthält zusätzlich die offiziellen angepassten Preise aus ESI. Für jeden tatsächlich gebauten Schritt wird der geschätzte Eingabewert aus unveränderten SDE-Basismaterialmengen und Läufen gebildet; Systemkostenindex und ausdrücklich gespeicherte Anlagensteuer werden getrennt aufgerundet und samt Preis-, Anlagen- und Systembeleg ausgewiesen. Zielebene und Oberfläche aggregieren ausschließlich berechenbare Schritte und unterscheiden `ready`, `partial`, `unconfigured`, `unavailable` und `not-applicable`. Schema 14 ergänzt die optionale Anlagensteuer in Basispunkten; bestehende Ziele bleiben bewusst unkonfiguriert.
+- **Abgeschlossen:** 42 – Der Asset-Änderungsverlauf gruppiert standardmäßig alle gefilterten Ereignisse vor der Seitenteilung nach Besitzer, Typ und Snapshotvergleich. Gruppen weisen betroffene Items, Ereignisse, Mengen, Standorte und Jobkorrelationszustände aus und laden ihre exakt gefilterten Einzelereignisse begrenzt nach. Die historischen, zum jeweiligen Asset-Snapshot gehörenden vollständigen Standortpfade werden als Hauptangabe gezeigt; Location-ID und das rohe ESI-Flag wie `AutoFit` bleiben sekundäre Belege. Ein Umschalter erhält die ungegruppte Ereignisansicht. Das Schema bleibt bei Version 14.
 - **Als Nächstes:** Das nächste Fachpaket wird separat festgelegt. Marktpreise, Handelsort, SCC-Zuschlag, automatisch erkannte Struktur-/Service-/Rigmodifikatoren, Transport und belastbare Endtermine bleiben bis zu eigenen Fachverträgen ausgeschlossen.
 - Architektur-Gate A0 ist vollständig erfüllt; `v0.2.0-alpha.1` bildet die erste freigegebene Alpha-Grundlage für die folgenden Produktionspakete.
 

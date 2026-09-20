@@ -10,6 +10,7 @@ import {
   deleteProductionPlan,
   exportAssetsCsv,
   loadAccountGroups,
+  loadAssetDeltaGroups,
   loadAssetDeltas,
   loadAssetSummary,
   loadAssets,
@@ -478,6 +479,9 @@ describe("desktop runtime status", () => {
       changeType: "quantity" as const,
       offset: 0,
       limit: 50,
+      typeId: null,
+      previousAssetSnapshotId: null,
+      currentAssetSnapshotId: null,
     };
     const page = {
       items: [{
@@ -497,6 +501,10 @@ describe("desktop runtime status", () => {
         locationTypeAfter: "station",
         locationFlagBefore: "SyntheticHangar",
         locationFlagAfter: "SyntheticHangar",
+        locationStatusBefore: "resolved",
+        locationStatusAfter: "resolved",
+        locationPathBefore: "Synthetic System / Input Hangar",
+        locationPathAfter: "Synthetic System / Input Hangar",
         previousAssetSnapshotId: 4,
         currentAssetSnapshotId: 6,
         currentAssetSyncRunId: 9,
@@ -529,12 +537,96 @@ describe("desktop runtime status", () => {
       .resolves.toEqual(page);
     expect(invoke).toHaveBeenCalledWith("query_asset_deltas", query);
 
+    const unresolvedPage = {
+      ...page,
+      items: [{
+        ...page.items[0],
+        locationStatusBefore: "unresolved",
+        locationStatusAfter: "unresolved",
+        locationPathBefore: null,
+        locationPathAfter: null,
+      }],
+    };
+    invoke.mockResolvedValueOnce(JSON.stringify(unresolvedPage));
+    await expect(loadAssetDeltas(query, { isAvailable: () => true, invoke }))
+      .resolves.toEqual(unresolvedPage);
+
     invoke.mockResolvedValueOnce(JSON.stringify({
       ...page,
       items: [{ ...page.items[0], quantityDelta: 8 }],
     }));
     await expect(loadAssetDeltas(query, { isAvailable: () => true, invoke }))
       .rejects.toThrow("inconsistent asset-delta metadata");
+  });
+
+  it("accepts only bounded and internally consistent grouped asset deltas", async () => {
+    const query = {
+      search: "synthetic input",
+      ownerCharacterId: 90_888_001,
+      changeType: "quantity" as const,
+      offset: 0,
+      limit: 50,
+    };
+    const page = {
+      items: [{
+        groupId: "b".repeat(64),
+        typeId: 98_001,
+        typeName: "Synthetic Input",
+        ownerCharacterId: 90_888_001,
+        ownerName: "Builder",
+        changeTypes: ["quantity"],
+        eventCount: 2,
+        itemCount: 2,
+        quantityBefore: 17,
+        quantityAfter: 9,
+        quantityDelta: -8,
+        locationCountBefore: 1,
+        locationCountAfter: 1,
+        locationIdBefore: 60_888_001,
+        locationIdAfter: 60_888_002,
+        locationFlagBefore: "AutoFit",
+        locationFlagAfter: "AutoFit",
+        locationPathBefore: "Synthetic System / Input Box",
+        locationPathAfter: "Synthetic System / Output Box",
+        previousAssetSnapshotId: 4,
+        currentAssetSnapshotId: 6,
+        currentAssetSyncRunId: 9,
+        observedAt: "2026-09-10T11:00:00Z",
+        ageSeconds: 60,
+        jobCorrelationSummary: {
+          linked: 0,
+          ambiguous: 0,
+          unmatched: 2,
+          unavailable: 0,
+          "not-applicable": 0,
+        },
+      }],
+      total: 1,
+      eventTotal: 2,
+      offset: 0,
+      limit: 50,
+      owners: [{ characterId: 90_888_001, name: "Builder" }],
+      changeTypes: ["added", "removed", "quantity", "location"],
+      summary: { added: 0, removed: 0, quantity: 2, location: 0 },
+      hasBaseline: true,
+      observedAt: "2026-09-10T11:00:00Z",
+      ageSeconds: 60,
+    };
+    const invoke = vi.fn<RuntimeAdapter["invoke"]>().mockResolvedValue(JSON.stringify(page));
+
+    await expect(loadAssetDeltaGroups(query, { isAvailable: () => true, invoke }))
+      .resolves.toEqual(page);
+    expect(invoke).toHaveBeenCalledWith("query_asset_delta_groups", query);
+
+    invoke.mockResolvedValueOnce(JSON.stringify({
+      ...page,
+      items: [{
+        ...page.items[0],
+        jobCorrelationSummary: { ...page.items[0].jobCorrelationSummary, unmatched: 1 },
+      }],
+    }));
+    await expect(loadAssetDeltaGroups(query, { isAvailable: () => true, invoke }))
+      .rejects.toThrow("invalid grouped asset-delta metadata");
   });
 
   it("requests a filtered CSV and accepts only a safe program-relative path", async () => {

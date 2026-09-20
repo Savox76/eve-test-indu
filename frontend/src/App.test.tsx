@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import { loadDesktopRuntimeStatus } from "./runtime";
 import type {
+  AssetDeltaGroupPage,
   AssetDeltaPage,
   AssetPage,
   AssetSummaryPage,
@@ -164,6 +165,10 @@ const assetDeltaPage = (overrides: Partial<AssetDeltaPage> = {}): AssetDeltaPage
     locationTypeAfter: "station",
     locationFlagBefore: "Input",
     locationFlagAfter: "Output",
+    locationStatusBefore: "resolved",
+    locationStatusAfter: "resolved",
+    locationPathBefore: "Synthetic Station / Input Box",
+    locationPathAfter: "Synthetic Station / Output Box",
     previousAssetSnapshotId: 4,
     currentAssetSnapshotId: 6,
     currentAssetSyncRunId: 9,
@@ -181,6 +186,55 @@ const assetDeltaPage = (overrides: Partial<AssetDeltaPage> = {}): AssetDeltaPage
     },
   }],
   total: 1,
+  offset: 0,
+  limit: 50,
+  owners: [{ characterId: 90_888_001, name: "Builder" }],
+  changeTypes: ["added", "removed", "quantity", "location"],
+  summary: { added: 0, removed: 0, quantity: 1, location: 1 },
+  hasBaseline: true,
+  observedAt: "2026-09-10T11:00:00Z",
+  ageSeconds: 60,
+  ...overrides,
+});
+
+const assetDeltaGroupPage = (
+  overrides: Partial<AssetDeltaGroupPage> = {},
+): AssetDeltaGroupPage => ({
+  items: [{
+    groupId: "b".repeat(64),
+    typeId: 98_001,
+    typeName: "Synthetic Component",
+    ownerCharacterId: 90_888_001,
+    ownerName: "Builder",
+    changeTypes: ["quantity", "location"],
+    eventCount: 1,
+    itemCount: 1,
+    quantityBefore: 17,
+    quantityAfter: 9,
+    quantityDelta: -8,
+    locationCountBefore: 1,
+    locationCountAfter: 1,
+    locationIdBefore: 60_888_001,
+    locationIdAfter: 60_888_002,
+    locationFlagBefore: "AutoFit",
+    locationFlagAfter: "AutoFit",
+    locationPathBefore: "Synthetic Station / Input Box",
+    locationPathAfter: "Synthetic Station / Output Box",
+    previousAssetSnapshotId: 4,
+    currentAssetSnapshotId: 6,
+    currentAssetSyncRunId: 9,
+    observedAt: "2026-09-10T11:00:00Z",
+    ageSeconds: 60,
+    jobCorrelationSummary: {
+      linked: 0,
+      ambiguous: 0,
+      unmatched: 1,
+      unavailable: 0,
+      "not-applicable": 0,
+    },
+  }],
+  total: 1,
+  eventTotal: 1,
   offset: 0,
   limit: 50,
   owners: [{ characterId: 90_888_001, name: "Builder" }],
@@ -751,8 +805,10 @@ describe("New Eden Foundry design preview", () => {
     await waitFor(() => expect(assetsLoader.mock.calls.length).toBeGreaterThan(1));
   });
 
-  it("shows traceable delta evidence and filters the bounded history", async () => {
+  it("groups asset changes, expands their evidence, and retains the event view", async () => {
+    window.localStorage.removeItem("new-eden-foundry.ui.assets.delta-view");
     const assetDeltasLoader = vi.fn().mockResolvedValue(assetDeltaPage());
+    const assetDeltaGroupsLoader = vi.fn().mockResolvedValue(assetDeltaGroupPage());
     render(
       <App
         runtimeLoader={() => nativeRuntime()}
@@ -761,25 +817,53 @@ describe("New Eden Foundry design preview", () => {
         accountGroupsLoader={() => Promise.resolve([])}
         assetsLoader={() => Promise.resolve(assetPage())}
         assetDeltasLoader={assetDeltasLoader}
+        assetDeltaGroupsLoader={assetDeltaGroupsLoader}
       />,
     );
     fireEvent.click(screen.getByRole("button", { name: /Assets/i }));
 
     expect(await screen.findByText("Nachvollziehbare Änderungen")).toBeInTheDocument();
-    expect(await screen.findByText("Kein passender Job")).toBeInTheDocument();
+    expect(await screen.findByText(/1 Kein passender Job/)).toBeInTheDocument();
     expect(screen.getAllByText("Menge geändert").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Verschoben").length).toBeGreaterThan(0);
     expect(screen.getByText((_, element) => element?.tagName === "STRONG" && element.textContent === "17 → 9"))
       .toBeInTheDocument();
-    expect(screen.getByText((_, element) => element?.tagName === "STRONG" && element.textContent === "Input → Output"))
+    expect(screen.getByText((_, element) => element?.tagName === "STRONG" && element.textContent === "Synthetic Station / Input Box → Synthetic Station / Output Box"))
       .toBeInTheDocument();
-    expect(assetDeltasLoader).toHaveBeenCalledWith({
+    expect(screen.getByText(/ESI-Bereich: AutoFit.*ESI-Bereich: AutoFit/)).toBeInTheDocument();
+    expect(assetDeltaGroupsLoader).toHaveBeenCalledWith({
       search: "",
       ownerCharacterId: null,
       changeType: null,
       offset: 0,
       limit: 50,
     });
+    expect(assetDeltasLoader).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Einzelereignisse anzeigen" }));
+    await waitFor(() => expect(assetDeltasLoader).toHaveBeenCalledWith({
+      search: "",
+      ownerCharacterId: 90_888_001,
+      changeType: null,
+      offset: 0,
+      limit: 50,
+      typeId: 98_001,
+      previousAssetSnapshotId: 4,
+      currentAssetSnapshotId: 6,
+    }));
+    expect(await screen.findByText("Item 9800001", { exact: false })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Einzelereignisse" }));
+    await waitFor(() => expect(assetDeltasLoader).toHaveBeenLastCalledWith({
+      search: "",
+      ownerCharacterId: null,
+      changeType: null,
+      offset: 0,
+      limit: 50,
+      typeId: null,
+      previousAssetSnapshotId: null,
+      currentAssetSnapshotId: null,
+    }));
 
     fireEvent.change(screen.getByRole("combobox", { name: "Änderungsart" }), {
       target: { value: "location" },
@@ -790,7 +874,12 @@ describe("New Eden Foundry design preview", () => {
       changeType: "location",
       offset: 0,
       limit: 50,
+      typeId: null,
+      previousAssetSnapshotId: null,
+      currentAssetSnapshotId: null,
     }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Nach Gegenstand gruppiert" }));
   });
 
   it("switches the visible interface language", () => {

@@ -6,11 +6,13 @@ Alle bemerkenswerten Änderungen an New Eden Foundry werden hier festgehalten. D
 
 ### Neu hinzugefügt
 
-- Keine.
+- Paket 42 gruppiert Asset-Änderungen standardmäßig nach Besitzer, Typ und Snapshotvergleich und bietet einen begrenzt geladenen Drill-down auf die zugehörigen Einzelereignisse.
+- Historische Asset-Änderungen zeigen die exakt zum damaligen Asset-Snapshot gehörenden Stations-, Struktur- und Containerpfade, sofern ein vollständiger Standort-Snapshot vorliegt.
 
 ### Geändert
 
-- Keine.
+- Die ungegruppte Ereignisansicht bleibt per Umschalter verfügbar; Gruppierung und Filterung erfolgen serverseitig vor der Pagination.
+- Das rohe ESI-Bereichsflag `AutoFit` erscheint nur noch als sekundärer technischer Nachweis und wird verständlich als Containerbereich eingeordnet.
 
 ### Behobene Fehler
 
