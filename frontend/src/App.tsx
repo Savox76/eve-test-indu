@@ -38,7 +38,7 @@ import {
   X,
   Zap,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 
 import {
   accountGroups,
@@ -75,6 +75,7 @@ import {
   loadAssets,
   loadAssetSummary,
   loadAssetDeltas,
+  loadAssetDeltaGroups,
   loadBlueprints,
   loadCharacterSkills,
   loadIndustryFacilities,
@@ -102,6 +103,10 @@ import {
   type AssetDeltaChangeType,
   type AssetDeltaPage,
   type AssetDeltaQuery,
+  type AssetDeltaGroupPage,
+  type AssetDeltaGroupQuery,
+  type AssetDeltaGroupRecord,
+  type AssetDeltaRecord,
   type AssetLocationStatus,
   type AssetPage,
   type AssetSummaryPage,
@@ -598,6 +603,9 @@ const copy = {
         subtitle: "Vergleich vollständiger Snapshots mit belegbarer Zuordnung zu abgeschlossenen Industrieaufträgen.",
         filter: "Änderungsart",
         all: "Alle Änderungen",
+        view: "Darstellung der Änderungen",
+        groupedView: "Nach Gegenstand gruppiert",
+        eventView: "Einzelereignisse",
         labels: {
           added: "Hinzugekommen",
           removed: "Entfernt",
@@ -608,6 +616,16 @@ const copy = {
         beforeAfter: "Vorher → Nachher",
         interval: "Vergleichsfenster",
         source: "Quellnachweis",
+        affected: "{items} Position(en) · {events} Ereignis(se)",
+        affectedQuantity: "Betroffene Menge",
+        locations: "{count} Standorte",
+        noLocation: "—",
+        details: "Einzelereignisse anzeigen",
+        hideDetails: "Einzelereignisse ausblenden",
+        detailsLoading: "Einzelereignisse werden geladen …",
+        detailsError: "Die Einzelereignisse konnten nicht geladen werden.",
+        esiArea: "ESI-Bereich: {flag}",
+        containerArea: "Container",
         loading: "Änderungsverlauf wird geladen …",
         noBaseline: "Noch kein vollständiger Ausgangssnapshot vorhanden.",
         unavailable: "Der echte Änderungsverlauf ist in der laufenden Desktop-App verfügbar.",
@@ -1473,6 +1491,9 @@ const copy = {
         subtitle: "Complete snapshot comparisons with traceable links to completed industry jobs.",
         filter: "Change type",
         all: "All changes",
+        view: "Change view",
+        groupedView: "Grouped by item",
+        eventView: "Individual events",
         labels: {
           added: "Added",
           removed: "Removed",
@@ -1483,6 +1504,16 @@ const copy = {
         beforeAfter: "Before → after",
         interval: "Comparison window",
         source: "Source evidence",
+        affected: "{items} position(s) · {events} event(s)",
+        affectedQuantity: "Affected quantity",
+        locations: "{count} locations",
+        noLocation: "—",
+        details: "Show individual events",
+        hideDetails: "Hide individual events",
+        detailsLoading: "Loading individual events …",
+        detailsError: "The individual events could not be loaded.",
+        esiArea: "ESI division: {flag}",
+        containerArea: "Container",
         loading: "Loading change history …",
         noBaseline: "No complete baseline snapshot is available yet.",
         unavailable: "The live change history is available in the running desktop app.",
@@ -2162,6 +2193,7 @@ export function App({
   assetSummaryLoader = loadAssetSummary,
   assetsCsvExporter = exportAssetsCsv,
   assetDeltasLoader = loadAssetDeltas,
+  assetDeltaGroupsLoader = loadAssetDeltaGroups,
   assetSyncer = syncAssets,
   blueprintsLoader = loadBlueprints,
   blueprintSyncer = syncBlueprints,
@@ -2201,6 +2233,7 @@ export function App({
     query: Omit<AssetQuery, "offset" | "limit">,
   ) => Promise<AssetCsvExport>;
   assetDeltasLoader?: (query: AssetDeltaQuery) => Promise<AssetDeltaPage>;
+  assetDeltaGroupsLoader?: (query: AssetDeltaGroupQuery) => Promise<AssetDeltaGroupPage>;
   assetSyncer?: () => Promise<AssetSyncResult>;
   blueprintsLoader?: (query: BlueprintQuery) => Promise<BlueprintPage>;
   blueprintSyncer?: () => Promise<BlueprintSyncResult>;
@@ -2903,6 +2936,7 @@ export function App({
             loadSummary={assetSummaryLoader}
             exportCsv={assetsCsvExporter}
             loadDeltas={assetDeltasLoader}
+            loadDeltaGroups={assetDeltaGroupsLoader}
             syncAssets={runAssetSync}
             refreshRevision={assetRevision}
           />
@@ -2959,6 +2993,7 @@ function AssetWorkspace({
   loadSummary,
   exportCsv,
   loadDeltas: loadDeltaPage,
+  loadDeltaGroups,
   syncAssets: runAssetSync,
   refreshRevision,
 }: {
@@ -2969,6 +3004,7 @@ function AssetWorkspace({
   loadSummary: (query: AssetSummaryQuery) => Promise<AssetSummaryPage>;
   exportCsv: (query: Omit<AssetQuery, "offset" | "limit">) => Promise<AssetCsvExport>;
   loadDeltas: (query: AssetDeltaQuery) => Promise<AssetDeltaPage>;
+  loadDeltaGroups: (query: AssetDeltaGroupQuery) => Promise<AssetDeltaGroupPage>;
   syncAssets: () => Promise<AssetSyncResult>;
   refreshRevision: number;
 }) {
@@ -2989,8 +3025,15 @@ function AssetWorkspace({
   const [exported, setExported] = useState<AssetCsvExport | null>(null);
   const [exportFailed, setExportFailed] = useState(false);
   const [deltaChangeType, setDeltaChangeType] = useStoredState<AssetDeltaChangeType | null>("assets.delta-type", null, (value): value is AssetDeltaChangeType | null => value === null || assetDeltaChangeTypes.includes(value as AssetDeltaChangeType));
+  const [deltaViewMode, setDeltaViewMode] = useStoredState<"groups" | "events">("assets.delta-view", "groups", (value): value is "groups" | "events" => value === "groups" || value === "events");
   const [deltaOffset, setDeltaOffset] = useState(0);
   const [deltaPage, setDeltaPage] = useState<AssetDeltaPage | null>(null);
+  const [deltaGroupPage, setDeltaGroupPage] = useState<AssetDeltaGroupPage | null>(null);
+  const [expandedDeltaGroup, setExpandedDeltaGroup] = useState<AssetDeltaGroupRecord | null>(null);
+  const [deltaDetailOffset, setDeltaDetailOffset] = useState(0);
+  const [deltaDetailPage, setDeltaDetailPage] = useState<AssetDeltaPage | null>(null);
+  const [deltaDetailLoading, setDeltaDetailLoading] = useState(false);
+  const [deltaDetailFailed, setDeltaDetailFailed] = useState(false);
   const [deltasLoading, setDeltasLoading] = useState(false);
   const [deltasFailed, setDeltasFailed] = useState(false);
   const [syncResult, setSyncResult] = useState<AssetSyncResult | null>(null);
@@ -3006,6 +3049,7 @@ function AssetWorkspace({
       setAppliedSearch(search.trim().replace(/\s+/g, " "));
       setOffset(0);
       setDeltaOffset(0);
+      setExpandedDeltaGroup(null);
     }, 250);
     return () => window.clearTimeout(timer);
   }, [search]);
@@ -3057,7 +3101,7 @@ function AssetWorkspace({
   }, [appliedSearch, available, loadAssetPage, loadSummary, locationStatus, offset, ownerCharacterId, refreshRevision, sortBy, sortDirection, summarySortBy, viewMode]);
 
   useEffect(() => {
-    if (!available) return;
+    if (!available || deltaViewMode !== "events") return;
     let active = true;
     setDeltasLoading(true);
     setDeltasFailed(false);
@@ -3067,6 +3111,9 @@ function AssetWorkspace({
       changeType: deltaChangeType,
       offset: deltaOffset,
       limit: assetDeltaPageSize,
+      typeId: null,
+      previousAssetSnapshotId: null,
+      currentAssetSnapshotId: null,
     })
       .then((loadedPage) => {
         if (!active) return;
@@ -3086,7 +3133,74 @@ function AssetWorkspace({
     return () => {
       active = false;
     };
-  }, [appliedSearch, available, deltaChangeType, deltaOffset, loadDeltaPage, ownerCharacterId, refreshRevision]);
+  }, [appliedSearch, available, deltaChangeType, deltaOffset, deltaViewMode, loadDeltaPage, ownerCharacterId, refreshRevision]);
+
+  useEffect(() => {
+    if (!available || deltaViewMode !== "groups") return;
+    let active = true;
+    setDeltasLoading(true);
+    setDeltasFailed(false);
+    void loadDeltaGroups({
+      search: appliedSearch,
+      ownerCharacterId,
+      changeType: deltaChangeType,
+      offset: deltaOffset,
+      limit: assetDeltaPageSize,
+    })
+      .then((loadedPage) => {
+        if (!active) return;
+        if (loadedPage.total > 0 && loadedPage.offset >= loadedPage.total) {
+          setDeltaOffset(Math.floor((loadedPage.total - 1) / assetDeltaPageSize) * assetDeltaPageSize);
+          return;
+        }
+        setDeltaGroupPage(loadedPage);
+        setDeltasFailed(false);
+      })
+      .catch(() => {
+        if (active) setDeltasFailed(true);
+      })
+      .finally(() => {
+        if (active) setDeltasLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [appliedSearch, available, deltaChangeType, deltaOffset, deltaViewMode, loadDeltaGroups, ownerCharacterId, refreshRevision]);
+
+  useEffect(() => {
+    if (!available || deltaViewMode !== "groups" || expandedDeltaGroup === null) {
+      setDeltaDetailPage(null);
+      setDeltaDetailFailed(false);
+      return;
+    }
+    let active = true;
+    setDeltaDetailLoading(true);
+    setDeltaDetailFailed(false);
+    void loadDeltaPage({
+      search: appliedSearch,
+      ownerCharacterId: expandedDeltaGroup.ownerCharacterId,
+      changeType: deltaChangeType,
+      offset: deltaDetailOffset,
+      limit: assetDeltaPageSize,
+      typeId: expandedDeltaGroup.typeId,
+      previousAssetSnapshotId: expandedDeltaGroup.previousAssetSnapshotId,
+      currentAssetSnapshotId: expandedDeltaGroup.currentAssetSnapshotId,
+    })
+      .then((loadedPage) => {
+        if (!active) return;
+        setDeltaDetailPage(loadedPage);
+        setDeltaDetailFailed(false);
+      })
+      .catch(() => {
+        if (active) setDeltaDetailFailed(true);
+      })
+      .finally(() => {
+        if (active) setDeltaDetailLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [appliedSearch, available, deltaChangeType, deltaDetailOffset, deltaViewMode, expandedDeltaGroup, loadDeltaPage]);
 
   const refreshAssets = async () => {
     if (!available || assetsSyncing) return;
@@ -3182,6 +3296,60 @@ function AssetWorkspace({
     </button>
   );
   const syncIssues = syncResult?.characters.filter((character) => character.status !== "completed") ?? [];
+  const activeDeltaPage = deltaViewMode === "groups" ? deltaGroupPage : deltaPage;
+  const deltaCorrelationStates = [
+    "linked", "ambiguous", "unmatched", "unavailable", "not-applicable",
+  ] as const;
+  const deltaLocationLabel = (
+    path: string | null,
+    flag: string | null,
+    locationId: number | null,
+  ) => path ?? (flag === "AutoFit" ? t.assets.deltas.containerArea : flag) ??
+    (locationId === null ? t.assets.deltas.noLocation : `#${locationId}`);
+  const deltaLocationMeta = (flag: string | null, locationId: number | null) => {
+    const area = flag === null
+      ? null
+      : t.assets.deltas.esiArea.replace("{flag}", flag);
+    return [area, locationId === null ? null : `#${locationId}`].filter(Boolean).join(" · ");
+  };
+  const renderDeltaEventRow = (event: AssetDeltaRecord) => (
+    <tr key={event.eventId}>
+      <td>
+        <strong>{event.typeName}</strong>
+        <small>{event.ownerName} · Item {event.itemId}</small>
+      </td>
+      <td>
+        <div className="asset-delta-table__badges">
+          {event.changeTypes.map((changeType) => (
+            <span key={changeType} className={`asset-delta-badge asset-delta-badge--${changeType}`}>
+              {t.assets.deltas.labels[changeType]}
+            </span>
+          ))}
+        </div>
+        <small className={event.quantityDelta > 0 ? "delta-positive" : event.quantityDelta < 0 ? "delta-negative" : ""}>
+          {event.quantityDelta > 0 ? "+" : ""}{numberFormat.format(event.quantityDelta)}
+        </small>
+      </td>
+      <td>
+        <strong>{event.quantityBefore === null ? "—" : numberFormat.format(event.quantityBefore)} → {event.quantityAfter === null ? "—" : numberFormat.format(event.quantityAfter)}</strong>
+      </td>
+      <td>
+        <strong title={`${event.locationPathBefore ?? ""} → ${event.locationPathAfter ?? ""}`}>
+          {deltaLocationLabel(event.locationPathBefore, event.locationFlagBefore, event.locationIdBefore)} → {deltaLocationLabel(event.locationPathAfter, event.locationFlagAfter, event.locationIdAfter)}
+        </strong>
+        <small>{deltaLocationMeta(event.locationFlagBefore, event.locationIdBefore)} → {deltaLocationMeta(event.locationFlagAfter, event.locationIdAfter)}</small>
+      </td>
+      <td>
+        <strong>{formatDataAge(event.ageSeconds, locale)}</strong>
+        <small>{event.jobCorrelation.windowStart} → {event.jobCorrelation.windowEnd}</small>
+      </td>
+      <td>
+        <strong>{t.assets.deltas.correlationLabels[event.jobCorrelation.state]}</strong>
+        <small>{event.jobCorrelation.jobIds.length > 0 ? `Job ${event.jobCorrelation.jobIds.join(", ")} · ` : ""}Run {event.currentAssetSyncRunId}</small>
+        <small>{event.eventId.slice(0, 10)}</small>
+      </td>
+    </tr>
+  );
 
   return (
     <div className="workspace asset-workspace">
@@ -3470,30 +3638,59 @@ function AssetWorkspace({
             <h2>{t.assets.deltas.title}</h2>
             <p>{t.assets.deltas.subtitle}</p>
           </div>
-          <label>
-            <span>{t.assets.deltas.filter}</span>
-            <select
-              aria-label={t.assets.deltas.filter}
-              value={deltaChangeType ?? ""}
-              disabled={!available}
-              onChange={(event) => {
-                setDeltaChangeType(event.target.value === "" ? null : event.target.value as AssetDeltaChangeType);
-                setDeltaOffset(0);
-              }}
-            >
-              <option value="">{t.assets.deltas.all}</option>
-              {assetDeltaChangeTypes.map((changeType) => (
-                <option key={changeType} value={changeType}>{t.assets.deltas.labels[changeType]}</option>
-              ))}
-            </select>
-          </label>
+          <div className="asset-deltas__controls">
+            <div className="asset-view-switch" role="group" aria-label={t.assets.deltas.view}>
+              <button
+                type="button"
+                className={deltaViewMode === "groups" ? "is-active" : ""}
+                aria-pressed={deltaViewMode === "groups"}
+                onClick={() => {
+                  setDeltaViewMode("groups");
+                  setDeltaOffset(0);
+                  setExpandedDeltaGroup(null);
+                }}
+              >
+                <Boxes size={15} />{t.assets.deltas.groupedView}
+              </button>
+              <button
+                type="button"
+                className={deltaViewMode === "events" ? "is-active" : ""}
+                aria-pressed={deltaViewMode === "events"}
+                onClick={() => {
+                  setDeltaViewMode("events");
+                  setDeltaOffset(0);
+                  setExpandedDeltaGroup(null);
+                }}
+              >
+                <PackageSearch size={15} />{t.assets.deltas.eventView}
+              </button>
+            </div>
+            <label>
+              <span>{t.assets.deltas.filter}</span>
+              <select
+                aria-label={t.assets.deltas.filter}
+                value={deltaChangeType ?? ""}
+                disabled={!available}
+                onChange={(event) => {
+                  setDeltaChangeType(event.target.value === "" ? null : event.target.value as AssetDeltaChangeType);
+                  setDeltaOffset(0);
+                  setExpandedDeltaGroup(null);
+                }}
+              >
+                <option value="">{t.assets.deltas.all}</option>
+                {assetDeltaChangeTypes.map((changeType) => (
+                  <option key={changeType} value={changeType}>{t.assets.deltas.labels[changeType]}</option>
+                ))}
+              </select>
+            </label>
+          </div>
         </header>
 
-        {deltaPage && (
+        {activeDeltaPage && (
           <div className="asset-deltas__summary" aria-live="polite">
             {assetDeltaChangeTypes.map((changeType) => (
               <span key={changeType}>
-                <strong>{numberFormat.format(deltaPage.summary[changeType])}</strong>
+                <strong>{numberFormat.format(activeDeltaPage.summary[changeType])}</strong>
                 <small>{t.assets.deltas.labels[changeType]}</small>
               </span>
             ))}
@@ -3506,12 +3703,126 @@ function AssetWorkspace({
           <div className="asset-empty asset-empty--error" role="alert">
             <AlertTriangle size={22} />{t.assets.deltas.error}
           </div>
-        ) : deltasLoading && deltaPage === null ? (
+        ) : deltasLoading && activeDeltaPage === null ? (
           <div className="asset-empty"><RefreshCw className="spin" size={22} />{t.assets.deltas.loading}</div>
-        ) : deltaPage && deltaPage.items.length === 0 ? (
+        ) : activeDeltaPage && activeDeltaPage.items.length === 0 ? (
           <div className="asset-empty">
             <Clock3 size={22} />
-            {deltaPage.hasBaseline ? t.assets.deltas.noChanges : t.assets.deltas.noBaseline}
+            {activeDeltaPage.hasBaseline ? t.assets.deltas.noChanges : t.assets.deltas.noBaseline}
+          </div>
+        ) : deltaViewMode === "groups" && deltaGroupPage ? (
+          <div className="asset-table-wrap">
+            <table className="asset-table asset-delta-table asset-delta-group-table">
+              <thead>
+                <tr>
+                  <th>{t.assets.type}</th>
+                  <th>{t.assets.deltas.changes}</th>
+                  <th>{t.assets.deltas.affectedQuantity}</th>
+                  <th>{t.assets.location}</th>
+                  <th>{t.assets.deltas.interval}</th>
+                  <th>{t.assets.deltas.source}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {deltaGroupPage.items.map((group) => {
+                  const expanded = expandedDeltaGroup?.groupId === group.groupId;
+                  const beforeLocation = group.locationCountBefore > 1
+                    ? t.assets.deltas.locations.replace("{count}", numberFormat.format(group.locationCountBefore))
+                    : deltaLocationLabel(group.locationPathBefore, group.locationFlagBefore, group.locationIdBefore);
+                  const afterLocation = group.locationCountAfter > 1
+                    ? t.assets.deltas.locations.replace("{count}", numberFormat.format(group.locationCountAfter))
+                    : deltaLocationLabel(group.locationPathAfter, group.locationFlagAfter, group.locationIdAfter);
+                  const correlationEvidence = deltaCorrelationStates
+                    .filter((state) => group.jobCorrelationSummary[state] > 0)
+                    .map((state) => `${numberFormat.format(group.jobCorrelationSummary[state])} ${t.assets.deltas.correlationLabels[state]}`)
+                    .join(" · ");
+                  return (
+                    <Fragment key={group.groupId}>
+                      <tr>
+                        <td>
+                          <strong>{group.typeName}</strong>
+                          <small>{group.ownerName} · {t.assets.deltas.affected
+                            .replace("{items}", numberFormat.format(group.itemCount))
+                            .replace("{events}", numberFormat.format(group.eventCount))}</small>
+                        </td>
+                        <td>
+                          <div className="asset-delta-table__badges">
+                            {group.changeTypes.map((changeType) => (
+                              <span key={changeType} className={`asset-delta-badge asset-delta-badge--${changeType}`}>
+                                {t.assets.deltas.labels[changeType]}
+                              </span>
+                            ))}
+                          </div>
+                          <small className={group.quantityDelta > 0 ? "delta-positive" : group.quantityDelta < 0 ? "delta-negative" : ""}>
+                            {group.quantityDelta > 0 ? "+" : ""}{numberFormat.format(group.quantityDelta)}
+                          </small>
+                        </td>
+                        <td><strong>{numberFormat.format(group.quantityBefore)} → {numberFormat.format(group.quantityAfter)}</strong></td>
+                        <td>
+                          <strong title={`${group.locationPathBefore ?? ""} → ${group.locationPathAfter ?? ""}`}>{beforeLocation} → {afterLocation}</strong>
+                          {(group.locationCountBefore === 1 || group.locationCountAfter === 1) && (
+                            <small>{deltaLocationMeta(group.locationFlagBefore, group.locationIdBefore)} → {deltaLocationMeta(group.locationFlagAfter, group.locationIdAfter)}</small>
+                          )}
+                        </td>
+                        <td>
+                          <strong>{formatDataAge(group.ageSeconds, locale)}</strong>
+                          <small>Snapshot {group.previousAssetSnapshotId} → {group.currentAssetSnapshotId}</small>
+                        </td>
+                        <td>
+                          <strong>Run {group.currentAssetSyncRunId}</strong>
+                          <small>{correlationEvidence}</small>
+                          <button
+                            type="button"
+                            className="asset-delta-details-button"
+                            aria-expanded={expanded}
+                            onClick={() => {
+                              setExpandedDeltaGroup(expanded ? null : group);
+                              setDeltaDetailOffset(0);
+                              setDeltaDetailPage(null);
+                            }}
+                          >
+                            {expanded ? t.assets.deltas.hideDetails : t.assets.deltas.details}
+                            <ChevronDown className={expanded ? "is-open" : ""} size={14} />
+                          </button>
+                        </td>
+                      </tr>
+                      {expanded && (
+                        <tr className="asset-delta-detail-row">
+                          <td colSpan={6}>
+                            {deltaDetailFailed ? (
+                              <div className="asset-empty asset-empty--error" role="alert"><AlertTriangle size={18} />{t.assets.deltas.detailsError}</div>
+                            ) : deltaDetailLoading && deltaDetailPage === null ? (
+                              <div className="asset-empty"><RefreshCw className="spin" size={18} />{t.assets.deltas.detailsLoading}</div>
+                            ) : deltaDetailPage ? (
+                              <div className="asset-delta-detail">
+                                <table className="asset-table asset-delta-table">
+                                  <thead>
+                                    <tr>
+                                      <th>{t.assets.type}</th><th>{t.assets.deltas.changes}</th><th>{t.assets.deltas.beforeAfter}</th><th>{t.assets.location}</th><th>{t.assets.deltas.interval}</th><th>{t.assets.deltas.source}</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>{deltaDetailPage.items.map(renderDeltaEventRow)}</tbody>
+                                </table>
+                                <footer className="asset-pagination">
+                                  <span>{t.assets.resultRange
+                                    .replace("{from}", numberFormat.format(deltaDetailPage.total === 0 ? 0 : deltaDetailOffset + 1))
+                                    .replace("{to}", numberFormat.format(Math.min(deltaDetailOffset + deltaDetailPage.items.length, deltaDetailPage.total)))
+                                    .replace("{total}", numberFormat.format(deltaDetailPage.total))}</span>
+                                  <div>
+                                    <button type="button" onClick={() => setDeltaDetailOffset(Math.max(0, deltaDetailOffset - assetDeltaPageSize))} disabled={deltaDetailLoading || deltaDetailOffset === 0}><ChevronRight className="asset-pagination__previous" size={15} />{t.assets.previous}</button>
+                                    <button type="button" onClick={() => setDeltaDetailOffset(deltaDetailOffset + assetDeltaPageSize)} disabled={deltaDetailLoading || deltaDetailOffset + assetDeltaPageSize >= deltaDetailPage.total}>{t.assets.next}<ChevronRight size={15} /></button>
+                                  </div>
+                                </footer>
+                              </div>
+                            ) : null}
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         ) : deltaPage ? (
           <div className="asset-table-wrap">
@@ -3526,59 +3837,22 @@ function AssetWorkspace({
                   <th>{t.assets.deltas.source}</th>
                 </tr>
               </thead>
-              <tbody>
-                {deltaPage.items.map((event) => (
-                  <tr key={event.eventId}>
-                    <td>
-                      <strong>{event.typeName}</strong>
-                      <small>{event.ownerName} · Item {event.itemId}</small>
-                    </td>
-                    <td>
-                      <div className="asset-delta-table__badges">
-                        {event.changeTypes.map((changeType) => (
-                          <span key={changeType} className={`asset-delta-badge asset-delta-badge--${changeType}`}>
-                            {t.assets.deltas.labels[changeType]}
-                          </span>
-                        ))}
-                      </div>
-                      <small className={event.quantityDelta > 0 ? "delta-positive" : event.quantityDelta < 0 ? "delta-negative" : ""}>
-                        {event.quantityDelta > 0 ? "+" : ""}{numberFormat.format(event.quantityDelta)}
-                      </small>
-                    </td>
-                    <td>
-                      <strong>{event.quantityBefore === null ? "—" : numberFormat.format(event.quantityBefore)} → {event.quantityAfter === null ? "—" : numberFormat.format(event.quantityAfter)}</strong>
-                    </td>
-                    <td>
-                      <strong>{event.locationFlagBefore ?? "—"} → {event.locationFlagAfter ?? "—"}</strong>
-                      <small>{event.locationIdBefore ?? "—"} → {event.locationIdAfter ?? "—"}</small>
-                    </td>
-                    <td>
-                      <strong>{formatDataAge(event.ageSeconds, locale)}</strong>
-                      <small>{event.jobCorrelation.windowStart} → {event.jobCorrelation.windowEnd}</small>
-                    </td>
-                    <td>
-                      <strong>{t.assets.deltas.correlationLabels[event.jobCorrelation.state]}</strong>
-                      <small>{event.jobCorrelation.jobIds.length > 0 ? `Job ${event.jobCorrelation.jobIds.join(", ")} · ` : ""}Run {event.currentAssetSyncRunId}</small>
-                      <small>{event.eventId.slice(0, 10)}</small>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
+              <tbody>{deltaPage.items.map(renderDeltaEventRow)}</tbody>
             </table>
           </div>
         ) : null}
 
-        {available && deltaPage && (
+        {available && activeDeltaPage && (
           <footer className="asset-pagination">
             <span>{t.assets.resultRange
-              .replace("{from}", numberFormat.format(deltaPage.total === 0 ? 0 : deltaOffset + 1))
-              .replace("{to}", numberFormat.format(Math.min(deltaOffset + deltaPage.items.length, deltaPage.total)))
-              .replace("{total}", numberFormat.format(deltaPage.total))}</span>
+              .replace("{from}", numberFormat.format(activeDeltaPage.total === 0 ? 0 : deltaOffset + 1))
+              .replace("{to}", numberFormat.format(Math.min(deltaOffset + activeDeltaPage.items.length, activeDeltaPage.total)))
+              .replace("{total}", numberFormat.format(activeDeltaPage.total))}</span>
             <div>
               <button aria-label={`${t.assets.deltas.title}: ${t.assets.previous}`} type="button" onClick={() => setDeltaOffset(Math.max(0, deltaOffset - assetDeltaPageSize))} disabled={deltasLoading || deltaOffset === 0}>
                 <ChevronRight className="asset-pagination__previous" size={15} />{t.assets.previous}
               </button>
-              <button aria-label={`${t.assets.deltas.title}: ${t.assets.next}`} type="button" onClick={() => setDeltaOffset(deltaOffset + assetDeltaPageSize)} disabled={deltasLoading || deltaOffset + assetDeltaPageSize >= deltaPage.total}>
+              <button aria-label={`${t.assets.deltas.title}: ${t.assets.next}`} type="button" onClick={() => setDeltaOffset(deltaOffset + assetDeltaPageSize)} disabled={deltasLoading || deltaOffset + assetDeltaPageSize >= activeDeltaPage.total}>
                 {t.assets.next}<ChevronRight size={15} />
               </button>
             </div>
