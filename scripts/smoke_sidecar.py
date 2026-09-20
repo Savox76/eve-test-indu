@@ -336,6 +336,7 @@ def main() -> int:
                 data=json.dumps({
                     "search": "", "ownerCharacterId": None, "activity": None,
                     "state": None, "offset": 0, "limit": 50,
+                    "marketHubId": "jita",
                     "sortBy": "priority", "sortDirection": "desc",
                 }).encode("utf-8"),
                 method="POST",
