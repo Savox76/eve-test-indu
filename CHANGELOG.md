@@ -6,11 +6,34 @@ Alle bemerkenswerten Änderungen an New Eden Foundry werden hier festgehalten. D
 
 ### Neu hinzugefügt
 
+- Keine.
+
+### Geändert
+
+- Keine.
+
+### Behobene Fehler
+
+- Keine.
+
+### Bekannte Einschränkungen
+
+- Keine.
+
+### Update und Datenbankmigration
+
+- Keine.
+
+## 0.2.0-alpha.16 – 20. September 2026
+
+### Neu hinzugefügt
+
 - Paket 43 ergänzt den offiziellen SCC-Zuschlag von 4 Prozent für jeden tatsächlich gebauten Produktionsschritt.
 - Produktionsziel und Einzelschritte zeigen Eingabewert, Systemkosten, Anlagensteuer, SCC-Zuschlag und vollständige geschätzte Installationskosten getrennt an.
 
 ### Geändert
 
+- Die sichtbare Versionsnummer lautet `v0.2.0-alpha.16`.
 - Die Kostenberechnung rundet Systemkosten, Anlagensteuer und SCC-Zuschlag je Job getrennt auf volle ISK und addiert erst danach die vollständigen Installationskosten.
 - Der native API-Vertrag weist den festen SCC-Satz ausdrücklich aus und verwirft abweichende oder unvollständige Kostenantworten.
 
@@ -26,6 +49,7 @@ Alle bemerkenswerten Änderungen an New Eden Foundry werden hier festgehalten. D
 ### Update und Datenbankmigration
 
 - Das Datenbankschema bleibt bei Version 14; bestehende Charaktere, Einstellungen, Ziele und Snapshots bleiben unverändert erhalten.
+- Für ein Installer-Update die Anwendung vollständig schließen und die Option zum Löschen der Anwendungsdaten abgewählt lassen. Für ein portables Update die neue Alpha in einen neuen Ordner entpacken und den bisherigen `data`-Ordner bei geschlossener Anwendung übernehmen.
 
 ## 0.2.0-alpha.15 – 20. September 2026
 
