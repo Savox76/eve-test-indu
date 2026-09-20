@@ -323,6 +323,10 @@ export interface AssetDeltaRecord {
   locationTypeAfter: string | null;
   locationFlagBefore: string | null;
   locationFlagAfter: string | null;
+  locationStatusBefore: Exclude<AssetLocationStatus, "pending"> | null;
+  locationStatusAfter: Exclude<AssetLocationStatus, "pending"> | null;
+  locationPathBefore: string | null;
+  locationPathAfter: string | null;
   previousAssetSnapshotId: number;
   currentAssetSnapshotId: number;
   currentAssetSyncRunId: number;
@@ -337,6 +341,54 @@ export interface AssetDeltaQuery {
   changeType: AssetDeltaChangeType | null;
   offset: number;
   limit: number;
+  typeId: number | null;
+  previousAssetSnapshotId: number | null;
+  currentAssetSnapshotId: number | null;
+}
+
+export type AssetDeltaGroupQuery = Omit<AssetDeltaQuery,
+  "typeId" | "previousAssetSnapshotId" | "currentAssetSnapshotId">;
+
+export interface AssetDeltaGroupRecord {
+  groupId: string;
+  typeId: number;
+  typeName: string;
+  ownerCharacterId: number;
+  ownerName: string;
+  changeTypes: AssetDeltaChangeType[];
+  eventCount: number;
+  itemCount: number;
+  quantityBefore: number;
+  quantityAfter: number;
+  quantityDelta: number;
+  locationCountBefore: number;
+  locationCountAfter: number;
+  locationIdBefore: number | null;
+  locationIdAfter: number | null;
+  locationFlagBefore: string | null;
+  locationFlagAfter: string | null;
+  locationPathBefore: string | null;
+  locationPathAfter: string | null;
+  previousAssetSnapshotId: number;
+  currentAssetSnapshotId: number;
+  currentAssetSyncRunId: number;
+  observedAt: string;
+  ageSeconds: number;
+  jobCorrelationSummary: Record<AssetDeltaCorrelation["state"], number>;
+}
+
+export interface AssetDeltaGroupPage {
+  items: AssetDeltaGroupRecord[];
+  total: number;
+  eventTotal: number;
+  offset: number;
+  limit: number;
+  owners: AssetOwner[];
+  changeTypes: AssetDeltaChangeType[];
+  summary: Record<AssetDeltaChangeType, number>;
+  hasBaseline: boolean;
+  observedAt: string | null;
+  ageSeconds: number | null;
 }
 
 export interface AssetDeltaPage {
@@ -1802,6 +1854,20 @@ function parseAssetDeltaRecord(candidate: unknown): AssetDeltaRecord {
   const locationTypeAfter = parseNullableBoundedText(candidate.locationTypeAfter, 40);
   const locationFlagBefore = parseNullableBoundedText(candidate.locationFlagBefore, 100);
   const locationFlagAfter = parseNullableBoundedText(candidate.locationFlagAfter, 100);
+  const locationStatusBefore = candidate.locationStatusBefore === null
+    ? null
+    : assetLocationStatuses.includes(candidate.locationStatusBefore as AssetLocationStatus) &&
+      candidate.locationStatusBefore !== "pending"
+      ? candidate.locationStatusBefore as Exclude<AssetLocationStatus, "pending">
+      : null;
+  const locationStatusAfter = candidate.locationStatusAfter === null
+    ? null
+    : assetLocationStatuses.includes(candidate.locationStatusAfter as AssetLocationStatus) &&
+      candidate.locationStatusAfter !== "pending"
+      ? candidate.locationStatusAfter as Exclude<AssetLocationStatus, "pending">
+      : null;
+  const locationPathBefore = parseNullableBoundedText(candidate.locationPathBefore, 16_000);
+  const locationPathAfter = parseNullableBoundedText(candidate.locationPathAfter, 16_000);
   const changeTypes = candidate.changeTypes as AssetDeltaChangeType[];
   const locationChanged =
     locationIdBefore !== locationIdAfter ||
@@ -1827,7 +1893,13 @@ function parseAssetDeltaRecord(candidate: unknown): AssetDeltaRecord {
     changeTypes.includes("quantity") !==
       (quantityBefore !== null && quantityAfter !== null && candidate.quantityDelta !== 0) ||
     changeTypes.includes("location") !==
-      (quantityBefore !== null && quantityAfter !== null && locationChanged)
+      (quantityBefore !== null && quantityAfter !== null && locationChanged) ||
+    (candidate.locationStatusBefore !== null && locationStatusBefore === null) ||
+    (candidate.locationStatusAfter !== null && locationStatusAfter === null) ||
+    (locationPathBefore !== null && locationStatusBefore === null) ||
+    (locationPathAfter !== null && locationStatusAfter === null) ||
+    (quantityBefore === null && (locationStatusBefore !== null || locationPathBefore !== null)) ||
+    (quantityAfter === null && (locationStatusAfter !== null || locationPathAfter !== null))
   ) {
     throw new Error("The native runtime returned inconsistent asset-delta metadata.");
   }
@@ -1841,6 +1913,10 @@ function parseAssetDeltaRecord(candidate: unknown): AssetDeltaRecord {
     locationTypeAfter,
     locationFlagBefore,
     locationFlagAfter,
+    locationStatusBefore,
+    locationStatusAfter,
+    locationPathBefore,
+    locationPathAfter,
   } as unknown as AssetDeltaRecord;
 }
 
@@ -1889,8 +1965,121 @@ function parseAssetDeltaPage(candidate: unknown): AssetDeltaPage {
   return { ...candidate, items, owners } as unknown as AssetDeltaPage;
 }
 
+const assetDeltaCorrelationStates: readonly AssetDeltaCorrelation["state"][] = [
+  "linked", "ambiguous", "unmatched", "unavailable", "not-applicable",
+];
+
+function parseAssetDeltaGroupRecord(candidate: unknown): AssetDeltaGroupRecord {
+  const correlationSummary = isRecord(candidate) && isRecord(candidate.jobCorrelationSummary)
+    ? candidate.jobCorrelationSummary
+    : null;
+  if (
+    !isRecord(candidate) || typeof candidate.groupId !== "string" ||
+    !/^[0-9a-f]{64}$/.test(candidate.groupId) ||
+    !isPositiveSafeInteger(candidate.typeId) || !isBoundedText(candidate.typeName, 220) ||
+    !isPositiveSafeInteger(candidate.ownerCharacterId) || !isBoundedText(candidate.ownerName, 100) ||
+    !Array.isArray(candidate.changeTypes) || candidate.changeTypes.length < 1 ||
+    candidate.changeTypes.length > assetDeltaChangeTypes.length ||
+    !candidate.changeTypes.every((value) => typeof value === "string" &&
+      assetDeltaChangeTypes.includes(value as AssetDeltaChangeType)) ||
+    new Set(candidate.changeTypes).size !== candidate.changeTypes.length ||
+    !isPositiveSafeInteger(candidate.eventCount) || !isPositiveSafeInteger(candidate.itemCount) ||
+    Number(candidate.itemCount) > Number(candidate.eventCount) ||
+    !isNonNegativeSafeInteger(candidate.quantityBefore) ||
+    !isNonNegativeSafeInteger(candidate.quantityAfter) ||
+    !isSignedSafeInteger(candidate.quantityDelta) ||
+    candidate.quantityDelta !== Number(candidate.quantityAfter) - Number(candidate.quantityBefore) ||
+    !isNonNegativeSafeInteger(candidate.locationCountBefore) ||
+    !isNonNegativeSafeInteger(candidate.locationCountAfter) ||
+    Number(candidate.locationCountBefore) > Number(candidate.eventCount) ||
+    Number(candidate.locationCountAfter) > Number(candidate.eventCount) ||
+    !isPositiveSafeInteger(candidate.previousAssetSnapshotId) ||
+    !isPositiveSafeInteger(candidate.currentAssetSnapshotId) ||
+    !isPositiveSafeInteger(candidate.currentAssetSyncRunId) ||
+    !isBoundedText(candidate.observedAt, 64) || !isNonNegativeSafeInteger(candidate.ageSeconds) ||
+    correlationSummary === null ||
+    !assetDeltaCorrelationStates.every((state) =>
+      isNonNegativeSafeInteger(correlationSummary[state])) ||
+    assetDeltaCorrelationStates.reduce((sum, state) =>
+      sum + Number(correlationSummary[state]), 0) !== Number(candidate.eventCount)
+  ) {
+    throw new Error("The native runtime returned invalid grouped asset-delta metadata.");
+  }
+  const locationIdBefore = parseNullablePositiveInteger(candidate.locationIdBefore);
+  const locationIdAfter = parseNullablePositiveInteger(candidate.locationIdAfter);
+  const locationFlagBefore = parseNullableBoundedText(candidate.locationFlagBefore, 100);
+  const locationFlagAfter = parseNullableBoundedText(candidate.locationFlagAfter, 100);
+  const locationPathBefore = parseNullableBoundedText(candidate.locationPathBefore, 16_000);
+  const locationPathAfter = parseNullableBoundedText(candidate.locationPathAfter, 16_000);
+  if (
+    (candidate.locationCountBefore === 1) !==
+      (locationIdBefore !== null && locationFlagBefore !== null) ||
+    (candidate.locationCountAfter === 1) !==
+      (locationIdAfter !== null && locationFlagAfter !== null) ||
+    (locationPathBefore !== null && candidate.locationCountBefore !== 1) ||
+    (locationPathAfter !== null && candidate.locationCountAfter !== 1)
+  ) {
+    throw new Error("The native runtime returned inconsistent grouped asset-delta metadata.");
+  }
+  return {
+    ...candidate,
+    locationIdBefore,
+    locationIdAfter,
+    locationFlagBefore,
+    locationFlagAfter,
+    locationPathBefore,
+    locationPathAfter,
+  } as unknown as AssetDeltaGroupRecord;
+}
+
+function parseAssetDeltaGroupPage(candidate: unknown): AssetDeltaGroupPage {
+  const summary = isRecord(candidate) && isRecord(candidate.summary) ? candidate.summary : null;
+  if (
+    !isRecord(candidate) || !Array.isArray(candidate.items) ||
+    !isNonNegativeSafeInteger(candidate.total) || !isNonNegativeSafeInteger(candidate.eventTotal) ||
+    Number(candidate.total) > Number(candidate.eventTotal) ||
+    !isNonNegativeSafeInteger(candidate.offset) || !Number.isSafeInteger(candidate.limit) ||
+    Number(candidate.limit) < 1 || Number(candidate.limit) > 200 ||
+    !Array.isArray(candidate.owners) || !Array.isArray(candidate.changeTypes) ||
+    candidate.changeTypes.length !== assetDeltaChangeTypes.length ||
+    !assetDeltaChangeTypes.every((type) => (candidate.changeTypes as unknown[]).includes(type)) ||
+    summary === null || !assetDeltaChangeTypes.every((type) =>
+      isNonNegativeSafeInteger(summary[type]) &&
+      Number(summary[type]) <= Number(candidate.eventTotal)) ||
+    typeof candidate.hasBaseline !== "boolean" ||
+    !(candidate.observedAt === null || isBoundedText(candidate.observedAt, 64)) ||
+    !(candidate.ageSeconds === null || isNonNegativeSafeInteger(candidate.ageSeconds)) ||
+    (candidate.observedAt === null) !== (candidate.ageSeconds === null) ||
+    candidate.hasBaseline !== (candidate.observedAt !== null)
+  ) {
+    throw new Error("The native runtime returned an invalid grouped asset-delta page.");
+  }
+  const items = candidate.items.map(parseAssetDeltaGroupRecord);
+  const owners = candidate.owners.map((owner): AssetOwner => {
+    if (!isRecord(owner) || !isPositiveSafeInteger(owner.characterId) ||
+      !isBoundedText(owner.name, 100)) {
+      throw new Error("The native runtime returned invalid grouped asset-delta owners.");
+    }
+    return owner as unknown as AssetOwner;
+  });
+  if (
+    items.length > Number(candidate.limit) || items.length > Number(candidate.total) ||
+    new Set(items.map(({ groupId }) => groupId)).size !== items.length ||
+    new Set(owners.map(({ characterId }) => characterId)).size !== owners.length ||
+    items.some((item) => !owners.some((owner) => owner.characterId === item.ownerCharacterId))
+  ) {
+    throw new Error("The native runtime returned inconsistent grouped asset-delta page metadata.");
+  }
+  return { ...candidate, items, owners } as unknown as AssetDeltaGroupPage;
+}
+
 function validateAssetDeltaQuery(query: AssetDeltaQuery): AssetDeltaQuery {
   const search = query.search.trim().replace(/\s+/g, " ");
+  const groupValues = [
+    query.typeId,
+    query.previousAssetSnapshotId,
+    query.currentAssetSnapshotId,
+  ];
   if (
     search.length > 120 ||
     !(query.ownerCharacterId === null || isPositiveSafeInteger(query.ownerCharacterId)) ||
@@ -1898,11 +2087,29 @@ function validateAssetDeltaQuery(query: AssetDeltaQuery): AssetDeltaQuery {
     !isNonNegativeSafeInteger(query.offset) ||
     !Number.isSafeInteger(query.limit) ||
     query.limit < 1 ||
-    query.limit > 200
+    query.limit > 200 ||
+    (groupValues.some((value) => value !== null) &&
+      !groupValues.every((value) => value !== null && isPositiveSafeInteger(value)))
   ) {
     throw new Error("The asset-delta query is invalid.");
   }
   return { ...query, search };
+}
+
+function validateAssetDeltaGroupQuery(query: AssetDeltaGroupQuery): AssetDeltaGroupQuery {
+  const validated = validateAssetDeltaQuery({
+    ...query,
+    typeId: null,
+    previousAssetSnapshotId: null,
+    currentAssetSnapshotId: null,
+  });
+  const {
+    typeId: _typeId,
+    previousAssetSnapshotId: _previousAssetSnapshotId,
+    currentAssetSnapshotId: _currentAssetSnapshotId,
+    ...groupQuery
+  } = validated;
+  return groupQuery;
 }
 
 function parseSsoLoginStatus(candidate: unknown): SsoLoginStatus {
@@ -4593,10 +4800,42 @@ export async function loadAssetDeltas(
       changeType: validated.changeType,
       offset: validated.offset,
       limit: validated.limit,
+      typeId: validated.typeId,
+      previousAssetSnapshotId: validated.previousAssetSnapshotId,
+      currentAssetSnapshotId: validated.currentAssetSnapshotId,
     })),
   );
   if (page.offset !== validated.offset || page.limit !== validated.limit) {
     throw new Error("The native runtime returned a different asset-delta window.");
+  }
+  return page;
+}
+
+export async function loadAssetDeltaGroups(
+  query: AssetDeltaGroupQuery,
+  adapter: RuntimeAdapter = tauriAdapter,
+): Promise<AssetDeltaGroupPage> {
+  const validated = validateAssetDeltaGroupQuery(query);
+  if (!adapter.isAvailable()) {
+    return {
+      items: [],
+      total: 0,
+      eventTotal: 0,
+      offset: validated.offset,
+      limit: validated.limit,
+      owners: [],
+      changeTypes: [...assetDeltaChangeTypes],
+      summary: { added: 0, removed: 0, quantity: 0, location: 0 },
+      hasBaseline: false,
+      observedAt: null,
+      ageSeconds: null,
+    };
+  }
+  const page = parseAssetDeltaGroupPage(
+    JSON.parse(await adapter.invoke("query_asset_delta_groups", validated)),
+  );
+  if (page.offset !== validated.offset || page.limit !== validated.limit) {
+    throw new Error("The native runtime returned a different grouped asset-delta window.");
   }
   return page;
 }
