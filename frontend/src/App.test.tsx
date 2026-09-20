@@ -525,7 +525,21 @@ const productionPlanPage: ProductionPlanPage = {
     marketAgeSeconds: null, fullyCoveredItemCount: 0, partiallyCoveredItemCount: 0,
     unavailableItemCount: 0, snapshotMissingItemCount: 1, totalPurchaseCostCents: 0,
     installationCostState: "unavailable", estimatedInstallationCost: null,
-    additionalCapitalNeedCents: null },
+    additionalCapitalNeedCents: null,
+    profitability: { state: "snapshot-missing", items: [{ typeId: 101,
+      typeName: "Synthetic Hull", quantity: 4, targetQuantity: 3,
+      surplusQuantity: 1, planCount: 1,
+      marketState: "snapshot-missing", lowestSellUnitPriceCents: null,
+      competingVolume: null, grossRevenueCents: null }], itemCount: 1,
+      omittedItemCount: 0,
+      totalQuantity: 4, materialItemCount: 1, fullyPricedMaterialCount: 0,
+      marketTypeIds: [101, 900], marketTypeCount: 2, omittedMarketTypeCount: 0,
+      grossRevenueCents: null,
+      materialReplacementCostCents: null, installationCostCents: null,
+      totalProductionCostCents: null, grossProfitCents: null,
+      grossMarginBasisPoints: null,
+      profitabilityRule: "filtered-plans-full-material-replacement-plus-installation-vs-lowest-sell-reference-before-trade-fees",
+      tradeFeesIncluded: false } },
   inventoryApplied: true, reservationsApplied: true,
   reservationRule: "priority-desc-created-asc-plan-id-asc",
   blueprintMaterialEfficiencyApplied: true,
@@ -544,6 +558,8 @@ const productionPlanPage: ProductionPlanPage = {
   purchaseListRule: "filtered-plans-sum-missing-by-type",
   marketPricesApplied: true,
   marketPriceRule: "selected-hub-lowest-sell-orders-volume-weighted-cents",
+  profitabilityApplied: true,
+  profitabilityRule: "filtered-plans-full-material-replacement-plus-installation-vs-lowest-sell-reference-before-trade-fees",
   installationCostsApplied: true,
   installationCostRule: "base-material-adjusted-price-times-runs-system-index-plus-explicit-tax-plus-scc-4-percent-ceil",
   supplyModesApplied: true,
@@ -1197,7 +1213,7 @@ describe("New Eden Foundry design preview", () => {
       query.marketHubId === "amarr" ? amarrPage : productionPlanPage,
     ));
     const marketPriceSyncer = vi.fn().mockResolvedValue({
-      syncRunId: 27, hubId: "amarr", typeCount: 1, orderCount: 3, pageCount: 1,
+      syncRunId: 27, hubId: "amarr", typeCount: 2, orderCount: 3, pageCount: 2,
       observedAt: "2026-09-20T18:00:00Z",
     });
     render(<App runtimeLoader={() => nativeRuntime()}
@@ -1215,10 +1231,46 @@ describe("New Eden Foundry design preview", () => {
     expect(await screen.findByText(/Amarr VIII \(Oris\) - Emperor Family Academy/))
       .toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Preise aktualisieren" }));
-    await waitFor(() => expect(marketPriceSyncer).toHaveBeenCalledWith("amarr", [900]));
+    await waitFor(() => expect(marketPriceSyncer).toHaveBeenCalledWith("amarr", [101, 900]));
     expect(window.localStorage.getItem("new-eden-foundry.ui.production.market-hub"))
       .toBe(JSON.stringify("amarr"));
-    expect(await screen.findByText("1 Materialpreise für Amarr aktualisiert.")).toBeInTheDocument();
+    expect(await screen.findByText("2 Material- und Produktpreise für Amarr aktualisiert.")).toBeInTheDocument();
+  });
+
+  it("shows full replacement cost and gross margin before trade fees", async () => {
+    const page: ProductionPlanPage = {
+      ...productionPlanPage,
+      purchaseList: {
+        ...productionPlanPage.purchaseList,
+        profitability: {
+          ...productionPlanPage.purchaseList.profitability,
+          state: "ready",
+          items: [{ typeId: 101, typeName: "Synthetic Hull", quantity: 4,
+            targetQuantity: 3, surplusQuantity: 1,
+            planCount: 1, marketState: "ready", lowestSellUnitPriceCents: 10_000,
+            competingVolume: 20, grossRevenueCents: 40_000 }],
+          totalQuantity: 4,
+          grossRevenueCents: 40_000,
+          materialReplacementCostCents: 2_700,
+          installationCostCents: 8_800,
+          totalProductionCostCents: 11_500,
+          grossProfitCents: 28_500,
+          grossMarginBasisPoints: 7_125,
+          fullyPricedMaterialCount: 1,
+        },
+      },
+    };
+    render(<App runtimeLoader={() => nativeRuntime()}
+      productionPlansLoader={() => Promise.resolve(page)} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Produktion" }));
+    expect((await screen.findAllByText("Verkaufswert und Rohmarge")).length).toBeGreaterThan(0);
+    expect(screen.getAllByText("400,00 ISK")).toHaveLength(2);
+    expect(screen.getByText("115,00 ISK")).toBeInTheDocument();
+    expect(screen.getByText("285,00 ISK")).toBeInTheDocument();
+    expect(screen.getByText("Rohmarge 71,25 %")).toBeInTheDocument();
+    expect(screen.getByText(/Brokergebühren und Verkaufssteuer sind noch nicht enthalten/))
+      .toBeInTheDocument();
   });
 
   it("shows the official SCC surcharge separately in complete installation costs", async () => {

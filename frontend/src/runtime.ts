@@ -895,6 +895,40 @@ export interface ProductionPurchaseListItem {
   purchaseCostCents: number | null;
 }
 
+export interface ProductionProfitabilityItem {
+  typeId: number;
+  typeName: string;
+  quantity: number;
+  targetQuantity: number;
+  surplusQuantity: number;
+  planCount: number;
+  marketState: "ready" | "unavailable" | "snapshot-missing";
+  lowestSellUnitPriceCents: number | null;
+  competingVolume: number | null;
+  grossRevenueCents: number | null;
+}
+
+export interface ProductionProfitability {
+  state: ProductionMarketPricingState;
+  items: ProductionProfitabilityItem[];
+  itemCount: number;
+  omittedItemCount: number;
+  totalQuantity: number;
+  materialItemCount: number;
+  fullyPricedMaterialCount: number;
+  marketTypeIds: number[];
+  marketTypeCount: number;
+  omittedMarketTypeCount: number;
+  grossRevenueCents: number | null;
+  materialReplacementCostCents: number | null;
+  installationCostCents: number | null;
+  totalProductionCostCents: number | null;
+  grossProfitCents: number | null;
+  grossMarginBasisPoints: number | null;
+  profitabilityRule: "filtered-plans-full-material-replacement-plus-installation-vs-lowest-sell-reference-before-trade-fees";
+  tradeFeesIncluded: false;
+}
+
 export interface ProductionMarketHub {
   hubId: MarketHubId;
   name: string;
@@ -930,6 +964,7 @@ export interface ProductionPurchaseList {
   installationCostState: ProductionPlanInstallationCostState;
   estimatedInstallationCost: number | null;
   additionalCapitalNeedCents: number | null;
+  profitability: ProductionProfitability;
 }
 
 export interface ProductionReservationClaim {
@@ -1122,6 +1157,8 @@ export interface ProductionPlanPage {
   purchaseListRule: "filtered-plans-sum-missing-by-type";
   marketPricesApplied: true;
   marketPriceRule: "selected-hub-lowest-sell-orders-volume-weighted-cents";
+  profitabilityApplied: true;
+  profitabilityRule: "filtered-plans-full-material-replacement-plus-installation-vs-lowest-sell-reference-before-trade-fees";
   installationCostsApplied: true;
   installationCostRule: "base-material-adjusted-price-times-runs-system-index-plus-explicit-tax-plus-scc-4-percent-ceil";
   remainingModifiersApplied: false;
@@ -4195,6 +4232,98 @@ function parseProductionMarketHub(candidate: unknown): ProductionMarketHub {
   return candidate as unknown as ProductionMarketHub;
 }
 
+function parseProductionProfitability(candidate: unknown, planCount: number): ProductionProfitability {
+  if (
+    !isRecord(candidate) ||
+    !["ready", "partial", "unavailable", "snapshot-missing", "stale", "empty"]
+      .includes(String(candidate.state)) ||
+    !Array.isArray(candidate.items) || candidate.items.length > 1_000 ||
+    !isNonNegativeSafeInteger(candidate.itemCount) ||
+    !isNonNegativeSafeInteger(candidate.omittedItemCount) ||
+    !isNonNegativeSafeInteger(candidate.totalQuantity) ||
+    !isNonNegativeSafeInteger(candidate.materialItemCount) ||
+    !isNonNegativeSafeInteger(candidate.fullyPricedMaterialCount) ||
+    Number(candidate.fullyPricedMaterialCount) > Number(candidate.materialItemCount) ||
+    !Array.isArray(candidate.marketTypeIds) ||
+    candidate.marketTypeIds.some((typeId) => !isPositiveSafeInteger(typeId)) ||
+    !isNonNegativeSafeInteger(candidate.marketTypeCount) ||
+    !isNonNegativeSafeInteger(candidate.omittedMarketTypeCount) ||
+    !(candidate.grossRevenueCents === null || isNonNegativeSafeInteger(candidate.grossRevenueCents)) ||
+    !(candidate.materialReplacementCostCents === null ||
+      isNonNegativeSafeInteger(candidate.materialReplacementCostCents)) ||
+    !(candidate.installationCostCents === null || isNonNegativeSafeInteger(candidate.installationCostCents)) ||
+    !(candidate.totalProductionCostCents === null ||
+      isNonNegativeSafeInteger(candidate.totalProductionCostCents)) ||
+    !(candidate.grossProfitCents === null || isSignedSafeInteger(candidate.grossProfitCents)) ||
+    !(candidate.grossMarginBasisPoints === null || isSignedSafeInteger(candidate.grossMarginBasisPoints)) ||
+    candidate.profitabilityRule !==
+      "filtered-plans-full-material-replacement-plus-installation-vs-lowest-sell-reference-before-trade-fees" ||
+    candidate.tradeFeesIncluded !== false
+  ) throw new Error("The native runtime returned invalid production profitability.");
+  const items = candidate.items.map((item): ProductionProfitabilityItem => {
+    if (
+      !isRecord(item) || !isPositiveSafeInteger(item.typeId) ||
+      !isBoundedText(item.typeName, 200) || !isPositiveSafeInteger(item.quantity) ||
+      !isPositiveSafeInteger(item.targetQuantity) ||
+      !isNonNegativeSafeInteger(item.surplusQuantity) ||
+      Number(item.targetQuantity) + Number(item.surplusQuantity) !== Number(item.quantity) ||
+      !isPositiveSafeInteger(item.planCount) || Number(item.planCount) > planCount ||
+      !["ready", "unavailable", "snapshot-missing"].includes(String(item.marketState)) ||
+      !(item.lowestSellUnitPriceCents === null ||
+        isPositiveSafeInteger(item.lowestSellUnitPriceCents)) ||
+      !(item.competingVolume === null || isNonNegativeSafeInteger(item.competingVolume)) ||
+      !(item.grossRevenueCents === null || isPositiveSafeInteger(item.grossRevenueCents))
+    ) throw new Error("The native runtime returned invalid profitability output.");
+    const ready = item.marketState === "ready" && item.lowestSellUnitPriceCents !== null &&
+      isPositiveSafeInteger(item.competingVolume) && item.grossRevenueCents !== null &&
+      Number(item.grossRevenueCents) === Number(item.quantity) * Number(item.lowestSellUnitPriceCents);
+    const unavailable = item.marketState === "unavailable" &&
+      item.lowestSellUnitPriceCents === null && item.competingVolume === 0 &&
+      item.grossRevenueCents === null;
+    const missing = item.marketState === "snapshot-missing" &&
+      item.lowestSellUnitPriceCents === null && item.competingVolume === null &&
+      item.grossRevenueCents === null;
+    if (!ready && !unavailable && !missing) {
+      throw new Error("The native runtime returned inconsistent profitability output.");
+    }
+    return item as unknown as ProductionProfitabilityItem;
+  });
+  const marketTypeIds = (candidate.marketTypeIds as number[]);
+  const sortedMarketTypeIds = [...marketTypeIds].sort((left, right) => left - right);
+  const totalQuantity = items.reduce((total, item) => total + item.quantity, 0);
+  const readyRevenue = items.length > 0 && items.every((item) => item.marketState === "ready")
+    ? items.reduce((total, item) => total + Number(item.grossRevenueCents), 0)
+    : null;
+  const expectedCost = candidate.materialReplacementCostCents !== null &&
+    candidate.installationCostCents !== null
+    ? Number(candidate.materialReplacementCostCents) + Number(candidate.installationCostCents)
+    : null;
+  const expectedProfit = readyRevenue !== null && expectedCost !== null
+    ? readyRevenue - expectedCost : null;
+  const expectedMargin = expectedProfit !== null && readyRevenue !== null && readyRevenue > 0
+    ? Number(BigInt(expectedProfit) * 10_000n / BigInt(readyRevenue)) : null;
+  if (
+    Number(candidate.itemCount) !== items.length + Number(candidate.omittedItemCount) ||
+    Number(candidate.totalQuantity) < totalQuantity ||
+    (Number(candidate.omittedItemCount) === 0 && Number(candidate.totalQuantity) !== totalQuantity) ||
+    Number(candidate.marketTypeCount) !==
+      marketTypeIds.length + Number(candidate.omittedMarketTypeCount) ||
+    new Set(marketTypeIds).size !== marketTypeIds.length ||
+    marketTypeIds.some((value, index) => value !== sortedMarketTypeIds[index]) ||
+    items.some((item) => !marketTypeIds.includes(item.typeId)) ||
+    candidate.grossRevenueCents !== readyRevenue ||
+    candidate.totalProductionCostCents !== expectedCost ||
+    candidate.grossProfitCents !== expectedProfit ||
+    candidate.grossMarginBasisPoints !== expectedMargin ||
+    (candidate.state === "empty" && (items.length !== 0 || marketTypeIds.length !== 0 ||
+      Number(candidate.omittedItemCount) !== 0 || Number(candidate.omittedMarketTypeCount) !== 0)) ||
+    (candidate.state === "ready" && (expectedProfit === null ||
+      Number(candidate.omittedItemCount) !== 0 || Number(candidate.omittedMarketTypeCount) !== 0 ||
+      Number(candidate.fullyPricedMaterialCount) !== Number(candidate.materialItemCount)))
+  ) throw new Error("The native runtime returned inconsistent production profitability.");
+  return { ...candidate, items, marketTypeIds } as unknown as ProductionProfitability;
+}
+
 function parseProductionPurchaseList(candidate: unknown, planCount: number): ProductionPurchaseList {
   if (
     !isRecord(candidate) || !["ready", "empty", "incomplete"].includes(String(candidate.state)) ||
@@ -4227,6 +4356,7 @@ function parseProductionPurchaseList(candidate: unknown, planCount: number): Pro
   ) throw new Error("The native runtime returned an invalid production purchase list.");
   const marketHub = parseProductionMarketHub(candidate.marketHub);
   const marketHubs = candidate.marketHubs.map(parseProductionMarketHub);
+  const profitability = parseProductionProfitability(candidate.profitability, planCount);
   const items = candidate.items.map((item): ProductionPurchaseListItem => {
     if (
       !isRecord(item) || !isPositiveSafeInteger(item.typeId) ||
@@ -4309,7 +4439,7 @@ function parseProductionPurchaseList(candidate: unknown, planCount: number): Pro
     candidate.totalPurchaseCostCents !== totalPurchaseCost ||
     candidate.additionalCapitalNeedCents !== expectedCapital
   ) throw new Error("The native runtime returned inconsistent production purchase-list data.");
-  return { ...candidate, items, marketHub, marketHubs } as unknown as ProductionPurchaseList;
+  return { ...candidate, items, marketHub, marketHubs, profitability } as unknown as ProductionPurchaseList;
 }
 
 function parseProductionPlanPage(candidate: unknown): ProductionPlanPage {
@@ -4348,6 +4478,9 @@ function parseProductionPlanPage(candidate: unknown): ProductionPlanPage {
     candidate.purchaseListRule !== "filtered-plans-sum-missing-by-type" ||
     candidate.marketPricesApplied !== true ||
     candidate.marketPriceRule !== "selected-hub-lowest-sell-orders-volume-weighted-cents" ||
+    candidate.profitabilityApplied !== true ||
+    candidate.profitabilityRule !==
+      "filtered-plans-full-material-replacement-plus-installation-vs-lowest-sell-reference-before-trade-fees" ||
     candidate.installationCostsApplied !== true ||
     candidate.installationCostRule !==
       "base-material-adjusted-price-times-runs-system-index-plus-explicit-tax-" +
@@ -4400,6 +4533,18 @@ export async function loadProductionPlans(
       unavailableItemCount: 0, snapshotMissingItemCount: 0,
       totalPurchaseCostCents: 0, installationCostState: "not-applicable",
       estimatedInstallationCost: null, additionalCapitalNeedCents: null,
+      profitability: {
+        state: "empty", items: [], itemCount: 0, omittedItemCount: 0, totalQuantity: 0,
+        materialItemCount: 0, fullyPricedMaterialCount: 0,
+        marketTypeIds: [], marketTypeCount: 0, omittedMarketTypeCount: 0,
+        grossRevenueCents: null,
+        materialReplacementCostCents: 0, installationCostCents: null,
+        totalProductionCostCents: null, grossProfitCents: null,
+        grossMarginBasisPoints: null,
+        profitabilityRule:
+          "filtered-plans-full-material-replacement-plus-installation-vs-lowest-sell-reference-before-trade-fees",
+        tradeFeesIncluded: false,
+      },
     }, buildNumber: null, inventoryApplied: true,
     reservationsApplied: true, reservationRule: "priority-desc-created-asc-plan-id-asc",
     blueprintMaterialEfficiencyApplied: true,
@@ -4421,6 +4566,9 @@ export async function loadProductionPlans(
     purchaseListRule: "filtered-plans-sum-missing-by-type",
     marketPricesApplied: true,
     marketPriceRule: "selected-hub-lowest-sell-orders-volume-weighted-cents",
+    profitabilityApplied: true,
+    profitabilityRule:
+      "filtered-plans-full-material-replacement-plus-installation-vs-lowest-sell-reference-before-trade-fees",
     installationCostsApplied: true,
     installationCostRule: "base-material-adjusted-price-times-runs-system-index-plus-explicit-tax-plus-scc-4-percent-ceil",
     remainingModifiersApplied: false,

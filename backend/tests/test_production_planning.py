@@ -796,6 +796,86 @@ class ProductionPlanningTests(unittest.TestCase):
         self.assertEqual(priced["pricingState"], "ready")
         self.assertEqual(priced["items"][0]["lowestUnitPriceCents"], 200)
 
+    def test_profitability_values_stock_at_full_replacement_cost(self) -> None:
+        import_industry_sde(self.db, **bundle())
+        asset_snapshot, _ = self.publish_assets(
+            7,
+            [{
+                "item_id": 7_001,
+                "type_id": 900,
+                "location_id": 60_003_760,
+                "quantity": 10,
+                "location_type": "station",
+                "location_flag": "Hangar",
+            }],
+            "2026-09-16T08:28:00Z",
+        )
+        self.publish_locations(
+            7, asset_snapshot, [7_001], "2026-09-16T08:29:00Z"
+        )
+        self.publish_facilities("2026-09-16T08:30:00Z")
+        save_production_plan(
+            self.db,
+            plan_input(
+                facilityId=60_003_760,
+                facilityTaxBasisPoints=100,
+            ),
+        )
+        self.publish_market_prices(
+            [
+                {
+                    "orderId": 1,
+                    "typeId": 101,
+                    "locationId": 60_003_760,
+                    "systemId": 30_000_142,
+                    "priceCents": 10_000,
+                    "volumeRemain": 20,
+                },
+                {
+                    "orderId": 2,
+                    "typeId": 900,
+                    "locationId": 60_003_760,
+                    "systemId": 30_000_142,
+                    "priceCents": 100,
+                    "volumeRemain": 100,
+                },
+            ],
+            [101, 900],
+        )
+
+        purchase = query_production_plans(self.db, query())["purchaseList"]
+        profitability = purchase["profitability"]
+        self.assertEqual(purchase["totalPurchaseCostCents"], 1_700)
+        self.assertEqual(purchase["additionalCapitalNeedCents"], 10_500)
+        self.assertEqual(profitability["state"], "ready")
+        self.assertEqual(profitability["marketTypeIds"], [101, 900])
+        self.assertEqual(profitability["marketTypeCount"], 2)
+        self.assertEqual(profitability["materialItemCount"], 1)
+        self.assertEqual(profitability["fullyPricedMaterialCount"], 1)
+        self.assertEqual(profitability["grossRevenueCents"], 40_000)
+        self.assertEqual(profitability["materialReplacementCostCents"], 2_700)
+        self.assertEqual(profitability["installationCostCents"], 8_800)
+        self.assertEqual(profitability["totalProductionCostCents"], 11_500)
+        self.assertEqual(profitability["grossProfitCents"], 28_500)
+        self.assertEqual(profitability["grossMarginBasisPoints"], 7_125)
+        self.assertFalse(profitability["tradeFeesIncluded"])
+        self.assertEqual(
+            profitability["items"],
+            [{
+                "typeId": 101,
+                "typeName": "Synthetic Hull",
+                "quantity": 4,
+                "targetQuantity": 3,
+                "surplusQuantity": 1,
+                "planCount": 1,
+                "marketState": "ready",
+                "lowestSellUnitPriceCents": 10_000,
+                "competingVolume": 20,
+                "grossRevenueCents": 40_000,
+            }],
+        )
+        self.assertTrue(query_production_plans(self.db, query())["profitabilityApplied"])
+
     def test_selected_container_and_stock_only_intermediate_skip_blueprint_step(self) -> None:
         import_industry_sde(self.db, **bundle())
         container_id = 7_000

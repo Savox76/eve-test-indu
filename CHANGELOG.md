@@ -28,14 +28,14 @@ Alle bemerkenswerten Änderungen an New Eden Foundry werden hier festgehalten. D
 
 ### Neu hinzugefügt
 
-- Paket 44 ergänzt stationsexakte Sofortkaufpreise aus öffentlichen ESI-Sell-Orders für Jita, Amarr, Dodixie, Hek und Rens; Jita bleibt der persistierte Standard.
-- Die Einkaufsliste zeigt je Material Preisabdeckung, gewichteten Einheitspreis, verwendete Ordertiefe und reale Sofortkaufkosten sowie den zusätzlichen Kapitalbedarf einschließlich vollständiger Installationskosten.
+- Paket 45 ergänzt für alle aktuell gefilterten Produktionsziele Bruttoverkaufswert, vollständige Material-Wiederbeschaffungskosten, Produktionskosten, Rohgewinn oder -verlust und Rohmarge.
+- Zielprodukte zeigen den niedrigsten stationsexakten Sell-Preis, den daraus abgeleiteten Bruttoverkaufswert und das Konkurrenzvolumen auf derselben Preisstufe.
 
 ### Geändert
 
 - Die sichtbare Versionsnummer lautet `v0.2.0-alpha.17`.
-- Es wird ausschließlich die ausdrücklich ausgewählte Handelsstation abgefragt; ein fehlender oder fehlerhafter Stand fällt niemals stillschweigend auf Jita oder einen anderen Hub zurück.
-- Marktstände werden für höchstens 250 aktuell fehlende Typen vollständig paginiert, 15 Minuten lang als aktuell eingestuft und erst nach vollständiger Validierung atomar veröffentlicht.
+- Die Marktaktualisierung umfasst nun sowohl sämtliche äußeren Materialtypen als auch die Zielprodukttypen der gefilterten Ziele.
+- Vorhandener Bestand reduziert weiterhin den zusätzlichen Kapitalbedarf, wird in der Wirtschaftlichkeitsrechnung jedoch vollständig zum aktuellen Wiederbeschaffungswert berücksichtigt.
 
 ### Behobene Fehler
 
@@ -43,7 +43,7 @@ Alle bemerkenswerten Änderungen an New Eden Foundry werden hier festgehalten. D
 
 ### Bekannte Einschränkungen
 
-- Automatischer Preisvergleich zwischen Hubs, Buy Orders, Verkaufs-/Gewinnrechnung, Transportkosten und automatisch erkannte Struktur-/Service-/Rigmodifikatoren sind nicht enthalten.
+- Brokergebühren, Verkaufssteuer, automatischer Preisvergleich zwischen Hubs, Buy Orders, Transportkosten und automatisch erkannte Struktur-/Service-/Rigmodifikatoren sind nicht enthalten.
 - Die Alpha ist noch nicht produktiv code-signiert; SmartScreen kann deshalb weiterhin vor einem unbekannten Herausgeber warnen.
 
 ### Update und Datenbankmigration

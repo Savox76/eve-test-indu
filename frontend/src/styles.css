@@ -509,6 +509,22 @@ select:focus-visible {
   color: #67c6bc;
 }
 
+.production-profitability-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding-top: 4px;
+}
+
+.production-profitability-summary {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.production-profitability-summary__negative strong {
+  color: #e59a89;
+}
+
 .production-purchase-list__warning {
   display: flex;
   align-items: flex-start;
@@ -559,7 +575,8 @@ select:focus-visible {
 
 @media (max-width: 880px) {
   .production-market-controls,
-  .production-capital-summary {
+  .production-capital-summary,
+  .production-profitability-summary {
     grid-template-columns: 1fr;
   }
 
