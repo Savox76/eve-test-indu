@@ -949,7 +949,7 @@ const copy = {
       marketHub: "Handelsstation",
       marketRefresh: "Preise aktualisieren",
       marketRefreshing: "Preise werden geladen …",
-      marketRefreshSuccess: "{types} Materialpreise für {hub} aktualisiert.",
+      marketRefreshSuccess: "{types} Material- und Produktpreise für {hub} aktualisiert.",
       marketRefreshError: "Die Sell Orders der ausgewählten Handelsstation konnten nicht aktualisiert werden. Der letzte vollständige Stand bleibt erhalten.",
       marketStation: "Nur Sell Orders an {station}",
       marketPricingStateLabels: {
@@ -959,7 +959,7 @@ const copy = {
       marketSource: "Markt-Snapshot #{snapshot} · Lauf #{run} · {age} alt",
       marketNoSource: "Für diese Handelsstation wurde noch kein Markt-Snapshot geladen.",
       marketStale: "Der Preisstand ist älter als 15 Minuten. Vor dem Einkauf aktualisieren.",
-      marketLimit: "Für eine gezielte Abfrage sind höchstens {limit} Materialarten erlaubt. Grenze die Produktionsziele mit den Filtern weiter ein.",
+      marketLimit: "Für eine gezielte Abfrage sind höchstens {limit} Material- und Produkttypen erlaubt. Grenze die Produktionsziele mit den Filtern weiter ein.",
       marketCoverage: "{covered} von {required} Einheiten gedeckt · {orders} Sell Orders",
       marketWeightedPrice: "Gewichteter Sofortkaufpreis {price} ISK je Einheit",
       marketUnavailable: "An dieser Handelsstation ist aktuell keine passende Sell Order belegt.",
@@ -967,6 +967,16 @@ const copy = {
       installationCost: "Installation",
       additionalCapital: "Zusätzlicher Kapitalbedarf",
       capitalUnavailable: "Der gesamte Kapitalbedarf wird erst bei vollständigen Markt- und Installationskosten angezeigt.",
+      profitabilityTitle: "Verkaufswert und Rohmarge",
+      profitabilitySubtitle: "Bewertet den gesamten Materialverbrauch zum Wiederbeschaffungspreis – auch bereits vorhandenen Bestand.",
+      grossRevenue: "Bruttoverkaufswert",
+      replacementCost: "Material-Wiederbeschaffung",
+      fullProductionCost: "Volle Produktionskosten",
+      grossProfit: "Rohgewinn vor Handelsgebühren",
+      grossMargin: "Rohmarge {margin} %",
+      profitabilityUnavailable: "Eine belastbare Rohmarge erscheint erst mit vollständigen Material-, Produkt- und Installationspreisen.",
+      tradeFeesExcluded: "Brokergebühren und Verkaufssteuer sind noch nicht enthalten; der niedrigste Sell-Preis ist ein Marktvergleich und keine Verkaufsgarantie.",
+      outputReference: "{quantity} hergestellt · Ziel {target} · Überschuss {surplus} · niedrigstes Sell-Angebot {price} ISK · {volume} Einheiten Konkurrenzvolumen",
       build: "SDE-Build {build}",
       searchRecipe: "Produkt oder Blueprint suchen",
       activity: "Aktivität",
@@ -1858,7 +1868,7 @@ const copy = {
       marketHub: "Trade station",
       marketRefresh: "Refresh prices",
       marketRefreshing: "Loading prices …",
-      marketRefreshSuccess: "Updated {types} material prices for {hub}.",
+      marketRefreshSuccess: "Updated {types} material and product prices for {hub}.",
       marketRefreshError: "The sell orders at the selected trade station could not be refreshed. The last complete snapshot is retained.",
       marketStation: "Sell orders at {station} only",
       marketPricingStateLabels: {
@@ -1868,7 +1878,7 @@ const copy = {
       marketSource: "Market snapshot #{snapshot} · run #{run} · {age} old",
       marketNoSource: "No market snapshot has been loaded for this trade station yet.",
       marketStale: "The price snapshot is older than 15 minutes. Refresh it before buying.",
-      marketLimit: "A targeted request supports at most {limit} material types. Narrow the production goals with the filters.",
+      marketLimit: "A targeted request supports at most {limit} material and product types. Narrow the production goals with the filters.",
       marketCoverage: "{covered} of {required} units covered · {orders} sell orders",
       marketWeightedPrice: "Weighted immediate-buy price {price} ISK per unit",
       marketUnavailable: "No matching sell order is evidenced at this trade station.",
@@ -1876,6 +1886,16 @@ const copy = {
       installationCost: "Installation",
       additionalCapital: "Additional capital required",
       capitalUnavailable: "Total capital required appears once market and installation costs are complete.",
+      profitabilityTitle: "Sales value and gross margin",
+      profitabilitySubtitle: "Values all consumed materials at replacement cost, including stock already owned.",
+      grossRevenue: "Gross sales value",
+      replacementCost: "Material replacement",
+      fullProductionCost: "Full production cost",
+      grossProfit: "Gross profit before trade fees",
+      grossMargin: "Gross margin {margin}%",
+      profitabilityUnavailable: "A reliable gross margin appears once material, product and installation prices are complete.",
+      tradeFeesExcluded: "Broker fees and sales tax are not included yet; the lowest sell price is a market reference, not a guaranteed sale.",
+      outputReference: "{quantity} produced · target {target} · surplus {surplus} · lowest sell offer {price} ISK · {volume} units competing volume",
       build: "SDE build {build}",
       searchRecipe: "Search product or blueprint",
       activity: "Activity",
@@ -5851,15 +5871,15 @@ function ProductionWorkspace({
   const refreshMarketPrices = async () => {
     const purchaseList = plans?.purchaseList;
     if (!purchaseList || purchaseList.marketHub.hubId !== marketHubId ||
-        purchaseList.items.length === 0 ||
-        purchaseList.items.length > purchaseList.marketPriceTypeLimit ||
+        purchaseList.profitability.marketTypeIds.length === 0 ||
+        purchaseList.profitability.marketTypeIds.length > purchaseList.marketPriceTypeLimit ||
         marketSyncState === "busy") return;
     setMarketSyncState("busy");
     setMarketSyncResult(null);
     try {
       const result = await syncPrices(
         marketHubId,
-        purchaseList.items.map((item) => item.typeId),
+        purchaseList.profitability.marketTypeIds,
       );
       setMarketSyncResult(result);
       setMarketSyncState("success");
@@ -5932,14 +5952,14 @@ function ProductionWorkspace({
           <div className="production-market-controls">
             <label><span>{t.productionPlanning.marketHub}</span><select value={marketHubId} onChange={(event) => { setMarketHubId(event.target.value as MarketHubId); setPlanOffset(0); setMarketSyncState("idle"); setMarketSyncResult(null); }}>{plans.purchaseList.marketHubs.map((hub) => <option key={hub.hubId} value={hub.hubId}>{hub.name}</option>)}</select></label>
             <div><strong>{plans.purchaseList.marketHub.name}</strong><small>{t.productionPlanning.marketStation.replace("{station}", plans.purchaseList.marketHub.stationName)}</small></div>
-            <button type="button" className="secondary-button" onClick={() => void refreshMarketPrices()} disabled={marketSyncState === "busy" || plans.purchaseList.marketHub.hubId !== marketHubId || plans.purchaseList.items.length === 0 || plans.purchaseList.items.length > plans.purchaseList.marketPriceTypeLimit}>{marketSyncState === "busy" ? <RefreshCw className="spin" size={15} /> : <Download size={15} />}{marketSyncState === "busy" ? t.productionPlanning.marketRefreshing : t.productionPlanning.marketRefresh}</button>
+            <button type="button" className="secondary-button" onClick={() => void refreshMarketPrices()} disabled={marketSyncState === "busy" || plans.purchaseList.marketHub.hubId !== marketHubId || plans.purchaseList.profitability.marketTypeIds.length === 0 || plans.purchaseList.profitability.marketTypeIds.length > plans.purchaseList.marketPriceTypeLimit}>{marketSyncState === "busy" ? <RefreshCw className="spin" size={15} /> : <Download size={15} />}{marketSyncState === "busy" ? t.productionPlanning.marketRefreshing : t.productionPlanning.marketRefresh}</button>
           </div>
           <div className="production-market-evidence">
             <span className={`status-pill status-pill--${plans.purchaseList.pricingState === "ready" || plans.purchaseList.pricingState === "empty" ? "good" : plans.purchaseList.pricingState === "partial" ? "info" : "warn"}`}>{t.productionPlanning.marketPricingStateLabels[plans.purchaseList.pricingState]}</span>
             <small>{plans.purchaseList.marketSnapshotId === null ? t.productionPlanning.marketNoSource : t.productionPlanning.marketSource.replace("{snapshot}", String(plans.purchaseList.marketSnapshotId)).replace("{run}", String(plans.purchaseList.marketSyncRunId)).replace("{age}", formatDataAge(plans.purchaseList.marketAgeSeconds ?? 0, locale))}</small>
           </div>
           {plans.purchaseList.pricingState === "stale" && <p className="production-purchase-list__warning"><AlertTriangle size={14} />{t.productionPlanning.marketStale}</p>}
-          {plans.purchaseList.items.length > plans.purchaseList.marketPriceTypeLimit && <p className="production-purchase-list__warning"><AlertTriangle size={14} />{t.productionPlanning.marketLimit.replace("{limit}", numberFormat.format(plans.purchaseList.marketPriceTypeLimit))}</p>}
+          {plans.purchaseList.profitability.marketTypeIds.length > plans.purchaseList.marketPriceTypeLimit && <p className="production-purchase-list__warning"><AlertTriangle size={14} />{t.productionPlanning.marketLimit.replace("{limit}", numberFormat.format(plans.purchaseList.marketPriceTypeLimit))}</p>}
           {marketSyncState === "success" && marketSyncResult !== null && <p className="production-purchase-list__copy-state" role="status">{t.productionPlanning.marketRefreshSuccess.replace("{types}", numberFormat.format(marketSyncResult.typeCount)).replace("{hub}", plans.purchaseList.marketHub.name)}</p>}
           {marketSyncState === "error" && <p className="production-purchase-list__copy-state is-error" role="status">{t.productionPlanning.marketRefreshError}</p>}
           <div className="production-purchase-list__summary"><strong>{t.productionPlanning.purchaseSummary.replace("{items}", numberFormat.format(plans.purchaseList.itemCount)).replace("{quantity}", numberFormat.format(plans.purchaseList.totalQuantity)).replace("{plans}", numberFormat.format(plans.purchaseList.includedPlanCount))}</strong><button type="button" className="secondary-button" onClick={() => void copyPurchaseList()} disabled={plans.purchaseList.items.length === 0 || plans.purchaseList.omittedItemCount > 0}><Copy size={15} />{t.productionPlanning.purchaseCopy}</button></div>
@@ -5948,6 +5968,16 @@ function ProductionWorkspace({
             <span><small>{t.productionPlanning.installationCost}</small><strong>{plans.purchaseList.estimatedInstallationCost === null ? "—" : `${iskFormat.format(plans.purchaseList.estimatedInstallationCost)} ISK`}</strong></span>
             <span className="production-capital-summary__total"><small>{t.productionPlanning.additionalCapital}</small><strong>{plans.purchaseList.additionalCapitalNeedCents === null ? "—" : `${iskFormat.format(plans.purchaseList.additionalCapitalNeedCents / 100)} ISK`}</strong></span>
           </div>
+          <div className="production-profitability-heading"><div><h3>{t.productionPlanning.profitabilityTitle}</h3><p>{t.productionPlanning.profitabilitySubtitle}</p></div><span className={`status-pill status-pill--${plans.purchaseList.profitability.state === "ready" ? "good" : plans.purchaseList.profitability.state === "partial" || plans.purchaseList.profitability.state === "stale" ? "info" : "warn"}`}>{t.productionPlanning.marketPricingStateLabels[plans.purchaseList.profitability.state]}</span></div>
+          <div className="production-capital-summary production-profitability-summary">
+            <span><small>{t.productionPlanning.grossRevenue}</small><strong>{plans.purchaseList.profitability.grossRevenueCents === null ? "—" : `${iskFormat.format(plans.purchaseList.profitability.grossRevenueCents / 100)} ISK`}</strong></span>
+            <span><small>{t.productionPlanning.replacementCost}</small><strong>{plans.purchaseList.profitability.materialReplacementCostCents === null ? "—" : `${iskFormat.format(plans.purchaseList.profitability.materialReplacementCostCents / 100)} ISK`}</strong></span>
+            <span><small>{t.productionPlanning.fullProductionCost}</small><strong>{plans.purchaseList.profitability.totalProductionCostCents === null ? "—" : `${iskFormat.format(plans.purchaseList.profitability.totalProductionCostCents / 100)} ISK`}</strong></span>
+            <span className={plans.purchaseList.profitability.grossProfitCents !== null && plans.purchaseList.profitability.grossProfitCents < 0 ? "production-profitability-summary__negative" : "production-capital-summary__total"}><small>{t.productionPlanning.grossProfit}</small><strong>{plans.purchaseList.profitability.grossProfitCents === null ? "—" : `${iskFormat.format(plans.purchaseList.profitability.grossProfitCents / 100)} ISK`}</strong>{plans.purchaseList.profitability.grossMarginBasisPoints !== null && <small>{t.productionPlanning.grossMargin.replace("{margin}", (plans.purchaseList.profitability.grossMarginBasisPoints / 100).toLocaleString(locale === "de" ? "de-DE" : "en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }))}</small>}</span>
+          </div>
+          {plans.purchaseList.profitability.grossProfitCents === null && plans.purchaseList.profitability.state !== "empty" && <p className="production-purchase-list__empty">{t.productionPlanning.profitabilityUnavailable}</p>}
+          {plans.purchaseList.profitability.state !== "empty" && <p className="production-purchase-list__warning"><AlertTriangle size={14} />{t.productionPlanning.tradeFeesExcluded}</p>}
+          {plans.purchaseList.profitability.items.length > 0 && <details><summary>{t.productionPlanning.profitabilityTitle} · {numberFormat.format(plans.purchaseList.profitability.items.length)}</summary><ul>{plans.purchaseList.profitability.items.map((item) => <li key={item.typeId}><span><strong>{item.typeName}</strong><small>Type #{item.typeId} · {numberFormat.format(item.planCount)} {t.productionPlanning.plans}</small></span><span><strong>{item.grossRevenueCents === null ? t.productionPlanning.marketPricingStateLabels[item.marketState] : `${iskFormat.format(item.grossRevenueCents / 100)} ISK`}</strong>{item.lowestSellUnitPriceCents !== null && item.competingVolume !== null && <small>{t.productionPlanning.outputReference.replace("{quantity}", numberFormat.format(item.quantity)).replace("{target}", numberFormat.format(item.targetQuantity)).replace("{surplus}", numberFormat.format(item.surplusQuantity)).replace("{price}", iskFormat.format(item.lowestSellUnitPriceCents / 100)).replace("{volume}", numberFormat.format(item.competingVolume))}</small>}</span></li>)}</ul></details>}
           {plans.purchaseList.additionalCapitalNeedCents === null && plans.purchaseList.items.length > 0 && <p className="production-purchase-list__empty">{t.productionPlanning.capitalUnavailable}</p>}
           {plans.purchaseList.unresolvedPlanCount > 0 && <p className="production-purchase-list__warning"><AlertTriangle size={14} />{t.productionPlanning.purchaseIncomplete.replace("{plans}", numberFormat.format(plans.purchaseList.unresolvedPlanCount))}</p>}
           {plans.purchaseList.omittedItemCount > 0 && <p className="production-purchase-list__warning"><AlertTriangle size={14} />{t.productionPlanning.purchaseOmitted.replace("{items}", numberFormat.format(plans.purchaseList.omittedItemCount))}</p>}

@@ -60,6 +60,10 @@ FACILITY_EVIDENCE_RULE = "assigned-blueprint-before-active-before-latest-owner-j
 SUPPLY_MODE_RULE = "stock-first-before-recursive-build"
 FACILITY_MODIFIER_RULE = "explicit-basis-points-combined-before-single-ceil"
 PURCHASE_LIST_RULE = "filtered-plans-sum-missing-by-type"
+PROFITABILITY_RULE = (
+    "filtered-plans-full-material-replacement-plus-installation-vs-"
+    "lowest-sell-reference-before-trade-fees"
+)
 SCC_SURCHARGE_BASIS_POINTS = 400
 INSTALLATION_COST_RULE = (
     "base-material-adjusted-price-times-runs-system-index-plus-explicit-tax-"
@@ -2889,6 +2893,265 @@ def _market_quote(
     }
 
 
+def _market_sell_reference(
+    type_id: int,
+    quantity: int,
+    market_snapshot: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    """Value one output at the selected hub's lowest current sell offer."""
+
+    if market_snapshot is None or type_id not in market_snapshot["requestedTypeIds"]:
+        return {
+            "marketState": "snapshot-missing",
+            "lowestSellUnitPriceCents": None,
+            "competingVolume": None,
+            "grossRevenueCents": None,
+        }
+    orders = market_snapshot["ordersByType"].get(type_id, [])
+    if not orders:
+        return {
+            "marketState": "unavailable",
+            "lowestSellUnitPriceCents": None,
+            "competingVolume": 0,
+            "grossRevenueCents": None,
+        }
+    lowest_price = int(orders[0]["priceCents"])
+    competing_volume = 0
+    for order in orders:
+        if int(order["priceCents"]) != lowest_price:
+            break
+        competing_volume = _checked_add(
+            competing_volume,
+            int(order["volumeRemain"]),
+        )
+    return {
+        "marketState": "ready",
+        "lowestSellUnitPriceCents": lowest_price,
+        "competingVolume": competing_volume,
+        "grossRevenueCents": _checked_multiply(quantity, lowest_price),
+    }
+
+
+def _signed_difference(left: int, right: int) -> int:
+    value = left - right
+    if not -MAX_SAFE_INTEGER <= value <= MAX_SAFE_INTEGER:
+        raise ProductionPlanningError("production_profitability_overflow")
+    return value
+
+
+def _profitability(
+    records: list[dict[str, Any]],
+    market_snapshot: Mapping[str, Any] | None,
+    *,
+    installation_state: str,
+    installation_cost: int,
+    unresolved_plan_count: int,
+) -> dict[str, Any]:
+    """Compare full replacement cost with a lowest-sell market reference."""
+
+    included_records = [
+        record
+        for record in records
+        if record["state"] == "ready"
+        and record["inventoryState"] != "snapshot-missing"
+    ]
+    material_rows: dict[int, dict[str, Any]] = {}
+    output_rows: dict[int, dict[str, Any]] = {}
+    for record in included_records:
+        plan_id = int(record["planId"])
+        for material in record["grossMaterials"]:
+            type_id = int(material["typeId"])
+            row = material_rows.setdefault(
+                type_id,
+                {
+                    "typeId": type_id,
+                    "typeName": str(material["typeName"]),
+                    "quantity": 0,
+                },
+            )
+            if row["typeName"] != str(material["typeName"]):
+                raise ProductionPlanningError("production_profitability_invalid")
+            row["quantity"] = _checked_add(
+                int(row["quantity"]),
+                int(material["quantity"]),
+            )
+        output_type_id = int(record["productTypeId"])
+        output = output_rows.setdefault(
+            output_type_id,
+            {
+                "typeId": output_type_id,
+                "typeName": str(record["productName"]),
+                "quantity": 0,
+                "targetQuantity": 0,
+                "surplusQuantity": 0,
+                "planIds": set(),
+            },
+        )
+        if output["typeName"] != str(record["productName"]):
+            raise ProductionPlanningError("production_profitability_invalid")
+        root_step = next(
+            (
+                step
+                for step in reversed(record["steps"])
+                if int(step["productTypeId"]) == output_type_id
+            ),
+            None,
+        )
+        if root_step is None:
+            raise ProductionPlanningError("production_profitability_invalid")
+        output["quantity"] = _checked_add(
+            int(output["quantity"]), int(root_step["producedQuantity"])
+        )
+        output["targetQuantity"] = _checked_add(
+            int(output["targetQuantity"]), int(record["targetQuantity"])
+        )
+        output["surplusQuantity"] = _checked_add(
+            int(output["surplusQuantity"]), int(root_step["surplusQuantity"])
+        )
+        output["planIds"].add(plan_id)
+
+    all_market_type_ids = sorted(set(material_rows) | set(output_rows))
+    market_type_ids = all_market_type_ids[:MAX_PURCHASE_LIST_ITEMS]
+    omitted_market_type_count = len(all_market_type_ids) - len(market_type_ids)
+    material_quotes = [
+        _market_quote(
+            int(row["typeId"]),
+            int(row["quantity"]),
+            market_snapshot,
+        )
+        for row in sorted(
+            material_rows.values(),
+            key=lambda item: (str(item["typeName"]).casefold(), int(item["typeId"])),
+        )
+    ]
+    ordered_outputs = sorted(
+        output_rows.values(),
+        key=lambda item: (str(item["typeName"]).casefold(), int(item["typeId"])),
+    )
+    visible_outputs = ordered_outputs[:MAX_PURCHASE_LIST_ITEMS]
+    omitted_item_count = len(ordered_outputs) - len(visible_outputs)
+    total_output_quantity = 0
+    for row in ordered_outputs:
+        total_output_quantity = _checked_add(
+            total_output_quantity,
+            int(row["quantity"]),
+        )
+    output_items = []
+    for row in visible_outputs:
+        output_items.append(
+            {
+                "typeId": int(row["typeId"]),
+                "typeName": str(row["typeName"]),
+                "quantity": int(row["quantity"]),
+                "targetQuantity": int(row["targetQuantity"]),
+                "surplusQuantity": int(row["surplusQuantity"]),
+                "planCount": len(row["planIds"]),
+                **_market_sell_reference(
+                    int(row["typeId"]),
+                    int(row["quantity"]),
+                    market_snapshot,
+                ),
+            }
+        )
+
+    material_replacement_cost_cents = None
+    if all(quote["marketState"] == "ready" for quote in material_quotes):
+        material_replacement_cost_cents = 0
+        for quote in material_quotes:
+            material_replacement_cost_cents = _checked_add(
+                material_replacement_cost_cents,
+                int(quote["purchaseCostCents"]),
+            )
+    gross_revenue_cents = None
+    if (
+        output_items
+        and omitted_item_count == 0
+        and all(item["marketState"] == "ready" for item in output_items)
+    ):
+        gross_revenue_cents = 0
+        for item in output_items:
+            gross_revenue_cents = _checked_add(
+                gross_revenue_cents,
+                int(item["grossRevenueCents"]),
+            )
+    installation_cost_cents = (
+        _checked_multiply(installation_cost, 100)
+        if installation_state == "ready"
+        else None
+    )
+    total_production_cost_cents = None
+    if material_replacement_cost_cents is not None and installation_cost_cents is not None:
+        total_production_cost_cents = _checked_add(
+            material_replacement_cost_cents,
+            installation_cost_cents,
+        )
+    gross_profit_cents = None
+    gross_margin_basis_points = None
+    if gross_revenue_cents is not None and total_production_cost_cents is not None:
+        gross_profit_cents = _signed_difference(
+            gross_revenue_cents,
+            total_production_cost_cents,
+        )
+        unsigned_margin = (
+            abs(gross_profit_cents) * 10_000 // gross_revenue_cents
+            if gross_revenue_cents > 0
+            else 0
+        )
+        if unsigned_margin > MAX_SAFE_INTEGER:
+            raise ProductionPlanningError("production_profitability_overflow")
+        gross_margin_basis_points = (
+            -unsigned_margin if gross_profit_cents < 0 else unsigned_margin
+        )
+
+    output_states = [str(item["marketState"]) for item in output_items]
+    material_states = [str(quote["marketState"]) for quote in material_quotes]
+    source = market_snapshot
+    complete = (
+        unresolved_plan_count == 0
+        and omitted_item_count == 0
+        and omitted_market_type_count == 0
+        and installation_state == "ready"
+        and output_items
+        and all(state == "ready" for state in output_states)
+        and all(state == "ready" for state in material_states)
+    )
+    state = (
+        "empty"
+        if not included_records
+        else "snapshot-missing"
+        if source is None
+        or "snapshot-missing" in output_states
+        or "snapshot-missing" in material_states
+        else "stale"
+        if source["stale"]
+        else "ready"
+        if complete
+        else "unavailable"
+        if output_states and all(value == "unavailable" for value in output_states)
+        else "partial"
+    )
+    return {
+        "state": state,
+        "items": output_items,
+        "itemCount": len(ordered_outputs),
+        "omittedItemCount": omitted_item_count,
+        "totalQuantity": total_output_quantity,
+        "materialItemCount": len(material_rows),
+        "fullyPricedMaterialCount": material_states.count("ready"),
+        "marketTypeIds": market_type_ids,
+        "marketTypeCount": len(all_market_type_ids),
+        "omittedMarketTypeCount": omitted_market_type_count,
+        "grossRevenueCents": gross_revenue_cents,
+        "materialReplacementCostCents": material_replacement_cost_cents,
+        "installationCostCents": installation_cost_cents,
+        "totalProductionCostCents": total_production_cost_cents,
+        "grossProfitCents": gross_profit_cents,
+        "grossMarginBasisPoints": gross_margin_basis_points,
+        "profitabilityRule": PROFITABILITY_RULE,
+        "tradeFeesIncluded": False,
+    }
+
+
 def _purchase_list(
     records: list[dict[str, Any]],
     market_snapshot: Mapping[str, Any] | None,
@@ -3031,6 +3294,13 @@ def _purchase_list(
             total_purchase_cost_cents,
             _checked_multiply(installation_cost, 100),
         )
+    profitability = _profitability(
+        records,
+        market_snapshot,
+        installation_state=installation_state,
+        installation_cost=installation_cost,
+        unresolved_plan_count=unresolved_plan_count,
+    )
     return {
         "state": state,
         "items": items,
@@ -3056,6 +3326,7 @@ def _purchase_list(
         "installationCostState": installation_state,
         "estimatedInstallationCost": estimated_installation_cost,
         "additionalCapitalNeedCents": additional_capital_need_cents,
+        "profitability": profitability,
     }
 
 
@@ -3211,6 +3482,8 @@ def query_production_plans(connection: sqlite3.Connection, raw_query: Any) -> di
         "purchaseListRule": PURCHASE_LIST_RULE,
         "marketPricesApplied": True,
         "marketPriceRule": MARKET_PRICE_RULE,
+        "profitabilityApplied": True,
+        "profitabilityRule": PROFITABILITY_RULE,
         "installationCostsApplied": True,
         "installationCostRule": INSTALLATION_COST_RULE,
         "remainingModifiersApplied": False,

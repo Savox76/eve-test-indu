@@ -6,11 +6,13 @@ Alle bemerkenswerten Änderungen an New Eden Foundry werden hier festgehalten. D
 
 ### Neu hinzugefügt
 
-- Keine.
+- Paket 45 ergänzt für alle aktuell gefilterten Produktionsziele Bruttoverkaufswert, vollständige Material-Wiederbeschaffungskosten, Produktionskosten, Rohgewinn oder -verlust und Rohmarge.
+- Zielprodukte zeigen den niedrigsten stationsexakten Sell-Preis, den daraus abgeleiteten Bruttoverkaufswert und das Konkurrenzvolumen auf derselben Preisstufe.
 
 ### Geändert
 
-- Keine.
+- Die Marktaktualisierung umfasst nun sowohl sämtliche äußeren Materialtypen als auch die Zielprodukttypen der gefilterten Ziele.
+- Vorhandener Bestand reduziert weiterhin den zusätzlichen Kapitalbedarf, wird in der Wirtschaftlichkeitsrechnung jedoch vollständig zum aktuellen Wiederbeschaffungswert berücksichtigt.
 
 ### Behobene Fehler
 
@@ -18,7 +20,7 @@ Alle bemerkenswerten Änderungen an New Eden Foundry werden hier festgehalten. D
 
 ### Bekannte Einschränkungen
 
-- Keine.
+- Brokergebühren, Verkaufssteuer, automatischer Preisvergleich zwischen Hubs, Buy Orders, Transportkosten und automatisch erkannte Struktur-/Service-/Rigmodifikatoren sind nicht enthalten.
 
 ### Update und Datenbankmigration
 

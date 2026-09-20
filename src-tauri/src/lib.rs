@@ -1257,6 +1257,44 @@ struct ProductionPurchaseListItem {
 
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
+struct ProductionProfitabilityItem {
+    type_id: u64,
+    type_name: String,
+    quantity: u64,
+    target_quantity: u64,
+    surplus_quantity: u64,
+    plan_count: u64,
+    market_state: String,
+    lowest_sell_unit_price_cents: Option<u64>,
+    competing_volume: Option<u64>,
+    gross_revenue_cents: Option<u64>,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ProductionProfitability {
+    state: String,
+    items: Vec<ProductionProfitabilityItem>,
+    item_count: u64,
+    omitted_item_count: u64,
+    total_quantity: u64,
+    material_item_count: u64,
+    fully_priced_material_count: u64,
+    market_type_ids: Vec<u64>,
+    market_type_count: u64,
+    omitted_market_type_count: u64,
+    gross_revenue_cents: Option<u64>,
+    material_replacement_cost_cents: Option<u64>,
+    installation_cost_cents: Option<u64>,
+    total_production_cost_cents: Option<u64>,
+    gross_profit_cents: Option<i64>,
+    gross_margin_basis_points: Option<i64>,
+    profitability_rule: String,
+    trade_fees_included: bool,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct ProductionMarketHub {
     hub_id: String,
     name: String,
@@ -1294,6 +1332,7 @@ struct ProductionPurchaseList {
     installation_cost_state: String,
     estimated_installation_cost: Option<u64>,
     additional_capital_need_cents: Option<u64>,
+    profitability: ProductionProfitability,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -1331,6 +1370,8 @@ struct ProductionPlanQueryResponse {
     purchase_list_rule: String,
     market_prices_applied: bool,
     market_price_rule: String,
+    profitability_applied: bool,
+    profitability_rule: String,
     installation_costs_applied: bool,
     installation_cost_rule: String,
     remaining_modifiers_applied: bool,
@@ -4418,6 +4459,162 @@ fn production_purchase_market_item_is_valid(item: &ProductionPurchaseListItem) -
             || (item.market_state == "partial" && uncovered > 0))
 }
 
+fn production_profitability_is_valid(
+    profitability: &ProductionProfitability,
+    plan_count: u64,
+) -> bool {
+    let type_ids = profitability
+        .items
+        .iter()
+        .map(|item| item.type_id)
+        .collect::<HashSet<_>>();
+    let market_type_ids = profitability
+        .market_type_ids
+        .iter()
+        .copied()
+        .collect::<HashSet<_>>();
+    let sorted_market_type_ids = {
+        let mut values = profitability.market_type_ids.clone();
+        values.sort_unstable();
+        values
+    };
+    let total_quantity = profitability
+        .items
+        .iter()
+        .try_fold(0_u64, |total, item| total.checked_add(item.quantity));
+    let all_outputs_priced = !profitability.items.is_empty()
+        && profitability
+            .items
+            .iter()
+            .all(|item| item.market_state == "ready");
+    let gross_revenue = if all_outputs_priced {
+        profitability.items.iter().try_fold(0_u64, |total, item| {
+            total.checked_add(item.gross_revenue_cents?)
+        })
+    } else {
+        None
+    };
+    let total_cost = profitability
+        .material_replacement_cost_cents
+        .zip(profitability.installation_cost_cents)
+        .and_then(|(materials, installation)| materials.checked_add(installation));
+    let gross_profit = gross_revenue.zip(total_cost).and_then(|(revenue, cost)| {
+        let value = revenue as i128 - cost as i128;
+        (value >= -(JAVASCRIPT_MAX_SAFE_INTEGER as i128)
+            && value <= JAVASCRIPT_MAX_SAFE_INTEGER as i128)
+            .then_some(value as i64)
+    });
+    let gross_margin = gross_profit
+        .zip(gross_revenue)
+        .and_then(|(profit, revenue)| {
+            if revenue == 0 {
+                return None;
+            }
+            let value = (profit as i128 * 10_000_i128) / revenue as i128;
+            (value >= -(JAVASCRIPT_MAX_SAFE_INTEGER as i128)
+                && value <= JAVASCRIPT_MAX_SAFE_INTEGER as i128)
+                .then_some(value as i64)
+        });
+    let state_shape = match profitability.state.as_str() {
+        "empty" => {
+            profitability.items.is_empty()
+                && profitability.omitted_item_count == 0
+                && profitability.market_type_ids.is_empty()
+                && profitability.omitted_market_type_count == 0
+        }
+        "ready" => {
+            gross_profit.is_some()
+                && profitability.omitted_item_count == 0
+                && profitability.omitted_market_type_count == 0
+                && profitability.fully_priced_material_count == profitability.material_item_count
+        }
+        "partial" | "unavailable" | "snapshot-missing" | "stale" => !profitability.items.is_empty(),
+        _ => false,
+    };
+    profitability.items.len() <= 1_000
+        && type_ids.len() == profitability.items.len()
+        && (profitability.items.len() as u64)
+            .checked_add(profitability.omitted_item_count)
+            == Some(profitability.item_count)
+        && total_quantity.is_some_and(|quantity| {
+            quantity <= profitability.total_quantity
+                && (profitability.omitted_item_count > 0
+                    || quantity == profitability.total_quantity)
+        })
+        && profitability.total_quantity <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && profitability.material_item_count <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && profitability.fully_priced_material_count <= profitability.material_item_count
+        && (profitability.market_type_ids.len() as u64)
+            .checked_add(profitability.omitted_market_type_count)
+            == Some(profitability.market_type_count)
+        && profitability.market_type_count <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && market_type_ids.len() == profitability.market_type_ids.len()
+        && profitability.market_type_ids == sorted_market_type_ids
+        && profitability
+            .market_type_ids
+            .iter()
+            .all(|type_id| production_id_is_valid(*type_id))
+        && profitability
+            .items
+            .iter()
+            .all(|item| market_type_ids.contains(&item.type_id))
+        && profitability.gross_revenue_cents == gross_revenue
+        && profitability
+            .gross_revenue_cents
+            .is_none_or(|value| value <= JAVASCRIPT_MAX_SAFE_INTEGER)
+        && profitability
+            .material_replacement_cost_cents
+            .is_none_or(|value| value <= JAVASCRIPT_MAX_SAFE_INTEGER)
+        && profitability
+            .installation_cost_cents
+            .is_none_or(|value| value <= JAVASCRIPT_MAX_SAFE_INTEGER)
+        && profitability
+            .total_production_cost_cents
+            .is_none_or(|value| value <= JAVASCRIPT_MAX_SAFE_INTEGER)
+        && profitability
+            .gross_profit_cents
+            .is_none_or(|value| value.unsigned_abs() <= JAVASCRIPT_MAX_SAFE_INTEGER)
+        && profitability
+            .gross_margin_basis_points
+            .is_none_or(|value| value.unsigned_abs() <= JAVASCRIPT_MAX_SAFE_INTEGER)
+        && profitability.total_production_cost_cents == total_cost
+        && profitability.gross_profit_cents == gross_profit
+        && profitability.gross_margin_basis_points == gross_margin
+        && profitability.profitability_rule
+            == "filtered-plans-full-material-replacement-plus-installation-vs-lowest-sell-reference-before-trade-fees"
+        && !profitability.trade_fees_included
+        && state_shape
+        && profitability.items.iter().all(|item| {
+            let ready = item.market_state == "ready"
+                && item.lowest_sell_unit_price_cents.is_some_and(|value| value > 0)
+                && item.competing_volume.is_some_and(|value| value > 0)
+                && item.gross_revenue_cents.is_some_and(|value| {
+                    item.lowest_sell_unit_price_cents
+                        .and_then(|price| item.quantity.checked_mul(price))
+                        == Some(value)
+                });
+            let unavailable = item.market_state == "unavailable"
+                && item.lowest_sell_unit_price_cents.is_none()
+                && item.competing_volume == Some(0)
+                && item.gross_revenue_cents.is_none();
+            let missing = item.market_state == "snapshot-missing"
+                && item.lowest_sell_unit_price_cents.is_none()
+                && item.competing_volume.is_none()
+                && item.gross_revenue_cents.is_none();
+            production_id_is_valid(item.type_id)
+                && asset_text_is_valid(&item.type_name, 200)
+                && production_id_is_valid(item.quantity)
+                && production_id_is_valid(item.target_quantity)
+                && item
+                    .target_quantity
+                    .checked_add(item.surplus_quantity)
+                    == Some(item.quantity)
+                && production_id_is_valid(item.plan_count)
+                && item.plan_count <= plan_count
+                && (ready || unavailable || missing)
+        })
+}
+
 fn production_purchase_list_is_valid(list: &ProductionPurchaseList, plan_count: u64) -> bool {
     let type_ids = list
         .items
@@ -4540,6 +4737,7 @@ fn production_purchase_list_is_valid(list: &ProductionPurchaseList, plan_count: 
         && total_purchase_cost == Some(list.total_purchase_cost_cents)
         && installation_shape
         && list.additional_capital_need_cents == expected_additional_capital
+        && production_profitability_is_valid(&list.profitability, plan_count)
         && list.items.iter().all(|item| {
             production_id_is_valid(item.type_id)
                 && asset_text_is_valid(&item.type_name, 200)
@@ -4653,6 +4851,9 @@ fn production_plan_query_response_is_valid(response: &ProductionPlanQueryRespons
         && response.market_prices_applied
         && response.market_price_rule
             == "selected-hub-lowest-sell-orders-volume-weighted-cents"
+        && response.profitability_applied
+        && response.profitability_rule
+            == "filtered-plans-full-material-replacement-plus-installation-vs-lowest-sell-reference-before-trade-fees"
         && response.installation_costs_applied
         && response.installation_cost_rule
             == "base-material-adjusted-price-times-runs-system-index-plus-explicit-tax-plus-scc-4-percent-ceil"
