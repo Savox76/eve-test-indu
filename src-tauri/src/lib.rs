@@ -4504,15 +4504,17 @@ fn production_profitability_is_valid(
             && value <= JAVASCRIPT_MAX_SAFE_INTEGER as i128)
             .then_some(value as i64)
     });
-    let gross_margin = gross_profit.zip(gross_revenue).and_then(|(profit, revenue)| {
-        if revenue == 0 {
-            return None;
-        }
-        let value = (profit as i128 * 10_000_i128) / revenue as i128;
-        (value >= -(JAVASCRIPT_MAX_SAFE_INTEGER as i128)
-            && value <= JAVASCRIPT_MAX_SAFE_INTEGER as i128)
-            .then_some(value as i64)
-    });
+    let gross_margin = gross_profit
+        .zip(gross_revenue)
+        .and_then(|(profit, revenue)| {
+            if revenue == 0 {
+                return None;
+            }
+            let value = (profit as i128 * 10_000_i128) / revenue as i128;
+            (value >= -(JAVASCRIPT_MAX_SAFE_INTEGER as i128)
+                && value <= JAVASCRIPT_MAX_SAFE_INTEGER as i128)
+                .then_some(value as i64)
+        });
     let state_shape = match profitability.state.as_str() {
         "empty" => {
             profitability.items.is_empty()
@@ -4524,12 +4526,9 @@ fn production_profitability_is_valid(
             gross_profit.is_some()
                 && profitability.omitted_item_count == 0
                 && profitability.omitted_market_type_count == 0
-                && profitability.fully_priced_material_count
-                    == profitability.material_item_count
+                && profitability.fully_priced_material_count == profitability.material_item_count
         }
-        "partial" | "unavailable" | "snapshot-missing" | "stale" => {
-            !profitability.items.is_empty()
-        }
+        "partial" | "unavailable" | "snapshot-missing" | "stale" => !profitability.items.is_empty(),
         _ => false,
     };
     profitability.items.len() <= 1_000
