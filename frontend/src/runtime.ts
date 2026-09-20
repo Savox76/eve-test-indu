@@ -750,6 +750,8 @@ export interface ProductionInstallationCost {
   systemCost: number | null;
   facilityTaxBasisPoints: number | null;
   facilityTax: number | null;
+  sccSurchargeBasisPoints: 400;
+  sccSurcharge: number | null;
   estimatedInstallationCost: number | null;
   missingAdjustedPriceTypeIds: number[];
   priceSnapshotId: number | null;
@@ -1002,6 +1004,7 @@ export interface ProductionPlanRecord {
   estimatedItemValue: number | null;
   systemCost: number | null;
   facilityTax: number | null;
+  sccSurcharge: number | null;
   estimatedInstallationCost: number | null;
   costedStepCount: number;
   uncostedStepCount: number;
@@ -1061,7 +1064,7 @@ export interface ProductionPlanPage {
   purchaseListApplied: true;
   purchaseListRule: "filtered-plans-sum-missing-by-type";
   installationCostsApplied: true;
-  installationCostRule: "base-material-adjusted-price-times-runs-system-index-plus-explicit-tax-ceil";
+  installationCostRule: "base-material-adjusted-price-times-runs-system-index-plus-explicit-tax-plus-scc-4-percent-ceil";
   remainingModifiersApplied: false;
 }
 
@@ -3349,6 +3352,8 @@ function parseProductionInstallationCost(candidate: unknown): ProductionInstalla
       isNonNegativeSafeInteger(candidate.facilityTaxBasisPoints) &&
       Number(candidate.facilityTaxBasisPoints) <= 10_000) ||
     !(candidate.facilityTax === null || isNonNegativeSafeInteger(candidate.facilityTax)) ||
+    candidate.sccSurchargeBasisPoints !== 400 ||
+    !(candidate.sccSurcharge === null || isNonNegativeSafeInteger(candidate.sccSurcharge)) ||
     !(candidate.estimatedInstallationCost === null ||
       isNonNegativeSafeInteger(candidate.estimatedInstallationCost)) ||
     !Array.isArray(candidate.missingAdjustedPriceTypeIds) ||
@@ -3359,14 +3364,17 @@ function parseProductionInstallationCost(candidate: unknown): ProductionInstalla
   const sourceMissing = candidate.priceSnapshotId === null && candidate.priceSyncRunId === null &&
     candidate.priceObservedAt === null;
   const valuesReady = candidate.estimatedItemValue !== null && candidate.systemCost !== null &&
-    candidate.facilityTax !== null && candidate.estimatedInstallationCost !== null;
+    candidate.facilityTax !== null && candidate.sccSurcharge !== null &&
+    candidate.estimatedInstallationCost !== null;
   const valuesMissing = candidate.estimatedItemValue === null && candidate.systemCost === null &&
-    candidate.facilityTax === null && candidate.estimatedInstallationCost === null;
+    candidate.facilityTax === null && candidate.sccSurcharge === null &&
+    candidate.estimatedInstallationCost === null;
   if (
     (!sourceReady && !sourceMissing) ||
     (candidate.state === "ready" && (!sourceReady || !valuesReady ||
       candidate.systemCostIndex === null || candidate.facilityTaxBasisPoints === null ||
-      Number(candidate.systemCost) + Number(candidate.facilityTax) !==
+      Number(candidate.systemCost) + Number(candidate.facilityTax) +
+        Number(candidate.sccSurcharge) !==
         Number(candidate.estimatedInstallationCost) ||
       candidate.missingAdjustedPriceTypeIds.length !== 0)) ||
     (candidate.state !== "ready" && !valuesMissing) ||
@@ -3761,6 +3769,7 @@ function parseProductionPlanRecord(candidate: unknown): ProductionPlanRecord {
     !(candidate.estimatedItemValue === null || isNonNegativeSafeInteger(candidate.estimatedItemValue)) ||
     !(candidate.systemCost === null || isNonNegativeSafeInteger(candidate.systemCost)) ||
     !(candidate.facilityTax === null || isNonNegativeSafeInteger(candidate.facilityTax)) ||
+    !(candidate.sccSurcharge === null || isNonNegativeSafeInteger(candidate.sccSurcharge)) ||
     !(candidate.estimatedInstallationCost === null ||
       isNonNegativeSafeInteger(candidate.estimatedInstallationCost)) ||
     !isNonNegativeSafeInteger(candidate.costedStepCount) ||
@@ -3981,7 +3990,7 @@ function parseProductionPlanRecord(candidate: unknown): ProductionPlanRecord {
           ? "unconfigured"
           : "unavailable";
   const expectedCost = (field: "estimatedItemValue" | "systemCost" | "facilityTax" |
-    "estimatedInstallationCost") => readyCosts.length === 0
+    "sccSurcharge" | "estimatedInstallationCost") => readyCosts.length === 0
       ? null
       : readyCosts.reduce((total, cost) => total + Number(cost[field]), 0);
   const installationCostShapeValid =
@@ -3991,6 +4000,7 @@ function parseProductionPlanRecord(candidate: unknown): ProductionPlanRecord {
     candidate.estimatedItemValue === expectedCost("estimatedItemValue") &&
     candidate.systemCost === expectedCost("systemCost") &&
     candidate.facilityTax === expectedCost("facilityTax") &&
+    candidate.sccSurcharge === expectedCost("sccSurcharge") &&
     candidate.estimatedInstallationCost === expectedCost("estimatedInstallationCost") &&
     steps.every((step) =>
       step.installationCost.facilityTaxBasisPoints === candidate.facilityTaxBasisPoints);
@@ -4173,7 +4183,8 @@ function parseProductionPlanPage(candidate: unknown): ProductionPlanPage {
     candidate.purchaseListRule !== "filtered-plans-sum-missing-by-type" ||
     candidate.installationCostsApplied !== true ||
     candidate.installationCostRule !==
-      "base-material-adjusted-price-times-runs-system-index-plus-explicit-tax-ceil" ||
+      "base-material-adjusted-price-times-runs-system-index-plus-explicit-tax-" +
+        "plus-scc-4-percent-ceil" ||
     candidate.remainingModifiersApplied !== false
   ) throw new Error("The native runtime returned invalid production-plan data.");
   const items = candidate.items.map(parseProductionPlanRecord);
@@ -4232,7 +4243,7 @@ export async function loadProductionPlans(
     purchaseListApplied: true,
     purchaseListRule: "filtered-plans-sum-missing-by-type",
     installationCostsApplied: true,
-    installationCostRule: "base-material-adjusted-price-times-runs-system-index-plus-explicit-tax-ceil",
+    installationCostRule: "base-material-adjusted-price-times-runs-system-index-plus-explicit-tax-plus-scc-4-percent-ceil",
     remainingModifiersApplied: false,
   };
   const page = parseProductionPlanPage(JSON.parse(await adapter.invoke("query_production_plans", {

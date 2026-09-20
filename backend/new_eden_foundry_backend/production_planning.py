@@ -52,7 +52,11 @@ FACILITY_EVIDENCE_RULE = "assigned-blueprint-before-active-before-latest-owner-j
 SUPPLY_MODE_RULE = "stock-first-before-recursive-build"
 FACILITY_MODIFIER_RULE = "explicit-basis-points-combined-before-single-ceil"
 PURCHASE_LIST_RULE = "filtered-plans-sum-missing-by-type"
-INSTALLATION_COST_RULE = "base-material-adjusted-price-times-runs-system-index-plus-explicit-tax-ceil"
+SCC_SURCHARGE_BASIS_POINTS = 400
+INSTALLATION_COST_RULE = (
+    "base-material-adjusted-price-times-runs-system-index-plus-explicit-tax-"
+    "plus-scc-4-percent-ceil"
+)
 INDUSTRY_SKILL_ID = 3380
 ADVANCED_INDUSTRY_SKILL_ID = 3388
 REACTIONS_SKILL_ID = 45746
@@ -693,6 +697,8 @@ def _empty_installation_cost(
         "systemCost": None,
         "facilityTaxBasisPoints": facility_tax_basis_points,
         "facilityTax": None,
+        "sccSurchargeBasisPoints": SCC_SURCHARGE_BASIS_POINTS,
+        "sccSurcharge": None,
         "estimatedInstallationCost": None,
         "missingAdjustedPriceTypeIds": sorted(missing_type_ids or []),
         "priceSnapshotId": None if price_source is None else int(price_source["snapshotId"]),
@@ -767,11 +773,16 @@ def _installation_cost_for_step(
         facility_tax = (
             estimated_item_value * Decimal(tax) / Decimal(10_000)
         ).to_integral_value(rounding=ROUND_CEILING)
+        scc_surcharge = (
+            estimated_item_value
+            * Decimal(SCC_SURCHARGE_BASIS_POINTS)
+            / Decimal(10_000)
+        ).to_integral_value(rounding=ROUND_CEILING)
         item_value = estimated_item_value.to_integral_value(rounding=ROUND_CEILING)
-        total = system_cost + facility_tax
+        total = system_cost + facility_tax + scc_surcharge
     except (InvalidOperation, OverflowError) as error:
         raise ProductionPlanningError("production_installation_cost_invalid") from error
-    values = (item_value, system_cost, facility_tax, total)
+    values = (item_value, system_cost, facility_tax, scc_surcharge, total)
     if any(value < 0 or value > MAX_SAFE_INTEGER for value in values):
         raise ProductionPlanningError("production_plan_calculation_overflow")
     return {
@@ -781,6 +792,7 @@ def _installation_cost_for_step(
         "estimatedItemValue": int(item_value),
         "systemCost": int(system_cost),
         "facilityTax": int(facility_tax),
+        "sccSurcharge": int(scc_surcharge),
         "estimatedInstallationCost": int(total),
     }
 
@@ -2022,6 +2034,7 @@ def _empty_resolution(
         "estimatedItemValue": None,
         "systemCost": None,
         "facilityTax": None,
+        "sccSurcharge": None,
         "estimatedInstallationCost": None,
         "costedStepCount": 0,
         "uncostedStepCount": 0,
@@ -2628,6 +2641,7 @@ def resolve_production_plan(
         "estimatedItemValue": sum_ready_cost("estimatedItemValue"),
         "systemCost": sum_ready_cost("systemCost"),
         "facilityTax": sum_ready_cost("facilityTax"),
+        "sccSurcharge": sum_ready_cost("sccSurcharge"),
         "estimatedInstallationCost": sum_ready_cost("estimatedInstallationCost"),
         "costedStepCount": len(ready_costs),
         "uncostedStepCount": uncosted_step_count,
@@ -2787,6 +2801,7 @@ def _serialize_plan(row: sqlite3.Row, resolution: Mapping[str, Any]) -> dict[str
         "estimatedItemValue": resolution["estimatedItemValue"],
         "systemCost": resolution["systemCost"],
         "facilityTax": resolution["facilityTax"],
+        "sccSurcharge": resolution["sccSurcharge"],
         "estimatedInstallationCost": resolution["estimatedInstallationCost"],
         "costedStepCount": resolution["costedStepCount"],
         "uncostedStepCount": resolution["uncostedStepCount"],

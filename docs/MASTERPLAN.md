@@ -2,9 +2,9 @@
 
 **Fassung:** 4.0 (lebendes Repository-Dokument)
 
-**Stand:** 19. September 2026
+**Stand:** 20. September 2026
 
-**Status:** Paket 42 – gruppierte Asset-Änderungen und historische Standortpfade technisch abgeschlossen
+**Status:** Paket 43 – vollständige Installationskosten mit offiziellem SCC-Zuschlag technisch abgeschlossen
 
 **Geltungsbereich:** `Savox76/eve-test-indu`
 
@@ -208,6 +208,7 @@ Die Reihenfolge ist verbindlicher als eine Kalenderangabe.
 | 40 | Zielübergreifende Einkaufsliste und EVE-Multibuy | Die konfliktfreien Fehlmengen aller aktuell gefilterten Ziele werden typweise aggregiert, unvollständige Quellstände sichtbar ausgeschlossen und als direkt kopierbare EVE-Multibuy-Liste ausgegeben |
 | 41 | Belegte Installationskostenbasis | Offizielle angepasste ESI-Preise, aktivitätsspezifischer Systemkostenindex und eine ausdrücklich gespeicherte Anlagensteuer ergeben je gebautem Schritt eine quellenbelegte Kostenbasis; fehlende Preise oder Belege bleiben sichtbar statt geschätzt |
 | 42 | Gruppierte Asset-Änderungen und historische Standortpfade | Asset-Änderungen werden vor Pagination nach Besitzer, Typ und Snapshotvergleich gruppiert; aufklappbare Einzelereignisse zeigen die exakt historischen Standortpfade und behandeln rohe ESI-Bereichsflags nur als sekundären Nachweis |
+| 43 | Vollständige Installationskosten mit SCC-Zuschlag | Der offizielle SCC-Zuschlag von 4 Prozent wird je gebautem Job aus dem ungerundeten Eingabewert berechnet, separat auf volle ISK aufgerundet und neben Systemkosten sowie ausdrücklicher Anlagensteuer bis zur Zielsumme nachvollziehbar ausgewiesen |
 
 ### Aktueller Stand
 
@@ -252,7 +253,8 @@ Die Reihenfolge ist verbindlicher als eine Kalenderangabe.
 - **Abgeschlossen:** 40 – Die Produktionsabfrage aggregiert nach Anwendung von Suche, Besitzer-, Aktivitäts- und Statusfilter alle bereits konfliktfrei berechneten Fehlmengen stabil nach Typ-ID. Physische Fehlmenge und durch vorrangige Ziele gebundene Menge bleiben getrennt; die Oberfläche zeigt Materialarten, Gesamtmenge und beteiligte Ziele und kopiert den vollständigen belegten Ausschnitt im EVE-Multibuy-Format. Ziele ohne auflösbares Rezept oder vollständigen Asset-Snapshot werden gezählt und ausdrücklich als nicht enthalten markiert. Sortierung und Seitenauswahl verändern die Einkaufsliste nicht. Das Schema bleibt bei Version 13.
 - **Abgeschlossen:** 41 – Der vollständige Anlagen-Snapshot enthält zusätzlich die offiziellen angepassten Preise aus ESI. Für jeden tatsächlich gebauten Schritt wird der geschätzte Eingabewert aus unveränderten SDE-Basismaterialmengen und Läufen gebildet; Systemkostenindex und ausdrücklich gespeicherte Anlagensteuer werden getrennt aufgerundet und samt Preis-, Anlagen- und Systembeleg ausgewiesen. Zielebene und Oberfläche aggregieren ausschließlich berechenbare Schritte und unterscheiden `ready`, `partial`, `unconfigured`, `unavailable` und `not-applicable`. Schema 14 ergänzt die optionale Anlagensteuer in Basispunkten; bestehende Ziele bleiben bewusst unkonfiguriert.
 - **Abgeschlossen:** 42 – Der Asset-Änderungsverlauf gruppiert standardmäßig alle gefilterten Ereignisse vor der Seitenteilung nach Besitzer, Typ und Snapshotvergleich. Gruppen weisen betroffene Items, Ereignisse, Mengen, Standorte und Jobkorrelationszustände aus und laden ihre exakt gefilterten Einzelereignisse begrenzt nach. Die historischen, zum jeweiligen Asset-Snapshot gehörenden vollständigen Standortpfade werden als Hauptangabe gezeigt; Location-ID und das rohe ESI-Flag wie `AutoFit` bleiben sekundäre Belege. Ein Umschalter erhält die ungegruppte Ereignisansicht. Das Schema bleibt bei Version 14.
-- **Als Nächstes:** Das nächste Fachpaket wird separat festgelegt. Marktpreise, Handelsort, SCC-Zuschlag, automatisch erkannte Struktur-/Service-/Rigmodifikatoren, Transport und belastbare Endtermine bleiben bis zu eigenen Fachverträgen ausgeschlossen.
+- **Abgeschlossen:** 43 – Jeder tatsächlich gebaute Produktionsschritt berechnet zusätzlich zu Systemkosten und ausdrücklicher Anlagensteuer den offiziellen SCC-Zuschlag von 4 Prozent aus demselben ungerundeten EVE-Eingabewert. Alle drei Gebühren werden jobweise getrennt auf volle ISK aufgerundet, in DE/EN einzeln dargestellt und erst danach zur vollständigen geschätzten Installationskostensumme addiert. Der native Vertrag weist den festen Satz aus und verwirft abweichende Antworten. Das Schema bleibt bei Version 14.
+- **Als Nächstes:** Das nächste Fachpaket wird separat festgelegt. Live-Marktpreise, Handelsort, automatisch erkannte Struktur-/Service-/Rigmodifikatoren, Transport und belastbare Endtermine bleiben bis zu eigenen Fachverträgen ausgeschlossen.
 - Architektur-Gate A0 ist vollständig erfüllt; `v0.2.0-alpha.1` bildet die erste freigegebene Alpha-Grundlage für die folgenden Produktionspakete.
 
 ## 13. Entscheidungs- und Quellenrang

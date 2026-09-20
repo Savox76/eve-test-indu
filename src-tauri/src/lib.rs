@@ -175,6 +175,7 @@ const PRODUCTION_PLAN_INSTALLATION_COST_STATES: [&str; 5] = [
     "unavailable",
     "not-applicable",
 ];
+const SCC_SURCHARGE_BASIS_POINTS: u16 = 400;
 const PRODUCTION_PLAN_SORT_FIELDS: [&str; 6] = [
     "priority", "product", "owner", "activity", "state", "updated",
 ];
@@ -926,6 +927,8 @@ struct ProductionInstallationCost {
     system_cost: Option<u64>,
     facility_tax_basis_points: Option<u16>,
     facility_tax: Option<u64>,
+    scc_surcharge_basis_points: u16,
+    scc_surcharge: Option<u64>,
     estimated_installation_cost: Option<u64>,
     missing_adjusted_price_type_ids: Vec<u64>,
     price_snapshot_id: Option<u64>,
@@ -1183,6 +1186,7 @@ struct ProductionPlanRecord {
     estimated_item_value: Option<u64>,
     system_cost: Option<u64>,
     facility_tax: Option<u64>,
+    scc_surcharge: Option<u64>,
     estimated_installation_cost: Option<u64>,
     costed_step_count: u64,
     uncosted_step_count: u64,
@@ -3192,10 +3196,12 @@ fn production_installation_cost_is_valid(cost: &ProductionInstallationCost) -> b
     let values_ready = cost.estimated_item_value.is_some()
         && cost.system_cost.is_some()
         && cost.facility_tax.is_some()
+        && cost.scc_surcharge.is_some()
         && cost.estimated_installation_cost.is_some();
     let values_missing = cost.estimated_item_value.is_none()
         && cost.system_cost.is_none()
         && cost.facility_tax.is_none()
+        && cost.scc_surcharge.is_none()
         && cost.estimated_installation_cost.is_none();
     let missing_ids = cost
         .missing_adjusted_price_type_ids
@@ -3218,6 +3224,10 @@ fn production_installation_cost_is_valid(cost: &ProductionInstallationCost) -> b
         && cost
             .facility_tax
             .is_none_or(|value| value <= JAVASCRIPT_MAX_SAFE_INTEGER)
+        && cost.scc_surcharge_basis_points == SCC_SURCHARGE_BASIS_POINTS
+        && cost
+            .scc_surcharge
+            .is_none_or(|value| value <= JAVASCRIPT_MAX_SAFE_INTEGER)
         && cost
             .estimated_installation_cost
             .is_none_or(|value| value <= JAVASCRIPT_MAX_SAFE_INTEGER)
@@ -3234,6 +3244,8 @@ fn production_installation_cost_is_valid(cost: &ProductionInstallationCost) -> b
                     .system_cost
                     .zip(cost.facility_tax)
                     .and_then(|(system, tax)| system.checked_add(tax))
+                    .zip(cost.scc_surcharge)
+                    .and_then(|(subtotal, scc)| subtotal.checked_add(scc))
                     == cost.estimated_installation_cost
                 && cost.missing_adjusted_price_type_ids.is_empty()
         } else {
@@ -3961,6 +3973,13 @@ fn production_plan_record_is_valid(item: &ProductionPlanRecord) -> bool {
             .iter()
             .try_fold(0_u64, |total, cost| total.checked_add(cost.facility_tax?))
     };
+    let expected_scc_surcharge = if ready_costs.is_empty() {
+        None
+    } else {
+        ready_costs
+            .iter()
+            .try_fold(0_u64, |total, cost| total.checked_add(cost.scc_surcharge?))
+    };
     let expected_installation_cost = if ready_costs.is_empty() {
         None
     } else {
@@ -3981,10 +4000,12 @@ fn production_plan_record_is_valid(item: &ProductionPlanRecord) -> bool {
             || expected_estimated_item_value.is_some()
                 && expected_system_cost.is_some()
                 && expected_facility_tax.is_some()
+                && expected_scc_surcharge.is_some()
                 && expected_installation_cost.is_some())
         && expected_estimated_item_value == item.estimated_item_value
         && expected_system_cost == item.system_cost
         && expected_facility_tax == item.facility_tax
+        && expected_scc_surcharge == item.scc_surcharge
         && expected_installation_cost == item.estimated_installation_cost;
     let facility_time_shape_valid = if ready
         && skill_source_available
@@ -4137,6 +4158,9 @@ fn production_plan_record_is_valid(item: &ProductionPlanRecord) -> bool {
             .is_none_or(|value| value <= JAVASCRIPT_MAX_SAFE_INTEGER)
         && item
             .facility_tax
+            .is_none_or(|value| value <= JAVASCRIPT_MAX_SAFE_INTEGER)
+        && item
+            .scc_surcharge
             .is_none_or(|value| value <= JAVASCRIPT_MAX_SAFE_INTEGER)
         && item
             .estimated_installation_cost
@@ -4366,7 +4390,7 @@ fn production_plan_query_response_is_valid(response: &ProductionPlanQueryRespons
         && response.purchase_list_rule == "filtered-plans-sum-missing-by-type"
         && response.installation_costs_applied
         && response.installation_cost_rule
-            == "base-material-adjusted-price-times-runs-system-index-plus-explicit-tax-ceil"
+            == "base-material-adjusted-price-times-runs-system-index-plus-explicit-tax-plus-scc-4-percent-ceil"
         && !response.remaining_modifiers_applied
 }
 
@@ -7482,8 +7506,8 @@ mod tests {
         industry_facility_query_response_is_valid, industry_facility_sync_response_is_valid,
         industry_job_query_response_is_valid, industry_job_sync_response_is_valid,
         industry_slot_query_response_is_valid, migrate_to_program_directory_storage,
-        production_plan_record_is_valid, read_window_size, release_page_url,
-        research_plan_query_response_is_valid, sidecar_startup_error_code,
+        production_installation_cost_is_valid, production_plan_record_is_valid, read_window_size,
+        release_page_url, research_plan_query_response_is_valid, sidecar_startup_error_code,
         sidecar_startup_error_is_retryable, sso_login_status_is_valid, write_window_size,
         AccountGroupRecord, AssetDeltaCorrelation, AssetDeltaCorrelationSummary,
         AssetDeltaGroupQueryResponse, AssetDeltaGroupRecord, AssetDeltaQueryResponse,
@@ -7503,7 +7527,7 @@ mod tests {
         WindowSizePreference, ADVANCED_INDUSTRY_SKILL_ID, ASSET_LOCATION_STATUSES,
         INDUSTRY_COST_ACTIVITIES, INDUSTRY_FACILITY_ACCESS_STATES, INDUSTRY_FACILITY_KINDS,
         INDUSTRY_SECURITY_CLASSES, INDUSTRY_SKILL_ID, INDUSTRY_SLOT_ACTIVITIES,
-        RESEARCH_PLAN_ACTIVITIES, RESEARCH_PLAN_STATES,
+        RESEARCH_PLAN_ACTIVITIES, RESEARCH_PLAN_STATES, SCC_SURCHARGE_BASIS_POINTS,
     };
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -8467,12 +8491,40 @@ mod tests {
             system_cost: None,
             facility_tax_basis_points: None,
             facility_tax: None,
+            scc_surcharge_basis_points: SCC_SURCHARGE_BASIS_POINTS,
+            scc_surcharge: None,
             estimated_installation_cost: None,
             missing_adjusted_price_type_ids: Vec::new(),
             price_snapshot_id: None,
             price_sync_run_id: None,
             price_observed_at: None,
         }
+    }
+
+    #[test]
+    fn validates_complete_installation_cost_with_official_scc_surcharge() {
+        let mut cost = ProductionInstallationCost {
+            state: "ready".to_owned(),
+            estimated_item_value: Some(1_000),
+            system_cost_index: Some(0.0125),
+            system_cost: Some(13),
+            facility_tax_basis_points: Some(100),
+            facility_tax: Some(10),
+            scc_surcharge_basis_points: SCC_SURCHARGE_BASIS_POINTS,
+            scc_surcharge: Some(40),
+            estimated_installation_cost: Some(63),
+            missing_adjusted_price_type_ids: Vec::new(),
+            price_snapshot_id: Some(18),
+            price_sync_run_id: Some(19),
+            price_observed_at: Some("2026-09-20T12:00:00Z".to_owned()),
+        };
+        assert!(production_installation_cost_is_valid(&cost));
+
+        cost.scc_surcharge_basis_points = 150;
+        assert!(!production_installation_cost_is_valid(&cost));
+        cost.scc_surcharge_basis_points = SCC_SURCHARGE_BASIS_POINTS;
+        cost.estimated_installation_cost = Some(62);
+        assert!(!production_installation_cost_is_valid(&cost));
     }
 
     #[test]
@@ -8738,6 +8790,7 @@ mod tests {
             estimated_item_value: None,
             system_cost: None,
             facility_tax: None,
+            scc_surcharge: None,
             estimated_installation_cost: None,
             costed_step_count: 0,
             uncosted_step_count: 2,
