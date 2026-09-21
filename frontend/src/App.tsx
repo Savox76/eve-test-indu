@@ -240,6 +240,10 @@ function isNullablePositiveInteger(value: unknown): value is number | null {
   return value === null || Number.isSafeInteger(value) && Number(value) > 0;
 }
 
+function isNullableBasisPoints(value: unknown): value is number | null {
+  return value === null || Number.isSafeInteger(value) && Number(value) >= 0 && Number(value) <= 10_000;
+}
+
 const copy = {
   de: {
     nav: {
@@ -967,15 +971,25 @@ const copy = {
       installationCost: "Installation",
       additionalCapital: "Zusätzlicher Kapitalbedarf",
       capitalUnavailable: "Der gesamte Kapitalbedarf wird erst bei vollständigen Markt- und Installationskosten angezeigt.",
-      profitabilityTitle: "Verkaufswert und Rohmarge",
-      profitabilitySubtitle: "Bewertet den gesamten Materialverbrauch zum Wiederbeschaffungspreis – auch bereits vorhandenen Bestand.",
+      profitabilityTitle: "Verkaufswert und Nettoergebnis",
+      profitabilitySubtitle: "Bewertet den gesamten Materialverbrauch zum Wiederbeschaffungspreis und zieht deine ausdrücklich eingetragenen Handelskosten ab.",
+      brokerFee: "Brokergebühr (%)",
+      salesTax: "Verkaufssteuer (%)",
+      tradeCostInputHelp: "Trage die persönlichen Sätze aus deinem EVE-Verkaufsfenster ein. Leere Felder werden nicht als 0 % ausgelegt.",
       grossRevenue: "Bruttoverkaufswert",
       replacementCost: "Material-Wiederbeschaffung",
       fullProductionCost: "Volle Produktionskosten",
-      grossProfit: "Rohgewinn vor Handelsgebühren",
+      grossProfit: "Rohgewinn vor Handelskosten",
       grossMargin: "Rohmarge {margin} %",
-      profitabilityUnavailable: "Eine belastbare Rohmarge erscheint erst mit vollständigen Material-, Produkt- und Installationspreisen.",
-      tradeFeesExcluded: "Brokergebühren und Verkaufssteuer sind noch nicht enthalten; der niedrigste Sell-Preis ist ein Marktvergleich und keine Verkaufsgarantie.",
+      totalTradeCosts: "Handelskosten",
+      tradeCostBreakdown: "Broker {broker} ISK · Steuer {tax} ISK",
+      netRevenue: "Nettoerlös nach Handelskosten",
+      netProfit: "Nettogewinn",
+      netMargin: "Nettomarge {margin} %",
+      profitabilityUnavailable: "Eine belastbare Marge erscheint erst mit vollständigen Material-, Produkt- und Installationspreisen.",
+      tradeFeesUnconfigured: "Für das Nettoergebnis müssen Brokergebühr und Verkaufssteuer ausdrücklich eingetragen werden; es werden keine persönlichen Werte geraten.",
+      tradeFeesPending: "Die persönlichen Sätze sind eingetragen. Die Handelskosten werden berechnet, sobald ein vollständiger Bruttoverkaufswert vorliegt.",
+      tradeFeesApplied: "Brokergebühr und Verkaufssteuer sind mit den eingetragenen Sätzen enthalten. Der niedrigste Sell-Preis bleibt ein Marktvergleich und keine Verkaufsgarantie.",
       outputReference: "{quantity} hergestellt · Ziel {target} · Überschuss {surplus} · niedrigstes Sell-Angebot {price} ISK · {volume} Einheiten Konkurrenzvolumen",
       build: "SDE-Build {build}",
       searchRecipe: "Produkt oder Blueprint suchen",
@@ -1886,15 +1900,25 @@ const copy = {
       installationCost: "Installation",
       additionalCapital: "Additional capital required",
       capitalUnavailable: "Total capital required appears once market and installation costs are complete.",
-      profitabilityTitle: "Sales value and gross margin",
-      profitabilitySubtitle: "Values all consumed materials at replacement cost, including stock already owned.",
+      profitabilityTitle: "Sales value and net result",
+      profitabilitySubtitle: "Values all consumed materials at replacement cost and deducts your explicitly entered trade costs.",
+      brokerFee: "Broker fee (%)",
+      salesTax: "Sales tax (%)",
+      tradeCostInputHelp: "Enter the personal rates shown in your EVE sell window. Empty fields are not treated as 0%.",
       grossRevenue: "Gross sales value",
       replacementCost: "Material replacement",
       fullProductionCost: "Full production cost",
-      grossProfit: "Gross profit before trade fees",
+      grossProfit: "Gross profit before trade costs",
       grossMargin: "Gross margin {margin}%",
-      profitabilityUnavailable: "A reliable gross margin appears once material, product and installation prices are complete.",
-      tradeFeesExcluded: "Broker fees and sales tax are not included yet; the lowest sell price is a market reference, not a guaranteed sale.",
+      totalTradeCosts: "Trade costs",
+      tradeCostBreakdown: "Broker {broker} ISK · tax {tax} ISK",
+      netRevenue: "Net revenue after trade costs",
+      netProfit: "Net profit",
+      netMargin: "Net margin {margin}%",
+      profitabilityUnavailable: "A reliable margin appears once material, product and installation prices are complete.",
+      tradeFeesUnconfigured: "Broker fee and sales tax must be entered explicitly for a net result; personal rates are never guessed.",
+      tradeFeesPending: "The personal rates are configured. Trade costs will be calculated once a complete gross sales value is available.",
+      tradeFeesApplied: "Broker fee and sales tax are included at the entered rates. The lowest sell price remains a market reference, not a guaranteed sale.",
       outputReference: "{quantity} produced · target {target} · surplus {surplus} · lowest sell offer {price} ISK · {volume} units competing volume",
       build: "SDE build {build}",
       searchRecipe: "Search product or blueprint",
@@ -5611,6 +5635,12 @@ function ProductionWorkspace({
     "production.market-hub", "jita",
     (value): value is MarketHubId => marketHubIds.includes(value as MarketHubId),
   );
+  const [brokerFeeBasisPoints, setBrokerFeeBasisPoints] = useStoredState<number | null>(
+    "production.broker-fee", null, isNullableBasisPoints,
+  );
+  const [salesTaxBasisPoints, setSalesTaxBasisPoints] = useStoredState<number | null>(
+    "production.sales-tax", null, isNullableBasisPoints,
+  );
   const [planOffset, setPlanOffset] = useState(0);
   const [plans, setPlans] = useState<ProductionPlanPage | null>(null);
   const [plansLoading, setPlansLoading] = useState(false);
@@ -5711,7 +5741,7 @@ function ProductionWorkspace({
     setPlansFailed(false);
     void loadPlans({ search: appliedPlanSearch, ownerCharacterId: planOwner, activity: planActivity,
       state: planState, offset: planOffset, limit: productionPlanPageSize, sortBy, sortDirection,
-      marketHubId })
+      marketHubId, brokerFeeBasisPoints, salesTaxBasisPoints })
       .then((page) => {
         if (!active) return;
         if (page.total > 0 && page.offset >= page.total) {
@@ -5740,8 +5770,8 @@ function ProductionWorkspace({
       .catch(() => { if (active) setPlansFailed(true); })
       .finally(() => { if (active) setPlansLoading(false); });
     return () => { active = false; };
-  }, [appliedPlanSearch, available, loadPlans, marketHubId, planActivity, planOffset, planOwner,
-    planState, revision, sortBy, sortDirection]);
+  }, [appliedPlanSearch, available, brokerFeeBasisPoints, loadPlans, marketHubId, planActivity,
+    planOffset, planOwner, planState, revision, salesTaxBasisPoints, sortBy, sortDirection]);
 
   const createGoal = async () => {
     if (!selected || newOwner === null || busyId !== null) return;
@@ -5969,14 +5999,22 @@ function ProductionWorkspace({
             <span className="production-capital-summary__total"><small>{t.productionPlanning.additionalCapital}</small><strong>{plans.purchaseList.additionalCapitalNeedCents === null ? "—" : `${iskFormat.format(plans.purchaseList.additionalCapitalNeedCents / 100)} ISK`}</strong></span>
           </div>
           <div className="production-profitability-heading"><div><h3>{t.productionPlanning.profitabilityTitle}</h3><p>{t.productionPlanning.profitabilitySubtitle}</p></div><span className={`status-pill status-pill--${plans.purchaseList.profitability.state === "ready" ? "good" : plans.purchaseList.profitability.state === "partial" || plans.purchaseList.profitability.state === "stale" ? "info" : "warn"}`}>{t.productionPlanning.marketPricingStateLabels[plans.purchaseList.profitability.state]}</span></div>
+          <div className="production-trade-cost-controls">
+            <label><span>{t.productionPlanning.brokerFee}</span><input type="number" min={0} max={100} step={0.01} value={brokerFeeBasisPoints === null ? "" : brokerFeeBasisPoints / 100} onChange={(event) => { setBrokerFeeBasisPoints(event.target.value === "" ? null : Math.min(10_000, Math.max(0, Math.round(Number(event.target.value) * 100)))); setPlanOffset(0); }} /></label>
+            <label><span>{t.productionPlanning.salesTax}</span><input type="number" min={0} max={100} step={0.01} value={salesTaxBasisPoints === null ? "" : salesTaxBasisPoints / 100} onChange={(event) => { setSalesTaxBasisPoints(event.target.value === "" ? null : Math.min(10_000, Math.max(0, Math.round(Number(event.target.value) * 100)))); setPlanOffset(0); }} /></label>
+            <p>{t.productionPlanning.tradeCostInputHelp}</p>
+          </div>
           <div className="production-capital-summary production-profitability-summary">
             <span><small>{t.productionPlanning.grossRevenue}</small><strong>{plans.purchaseList.profitability.grossRevenueCents === null ? "—" : `${iskFormat.format(plans.purchaseList.profitability.grossRevenueCents / 100)} ISK`}</strong></span>
             <span><small>{t.productionPlanning.replacementCost}</small><strong>{plans.purchaseList.profitability.materialReplacementCostCents === null ? "—" : `${iskFormat.format(plans.purchaseList.profitability.materialReplacementCostCents / 100)} ISK`}</strong></span>
             <span><small>{t.productionPlanning.fullProductionCost}</small><strong>{plans.purchaseList.profitability.totalProductionCostCents === null ? "—" : `${iskFormat.format(plans.purchaseList.profitability.totalProductionCostCents / 100)} ISK`}</strong></span>
             <span className={plans.purchaseList.profitability.grossProfitCents !== null && plans.purchaseList.profitability.grossProfitCents < 0 ? "production-profitability-summary__negative" : "production-capital-summary__total"}><small>{t.productionPlanning.grossProfit}</small><strong>{plans.purchaseList.profitability.grossProfitCents === null ? "—" : `${iskFormat.format(plans.purchaseList.profitability.grossProfitCents / 100)} ISK`}</strong>{plans.purchaseList.profitability.grossMarginBasisPoints !== null && <small>{t.productionPlanning.grossMargin.replace("{margin}", (plans.purchaseList.profitability.grossMarginBasisPoints / 100).toLocaleString(locale === "de" ? "de-DE" : "en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }))}</small>}</span>
+            <span><small>{t.productionPlanning.totalTradeCosts}</small><strong>{plans.purchaseList.profitability.totalTradeCostCents === null ? "—" : `${iskFormat.format(plans.purchaseList.profitability.totalTradeCostCents / 100)} ISK`}</strong>{plans.purchaseList.profitability.brokerFeeCents !== null && plans.purchaseList.profitability.salesTaxCents !== null && <small>{t.productionPlanning.tradeCostBreakdown.replace("{broker}", iskFormat.format(plans.purchaseList.profitability.brokerFeeCents / 100)).replace("{tax}", iskFormat.format(plans.purchaseList.profitability.salesTaxCents / 100))}</small>}</span>
+            <span><small>{t.productionPlanning.netRevenue}</small><strong>{plans.purchaseList.profitability.netRevenueCents === null ? "—" : `${iskFormat.format(plans.purchaseList.profitability.netRevenueCents / 100)} ISK`}</strong></span>
+            <span className={plans.purchaseList.profitability.netProfitCents !== null && plans.purchaseList.profitability.netProfitCents < 0 ? "production-profitability-summary__negative" : "production-capital-summary__total"}><small>{t.productionPlanning.netProfit}</small><strong>{plans.purchaseList.profitability.netProfitCents === null ? "—" : `${iskFormat.format(plans.purchaseList.profitability.netProfitCents / 100)} ISK`}</strong>{plans.purchaseList.profitability.netMarginBasisPoints !== null && <small>{t.productionPlanning.netMargin.replace("{margin}", (plans.purchaseList.profitability.netMarginBasisPoints / 100).toLocaleString(locale === "de" ? "de-DE" : "en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }))}</small>}</span>
           </div>
           {plans.purchaseList.profitability.grossProfitCents === null && plans.purchaseList.profitability.state !== "empty" && <p className="production-purchase-list__empty">{t.productionPlanning.profitabilityUnavailable}</p>}
-          {plans.purchaseList.profitability.state !== "empty" && <p className="production-purchase-list__warning"><AlertTriangle size={14} />{t.productionPlanning.tradeFeesExcluded}</p>}
+          {plans.purchaseList.profitability.state !== "empty" && <p className="production-purchase-list__warning"><AlertTriangle size={14} />{plans.purchaseList.profitability.tradeCostState === "unconfigured" ? t.productionPlanning.tradeFeesUnconfigured : plans.purchaseList.profitability.tradeCostState === "unavailable" ? t.productionPlanning.tradeFeesPending : t.productionPlanning.tradeFeesApplied}</p>}
           {plans.purchaseList.profitability.items.length > 0 && <details><summary>{t.productionPlanning.profitabilityTitle} · {numberFormat.format(plans.purchaseList.profitability.items.length)}</summary><ul>{plans.purchaseList.profitability.items.map((item) => <li key={item.typeId}><span><strong>{item.typeName}</strong><small>Type #{item.typeId} · {numberFormat.format(item.planCount)} {t.productionPlanning.plans}</small></span><span><strong>{item.grossRevenueCents === null ? t.productionPlanning.marketPricingStateLabels[item.marketState] : `${iskFormat.format(item.grossRevenueCents / 100)} ISK`}</strong>{item.lowestSellUnitPriceCents !== null && item.competingVolume !== null && <small>{t.productionPlanning.outputReference.replace("{quantity}", numberFormat.format(item.quantity)).replace("{target}", numberFormat.format(item.targetQuantity)).replace("{surplus}", numberFormat.format(item.surplusQuantity)).replace("{price}", iskFormat.format(item.lowestSellUnitPriceCents / 100)).replace("{volume}", numberFormat.format(item.competingVolume))}</small>}</span></li>)}</ul></details>}
           {plans.purchaseList.additionalCapitalNeedCents === null && plans.purchaseList.items.length > 0 && <p className="production-purchase-list__empty">{t.productionPlanning.capitalUnavailable}</p>}
           {plans.purchaseList.unresolvedPlanCount > 0 && <p className="production-purchase-list__warning"><AlertTriangle size={14} />{t.productionPlanning.purchaseIncomplete.replace("{plans}", numberFormat.format(plans.purchaseList.unresolvedPlanCount))}</p>}

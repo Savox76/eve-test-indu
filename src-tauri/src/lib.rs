@@ -1289,7 +1289,17 @@ struct ProductionProfitability {
     total_production_cost_cents: Option<u64>,
     gross_profit_cents: Option<i64>,
     gross_margin_basis_points: Option<i64>,
+    trade_cost_state: String,
+    broker_fee_basis_points: Option<u16>,
+    sales_tax_basis_points: Option<u16>,
+    broker_fee_cents: Option<u64>,
+    sales_tax_cents: Option<u64>,
+    total_trade_cost_cents: Option<u64>,
+    net_revenue_cents: Option<i64>,
+    net_profit_cents: Option<i64>,
+    net_margin_basis_points: Option<i64>,
     profitability_rule: String,
+    trade_cost_rule: String,
     trade_fees_included: bool,
 }
 
@@ -1372,6 +1382,8 @@ struct ProductionPlanQueryResponse {
     market_price_rule: String,
     profitability_applied: bool,
     profitability_rule: String,
+    trade_costs_applied: bool,
+    trade_cost_rule: String,
     installation_costs_applied: bool,
     installation_cost_rule: String,
     remaining_modifiers_applied: bool,
@@ -4515,6 +4527,54 @@ fn production_profitability_is_valid(
                 && value <= JAVASCRIPT_MAX_SAFE_INTEGER as i128)
                 .then_some(value as i64)
         });
+    let trade_costs_configured = profitability.broker_fee_basis_points.is_some()
+        && profitability.sales_tax_basis_points.is_some();
+    let expected_trade_cost_state = if !trade_costs_configured {
+        "unconfigured"
+    } else if gross_revenue.is_none() {
+        "unavailable"
+    } else {
+        "ready"
+    };
+    let basis_point_cost = |basis_points: Option<u16>| -> Option<u64> {
+        let revenue = gross_revenue? as u128;
+        let rate = basis_points? as u128;
+        let value = (revenue.checked_mul(rate)?.checked_add(9_999)?) / 10_000;
+        (value <= JAVASCRIPT_MAX_SAFE_INTEGER as u128).then_some(value as u64)
+    };
+    let broker_fee = (expected_trade_cost_state == "ready")
+        .then(|| basis_point_cost(profitability.broker_fee_basis_points))
+        .flatten();
+    let sales_tax = (expected_trade_cost_state == "ready")
+        .then(|| basis_point_cost(profitability.sales_tax_basis_points))
+        .flatten();
+    let total_trade_cost = broker_fee
+        .zip(sales_tax)
+        .and_then(|(broker, tax)| broker.checked_add(tax))
+        .filter(|value| *value <= JAVASCRIPT_MAX_SAFE_INTEGER);
+    let net_revenue = gross_revenue
+        .zip(total_trade_cost)
+        .and_then(|(revenue, trade_cost)| {
+            let value = revenue as i128 - trade_cost as i128;
+            (value >= -(JAVASCRIPT_MAX_SAFE_INTEGER as i128)
+                && value <= JAVASCRIPT_MAX_SAFE_INTEGER as i128)
+                .then_some(value as i64)
+        });
+    let net_profit = net_revenue.zip(total_cost).and_then(|(revenue, cost)| {
+        let value = revenue as i128 - cost as i128;
+        (value >= -(JAVASCRIPT_MAX_SAFE_INTEGER as i128)
+            && value <= JAVASCRIPT_MAX_SAFE_INTEGER as i128)
+            .then_some(value as i64)
+    });
+    let net_margin = net_profit.zip(gross_revenue).and_then(|(profit, revenue)| {
+        if revenue == 0 {
+            return None;
+        }
+        let value = (profit as i128 * 10_000_i128) / revenue as i128;
+        (value >= -(JAVASCRIPT_MAX_SAFE_INTEGER as i128)
+            && value <= JAVASCRIPT_MAX_SAFE_INTEGER as i128)
+            .then_some(value as i64)
+    });
     let state_shape = match profitability.state.as_str() {
         "empty" => {
             profitability.items.is_empty()
@@ -4580,9 +4640,24 @@ fn production_profitability_is_valid(
         && profitability.total_production_cost_cents == total_cost
         && profitability.gross_profit_cents == gross_profit
         && profitability.gross_margin_basis_points == gross_margin
+        && profitability
+            .broker_fee_basis_points
+            .is_none_or(|value| value <= 10_000)
+        && profitability
+            .sales_tax_basis_points
+            .is_none_or(|value| value <= 10_000)
+        && profitability.trade_cost_state == expected_trade_cost_state
+        && profitability.broker_fee_cents == broker_fee
+        && profitability.sales_tax_cents == sales_tax
+        && profitability.total_trade_cost_cents == total_trade_cost
+        && profitability.net_revenue_cents == net_revenue
+        && profitability.net_profit_cents == net_profit
+        && profitability.net_margin_basis_points == net_margin
         && profitability.profitability_rule
-            == "filtered-plans-full-material-replacement-plus-installation-vs-lowest-sell-reference-before-trade-fees"
-        && !profitability.trade_fees_included
+            == "filtered-plans-full-material-replacement-plus-installation-and-explicit-trade-costs-vs-lowest-sell-reference"
+        && profitability.trade_cost_rule
+            == "ceil-gross-revenue-times-explicit-basis-points-per-fee"
+        && profitability.trade_fees_included == (expected_trade_cost_state == "ready")
         && state_shape
         && profitability.items.iter().all(|item| {
             let ready = item.market_state == "ready"
@@ -4853,7 +4928,10 @@ fn production_plan_query_response_is_valid(response: &ProductionPlanQueryRespons
             == "selected-hub-lowest-sell-orders-volume-weighted-cents"
         && response.profitability_applied
         && response.profitability_rule
-            == "filtered-plans-full-material-replacement-plus-installation-vs-lowest-sell-reference-before-trade-fees"
+            == "filtered-plans-full-material-replacement-plus-installation-and-explicit-trade-costs-vs-lowest-sell-reference"
+        && response.trade_costs_applied
+        && response.trade_cost_rule
+            == "ceil-gross-revenue-times-explicit-basis-points-per-fee"
         && response.installation_costs_applied
         && response.installation_cost_rule
             == "base-material-adjusted-price-times-runs-system-index-plus-explicit-tax-plus-scc-4-percent-ceil"
@@ -6778,6 +6856,8 @@ fn query_production_plans(
     sort_by: String,
     sort_direction: String,
     market_hub_id: String,
+    broker_fee_basis_points: Option<u16>,
+    sales_tax_basis_points: Option<u16>,
     state: State<'_, RuntimeState>,
 ) -> Result<String, String> {
     if search.chars().count() > MAX_ASSET_SEARCH_CHARACTERS
@@ -6796,6 +6876,8 @@ fn query_production_plans(
         || !PRODUCTION_PLAN_SORT_FIELDS.contains(&sort_by.as_str())
         || !SORT_DIRECTIONS.contains(&sort_direction.as_str())
         || !MARKET_HUB_IDS.contains(&market_hub_id.as_str())
+        || broker_fee_basis_points.is_some_and(|value| value > 10_000)
+        || sales_tax_basis_points.is_some_and(|value| value > 10_000)
     {
         return Err("production-plan-query-invalid".to_owned());
     }
@@ -6810,6 +6892,8 @@ fn query_production_plans(
         "sortBy": sort_by,
         "sortDirection": sort_direction,
         "marketHubId": market_hub_id,
+        "brokerFeeBasisPoints": broker_fee_basis_points,
+        "salesTaxBasisPoints": sales_tax_basis_points,
     })
     .to_string();
     let response = {
@@ -6829,6 +6913,8 @@ fn query_production_plans(
         || page.offset != offset
         || page.limit != limit
         || page.purchase_list.market_hub.hub_id != market_hub_id
+        || page.purchase_list.profitability.broker_fee_basis_points != broker_fee_basis_points
+        || page.purchase_list.profitability.sales_tax_basis_points != sales_tax_basis_points
     {
         return Err("sidecar-response-invalid".to_owned());
     }

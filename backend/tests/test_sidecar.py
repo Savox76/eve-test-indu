@@ -711,6 +711,8 @@ class SidecarIntegrationTests(unittest.TestCase):
                     "state": None, "offset": 0, "limit": 50,
                     "sortBy": "priority", "sortDirection": "desc",
                     "marketHubId": "jita",
+                    "brokerFeeBasisPoints": None,
+                    "salesTaxBasisPoints": None,
                 }).encode(),
                 method="POST",
                 headers={
@@ -749,6 +751,7 @@ class SidecarIntegrationTests(unittest.TestCase):
                 "job-wide-ceil-industry-4-advanced-industry-3-reactions-4-active-levels",
             )
             self.assertTrue(production_plans["marketPricesApplied"])
+            self.assertTrue(production_plans["tradeCostsApplied"])
             self.assertEqual(
                 production_plans["purchaseList"]["marketHub"]["hubId"],
                 "jita",

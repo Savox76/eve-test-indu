@@ -95,6 +95,8 @@ def query(**changes: object) -> dict:
         "sortBy": "priority",
         "sortDirection": "desc",
         "marketHubId": "jita",
+        "brokerFeeBasisPoints": None,
+        "salesTaxBasisPoints": None,
     }
     result.update(changes)
     return result
@@ -843,7 +845,17 @@ class ProductionPlanningTests(unittest.TestCase):
             [101, 900],
         )
 
-        purchase = query_production_plans(self.db, query())["purchaseList"]
+        unconfigured = query_production_plans(self.db, query())["purchaseList"][
+            "profitability"
+        ]
+        self.assertEqual(unconfigured["tradeCostState"], "unconfigured")
+        self.assertIsNone(unconfigured["netProfitCents"])
+        self.assertFalse(unconfigured["tradeFeesIncluded"])
+
+        purchase = query_production_plans(
+            self.db,
+            query(brokerFeeBasisPoints=300, salesTaxBasisPoints=360),
+        )["purchaseList"]
         profitability = purchase["profitability"]
         self.assertEqual(purchase["totalPurchaseCostCents"], 1_700)
         self.assertEqual(purchase["additionalCapitalNeedCents"], 10_500)
@@ -858,7 +870,16 @@ class ProductionPlanningTests(unittest.TestCase):
         self.assertEqual(profitability["totalProductionCostCents"], 11_500)
         self.assertEqual(profitability["grossProfitCents"], 28_500)
         self.assertEqual(profitability["grossMarginBasisPoints"], 7_125)
-        self.assertFalse(profitability["tradeFeesIncluded"])
+        self.assertEqual(profitability["tradeCostState"], "ready")
+        self.assertEqual(profitability["brokerFeeBasisPoints"], 300)
+        self.assertEqual(profitability["salesTaxBasisPoints"], 360)
+        self.assertEqual(profitability["brokerFeeCents"], 1_200)
+        self.assertEqual(profitability["salesTaxCents"], 1_440)
+        self.assertEqual(profitability["totalTradeCostCents"], 2_640)
+        self.assertEqual(profitability["netRevenueCents"], 37_360)
+        self.assertEqual(profitability["netProfitCents"], 25_860)
+        self.assertEqual(profitability["netMarginBasisPoints"], 6_465)
+        self.assertTrue(profitability["tradeFeesIncluded"])
         self.assertEqual(
             profitability["items"],
             [{
@@ -2242,6 +2263,8 @@ class ProductionPlanningTests(unittest.TestCase):
             query(sortBy="quantity"),
             query(ownerCharacterId=True),
             query(marketHubId="unknown"),
+            query(brokerFeeBasisPoints=-1),
+            query(salesTaxBasisPoints=10_001),
         ]
         for payload in invalid_queries:
             with self.subTest(payload=payload):

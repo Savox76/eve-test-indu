@@ -521,6 +521,29 @@ select:focus-visible {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
+.production-trade-cost-controls {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.3fr) minmax(150px, 0.3fr) minmax(260px, 1fr);
+  align-items: end;
+  gap: 12px;
+  padding: 10px;
+  border: 1px solid #303a32;
+  border-radius: 5px;
+  background: #171d19;
+}
+
+.production-trade-cost-controls label {
+  display: grid;
+  gap: 5px;
+}
+
+.production-trade-cost-controls label > span,
+.production-trade-cost-controls p {
+  margin: 0;
+  color: #929e94;
+  font-size: var(--font-size-2xs);
+}
+
 .production-profitability-summary__negative strong {
   color: #e59a89;
 }
@@ -575,6 +598,7 @@ select:focus-visible {
 
 @media (max-width: 880px) {
   .production-market-controls,
+  .production-trade-cost-controls,
   .production-capital-summary,
   .production-profitability-summary {
     grid-template-columns: 1fr;
