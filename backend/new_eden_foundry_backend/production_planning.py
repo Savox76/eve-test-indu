@@ -61,9 +61,10 @@ SUPPLY_MODE_RULE = "stock-first-before-recursive-build"
 FACILITY_MODIFIER_RULE = "explicit-basis-points-combined-before-single-ceil"
 PURCHASE_LIST_RULE = "filtered-plans-sum-missing-by-type"
 PROFITABILITY_RULE = (
-    "filtered-plans-full-material-replacement-plus-installation-vs-"
-    "lowest-sell-reference-before-trade-fees"
+    "filtered-plans-full-material-replacement-plus-installation-and-explicit-"
+    "trade-costs-vs-lowest-sell-reference"
 )
+TRADE_COST_RULE = "ceil-gross-revenue-times-explicit-basis-points-per-fee"
 SCC_SURCHARGE_BASIS_POINTS = 400
 INSTALLATION_COST_RULE = (
     "base-material-adjusted-price-times-runs-system-index-plus-explicit-tax-"
@@ -234,6 +235,8 @@ def validate_production_plan_query(payload: Any) -> dict[str, Any]:
         "sortBy",
         "sortDirection",
         "marketHubId",
+        "brokerFeeBasisPoints",
+        "salesTaxBasisPoints",
     }
     if not isinstance(payload, Mapping) or set(payload) != expected:
         raise ProductionPlanningError("production_plan_query_invalid")
@@ -244,6 +247,8 @@ def validate_production_plan_query(payload: Any) -> dict[str, Any]:
     owner = payload["ownerCharacterId"]
     activity = payload["activity"]
     state = payload["state"]
+    broker_fee = payload["brokerFeeBasisPoints"]
+    sales_tax = payload["salesTaxBasisPoints"]
     try:
         selected_market_hub = market_hub(payload["marketHubId"])
     except MarketPriceError as error:
@@ -260,6 +265,10 @@ def validate_production_plan_query(payload: Any) -> dict[str, Any]:
         or payload["limit"] > MAX_PAGE_SIZE
         or payload["sortBy"] not in PLAN_SORT_FIELDS
         or payload["sortDirection"] not in SORT_DIRECTIONS
+        or broker_fee is not None
+        and (not _non_negative_int(broker_fee) or broker_fee > 10_000)
+        or sales_tax is not None
+        and (not _non_negative_int(sales_tax) or sales_tax > 10_000)
     ):
         raise ProductionPlanningError("production_plan_query_invalid")
     return {
@@ -2946,6 +2955,8 @@ def _profitability(
     installation_state: str,
     installation_cost: int,
     unresolved_plan_count: int,
+    broker_fee_basis_points: int | None,
+    sales_tax_basis_points: int | None,
 ) -> dict[str, Any]:
     """Compare full replacement cost with a lowest-sell market reference."""
 
@@ -3103,6 +3114,55 @@ def _profitability(
             -unsigned_margin if gross_profit_cents < 0 else unsigned_margin
         )
 
+    trade_costs_configured = (
+        broker_fee_basis_points is not None and sales_tax_basis_points is not None
+    )
+    trade_cost_state = (
+        "unconfigured"
+        if not trade_costs_configured
+        else "unavailable"
+        if gross_revenue_cents is None
+        else "ready"
+    )
+    broker_fee_cents = None
+    sales_tax_cents = None
+    total_trade_cost_cents = None
+    net_revenue_cents = None
+    net_profit_cents = None
+    net_margin_basis_points = None
+    if trade_cost_state == "ready":
+        assert gross_revenue_cents is not None
+        assert broker_fee_basis_points is not None
+        assert sales_tax_basis_points is not None
+        broker_fee_cents = (
+            gross_revenue_cents * broker_fee_basis_points + 9_999
+        ) // 10_000
+        sales_tax_cents = (
+            gross_revenue_cents * sales_tax_basis_points + 9_999
+        ) // 10_000
+        if broker_fee_cents > MAX_SAFE_INTEGER or sales_tax_cents > MAX_SAFE_INTEGER:
+            raise ProductionPlanningError("production_profitability_overflow")
+        total_trade_cost_cents = _checked_add(broker_fee_cents, sales_tax_cents)
+        net_revenue_cents = _signed_difference(
+            gross_revenue_cents,
+            total_trade_cost_cents,
+        )
+        if total_production_cost_cents is not None:
+            net_profit_cents = _signed_difference(
+                net_revenue_cents,
+                total_production_cost_cents,
+            )
+            unsigned_net_margin = (
+                abs(net_profit_cents) * 10_000 // gross_revenue_cents
+                if gross_revenue_cents > 0
+                else 0
+            )
+            if unsigned_net_margin > MAX_SAFE_INTEGER:
+                raise ProductionPlanningError("production_profitability_overflow")
+            net_margin_basis_points = (
+                -unsigned_net_margin if net_profit_cents < 0 else unsigned_net_margin
+            )
+
     output_states = [str(item["marketState"]) for item in output_items]
     material_states = [str(quote["marketState"]) for quote in material_quotes]
     source = market_snapshot
@@ -3147,8 +3207,18 @@ def _profitability(
         "totalProductionCostCents": total_production_cost_cents,
         "grossProfitCents": gross_profit_cents,
         "grossMarginBasisPoints": gross_margin_basis_points,
+        "tradeCostState": trade_cost_state,
+        "brokerFeeBasisPoints": broker_fee_basis_points,
+        "salesTaxBasisPoints": sales_tax_basis_points,
+        "brokerFeeCents": broker_fee_cents,
+        "salesTaxCents": sales_tax_cents,
+        "totalTradeCostCents": total_trade_cost_cents,
+        "netRevenueCents": net_revenue_cents,
+        "netProfitCents": net_profit_cents,
+        "netMarginBasisPoints": net_margin_basis_points,
         "profitabilityRule": PROFITABILITY_RULE,
-        "tradeFeesIncluded": False,
+        "tradeCostRule": TRADE_COST_RULE,
+        "tradeFeesIncluded": trade_cost_state == "ready",
     }
 
 
@@ -3156,6 +3226,9 @@ def _purchase_list(
     records: list[dict[str, Any]],
     market_snapshot: Mapping[str, Any] | None,
     selected_hub: Mapping[str, Any],
+    *,
+    broker_fee_basis_points: int | None,
+    sales_tax_basis_points: int | None,
 ) -> dict[str, Any]:
     """Aggregate shortages and price their immediate purchase at one selected hub."""
 
@@ -3300,6 +3373,8 @@ def _purchase_list(
         installation_state=installation_state,
         installation_cost=installation_cost,
         unresolved_plan_count=unresolved_plan_count,
+        broker_fee_basis_points=broker_fee_basis_points,
+        sales_tax_basis_points=sales_tax_basis_points,
     )
     return {
         "state": state,
@@ -3418,7 +3493,13 @@ def query_production_plans(connection: sqlite3.Connection, raw_query: Any) -> di
         )
     except MarketPriceError as error:
         raise ProductionPlanningError("production_purchase_market_invalid") from error
-    purchase_list = _purchase_list(records, market_snapshot, selected_market_hub)
+    purchase_list = _purchase_list(
+        records,
+        market_snapshot,
+        selected_market_hub,
+        broker_fee_basis_points=query["brokerFeeBasisPoints"],
+        sales_tax_basis_points=query["salesTaxBasisPoints"],
+    )
     sort_keys = {
         "product": lambda item: (str(item["productName"]).casefold(), item["productTypeId"], item["planId"]),
         "owner": lambda item: (str(item["ownerName"]).casefold(), item["ownerCharacterId"], item["planId"]),
@@ -3484,6 +3565,8 @@ def query_production_plans(connection: sqlite3.Connection, raw_query: Any) -> di
         "marketPriceRule": MARKET_PRICE_RULE,
         "profitabilityApplied": True,
         "profitabilityRule": PROFITABILITY_RULE,
+        "tradeCostsApplied": True,
+        "tradeCostRule": TRADE_COST_RULE,
         "installationCostsApplied": True,
         "installationCostRule": INSTALLATION_COST_RULE,
         "remainingModifiersApplied": False,

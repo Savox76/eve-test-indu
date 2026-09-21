@@ -1186,7 +1186,12 @@ describe("desktop runtime status", () => {
           materialReplacementCostCents: 1_600, installationCostCents: null,
           totalProductionCostCents: null, grossProfitCents: null,
           grossMarginBasisPoints: null,
-          profitabilityRule: "filtered-plans-full-material-replacement-plus-installation-vs-lowest-sell-reference-before-trade-fees",
+          tradeCostState: "unconfigured", brokerFeeBasisPoints: null,
+          salesTaxBasisPoints: null, brokerFeeCents: null, salesTaxCents: null,
+          totalTradeCostCents: null, netRevenueCents: null, netProfitCents: null,
+          netMarginBasisPoints: null,
+          profitabilityRule: "filtered-plans-full-material-replacement-plus-installation-and-explicit-trade-costs-vs-lowest-sell-reference",
+          tradeCostRule: "ceil-gross-revenue-times-explicit-basis-points-per-fee",
           tradeFeesIncluded: false } }, buildNumber: "synthetic-production-1",
       inventoryApplied: true, reservationsApplied: true,
       reservationRule: "priority-desc-created-asc-plan-id-asc",
@@ -1207,7 +1212,9 @@ describe("desktop runtime status", () => {
       marketPricesApplied: true,
       marketPriceRule: "selected-hub-lowest-sell-orders-volume-weighted-cents",
       profitabilityApplied: true,
-      profitabilityRule: "filtered-plans-full-material-replacement-plus-installation-vs-lowest-sell-reference-before-trade-fees",
+      profitabilityRule: "filtered-plans-full-material-replacement-plus-installation-and-explicit-trade-costs-vs-lowest-sell-reference",
+      tradeCostsApplied: true,
+      tradeCostRule: "ceil-gross-revenue-times-explicit-basis-points-per-fee",
       installationCostsApplied: true,
       installationCostRule: "base-material-adjusted-price-times-runs-system-index-plus-explicit-tax-plus-scc-4-percent-ceil",
       supplyModesApplied: true,
@@ -1215,7 +1222,8 @@ describe("desktop runtime status", () => {
       remainingModifiersApplied: false };
     invoke.mockResolvedValueOnce(JSON.stringify(page));
     const query = { search: "", ownerCharacterId: null, activity: null, state: null,
-      offset: 0, limit: 50, sortBy: "priority", sortDirection: "desc", marketHubId: "jita" } as const;
+      offset: 0, limit: 50, sortBy: "priority", sortDirection: "desc", marketHubId: "jita",
+      brokerFeeBasisPoints: null, salesTaxBasisPoints: null } as const;
     await expect(loadProductionPlans(query, { isAvailable: () => true, invoke })).resolves.toEqual(page);
     expect(invoke).toHaveBeenLastCalledWith("query_production_plans", expect.objectContaining({
       planState: null, sortBy: "priority", marketHubId: "jita",

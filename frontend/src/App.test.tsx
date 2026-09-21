@@ -538,7 +538,12 @@ const productionPlanPage: ProductionPlanPage = {
       materialReplacementCostCents: null, installationCostCents: null,
       totalProductionCostCents: null, grossProfitCents: null,
       grossMarginBasisPoints: null,
-      profitabilityRule: "filtered-plans-full-material-replacement-plus-installation-vs-lowest-sell-reference-before-trade-fees",
+      tradeCostState: "unconfigured", brokerFeeBasisPoints: null,
+      salesTaxBasisPoints: null, brokerFeeCents: null, salesTaxCents: null,
+      totalTradeCostCents: null, netRevenueCents: null, netProfitCents: null,
+      netMarginBasisPoints: null,
+      profitabilityRule: "filtered-plans-full-material-replacement-plus-installation-and-explicit-trade-costs-vs-lowest-sell-reference",
+      tradeCostRule: "ceil-gross-revenue-times-explicit-basis-points-per-fee",
       tradeFeesIncluded: false } },
   inventoryApplied: true, reservationsApplied: true,
   reservationRule: "priority-desc-created-asc-plan-id-asc",
@@ -559,7 +564,9 @@ const productionPlanPage: ProductionPlanPage = {
   marketPricesApplied: true,
   marketPriceRule: "selected-hub-lowest-sell-orders-volume-weighted-cents",
   profitabilityApplied: true,
-  profitabilityRule: "filtered-plans-full-material-replacement-plus-installation-vs-lowest-sell-reference-before-trade-fees",
+  profitabilityRule: "filtered-plans-full-material-replacement-plus-installation-and-explicit-trade-costs-vs-lowest-sell-reference",
+  tradeCostsApplied: true,
+  tradeCostRule: "ceil-gross-revenue-times-explicit-basis-points-per-fee",
   installationCostsApplied: true,
   installationCostRule: "base-material-adjusted-price-times-runs-system-index-plus-explicit-tax-plus-scc-4-percent-ceil",
   supplyModesApplied: true,
@@ -1237,7 +1244,9 @@ describe("New Eden Foundry design preview", () => {
     expect(await screen.findByText("2 Material- und Produktpreise für Amarr aktualisiert.")).toBeInTheDocument();
   });
 
-  it("shows full replacement cost and gross margin before trade fees", async () => {
+  it("persists explicit trade costs and shows the net production result", async () => {
+    window.localStorage.setItem("new-eden-foundry.ui.production.broker-fee", JSON.stringify(300));
+    window.localStorage.setItem("new-eden-foundry.ui.production.sales-tax", JSON.stringify(360));
     const page: ProductionPlanPage = {
       ...productionPlanPage,
       purchaseList: {
@@ -1256,6 +1265,16 @@ describe("New Eden Foundry design preview", () => {
           totalProductionCostCents: 11_500,
           grossProfitCents: 28_500,
           grossMarginBasisPoints: 7_125,
+          tradeCostState: "ready",
+          brokerFeeBasisPoints: 300,
+          salesTaxBasisPoints: 360,
+          brokerFeeCents: 1_200,
+          salesTaxCents: 1_440,
+          totalTradeCostCents: 2_640,
+          netRevenueCents: 37_360,
+          netProfitCents: 25_860,
+          netMarginBasisPoints: 6_465,
+          tradeFeesIncluded: true,
           fullyPricedMaterialCount: 1,
         },
       },
@@ -1264,13 +1283,19 @@ describe("New Eden Foundry design preview", () => {
       productionPlansLoader={() => Promise.resolve(page)} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Produktion" }));
-    expect((await screen.findAllByText("Verkaufswert und Rohmarge")).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText("Verkaufswert und Nettoergebnis")).length).toBeGreaterThan(0);
     expect(screen.getAllByText("400,00 ISK")).toHaveLength(2);
     expect(screen.getByText("115,00 ISK")).toBeInTheDocument();
     expect(screen.getByText("285,00 ISK")).toBeInTheDocument();
     expect(screen.getByText("Rohmarge 71,25 %")).toBeInTheDocument();
-    expect(screen.getByText(/Brokergebühren und Verkaufssteuer sind noch nicht enthalten/))
+    expect(screen.getByText("26,40 ISK")).toBeInTheDocument();
+    expect(screen.getByText("373,60 ISK")).toBeInTheDocument();
+    expect(screen.getByText("258,60 ISK")).toBeInTheDocument();
+    expect(screen.getByText("Nettomarge 64,65 %")).toBeInTheDocument();
+    expect(screen.getByText(/Brokergebühr und Verkaufssteuer sind mit den eingetragenen Sätzen enthalten/))
       .toBeInTheDocument();
+    window.localStorage.removeItem("new-eden-foundry.ui.production.broker-fee");
+    window.localStorage.removeItem("new-eden-foundry.ui.production.sales-tax");
   });
 
   it("shows the official SCC surcharge separately in complete installation costs", async () => {

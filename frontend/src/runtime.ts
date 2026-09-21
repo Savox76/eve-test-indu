@@ -925,8 +925,18 @@ export interface ProductionProfitability {
   totalProductionCostCents: number | null;
   grossProfitCents: number | null;
   grossMarginBasisPoints: number | null;
-  profitabilityRule: "filtered-plans-full-material-replacement-plus-installation-vs-lowest-sell-reference-before-trade-fees";
-  tradeFeesIncluded: false;
+  tradeCostState: "ready" | "unconfigured" | "unavailable";
+  brokerFeeBasisPoints: number | null;
+  salesTaxBasisPoints: number | null;
+  brokerFeeCents: number | null;
+  salesTaxCents: number | null;
+  totalTradeCostCents: number | null;
+  netRevenueCents: number | null;
+  netProfitCents: number | null;
+  netMarginBasisPoints: number | null;
+  profitabilityRule: "filtered-plans-full-material-replacement-plus-installation-and-explicit-trade-costs-vs-lowest-sell-reference";
+  tradeCostRule: "ceil-gross-revenue-times-explicit-basis-points-per-fee";
+  tradeFeesIncluded: boolean;
 }
 
 export interface ProductionMarketHub {
@@ -1122,6 +1132,8 @@ export interface ProductionPlanQuery {
   sortBy: ProductionPlanSortField;
   sortDirection: SortDirection;
   marketHubId: MarketHubId;
+  brokerFeeBasisPoints: number | null;
+  salesTaxBasisPoints: number | null;
 }
 
 export interface ProductionPlanPage {
@@ -1158,7 +1170,9 @@ export interface ProductionPlanPage {
   marketPricesApplied: true;
   marketPriceRule: "selected-hub-lowest-sell-orders-volume-weighted-cents";
   profitabilityApplied: true;
-  profitabilityRule: "filtered-plans-full-material-replacement-plus-installation-vs-lowest-sell-reference-before-trade-fees";
+  profitabilityRule: "filtered-plans-full-material-replacement-plus-installation-and-explicit-trade-costs-vs-lowest-sell-reference";
+  tradeCostsApplied: true;
+  tradeCostRule: "ceil-gross-revenue-times-explicit-basis-points-per-fee";
   installationCostsApplied: true;
   installationCostRule: "base-material-adjusted-price-times-runs-system-index-plus-explicit-tax-plus-scc-4-percent-ceil";
   remainingModifiersApplied: false;
@@ -4208,7 +4222,11 @@ function validateProductionPlanQuery(query: ProductionPlanQuery): ProductionPlan
     !(query.state === null || productionPlanStates.includes(query.state)) ||
     !isNonNegativeSafeInteger(query.offset) || !Number.isSafeInteger(query.limit) ||
     query.limit < 1 || query.limit > 100 || !productionPlanSortFields.includes(query.sortBy) ||
-    !["asc", "desc"].includes(query.sortDirection) || !marketHubIds.includes(query.marketHubId)
+    !["asc", "desc"].includes(query.sortDirection) || !marketHubIds.includes(query.marketHubId) ||
+    !(query.brokerFeeBasisPoints === null ||
+      isNonNegativeSafeInteger(query.brokerFeeBasisPoints) && query.brokerFeeBasisPoints <= 10_000) ||
+    !(query.salesTaxBasisPoints === null ||
+      isNonNegativeSafeInteger(query.salesTaxBasisPoints) && query.salesTaxBasisPoints <= 10_000)
   ) throw new Error("The production-plan query is invalid.");
   return { ...query, search };
 }
@@ -4256,9 +4274,21 @@ function parseProductionProfitability(candidate: unknown, planCount: number): Pr
       isNonNegativeSafeInteger(candidate.totalProductionCostCents)) ||
     !(candidate.grossProfitCents === null || isSignedSafeInteger(candidate.grossProfitCents)) ||
     !(candidate.grossMarginBasisPoints === null || isSignedSafeInteger(candidate.grossMarginBasisPoints)) ||
+    !["ready", "unconfigured", "unavailable"].includes(String(candidate.tradeCostState)) ||
+    !(candidate.brokerFeeBasisPoints === null ||
+      isNonNegativeSafeInteger(candidate.brokerFeeBasisPoints) && Number(candidate.brokerFeeBasisPoints) <= 10_000) ||
+    !(candidate.salesTaxBasisPoints === null ||
+      isNonNegativeSafeInteger(candidate.salesTaxBasisPoints) && Number(candidate.salesTaxBasisPoints) <= 10_000) ||
+    !(candidate.brokerFeeCents === null || isNonNegativeSafeInteger(candidate.brokerFeeCents)) ||
+    !(candidate.salesTaxCents === null || isNonNegativeSafeInteger(candidate.salesTaxCents)) ||
+    !(candidate.totalTradeCostCents === null || isNonNegativeSafeInteger(candidate.totalTradeCostCents)) ||
+    !(candidate.netRevenueCents === null || isSignedSafeInteger(candidate.netRevenueCents)) ||
+    !(candidate.netProfitCents === null || isSignedSafeInteger(candidate.netProfitCents)) ||
+    !(candidate.netMarginBasisPoints === null || isSignedSafeInteger(candidate.netMarginBasisPoints)) ||
     candidate.profitabilityRule !==
-      "filtered-plans-full-material-replacement-plus-installation-vs-lowest-sell-reference-before-trade-fees" ||
-    candidate.tradeFeesIncluded !== false
+      "filtered-plans-full-material-replacement-plus-installation-and-explicit-trade-costs-vs-lowest-sell-reference" ||
+    candidate.tradeCostRule !== "ceil-gross-revenue-times-explicit-basis-points-per-fee" ||
+    typeof candidate.tradeFeesIncluded !== "boolean"
   ) throw new Error("The native runtime returned invalid production profitability.");
   const items = candidate.items.map((item): ProductionProfitabilityItem => {
     if (
@@ -4302,6 +4332,24 @@ function parseProductionProfitability(candidate: unknown, planCount: number): Pr
     ? readyRevenue - expectedCost : null;
   const expectedMargin = expectedProfit !== null && readyRevenue !== null && readyRevenue > 0
     ? Number(BigInt(expectedProfit) * 10_000n / BigInt(readyRevenue)) : null;
+  const tradeCostsConfigured = candidate.brokerFeeBasisPoints !== null &&
+    candidate.salesTaxBasisPoints !== null;
+  const expectedTradeCostState = !tradeCostsConfigured ? "unconfigured"
+    : readyRevenue === null ? "unavailable" : "ready";
+  const expectedBrokerFee = expectedTradeCostState === "ready" && readyRevenue !== null
+    ? Number((BigInt(readyRevenue) * BigInt(Number(candidate.brokerFeeBasisPoints)) + 9_999n) / 10_000n)
+    : null;
+  const expectedSalesTax = expectedTradeCostState === "ready" && readyRevenue !== null
+    ? Number((BigInt(readyRevenue) * BigInt(Number(candidate.salesTaxBasisPoints)) + 9_999n) / 10_000n)
+    : null;
+  const expectedTradeCost = expectedBrokerFee !== null && expectedSalesTax !== null
+    ? expectedBrokerFee + expectedSalesTax : null;
+  const expectedNetRevenue = readyRevenue !== null && expectedTradeCost !== null
+    ? readyRevenue - expectedTradeCost : null;
+  const expectedNetProfit = expectedNetRevenue !== null && expectedCost !== null
+    ? expectedNetRevenue - expectedCost : null;
+  const expectedNetMargin = expectedNetProfit !== null && readyRevenue !== null && readyRevenue > 0
+    ? Number(BigInt(expectedNetProfit) * 10_000n / BigInt(readyRevenue)) : null;
   if (
     Number(candidate.itemCount) !== items.length + Number(candidate.omittedItemCount) ||
     Number(candidate.totalQuantity) < totalQuantity ||
@@ -4315,6 +4363,14 @@ function parseProductionProfitability(candidate: unknown, planCount: number): Pr
     candidate.totalProductionCostCents !== expectedCost ||
     candidate.grossProfitCents !== expectedProfit ||
     candidate.grossMarginBasisPoints !== expectedMargin ||
+    candidate.tradeCostState !== expectedTradeCostState ||
+    candidate.brokerFeeCents !== expectedBrokerFee ||
+    candidate.salesTaxCents !== expectedSalesTax ||
+    candidate.totalTradeCostCents !== expectedTradeCost ||
+    candidate.netRevenueCents !== expectedNetRevenue ||
+    candidate.netProfitCents !== expectedNetProfit ||
+    candidate.netMarginBasisPoints !== expectedNetMargin ||
+    candidate.tradeFeesIncluded !== (expectedTradeCostState === "ready") ||
     (candidate.state === "empty" && (items.length !== 0 || marketTypeIds.length !== 0 ||
       Number(candidate.omittedItemCount) !== 0 || Number(candidate.omittedMarketTypeCount) !== 0)) ||
     (candidate.state === "ready" && (expectedProfit === null ||
@@ -4480,7 +4536,9 @@ function parseProductionPlanPage(candidate: unknown): ProductionPlanPage {
     candidate.marketPriceRule !== "selected-hub-lowest-sell-orders-volume-weighted-cents" ||
     candidate.profitabilityApplied !== true ||
     candidate.profitabilityRule !==
-      "filtered-plans-full-material-replacement-plus-installation-vs-lowest-sell-reference-before-trade-fees" ||
+      "filtered-plans-full-material-replacement-plus-installation-and-explicit-trade-costs-vs-lowest-sell-reference" ||
+    candidate.tradeCostsApplied !== true ||
+    candidate.tradeCostRule !== "ceil-gross-revenue-times-explicit-basis-points-per-fee" ||
     candidate.installationCostsApplied !== true ||
     candidate.installationCostRule !==
       "base-material-adjusted-price-times-runs-system-index-plus-explicit-tax-" +
@@ -4541,8 +4599,15 @@ export async function loadProductionPlans(
         materialReplacementCostCents: 0, installationCostCents: null,
         totalProductionCostCents: null, grossProfitCents: null,
         grossMarginBasisPoints: null,
+        tradeCostState: validated.brokerFeeBasisPoints === null || validated.salesTaxBasisPoints === null
+          ? "unconfigured" : "unavailable",
+        brokerFeeBasisPoints: validated.brokerFeeBasisPoints,
+        salesTaxBasisPoints: validated.salesTaxBasisPoints,
+        brokerFeeCents: null, salesTaxCents: null, totalTradeCostCents: null,
+        netRevenueCents: null, netProfitCents: null, netMarginBasisPoints: null,
         profitabilityRule:
-          "filtered-plans-full-material-replacement-plus-installation-vs-lowest-sell-reference-before-trade-fees",
+          "filtered-plans-full-material-replacement-plus-installation-and-explicit-trade-costs-vs-lowest-sell-reference",
+        tradeCostRule: "ceil-gross-revenue-times-explicit-basis-points-per-fee",
         tradeFeesIncluded: false,
       },
     }, buildNumber: null, inventoryApplied: true,
@@ -4568,7 +4633,9 @@ export async function loadProductionPlans(
     marketPriceRule: "selected-hub-lowest-sell-orders-volume-weighted-cents",
     profitabilityApplied: true,
     profitabilityRule:
-      "filtered-plans-full-material-replacement-plus-installation-vs-lowest-sell-reference-before-trade-fees",
+      "filtered-plans-full-material-replacement-plus-installation-and-explicit-trade-costs-vs-lowest-sell-reference",
+    tradeCostsApplied: true,
+    tradeCostRule: "ceil-gross-revenue-times-explicit-basis-points-per-fee",
     installationCostsApplied: true,
     installationCostRule: "base-material-adjusted-price-times-runs-system-index-plus-explicit-tax-plus-scc-4-percent-ceil",
     remainingModifiersApplied: false,
@@ -4578,9 +4645,13 @@ export async function loadProductionPlans(
     activity: validated.activity, planState: validated.state, offset: validated.offset,
     limit: validated.limit, sortBy: validated.sortBy, sortDirection: validated.sortDirection,
     marketHubId: validated.marketHubId,
+    brokerFeeBasisPoints: validated.brokerFeeBasisPoints,
+    salesTaxBasisPoints: validated.salesTaxBasisPoints,
   })));
   if (page.offset !== validated.offset || page.limit !== validated.limit ||
-      page.purchaseList.marketHub.hubId !== validated.marketHubId) {
+      page.purchaseList.marketHub.hubId !== validated.marketHubId ||
+      page.purchaseList.profitability.brokerFeeBasisPoints !== validated.brokerFeeBasisPoints ||
+      page.purchaseList.profitability.salesTaxBasisPoints !== validated.salesTaxBasisPoints) {
     throw new Error("The native runtime returned a different production-plan window.");
   }
   return page;
