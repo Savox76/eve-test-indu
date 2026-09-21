@@ -337,6 +337,8 @@ def main() -> int:
                     "search": "", "ownerCharacterId": None, "activity": None,
                     "state": None, "offset": 0, "limit": 50,
                     "marketHubId": "jita",
+                    "brokerFeeBasisPoints": None,
+                    "salesTaxBasisPoints": None,
                     "sortBy": "priority", "sortDirection": "desc",
                 }).encode("utf-8"),
                 method="POST",
@@ -364,6 +366,9 @@ def main() -> int:
                 or production_plans.get("characterSkillTimeRule")
                 != "job-wide-ceil-industry-4-advanced-industry-3-reactions-4-active-levels"
                 or production_plans.get("remainingModifiersApplied") is not False
+                or production_plans.get("tradeCostsApplied") is not True
+                or production_plans.get("tradeCostRule")
+                != "ceil-gross-revenue-times-explicit-basis-points-per-fee"
             ):
                 raise RuntimeError("The packaged production-plan query is invalid.")
 
