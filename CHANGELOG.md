@@ -6,11 +6,34 @@ Alle bemerkenswerten Änderungen an New Eden Foundry werden hier festgehalten. D
 
 ### Neu hinzugefügt
 
+- Keine.
+
+### Geändert
+
+- Keine.
+
+### Behobene Fehler
+
+- Keine.
+
+### Bekannte Einschränkungen
+
+- Keine.
+
+### Update und Datenbankmigration
+
+- Keine.
+
+## 0.2.0-alpha.19 – 21. September 2026
+
+### Neu hinzugefügt
+
 - Paket 46 ergänzt ausdrücklich konfigurierbare Brokergebühr und Verkaufssteuer sowie daraus berechnete Handelskosten, Nettoerlös, Nettogewinn oder -verlust und Nettomarge.
 - Die Brutto- und Nettowerte bleiben parallel sichtbar; beide Gebühren werden getrennt und nachvollziehbar auf Cent aufgerundet.
 
 ### Geändert
 
+- Die sichtbare Versionsnummer lautet `v0.2.0-alpha.19`.
 - Die persönlichen Gebührensätze werden in Hundertstelprozent lokal gespeichert. Leere Felder bleiben unbekannt und werden nicht als 0 Prozent ausgelegt.
 
 ### Behobene Fehler
@@ -21,10 +44,12 @@ Alle bemerkenswerten Änderungen an New Eden Foundry werden hier festgehalten. D
 
 - Gebührensätze werden noch nicht automatisch aus Skills, Standings oder Strukturbetreiberwerten abgeleitet; erneute Einstellgebühren sind nicht enthalten.
 - Automatischer Hubvergleich, Buy Orders, Transportkosten und automatisch erkannte Struktur-/Service-/Rigmodifikatoren sind nicht enthalten.
+- Die Alpha ist noch nicht produktiv code-signiert; SmartScreen kann deshalb weiterhin vor einem unbekannten Herausgeber warnen.
 
 ### Update und Datenbankmigration
 
 - Das Datenbankschema bleibt bei Version 14; bestehende Charaktere, Einstellungen, Ziele und Snapshots bleiben unverändert erhalten.
+- Für ein Installer-Update die Anwendung vollständig schließen und die Option zum Löschen der Anwendungsdaten abgewählt lassen. Für ein portables Update die neue Alpha in einen neuen Ordner entpacken und den bisherigen `data`-Ordner bei geschlossener Anwendung übernehmen.
 
 ## 0.2.0-alpha.18 – 20. September 2026
 
