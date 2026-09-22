@@ -52,6 +52,7 @@ MAX_STEP_SUPPLY_MODES = MAX_PLAN_STEPS - 1
 MAX_PRODUCTION_FACILITIES = 200
 MAX_PRODUCTION_MATERIAL_LOCATIONS = 200
 MAX_PURCHASE_LIST_ITEMS = 1_000
+MAX_BLUEPRINT_PROFITABILITY_PLANS = 100
 MAX_FACILITY_BONUS_BASIS_POINTS = 5_000
 RESERVATION_RULE = "priority-desc-created-asc-plan-id-asc"
 MATERIAL_EFFICIENCY_RULE = "max-runs-ceil-base-runs-percent"
@@ -63,10 +64,13 @@ CHARACTER_SKILL_TIME_RULE = (
 FACILITY_EVIDENCE_RULE = "assigned-blueprint-before-active-before-latest-owner-job"
 SUPPLY_MODE_RULE = "stock-first-before-recursive-build"
 FACILITY_MODIFIER_RULE = "explicit-basis-points-combined-before-single-ceil"
-PURCHASE_LIST_RULE = "filtered-plans-sum-missing-by-type"
+PURCHASE_LIST_RULE = "selected-plan-conflict-free-shortage-by-type"
 PROFITABILITY_RULE = (
-    "filtered-plans-full-material-replacement-plus-installation-and-automatic-or-explicit-"
+    "selected-plan-full-material-replacement-plus-installation-and-automatic-or-explicit-"
     "trade-costs-vs-lowest-sell-reference"
+)
+BLUEPRINT_PROFITABILITY_RULE = (
+    "configured-production-goals-exact-plan-per-hub-net-profit"
 )
 TRADE_COST_RULE = "ceil-gross-revenue-times-manual-or-npc-station-character-rate-at-1e10-scale-per-fee"
 TRADE_RATE_SCALE = 10_000_000_000
@@ -262,6 +266,8 @@ def validate_production_plan_query(payload: Any) -> dict[str, Any]:
         "salesCharacterId",
         "brokerFeeBasisPoints",
         "salesTaxBasisPoints",
+        "analysisPlanId",
+        "includeBlueprintProfitability",
     }
     if not isinstance(payload, Mapping) or set(payload) != expected:
         raise ProductionPlanningError("production_plan_query_invalid")
@@ -276,6 +282,7 @@ def validate_production_plan_query(payload: Any) -> dict[str, Any]:
     sales_character_id = payload["salesCharacterId"]
     broker_fee = payload["brokerFeeBasisPoints"]
     sales_tax = payload["salesTaxBasisPoints"]
+    analysis_plan_id = payload["analysisPlanId"]
     try:
         selected_market_hub = market_hub(payload["marketHubId"])
     except MarketPriceError as error:
@@ -301,6 +308,9 @@ def validate_production_plan_query(payload: Any) -> dict[str, Any]:
         and (not _non_negative_int(sales_tax) or sales_tax > 10_000)
         or trade_cost_mode == "automatic"
         and (broker_fee is not None or sales_tax is not None)
+        or analysis_plan_id is not None
+        and not _positive_int(analysis_plan_id)
+        or not isinstance(payload["includeBlueprintProfitability"], bool)
     ):
         raise ProductionPlanningError("production_plan_query_invalid")
     return {
@@ -3595,6 +3605,163 @@ def _purchase_list(
     }
 
 
+def _analysis_plan_option(record: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "planId": int(record["planId"]),
+        "ownerCharacterId": int(record["ownerCharacterId"]),
+        "ownerName": str(record["ownerName"]),
+        "blueprintTypeId": int(record["blueprintTypeId"]),
+        "blueprintName": str(record["blueprintName"]),
+        "productTypeId": int(record["productTypeId"]),
+        "productName": str(record["productName"]),
+        "targetQuantity": int(record["targetQuantity"]),
+    }
+
+
+def _blueprint_profitability(
+    connection: sqlite3.Connection,
+    records: list[dict[str, Any]],
+    *,
+    trade_cost_mode: str,
+    sales_character_id: int | None,
+    broker_fee_basis_points: int | None,
+    sales_tax_basis_points: int | None,
+) -> dict[str, Any]:
+    """Compare configured production goals at every supported NPC trade hub."""
+
+    ordered = sorted(
+        records,
+        key=lambda item: (
+            str(item["productName"]).casefold(),
+            str(item["ownerName"]).casefold(),
+            int(item["planId"]),
+        ),
+    )
+    visible = ordered[:MAX_BLUEPRINT_PROFITABILITY_PLANS]
+    omitted_item_count = len(ordered) - len(visible)
+    all_market_type_ids = sorted(
+        {
+            type_id
+            for record in visible
+            for type_id in (
+                [int(record["productTypeId"])]
+                + [int(material["typeId"]) for material in record["grossMaterials"]]
+            )
+        }
+    )
+    market_type_ids = all_market_type_ids[:MAX_MARKET_TYPE_IDS]
+    hub_sources: dict[str, tuple[dict[str, Any] | None, dict[str, Any]]] = {}
+    for hub_value in MARKET_HUBS:
+        hub = dict(hub_value)
+        hub_id = str(hub["hubId"])
+        try:
+            snapshot = latest_market_price_snapshot(connection, hub_id)
+        except MarketPriceError as error:
+            raise ProductionPlanningError("production_purchase_market_invalid") from error
+        evidence = _trade_cost_evidence(
+            connection,
+            mode=trade_cost_mode,
+            sales_character_id=sales_character_id,
+            selected_hub=hub,
+            broker_fee_basis_points=broker_fee_basis_points,
+            sales_tax_basis_points=sales_tax_basis_points,
+        )
+        hub_sources[hub_id] = (snapshot, evidence)
+
+    items: list[dict[str, Any]] = []
+    comparison_states: list[str] = []
+    for record in visible:
+        comparisons: list[dict[str, Any]] = []
+        for hub_value in MARKET_HUBS:
+            hub = dict(hub_value)
+            hub_id = str(hub["hubId"])
+            snapshot, evidence = hub_sources[hub_id]
+            purchase = _purchase_list(
+                [record],
+                snapshot,
+                hub,
+                trade_cost_evidence=evidence,
+            )
+            profitability = purchase["profitability"]
+            comparison_states.append(str(profitability["state"]))
+            comparisons.append(
+                {
+                    "hubId": hub_id,
+                    "hubName": str(hub["name"]),
+                    "pricingState": str(purchase["pricingState"]),
+                    "profitabilityState": str(profitability["state"]),
+                    "tradeCostState": str(profitability["tradeCostState"]),
+                    "grossRevenueCents": profitability["grossRevenueCents"],
+                    "materialReplacementCostCents": profitability[
+                        "materialReplacementCostCents"
+                    ],
+                    "installationCostCents": profitability["installationCostCents"],
+                    "totalProductionCostCents": profitability[
+                        "totalProductionCostCents"
+                    ],
+                    "brokerFeeCents": profitability["brokerFeeCents"],
+                    "salesTaxCents": profitability["salesTaxCents"],
+                    "totalTradeCostCents": profitability["totalTradeCostCents"],
+                    "netProfitCents": profitability["netProfitCents"],
+                    "netMarginBasisPoints": profitability[
+                        "netMarginBasisPoints"
+                    ],
+                    "marketObservedAt": purchase["marketObservedAt"],
+                }
+            )
+        profitable = [
+            comparison
+            for comparison in comparisons
+            if comparison["netProfitCents"] is not None
+        ]
+        best_hub_id = (
+            None
+            if not profitable
+            else str(
+                max(
+                    profitable,
+                    key=lambda comparison: int(comparison["netProfitCents"]),
+                )["hubId"]
+            )
+        )
+        items.append(
+            {
+                **_analysis_plan_option(record),
+                "blueprintItemId": record["blueprintItemId"],
+                "appliedMaterialEfficiency": record["appliedMaterialEfficiency"],
+                "appliedTimeEfficiency": record["appliedTimeEfficiency"],
+                "comparisons": comparisons,
+                "bestHubId": best_hub_id,
+            }
+        )
+
+    state = (
+        "empty"
+        if not items
+        else "ready"
+        if omitted_item_count == 0
+        and comparison_states
+        and all(value == "ready" for value in comparison_states)
+        and all(
+            comparison["netProfitCents"] is not None
+            for item in items
+            for comparison in item["comparisons"]
+        )
+        else "partial"
+    )
+    return {
+        "state": state,
+        "items": items,
+        "itemCount": len(ordered),
+        "omittedItemCount": omitted_item_count,
+        "marketTypeIds": market_type_ids,
+        "marketTypeCount": len(all_market_type_ids),
+        "omittedMarketTypeCount": len(all_market_type_ids) - len(market_type_ids),
+        "marketPriceTypeLimit": MAX_MARKET_TYPE_IDS,
+        "rule": BLUEPRINT_PROFITABILITY_RULE,
+    }
+
+
 def query_production_plans(connection: sqlite3.Connection, raw_query: Any) -> dict[str, Any]:
     query = validate_production_plan_query(raw_query)
     build_number = current_sde_blueprint_activity_build(connection)
@@ -3675,6 +3842,30 @@ def query_production_plans(connection: sqlite3.Connection, raw_query: Any) -> di
     summary = {state: sum(record["state"] == state for record in records) for state in PLAN_STATES}
     if query["state"] is not None:
         records = [record for record in records if record["state"] == query["state"]]
+    analysis_records = list(records)
+    analysis_plans = [
+        _analysis_plan_option(record)
+        for record in sorted(
+            analysis_records,
+            key=lambda item: (
+                str(item["productName"]).casefold(),
+                str(item["ownerName"]).casefold(),
+                int(item["planId"]),
+            ),
+        )
+    ]
+    requested_analysis_plan_id = query["analysisPlanId"]
+    analysis_record = next(
+        (
+            record
+            for record in analysis_records
+            if int(record["planId"]) == requested_analysis_plan_id
+        ),
+        None,
+    )
+    analysis_plan_id = (
+        None if analysis_record is None else int(analysis_record["planId"])
+    )
     try:
         selected_market_hub = market_hub(query["marketHubId"])
         market_snapshot = latest_market_price_snapshot(
@@ -3692,10 +3883,22 @@ def query_production_plans(connection: sqlite3.Connection, raw_query: Any) -> di
         sales_tax_basis_points=query["salesTaxBasisPoints"],
     )
     purchase_list = _purchase_list(
-        records,
+        [] if analysis_record is None else [analysis_record],
         market_snapshot,
         selected_market_hub,
         trade_cost_evidence=trade_cost_evidence,
+    )
+    blueprint_profitability = (
+        _blueprint_profitability(
+            connection,
+            analysis_records,
+            trade_cost_mode=str(query["tradeCostMode"]),
+            sales_character_id=query["salesCharacterId"],
+            broker_fee_basis_points=query["brokerFeeBasisPoints"],
+            sales_tax_basis_points=query["salesTaxBasisPoints"],
+        )
+        if query["includeBlueprintProfitability"]
+        else None
     )
     sort_keys = {
         "product": lambda item: (str(item["productName"]).casefold(), item["productTypeId"], item["planId"]),
@@ -3737,7 +3940,10 @@ def query_production_plans(connection: sqlite3.Connection, raw_query: Any) -> di
         "activities": list(SUPPORTED_BLUEPRINT_ACTIVITIES),
         "states": list(PLAN_STATES),
         "summary": summary,
+        "analysisPlanId": analysis_plan_id,
+        "analysisPlans": analysis_plans,
         "purchaseList": purchase_list,
+        "blueprintProfitability": blueprint_profitability,
         "buildNumber": build_number,
         "inventoryApplied": True,
         "reservationsApplied": True,
@@ -3762,6 +3968,8 @@ def query_production_plans(connection: sqlite3.Connection, raw_query: Any) -> di
         "marketPriceRule": MARKET_PRICE_RULE,
         "profitabilityApplied": True,
         "profitabilityRule": PROFITABILITY_RULE,
+        "blueprintProfitabilityApplied": query["includeBlueprintProfitability"],
+        "blueprintProfitabilityRule": BLUEPRINT_PROFITABILITY_RULE,
         "tradeCostsApplied": True,
         "tradeCostRule": TRADE_COST_RULE,
         "installationCostsApplied": True,

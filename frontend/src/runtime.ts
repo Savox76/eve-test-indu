@@ -962,7 +962,7 @@ export interface ProductionProfitability {
   netRevenueCents: number | null;
   netProfitCents: number | null;
   netMarginBasisPoints: number | null;
-  profitabilityRule: "filtered-plans-full-material-replacement-plus-installation-and-automatic-or-explicit-trade-costs-vs-lowest-sell-reference";
+  profitabilityRule: "selected-plan-full-material-replacement-plus-installation-and-automatic-or-explicit-trade-costs-vs-lowest-sell-reference";
   tradeCostRule: "ceil-gross-revenue-times-manual-or-npc-station-character-rate-at-1e10-scale-per-fee";
   tradeFeesIncluded: boolean;
 }
@@ -1007,6 +1007,55 @@ export interface ProductionPurchaseList {
   estimatedInstallationCost: number | null;
   additionalCapitalNeedCents: number | null;
   profitability: ProductionProfitability;
+}
+
+export interface ProductionAnalysisPlan {
+  planId: number;
+  ownerCharacterId: number;
+  ownerName: string;
+  blueprintTypeId: number;
+  blueprintName: string;
+  productTypeId: number;
+  productName: string;
+  targetQuantity: number;
+}
+
+export interface BlueprintProfitabilityComparison {
+  hubId: MarketHubId;
+  hubName: string;
+  pricingState: ProductionMarketPricingState;
+  profitabilityState: ProductionMarketPricingState;
+  tradeCostState: TradeCostState;
+  grossRevenueCents: number | null;
+  materialReplacementCostCents: number | null;
+  installationCostCents: number | null;
+  totalProductionCostCents: number | null;
+  brokerFeeCents: number | null;
+  salesTaxCents: number | null;
+  totalTradeCostCents: number | null;
+  netProfitCents: number | null;
+  netMarginBasisPoints: number | null;
+  marketObservedAt: string | null;
+}
+
+export interface BlueprintProfitabilityItem extends ProductionAnalysisPlan {
+  blueprintItemId: number | null;
+  appliedMaterialEfficiency: number;
+  appliedTimeEfficiency: number;
+  comparisons: BlueprintProfitabilityComparison[];
+  bestHubId: MarketHubId | null;
+}
+
+export interface BlueprintProfitability {
+  state: "ready" | "partial" | "empty";
+  items: BlueprintProfitabilityItem[];
+  itemCount: number;
+  omittedItemCount: number;
+  marketTypeIds: number[];
+  marketTypeCount: number;
+  omittedMarketTypeCount: number;
+  marketPriceTypeLimit: 250;
+  rule: "configured-production-goals-exact-plan-per-hub-net-profit";
 }
 
 export interface ProductionReservationClaim {
@@ -1168,6 +1217,8 @@ export interface ProductionPlanQuery {
   salesCharacterId: number | null;
   brokerFeeBasisPoints: number | null;
   salesTaxBasisPoints: number | null;
+  analysisPlanId: number | null;
+  includeBlueprintProfitability: boolean;
 }
 
 export interface ProductionPlanPage {
@@ -1180,7 +1231,10 @@ export interface ProductionPlanPage {
   activities: ProductionActivity[];
   states: ProductionPlanState[];
   summary: Record<ProductionPlanState, number>;
+  analysisPlanId: number | null;
+  analysisPlans: ProductionAnalysisPlan[];
   purchaseList: ProductionPurchaseList;
+  blueprintProfitability: BlueprintProfitability | null;
   buildNumber: string | null;
   inventoryApplied: true;
   reservationsApplied: true;
@@ -1200,11 +1254,13 @@ export interface ProductionPlanPage {
   facilityModifiersApplied: true;
   facilityModifierRule: "explicit-basis-points-combined-before-single-ceil";
   purchaseListApplied: true;
-  purchaseListRule: "filtered-plans-sum-missing-by-type";
+  purchaseListRule: "selected-plan-conflict-free-shortage-by-type";
   marketPricesApplied: true;
   marketPriceRule: "selected-hub-lowest-sell-orders-volume-weighted-cents";
   profitabilityApplied: true;
-  profitabilityRule: "filtered-plans-full-material-replacement-plus-installation-and-automatic-or-explicit-trade-costs-vs-lowest-sell-reference";
+  profitabilityRule: "selected-plan-full-material-replacement-plus-installation-and-automatic-or-explicit-trade-costs-vs-lowest-sell-reference";
+  blueprintProfitabilityApplied: boolean;
+  blueprintProfitabilityRule: "configured-production-goals-exact-plan-per-hub-net-profit";
   tradeCostsApplied: true;
   tradeCostRule: "ceil-gross-revenue-times-manual-or-npc-station-character-rate-at-1e10-scale-per-fee";
   installationCostsApplied: true;
@@ -4276,7 +4332,9 @@ function validateProductionPlanQuery(query: ProductionPlanQuery): ProductionPlan
     !(query.salesTaxBasisPoints === null ||
       isNonNegativeSafeInteger(query.salesTaxBasisPoints) && query.salesTaxBasisPoints <= 10_000) ||
     (query.tradeCostMode === "automatic" &&
-      (query.brokerFeeBasisPoints !== null || query.salesTaxBasisPoints !== null))
+      (query.brokerFeeBasisPoints !== null || query.salesTaxBasisPoints !== null)) ||
+    !(query.analysisPlanId === null || isPositiveSafeInteger(query.analysisPlanId)) ||
+    typeof query.includeBlueprintProfitability !== "boolean"
   ) throw new Error("The production-plan query is invalid.");
   return { ...query, search };
 }
@@ -4364,7 +4422,7 @@ function parseProductionProfitability(candidate: unknown, planCount: number): Pr
     !(candidate.netProfitCents === null || isSignedSafeInteger(candidate.netProfitCents)) ||
     !(candidate.netMarginBasisPoints === null || isSignedSafeInteger(candidate.netMarginBasisPoints)) ||
     candidate.profitabilityRule !==
-      "filtered-plans-full-material-replacement-plus-installation-and-automatic-or-explicit-trade-costs-vs-lowest-sell-reference" ||
+      "selected-plan-full-material-replacement-plus-installation-and-automatic-or-explicit-trade-costs-vs-lowest-sell-reference" ||
     candidate.tradeCostRule !==
       "ceil-gross-revenue-times-manual-or-npc-station-character-rate-at-1e10-scale-per-fee" ||
     typeof candidate.tradeFeesIncluded !== "boolean"
@@ -4617,9 +4675,90 @@ function parseProductionPurchaseList(candidate: unknown, planCount: number): Pro
   return { ...candidate, items, marketHub, marketHubs, profitability } as unknown as ProductionPurchaseList;
 }
 
+function parseProductionAnalysisPlan(candidate: unknown): ProductionAnalysisPlan {
+  if (
+    !isRecord(candidate) || !isPositiveSafeInteger(candidate.planId) ||
+    !isPositiveSafeInteger(candidate.ownerCharacterId) || !isBoundedText(candidate.ownerName, 100) ||
+    !isPositiveSafeInteger(candidate.blueprintTypeId) || !isBoundedText(candidate.blueprintName, 200) ||
+    !isPositiveSafeInteger(candidate.productTypeId) || !isBoundedText(candidate.productName, 200) ||
+    !isPositiveSafeInteger(candidate.targetQuantity)
+  ) throw new Error("The native runtime returned an invalid production analysis goal.");
+  return candidate as unknown as ProductionAnalysisPlan;
+}
+
+function parseBlueprintProfitability(candidate: unknown): BlueprintProfitability {
+  if (
+    !isRecord(candidate) || !["ready", "partial", "empty"].includes(String(candidate.state)) ||
+    !Array.isArray(candidate.items) || candidate.items.length > 100 ||
+    !isNonNegativeSafeInteger(candidate.itemCount) ||
+    !isNonNegativeSafeInteger(candidate.omittedItemCount) ||
+    !Array.isArray(candidate.marketTypeIds) || candidate.marketTypeIds.length > marketPriceTypeLimit ||
+    candidate.marketTypeIds.some((typeId) => !isPositiveSafeInteger(typeId)) ||
+    !isNonNegativeSafeInteger(candidate.marketTypeCount) ||
+    !isNonNegativeSafeInteger(candidate.omittedMarketTypeCount) ||
+    candidate.marketPriceTypeLimit !== marketPriceTypeLimit ||
+    candidate.rule !== "configured-production-goals-exact-plan-per-hub-net-profit"
+  ) throw new Error("The native runtime returned invalid blueprint profitability data.");
+  const items = candidate.items.map((rawItem): BlueprintProfitabilityItem => {
+    const base = parseProductionAnalysisPlan(rawItem);
+    if (
+      !isRecord(rawItem) ||
+      !(rawItem.blueprintItemId === null || isPositiveSafeInteger(rawItem.blueprintItemId)) ||
+      !isNonNegativeSafeInteger(rawItem.appliedMaterialEfficiency) ||
+      Number(rawItem.appliedMaterialEfficiency) > 10 ||
+      !isNonNegativeSafeInteger(rawItem.appliedTimeEfficiency) ||
+      Number(rawItem.appliedTimeEfficiency) > 20 ||
+      !Array.isArray(rawItem.comparisons) || rawItem.comparisons.length !== marketHubIds.length ||
+      !(rawItem.bestHubId === null || marketHubIds.includes(rawItem.bestHubId as MarketHubId))
+    ) throw new Error("The native runtime returned an invalid blueprint profitability item.");
+    const comparisons = rawItem.comparisons.map((rawComparison, index): BlueprintProfitabilityComparison => {
+      if (
+        !isRecord(rawComparison) || rawComparison.hubId !== marketHubIds[index] ||
+        !isBoundedText(rawComparison.hubName, 80) ||
+        !["ready", "partial", "unavailable", "snapshot-missing", "stale", "empty"]
+          .includes(String(rawComparison.pricingState)) ||
+        !["ready", "partial", "unavailable", "snapshot-missing", "stale", "empty"]
+          .includes(String(rawComparison.profitabilityState)) ||
+        !["ready", "unconfigured", "skill-snapshot-missing", "standing-snapshot-missing", "unavailable"]
+          .includes(String(rawComparison.tradeCostState)) ||
+        ["grossRevenueCents", "materialReplacementCostCents", "installationCostCents",
+          "totalProductionCostCents", "brokerFeeCents", "salesTaxCents", "totalTradeCostCents"]
+          .some((key) => rawComparison[key] !== null && !isNonNegativeSafeInteger(rawComparison[key])) ||
+        !(rawComparison.netProfitCents === null ||
+          Number.isSafeInteger(rawComparison.netProfitCents)) ||
+        !(rawComparison.netMarginBasisPoints === null ||
+          Number.isSafeInteger(rawComparison.netMarginBasisPoints)) ||
+        !(rawComparison.marketObservedAt === null || isBoundedText(rawComparison.marketObservedAt, 64))
+      ) throw new Error("The native runtime returned an invalid trade-hub comparison.");
+      return rawComparison as unknown as BlueprintProfitabilityComparison;
+    });
+    const priced = comparisons.filter((comparison) => comparison.netProfitCents !== null);
+    const expectedBest = priced.length === 0 ? null : priced.reduce((best, comparison) =>
+      Number(comparison.netProfitCents) > Number(best.netProfitCents) ? comparison : best).hubId;
+    if (rawItem.bestHubId !== expectedBest) {
+      throw new Error("The native runtime returned an inconsistent best trade hub.");
+    }
+    return { ...base, ...rawItem, comparisons } as BlueprintProfitabilityItem;
+  });
+  const marketTypeIds = candidate.marketTypeIds as number[];
+  if (
+    Number(candidate.itemCount) !== items.length + Number(candidate.omittedItemCount) ||
+    Number(candidate.marketTypeCount) !== marketTypeIds.length +
+      Number(candidate.omittedMarketTypeCount) ||
+    new Set(items.map((item) => item.planId)).size !== items.length ||
+    new Set(marketTypeIds).size !== marketTypeIds.length ||
+    marketTypeIds.some((typeId, index) => typeId !== [...marketTypeIds]
+      .sort((left, right) => left - right)[index]) ||
+    (candidate.state === "empty") !== (items.length === 0)
+  ) throw new Error("The native runtime returned inconsistent blueprint profitability data.");
+  return { ...candidate, items, marketTypeIds } as unknown as BlueprintProfitability;
+}
+
 function parseProductionPlanPage(candidate: unknown): ProductionPlanPage {
   if (
     !isRecord(candidate) || !Array.isArray(candidate.items) || !Array.isArray(candidate.owners) ||
+    !Array.isArray(candidate.analysisPlans) ||
+    !(candidate.analysisPlanId === null || isPositiveSafeInteger(candidate.analysisPlanId)) ||
     !Array.isArray(candidate.locationOptions) || candidate.locationOptions.length > 200 ||
     !Array.isArray(candidate.activities) || !Array.isArray(candidate.states) || !isRecord(candidate.summary) ||
     !isNonNegativeSafeInteger(candidate.total) || !isNonNegativeSafeInteger(candidate.offset) ||
@@ -4650,12 +4789,16 @@ function parseProductionPlanPage(candidate: unknown): ProductionPlanPage {
     candidate.facilityModifiersApplied !== true ||
     candidate.facilityModifierRule !== "explicit-basis-points-combined-before-single-ceil" ||
     candidate.purchaseListApplied !== true ||
-    candidate.purchaseListRule !== "filtered-plans-sum-missing-by-type" ||
+    candidate.purchaseListRule !== "selected-plan-conflict-free-shortage-by-type" ||
     candidate.marketPricesApplied !== true ||
     candidate.marketPriceRule !== "selected-hub-lowest-sell-orders-volume-weighted-cents" ||
     candidate.profitabilityApplied !== true ||
     candidate.profitabilityRule !==
-      "filtered-plans-full-material-replacement-plus-installation-and-automatic-or-explicit-trade-costs-vs-lowest-sell-reference" ||
+      "selected-plan-full-material-replacement-plus-installation-and-automatic-or-explicit-trade-costs-vs-lowest-sell-reference" ||
+    typeof candidate.blueprintProfitabilityApplied !== "boolean" ||
+    candidate.blueprintProfitabilityRule !==
+      "configured-production-goals-exact-plan-per-hub-net-profit" ||
+    (candidate.blueprintProfitabilityApplied !== (candidate.blueprintProfitability !== null)) ||
     candidate.tradeCostsApplied !== true ||
     candidate.tradeCostRule !==
       "ceil-gross-revenue-times-manual-or-npc-station-character-rate-at-1e10-scale-per-fee" ||
@@ -4666,7 +4809,11 @@ function parseProductionPlanPage(candidate: unknown): ProductionPlanPage {
     candidate.remainingModifiersApplied !== false
   ) throw new Error("The native runtime returned invalid production-plan data.");
   const items = candidate.items.map(parseProductionPlanRecord);
-  const purchaseList = parseProductionPurchaseList(candidate.purchaseList, Number(candidate.total));
+  const analysisPlans = candidate.analysisPlans.map(parseProductionAnalysisPlan);
+  const selectedPlanCount = candidate.analysisPlanId === null ? 0 : 1;
+  const purchaseList = parseProductionPurchaseList(candidate.purchaseList, selectedPlanCount);
+  const blueprintProfitability = candidate.blueprintProfitability === null
+    ? null : parseBlueprintProfitability(candidate.blueprintProfitability);
   const assignedBlueprintIds = items.flatMap((item) => item.steps.flatMap((step) =>
     step.blueprintAssignment.blueprintItemId === null
       ? []
@@ -4680,13 +4827,19 @@ function parseProductionPlanPage(candidate: unknown): ProductionPlanPage {
   const locationOptions = (candidate.locationOptions as unknown[]).map(parseProductionFacilityOption);
   if (items.length > Number(candidate.limit) || items.length > Number(candidate.total) ||
     new Set(items.map((item) => item.planId)).size !== items.length ||
+    new Set(analysisPlans.map((item) => item.planId)).size !== analysisPlans.length ||
+    (candidate.analysisPlanId !== null &&
+      !analysisPlans.some((item) => item.planId === candidate.analysisPlanId)) ||
     new Set(assignedBlueprintIds).size !== assignedBlueprintIds.length ||
     new Set(owners.map((owner) => owner.characterId)).size !== owners.length ||
     new Set(locationOptions.map((item) => `${item.ownerCharacterId}:${item.facilityId}`)).size !==
       locationOptions.length) {
     throw new Error("The native runtime returned inconsistent production-plan metadata.");
   }
-  return { ...candidate, items, owners, locationOptions, purchaseList } as unknown as ProductionPlanPage;
+  return {
+    ...candidate, items, owners, locationOptions, analysisPlans, purchaseList,
+    blueprintProfitability,
+  } as unknown as ProductionPlanPage;
 }
 
 export async function loadProductionPlans(
@@ -4698,7 +4851,7 @@ export async function loadProductionPlans(
     items: [], total: 0, offset: validated.offset, limit: validated.limit, owners: [],
     locationOptions: [],
     activities: [...productionActivities], states: [...productionPlanStates],
-    summary: emptyProductionSummary(), purchaseList: {
+    summary: emptyProductionSummary(), analysisPlanId: null, analysisPlans: [], purchaseList: {
       state: "empty", items: [], itemCount: 0, totalQuantity: 0,
       includedPlanCount: 0, unresolvedPlanCount: 0, omittedItemCount: 0,
       marketHub: { ...expectedMarketHubs[marketHubIds.indexOf(validated.marketHubId)] },
@@ -4741,12 +4894,12 @@ export async function loadProductionPlans(
         brokerFeeCents: null, salesTaxCents: null, totalTradeCostCents: null,
         netRevenueCents: null, netProfitCents: null, netMarginBasisPoints: null,
         profitabilityRule:
-          "filtered-plans-full-material-replacement-plus-installation-and-automatic-or-explicit-trade-costs-vs-lowest-sell-reference",
+          "selected-plan-full-material-replacement-plus-installation-and-automatic-or-explicit-trade-costs-vs-lowest-sell-reference",
         tradeCostRule:
           "ceil-gross-revenue-times-manual-or-npc-station-character-rate-at-1e10-scale-per-fee",
         tradeFeesIncluded: false,
       },
-    }, buildNumber: null, inventoryApplied: true,
+    }, blueprintProfitability: null, buildNumber: null, inventoryApplied: true,
     reservationsApplied: true, reservationRule: "priority-desc-created-asc-plan-id-asc",
     blueprintMaterialEfficiencyApplied: true,
     materialEfficiencyRule: "max-runs-ceil-base-runs-percent",
@@ -4764,12 +4917,14 @@ export async function loadProductionPlans(
     facilityModifiersApplied: true,
     facilityModifierRule: "explicit-basis-points-combined-before-single-ceil",
     purchaseListApplied: true,
-    purchaseListRule: "filtered-plans-sum-missing-by-type",
+    purchaseListRule: "selected-plan-conflict-free-shortage-by-type",
     marketPricesApplied: true,
     marketPriceRule: "selected-hub-lowest-sell-orders-volume-weighted-cents",
     profitabilityApplied: true,
     profitabilityRule:
-      "filtered-plans-full-material-replacement-plus-installation-and-automatic-or-explicit-trade-costs-vs-lowest-sell-reference",
+      "selected-plan-full-material-replacement-plus-installation-and-automatic-or-explicit-trade-costs-vs-lowest-sell-reference",
+    blueprintProfitabilityApplied: false,
+    blueprintProfitabilityRule: "configured-production-goals-exact-plan-per-hub-net-profit",
     tradeCostsApplied: true,
     tradeCostRule:
       "ceil-gross-revenue-times-manual-or-npc-station-character-rate-at-1e10-scale-per-fee",
@@ -4786,13 +4941,17 @@ export async function loadProductionPlans(
     salesCharacterId: validated.salesCharacterId,
     brokerFeeBasisPoints: validated.brokerFeeBasisPoints,
     salesTaxBasisPoints: validated.salesTaxBasisPoints,
+    analysisPlanId: validated.analysisPlanId,
+    includeBlueprintProfitability: validated.includeBlueprintProfitability,
   })));
   if (page.offset !== validated.offset || page.limit !== validated.limit ||
       page.purchaseList.marketHub.hubId !== validated.marketHubId ||
       page.purchaseList.profitability.tradeCostMode !== validated.tradeCostMode ||
       page.purchaseList.profitability.salesCharacterId !== validated.salesCharacterId ||
       page.purchaseList.profitability.brokerFeeBasisPoints !== validated.brokerFeeBasisPoints ||
-      page.purchaseList.profitability.salesTaxBasisPoints !== validated.salesTaxBasisPoints) {
+      page.purchaseList.profitability.salesTaxBasisPoints !== validated.salesTaxBasisPoints ||
+      page.analysisPlanId !== validated.analysisPlanId && page.analysisPlanId !== null ||
+      page.blueprintProfitabilityApplied !== validated.includeBlueprintProfitability) {
     throw new Error("The native runtime returned a different production-plan window.");
   }
   return page;

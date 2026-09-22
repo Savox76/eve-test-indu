@@ -99,6 +99,8 @@ def query(**changes: object) -> dict:
         "salesCharacterId": None,
         "brokerFeeBasisPoints": None,
         "salesTaxBasisPoints": None,
+        "analysisPlanId": 1,
+        "includeBlueprintProfitability": False,
     }
     result.update(changes)
     return result
@@ -597,7 +599,7 @@ class ProductionPlanningTests(unittest.TestCase):
         self.assertFalse(page["remainingModifiersApplied"])
         self.assertTrue(page["purchaseListApplied"])
         self.assertEqual(
-            page["purchaseListRule"], "filtered-plans-sum-missing-by-type"
+            page["purchaseListRule"], "selected-plan-conflict-free-shortage-by-type"
         )
         self.assertEqual(
             {
@@ -697,7 +699,7 @@ class ProductionPlanningTests(unittest.TestCase):
             "candidateCount": 2,
         }])
 
-    def test_purchase_list_aggregates_filtered_conflict_free_shortages(self) -> None:
+    def test_purchase_list_uses_only_the_selected_production_goal(self) -> None:
         import_industry_sde(self.db, **bundle())
         asset_snapshot, _ = self.publish_assets(
             7,
@@ -748,7 +750,7 @@ class ProductionPlanningTests(unittest.TestCase):
         self.assertEqual(purchase["pricingState"], "ready")
         self.assertEqual(purchase["marketSnapshotId"], market_snapshot)
         self.assertEqual(purchase["marketSyncRunId"], market_run)
-        self.assertEqual(purchase["totalPurchaseCostCents"], 525_000)
+        self.assertEqual(purchase["totalPurchaseCostCents"], 187_500)
         self.assertEqual(purchase["installationCostState"], "unavailable")
         self.assertIsNone(purchase["additionalCapitalNeedCents"])
         self.assertEqual(
@@ -756,23 +758,35 @@ class ProductionPlanningTests(unittest.TestCase):
             [{
                 "typeId": 900,
                 "typeName": "Synthetic Mineral",
-                "quantity": 44,
-                "inventoryShortageQuantity": 34,
-                "reservationConflictQuantity": 10,
-                "planCount": 2,
+                "quantity": 17,
+                "inventoryShortageQuantity": 17,
+                "reservationConflictQuantity": 0,
+                "planCount": 1,
                 "marketState": "ready",
-                "coveredQuantity": 44,
+                "coveredQuantity": 17,
                 "uncoveredQuantity": 0,
                 "usedOrderCount": 2,
                 "lowestUnitPriceCents": 10_000,
-                "weightedUnitPriceCents": 11_932,
-                "purchaseCostCents": 525_000,
+                "weightedUnitPriceCents": 11_030,
+                "purchaseCostCents": 187_500,
             }],
         )
         self.assertEqual(
             [item["planId"] for item in page["items"]],
             [first["planId"], second["planId"]],
         )
+        self.assertEqual(page["analysisPlanId"], first["planId"])
+        self.assertEqual(
+            {item["planId"] for item in page["analysisPlans"]},
+            {first["planId"], second["planId"]},
+        )
+
+        selected_second = query_production_plans(
+            self.db, query(analysisPlanId=second["planId"])
+        )["purchaseList"]
+        self.assertEqual(selected_second["items"][0]["quantity"], 27)
+        self.assertEqual(selected_second["items"][0]["planCount"], 1)
+        self.assertEqual(selected_second["totalPurchaseCostCents"], 312_500)
 
         filtered = query_production_plans(self.db, query(search="first batch"))
         self.assertEqual(filtered["total"], 1)
@@ -822,6 +836,89 @@ class ProductionPlanningTests(unittest.TestCase):
         self.assertEqual(priced["marketSnapshotId"], amarr_snapshot)
         self.assertEqual(priced["pricingState"], "ready")
         self.assertEqual(priced["items"][0]["lowestUnitPriceCents"], 200)
+
+    def test_blueprint_profitability_compares_configured_goal_at_all_hubs(self) -> None:
+        import_industry_sde(self.db, **bundle())
+        asset_snapshot, _ = self.publish_assets(
+            7,
+            [{
+                "item_id": 7_001,
+                "type_id": 900,
+                "location_id": 60_003_760,
+                "quantity": 1,
+                "location_type": "station",
+                "location_flag": "Hangar",
+            }],
+            "2026-09-16T08:00:00Z",
+        )
+        self.publish_locations(
+            7, asset_snapshot, [7_001], "2026-09-16T08:00:30Z"
+        )
+        self.publish_facilities("2026-09-16T08:01:00Z")
+        saved = save_production_plan(
+            self.db,
+            plan_input(
+                facilityId=60_003_760,
+                facilityTaxBasisPoints=0,
+            ),
+        )
+        hubs = [
+            ("jita", 60_003_760, 30_000_142, 10_000),
+            ("amarr", 60_008_494, 30_002_187, 12_000),
+            ("dodixie", 60_011_866, 30_002_659, 9_000),
+            ("hek", 60_005_686, 30_002_053, 8_000),
+            ("rens", 60_004_588, 30_002_510, 7_000),
+        ]
+        for index, (hub_id, station_id, system_id, output_price) in enumerate(hubs):
+            self.publish_market_prices(
+                [
+                    {
+                        "orderId": index * 10 + 1,
+                        "typeId": 101,
+                        "locationId": station_id,
+                        "systemId": system_id,
+                        "priceCents": output_price,
+                        "volumeRemain": 100,
+                    },
+                    {
+                        "orderId": index * 10 + 2,
+                        "typeId": 900,
+                        "locationId": station_id,
+                        "systemId": system_id,
+                        "priceCents": 100,
+                        "volumeRemain": 1_000,
+                    },
+                ],
+                [101, 900],
+                hub_id=hub_id,
+            )
+
+        page = query_production_plans(
+            self.db,
+            query(
+                analysisPlanId=saved["planId"],
+                includeBlueprintProfitability=True,
+                brokerFeeBasisPoints=0,
+                salesTaxBasisPoints=0,
+            ),
+        )
+        comparison = page["blueprintProfitability"]
+        self.assertTrue(page["blueprintProfitabilityApplied"])
+        self.assertEqual(comparison["state"], "ready")
+        self.assertEqual(comparison["itemCount"], 1)
+        self.assertEqual(comparison["marketTypeIds"], [101, 900])
+        self.assertEqual(comparison["items"][0]["planId"], saved["planId"])
+        self.assertEqual(comparison["items"][0]["bestHubId"], "amarr")
+        self.assertEqual(
+            [item["hubId"] for item in comparison["items"][0]["comparisons"]],
+            ["jita", "amarr", "dodixie", "hek", "rens"],
+        )
+        profits = {
+            item["hubId"]: item["netProfitCents"]
+            for item in comparison["items"][0]["comparisons"]
+        }
+        self.assertGreater(profits["amarr"], profits["jita"])
+        self.assertGreater(profits["jita"], profits["rens"])
 
     def test_profitability_values_stock_at_full_replacement_cost(self) -> None:
         import_industry_sde(self.db, **bundle())

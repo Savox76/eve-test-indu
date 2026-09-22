@@ -16,3 +16,11 @@ Die zweisprachige Oberfläche gruppiert den Bestand standardmäßig nach Bluepri
 Suche, Besitzer- und BPO/BPC-Filter sowie die Sortierung werden vor der Seitenteilung im lokalen Sidecar angewendet. Einzelne Anfragen übertragen höchstens 200 Datensätze; die Gruppenansicht liest die begrenzten Seiten vollständig ein und rendert nur eine Zeile je Typ. Der Hintergrundlauf startet zusammen mit dem Asset-Abgleich beim Programmstart und nach erfolgreicher Charakteranmeldung; eine manuelle Aktualisierung bleibt verfügbar.
 
 Oberhalb der Tabelle zeigt die App für jeden aktivierten Charakter einen eigenen Snapshot-Status. **Verfügbar** nennt Blueprint-Anzahl und Datenalter – auch ein erfolgreicher leerer Snapshot ist dadurch von einem Fehler unterscheidbar. **Kein Snapshot** fordert zur Aktualisierung und bei einem Berechtigungsfehler zur erneuten Anmeldung auf. Das Suchfeld bleibt unabhängig davon immer sichtbar und sucht Blueprintname, Besitzer, Ort sowie IDs.
+
+## Rentabilität je Handelsstation
+
+Paket 48 ergänzt unter dem Blueprint-Bestand einen Vergleich für konfigurierte Produktionsziele. Eine Zeile entspricht einem exakten Ziel und übernimmt dessen Zielmenge, Blueprintzuordnung und ME/TE, Materialquellen, Anlagenprofil, Installationskosten sowie Verkäufer-Skills und stationsbezogene Standings. Ohne Produktionsziel wird kein pauschaler Ein-Lauf-Wert erfunden; die Ansicht verweist stattdessen auf die Produktionsplanung.
+
+Die fünf Spalten Jita, Amarr, Dodixie, Hek und Rens zeigen den Nettogewinn oder -verlust und die Nettomarge zum jeweiligen stationsexakten niedrigsten Sell-Angebot. Die Station mit dem höchsten vollständig berechenbaren Nettogewinn wird als beste Station markiert – auch dann, wenn sämtliche Varianten Verlust machen. Fehlende Preise oder Kostenbelege bleiben ausdrücklich unbekannt. Der Schalter **Alle Handelsstationen aktualisieren** synchronisiert die benötigten Material- und Produkttypen begrenzt und getrennt für alle fünf Hubs.
+
+Suche und Besitzerfilter des Blueprint-Bestands begrenzen auch die verglichenen Produktionsziele. Höchstens 100 Zielzeilen und 250 eindeutige Markt-Typen werden in einem Vergleich ausgewertet; ausgelassene Ziele oder Typen bleiben sichtbar. Corporation-Blueprints und Produktionsziele ohne persönliche Konfiguration sind weiterhin nicht enthalten.

@@ -3491,6 +3491,37 @@ select:focus-visible {
 .blueprint-table th:nth-child(7) { width: 20%; }
 .blueprint-table th:nth-child(8) { width: 12%; }
 
+.blueprint-profitability__controls {
+  grid-template-columns: minmax(220px, 340px) auto;
+}
+
+.blueprint-profitability__table {
+  min-width: 1280px;
+}
+
+.blueprint-profitability__table th:first-child {
+  width: 24%;
+}
+
+.blueprint-profitability__table td:not(:first-child) {
+  min-width: 155px;
+}
+
+.blueprint-profitability__table td > strong,
+.blueprint-profitability__table td > small,
+.blueprint-profitability__table td > .status-pill {
+  display: block;
+}
+
+.blueprint-profitability__table td > small,
+.blueprint-profitability__table td > .status-pill {
+  margin-top: 5px;
+}
+
+.blueprint-profitability__positive strong { color: var(--teal); }
+.blueprint-profitability__negative strong { color: var(--coral); }
+.blueprint-profitability__missing strong { color: var(--text-muted); }
+
 .blueprint-snapshot-status {
   display: flex;
   flex-wrap: wrap;

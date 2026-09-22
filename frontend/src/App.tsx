@@ -693,6 +693,25 @@ const copy = {
       copies: "BPCs",
       owners: "Besitzer",
       locations: "Orte",
+      profitability: {
+        kicker: "BLUEPRINT-RENTABILITÄT",
+        title: "Lohnt sich dieser Blueprint?",
+        subtitle: "Vergleicht jedes konfigurierte Produktionsziel mit seinen exakten ME-, Material-, Anlagen-, Skill- und Gebührenannahmen an allen fünf Handelsstationen.",
+        seller: "Verkaufscharakter",
+        refresh: "Alle Handelsstationen aktualisieren",
+        refreshing: "Marktpreise werden aktualisiert …",
+        refreshSuccess: "Marktpreise aller fünf Handelsstationen wurden aktualisiert.",
+        refreshError: "Die Marktpreise konnten nicht vollständig aktualisiert werden.",
+        loading: "Blueprint-Rentabilität wird berechnet …",
+        queryError: "Die Blueprint-Rentabilität konnte nicht berechnet werden.",
+        empty: "Für diese Auswahl gibt es kein konfiguriertes Produktionsziel. Lege in der Produktionsplanung ein Ziel an, damit ME, Anlage und Materialquellen belastbar berücksichtigt werden.",
+        exactHint: "Die Werte gelten für die Zielmenge und Konfiguration des jeweiligen Produktionsziels – nicht pauschal für einen einzelnen Lauf.",
+        goal: "Produktionsziel / Blueprint",
+        best: "Beste Station",
+        noPrice: "Preisdaten fehlen",
+        margin: "{margin} % Marge",
+        omitted: "{count} weitere Ziele wurden aus Sicherheitsgründen nicht ausgewertet.",
+      },
       jobs: {
         kicker: "PERSÖNLICHE INDUSTRIEAUFTRÄGE",
         title: "Industrieaufträge",
@@ -942,7 +961,9 @@ const copy = {
       subtitle: "Persistente Ziele werden in Schritte aufgelöst und konfliktfrei aus dem letzten vollständigen Asset-Snapshot reserviert.",
       boundary: "Der Bestand des ausführenden Charakters wird lokal und zielübergreifend reserviert. Persönliche Blueprints, ME/TE und aktive Charakter-Skills werden schrittgenau angewendet. Anlagenboni und Steuern stammen nur aus ausdrücklich gespeicherten Planwerten; die Installationskostenbasis nutzt offizielle angepasste Preise und Systemkostenindizes. Sofortkaufpreise stammen ausschließlich aus Sell Orders der ausgewählten Handelsstation.",
       purchaseTitle: "Einkaufsliste / EVE Multibuy",
-      purchaseSubtitle: "Aggregiert die konfliktfreien Fehlmengen aller aktuell gefilterten Produktionsziele.",
+      purchaseSubtitle: "Zeigt Fehlmengen, Preise und Gewinn ausschließlich für das ausgewählte Produktionsziel.",
+      analysisGoal: "Ausgewertetes Produktionsziel",
+      analysisGoalEmpty: "Kein Produktionsziel in der aktuellen Auswahl",
       purchaseStateLabels: { ready: "Vollständig", empty: "Keine Fehlmengen", incomplete: "Unvollständig" },
       purchaseSummary: "{items} Materialarten · {quantity} Einheiten · {plans} Ziele",
       purchaseIncomplete: "{plans} Ziele haben noch keinen belastbaren Rezept- oder Asset-Stand und sind nicht enthalten.",
@@ -1183,7 +1204,7 @@ const copy = {
     },
     planned: "Geplant",
     previewOnly: "Noch ohne Live-Funktion",
-    footerVersion: "v0.2.0-alpha.20",
+    footerVersion: "v0.2.0-alpha.21",
   },
   en: {
     nav: {
@@ -1630,6 +1651,25 @@ const copy = {
       copies: "BPCs",
       owners: "owners",
       locations: "locations",
+      profitability: {
+        kicker: "BLUEPRINT PROFITABILITY",
+        title: "Is this blueprint worth producing?",
+        subtitle: "Compares each configured production goal at all five trade hubs using its exact ME, materials, facility, skills, and trade-fee assumptions.",
+        seller: "Sales character",
+        refresh: "Refresh all trade hubs",
+        refreshing: "Refreshing market prices …",
+        refreshSuccess: "Market prices were refreshed for all five trade hubs.",
+        refreshError: "Market prices could not be refreshed completely.",
+        loading: "Calculating blueprint profitability …",
+        queryError: "Blueprint profitability could not be calculated.",
+        empty: "There is no configured production goal for this selection. Create a production goal so ME, facility, and material sources can be applied reliably.",
+        exactHint: "Values apply to the quantity and configuration of each production goal, not generically to a single run.",
+        goal: "Production goal / blueprint",
+        best: "Best hub",
+        noPrice: "Price data missing",
+        margin: "{margin}% margin",
+        omitted: "{count} additional goals were not evaluated due to the safety limit.",
+      },
       jobs: {
         kicker: "PERSONAL INDUSTRY JOBS",
         title: "Industry jobs",
@@ -1879,7 +1919,9 @@ const copy = {
       subtitle: "Persistent goals are expanded into steps and reserved conflict-free from the latest complete asset snapshot.",
       boundary: "Stock owned by the executing character is reserved locally across all goals. Personal blueprints, ME/TE and active character skills are applied per step. Facility bonuses and taxes come only from explicitly saved plan values; the installation-cost basis uses official adjusted prices and system cost indices. Immediate-buy prices come exclusively from sell orders at the selected trade station.",
       purchaseTitle: "Purchase list / EVE Multibuy",
-      purchaseSubtitle: "Aggregates the conflict-free shortages of every currently filtered production goal.",
+      purchaseSubtitle: "Shows shortages, prices, and profit for the selected production goal only.",
+      analysisGoal: "Production goal to analyse",
+      analysisGoalEmpty: "No production goal in the current selection",
       purchaseStateLabels: { ready: "Complete", empty: "No shortages", incomplete: "Incomplete" },
       purchaseSummary: "{items} material types · {quantity} units · {plans} goals",
       purchaseIncomplete: "{plans} goals do not yet have a reliable recipe or asset state and are excluded.",
@@ -2120,7 +2162,7 @@ const copy = {
     },
     planned: "Planned",
     previewOnly: "No live function yet",
-    footerVersion: "v0.2.0-alpha.20",
+    footerVersion: "v0.2.0-alpha.21",
   },
 } as const;
 
@@ -3087,6 +3129,8 @@ export function App({
             saveResearchPlan={researchPlanSaver}
             deleteResearchPlan={researchPlanDeleter}
             researchPlanRevision={researchPlanRevision}
+            loadProductionPlans={productionPlansLoader}
+            syncMarketPrices={marketPriceSyncer}
           />
         ) : activeModule === "production" ? (
           <ProductionWorkspace
@@ -4641,6 +4685,8 @@ function BlueprintWorkspace({
   loadIndustrySlots: loadSlots, industrySlotRevision,
   loadResearchPlans: loadPlans, saveResearchPlan: savePlan,
   deleteResearchPlan: deletePlan, researchPlanRevision,
+  loadProductionPlans: loadProductionProfitability,
+  syncMarketPrices: syncProfitabilityPrices,
 }: {
   available: boolean;
   locale: Locale;
@@ -4663,6 +4709,11 @@ function BlueprintWorkspace({
   saveResearchPlan: (input: ResearchPlanInput) => Promise<unknown>;
   deleteResearchPlan: (ownerCharacterId: number, blueprintItemId: number) => Promise<void>;
   researchPlanRevision: number;
+  loadProductionPlans: (query: ProductionPlanQuery) => Promise<ProductionPlanPage>;
+  syncMarketPrices: (
+    marketHubId: MarketHubId,
+    typeIds: readonly number[],
+  ) => Promise<MarketPriceSyncResult>;
 }) {
   const [search, setSearch] = useState("");
   const [appliedSearch, setAppliedSearch] = useState("");
@@ -4811,6 +4862,16 @@ function BlueprintWorkspace({
             </tr>)}</tbody></table></div> : null}
         {view === "positions" && page && total > 0 && <div className="asset-pagination"><span>{range}</span><div><button type="button" onClick={() => setOffset(Math.max(0, offset - blueprintPageSize))} disabled={offset === 0}>{t.blueprints.previous}</button><button type="button" onClick={() => setOffset(offset + blueprintPageSize)} disabled={offset + blueprintPageSize >= total}>{t.blueprints.next}</button></div></div>}
       </section>
+      <BlueprintProfitabilityPanel
+        available={available}
+        locale={locale}
+        t={t}
+        loadPlans={loadProductionProfitability}
+        syncPrices={syncProfitabilityPrices}
+        ownerCharacterId={ownerCharacterId}
+        search={appliedSearch}
+        refreshRevision={refreshRevision + industryJobRevision + characterSkillRevision + industryFacilityRevision}
+      />
       <IndustrySlotPanel
         available={available}
         locale={locale}
@@ -4852,6 +4913,97 @@ function BlueprintWorkspace({
         refreshRevision={researchPlanRevision}
       />
     </div>
+  );
+}
+
+function BlueprintProfitabilityPanel({
+  available, locale, t, loadPlans, syncPrices, ownerCharacterId, search, refreshRevision,
+}: {
+  available: boolean;
+  locale: Locale;
+  t: Translation;
+  loadPlans: (query: ProductionPlanQuery) => Promise<ProductionPlanPage>;
+  syncPrices: (marketHubId: MarketHubId, typeIds: readonly number[]) => Promise<MarketPriceSyncResult>;
+  ownerCharacterId: number | null;
+  search: string;
+  refreshRevision: number;
+}) {
+  const [salesCharacterId, setSalesCharacterId] = useStoredState<number | null>(
+    "production.sales-character", null, isNullablePositiveInteger,
+  );
+  const [page, setPage] = useState<ProductionPlanPage | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const [syncState, setSyncState] = useState<"idle" | "busy" | "success" | "error">("idle");
+  const [marketRevision, setMarketRevision] = useState(0);
+  const numberFormat = useMemo(
+    () => new Intl.NumberFormat(locale === "de" ? "de-DE" : "en-US"),
+    [locale],
+  );
+  const iskFormat = useMemo(() => new Intl.NumberFormat(locale === "de" ? "de-DE" : "en-US", {
+    minimumFractionDigits: 2, maximumFractionDigits: 2,
+  }), [locale]);
+
+  useEffect(() => {
+    if (!available) return;
+    let active = true;
+    setLoading(true);
+    setFailed(false);
+    void loadPlans({
+      search, ownerCharacterId, activity: null, state: null, offset: 0, limit: 100,
+      sortBy: "product", sortDirection: "asc", marketHubId: "jita",
+      tradeCostMode: "automatic", salesCharacterId,
+      brokerFeeBasisPoints: null, salesTaxBasisPoints: null,
+      analysisPlanId: null, includeBlueprintProfitability: true,
+    }).then((result) => {
+      if (!active) return;
+      setPage(result);
+      if (salesCharacterId === null && result.owners.length > 0) {
+        setSalesCharacterId(result.owners[0].characterId);
+      }
+    }).catch(() => { if (active) setFailed(true); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [available, loadPlans, marketRevision, ownerCharacterId, refreshRevision, salesCharacterId, search]);
+
+  const profitability = page?.blueprintProfitability ?? null;
+  const refresh = async () => {
+    if (!profitability || profitability.marketTypeIds.length === 0 ||
+        profitability.marketTypeIds.length > profitability.marketPriceTypeLimit ||
+        syncState === "busy") return;
+    setSyncState("busy");
+    try {
+      await Promise.all(marketHubIds.map((hubId) =>
+        syncPrices(hubId, profitability.marketTypeIds)));
+      setSyncState("success");
+      setMarketRevision((value) => value + 1);
+    } catch {
+      setSyncState("error");
+    }
+  };
+  const tone = (profit: number | null) => profit === null
+    ? "missing" : profit > 0 ? "positive" : profit < 0 ? "negative" : "neutral";
+
+  return (
+    <section className="asset-browser blueprint-profitability" aria-busy={loading}>
+      <header className="asset-deltas__header industry-jobs__header">
+        <div><span className="eyebrow">{t.blueprints.profitability.kicker}</span><h2>{t.blueprints.profitability.title}</h2><p>{t.blueprints.profitability.subtitle}</p></div>
+        <div className="asset-hero__metrics"><span><strong>{numberFormat.format(profitability?.itemCount ?? 0)}</strong><small>{t.productionPlanning.plans}</small></span></div>
+      </header>
+      <div className="asset-toolbar blueprint-profitability__controls">
+        <label><span>{t.blueprints.profitability.seller}</span><select value={salesCharacterId ?? ""} onChange={(event) => setSalesCharacterId(event.target.value ? Number(event.target.value) : null)}><option value="">—</option>{(page?.owners ?? []).map((owner) => <option key={owner.characterId} value={owner.characterId}>{owner.name}</option>)}</select></label>
+        <button className="secondary-button" type="button" onClick={() => void refresh()} disabled={!profitability || profitability.marketTypeIds.length === 0 || profitability.marketTypeIds.length > profitability.marketPriceTypeLimit || syncState === "busy"}>{syncState === "busy" ? <RefreshCw className="spin" size={15} /> : <Download size={15} />}{syncState === "busy" ? t.blueprints.profitability.refreshing : t.blueprints.profitability.refresh}</button>
+      </div>
+      <p className="production-sequence-hint">{t.blueprints.profitability.exactHint}</p>
+      {syncState === "success" && <div className="asset-export-status" role="status">{t.blueprints.profitability.refreshSuccess}</div>}
+      {syncState === "error" && <div className="asset-export-status asset-export-status--error" role="status">{t.blueprints.profitability.refreshError}</div>}
+      {!available ? <div className="asset-empty"><Database size={22} />{t.blueprints.unavailable}</div>
+        : failed ? <div className="asset-empty asset-empty--error"><AlertTriangle size={22} />{t.blueprints.profitability.queryError}</div>
+        : loading && page === null ? <div className="asset-empty"><RefreshCw className="spin" size={22} />{t.blueprints.profitability.loading}</div>
+        : profitability && profitability.items.length === 0 ? <div className="asset-empty"><Factory size={22} />{t.blueprints.profitability.empty}</div>
+        : profitability ? <div className="asset-table-wrap"><table className="asset-table blueprint-profitability__table"><thead><tr><th>{t.blueprints.profitability.goal}</th>{marketHubIds.map((hubId) => <th key={hubId}>{hubId === "jita" ? "Jita" : hubId === "amarr" ? "Amarr" : hubId === "dodixie" ? "Dodixie" : hubId === "hek" ? "Hek" : "Rens"}</th>)}<th>{t.blueprints.profitability.best}</th></tr></thead><tbody>{profitability.items.map((item) => <tr key={item.planId}><td><strong>{item.productName} × {numberFormat.format(item.targetQuantity)}</strong><small>{item.blueprintName} · ME {item.appliedMaterialEfficiency} / TE {item.appliedTimeEfficiency}</small><small>{item.ownerName} · Ziel #{item.planId}</small></td>{item.comparisons.map((comparison) => <td key={comparison.hubId} className={`blueprint-profitability__${tone(comparison.netProfitCents)}`}><strong>{comparison.netProfitCents === null ? t.blueprints.profitability.noPrice : `${comparison.netProfitCents > 0 ? "+" : ""}${iskFormat.format(comparison.netProfitCents / 100)} ISK`}</strong>{comparison.netMarginBasisPoints !== null && <small>{t.blueprints.profitability.margin.replace("{margin}", (comparison.netMarginBasisPoints / 100).toLocaleString(locale === "de" ? "de-DE" : "en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }))}</small>}{item.bestHubId === comparison.hubId && <span className="status-pill status-pill--info">{t.blueprints.profitability.best}</span>}</td>)}<td><strong>{item.bestHubId === null ? "—" : item.comparisons.find((comparison) => comparison.hubId === item.bestHubId)?.hubName ?? item.bestHubId}</strong></td></tr>)}</tbody></table></div> : null}
+      {profitability && profitability.omittedItemCount > 0 && <p className="production-purchase-list__warning"><AlertTriangle size={14} />{t.blueprints.profitability.omitted.replace("{count}", numberFormat.format(profitability.omittedItemCount))}</p>}
+    </section>
   );
 }
 
@@ -5679,6 +5831,9 @@ function ProductionWorkspace({
   const [salesTaxBasisPoints, setSalesTaxBasisPoints] = useStoredState<number | null>(
     "production.sales-tax", null, isNullableBasisPoints,
   );
+  const [analysisPlanId, setAnalysisPlanId] = useStoredState<number | null>(
+    "production.analysis-plan", null, isNullablePositiveInteger,
+  );
   const [planOffset, setPlanOffset] = useState(0);
   const [plans, setPlans] = useState<ProductionPlanPage | null>(null);
   const [plansLoading, setPlansLoading] = useState(false);
@@ -5792,12 +5947,17 @@ function ProductionWorkspace({
       marketHubId, tradeCostMode,
       salesCharacterId: tradeCostMode === "automatic" ? salesCharacterId : null,
       brokerFeeBasisPoints: tradeCostMode === "manual" ? brokerFeeBasisPoints : null,
-      salesTaxBasisPoints: tradeCostMode === "manual" ? salesTaxBasisPoints : null })
+      salesTaxBasisPoints: tradeCostMode === "manual" ? salesTaxBasisPoints : null,
+      analysisPlanId,
+      includeBlueprintProfitability: false })
       .then((page) => {
         if (!active) return;
         if (page.total > 0 && page.offset >= page.total) {
           setPlanOffset(Math.floor((page.total - 1) / productionPlanPageSize) * productionPlanPageSize);
           return;
+        }
+        if (!page.analysisPlans.some((item) => item.planId === analysisPlanId)) {
+          setAnalysisPlanId(page.analysisPlans[0]?.planId ?? null);
         }
         setPurchaseCopyState("idle");
         setPlans(page);
@@ -5821,7 +5981,7 @@ function ProductionWorkspace({
       .catch(() => { if (active) setPlansFailed(true); })
       .finally(() => { if (active) setPlansLoading(false); });
     return () => { active = false; };
-  }, [appliedPlanSearch, available, brokerFeeBasisPoints, loadPlans, marketHubId, planActivity,
+  }, [analysisPlanId, appliedPlanSearch, available, brokerFeeBasisPoints, loadPlans, marketHubId, planActivity,
     planOffset, planOwner, planState, refreshRevision, revision, salesCharacterId,
     salesTaxBasisPoints, sortBy, sortDirection, tradeCostMode]);
 
@@ -6032,6 +6192,7 @@ function ProductionWorkspace({
         {plans && <section className="production-purchase-list" aria-label={t.productionPlanning.purchaseTitle}>
           <header><div><h3>{t.productionPlanning.purchaseTitle}</h3><p>{t.productionPlanning.purchaseSubtitle}</p></div><span className={`status-pill status-pill--${plans.purchaseList.state === "ready" || plans.purchaseList.state === "empty" ? "good" : "warn"}`}>{t.productionPlanning.purchaseStateLabels[plans.purchaseList.state]}</span></header>
           <div className="production-market-controls">
+            <label><span>{t.productionPlanning.analysisGoal}</span><select value={analysisPlanId ?? ""} onChange={(event) => { setAnalysisPlanId(event.target.value ? Number(event.target.value) : null); setMarketSyncState("idle"); setMarketSyncResult(null); }} disabled={plans.analysisPlans.length === 0}><option value="">{t.productionPlanning.analysisGoalEmpty}</option>{plans.analysisPlans.map((goal) => <option key={goal.planId} value={goal.planId}>{goal.productName} × {numberFormat.format(goal.targetQuantity)} · {goal.ownerName}</option>)}</select></label>
             <label><span>{t.productionPlanning.marketHub}</span><select value={marketHubId} onChange={(event) => { setMarketHubId(event.target.value as MarketHubId); setPlanOffset(0); setMarketSyncState("idle"); setMarketSyncResult(null); }}>{plans.purchaseList.marketHubs.map((hub) => <option key={hub.hubId} value={hub.hubId}>{hub.name}</option>)}</select></label>
             <div><strong>{plans.purchaseList.marketHub.name}</strong><small>{t.productionPlanning.marketStation.replace("{station}", plans.purchaseList.marketHub.stationName)}</small></div>
             <button type="button" className="secondary-button" onClick={() => void refreshMarketPrices()} disabled={marketSyncState === "busy" || plans.purchaseList.marketHub.hubId !== marketHubId || plans.purchaseList.profitability.marketTypeIds.length === 0 || plans.purchaseList.profitability.marketTypeIds.length > plans.purchaseList.marketPriceTypeLimit}>{marketSyncState === "busy" ? <RefreshCw className="spin" size={15} /> : <Download size={15} />}{marketSyncState === "busy" ? t.productionPlanning.marketRefreshing : t.productionPlanning.marketRefresh}</button>
