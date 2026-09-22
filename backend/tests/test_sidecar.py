@@ -714,6 +714,8 @@ class SidecarIntegrationTests(unittest.TestCase):
                     "tradeCostMode": "manual", "salesCharacterId": None,
                     "brokerFeeBasisPoints": None,
                     "salesTaxBasisPoints": None,
+                    "analysisPlanId": None,
+                    "includeBlueprintProfitability": False,
                 }).encode(),
                 method="POST",
                 headers={

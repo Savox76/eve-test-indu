@@ -340,6 +340,8 @@ def main() -> int:
                     "tradeCostMode": "manual", "salesCharacterId": None,
                     "brokerFeeBasisPoints": None,
                     "salesTaxBasisPoints": None,
+                    "analysisPlanId": None,
+                    "includeBlueprintProfitability": False,
                     "sortBy": "priority", "sortDirection": "desc",
                 }).encode("utf-8"),
                 method="POST",
@@ -353,6 +355,15 @@ def main() -> int:
             if (
                 production_plans.get("items") != []
                 or production_plans.get("total") != 0
+                or production_plans.get("analysisPlanId") is not None
+                or production_plans.get("analysisPlans") != []
+                or production_plans.get("purchaseList", {}).get("includedPlanCount") != 0
+                or production_plans.get("purchaseListRule")
+                != "selected-plan-conflict-free-shortage-by-type"
+                or production_plans.get("blueprintProfitability") is not None
+                or production_plans.get("blueprintProfitabilityApplied") is not False
+                or production_plans.get("blueprintProfitabilityRule")
+                != "configured-production-goals-exact-plan-per-hub-net-profit"
                 or production_plans.get("inventoryApplied") is not True
                 or production_plans.get("reservationsApplied") is not True
                 or production_plans.get("reservationRule")

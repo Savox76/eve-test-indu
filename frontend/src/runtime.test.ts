@@ -1170,6 +1170,10 @@ describe("desktop runtime status", () => {
       states: ["ready", "sde-unavailable", "recipe-missing", "cycle", "complexity-limit"],
       summary: { ready: 1, "sde-unavailable": 0, "recipe-missing": 0, cycle: 0,
         "complexity-limit": 0 },
+      analysisPlanId: 1,
+      analysisPlans: [{ planId: 1, ownerCharacterId: 7, ownerName: "Pilot",
+        blueprintTypeId: 100, blueprintName: "Synthetic Hull Blueprint",
+        productTypeId: 101, productName: "Synthetic Hull", targetQuantity: 3 }],
       purchaseList: { state: "ready", items: [{ typeId: 901,
         typeName: "Synthetic Ore", quantity: 3, inventoryShortageQuantity: 3,
         reservationConflictQuantity: 0, planCount: 1, marketState: "ready",
@@ -1209,9 +1213,10 @@ describe("desktop runtime status", () => {
           brokerFeeCents: null, salesTaxCents: null,
           totalTradeCostCents: null, netRevenueCents: null, netProfitCents: null,
           netMarginBasisPoints: null,
-          profitabilityRule: "filtered-plans-full-material-replacement-plus-installation-and-automatic-or-explicit-trade-costs-vs-lowest-sell-reference",
+          profitabilityRule: "selected-plan-full-material-replacement-plus-installation-and-automatic-or-explicit-trade-costs-vs-lowest-sell-reference",
           tradeCostRule: "ceil-gross-revenue-times-manual-or-npc-station-character-rate-at-1e10-scale-per-fee",
-          tradeFeesIncluded: false } }, buildNumber: "synthetic-production-1",
+          tradeFeesIncluded: false } }, blueprintProfitability: null,
+      buildNumber: "synthetic-production-1",
       inventoryApplied: true, reservationsApplied: true,
       reservationRule: "priority-desc-created-asc-plan-id-asc",
       blueprintMaterialEfficiencyApplied: true,
@@ -1227,11 +1232,13 @@ describe("desktop runtime status", () => {
       facilityModifiersApplied: true,
       facilityModifierRule: "explicit-basis-points-combined-before-single-ceil",
       purchaseListApplied: true,
-      purchaseListRule: "filtered-plans-sum-missing-by-type",
+      purchaseListRule: "selected-plan-conflict-free-shortage-by-type",
       marketPricesApplied: true,
       marketPriceRule: "selected-hub-lowest-sell-orders-volume-weighted-cents",
       profitabilityApplied: true,
-      profitabilityRule: "filtered-plans-full-material-replacement-plus-installation-and-automatic-or-explicit-trade-costs-vs-lowest-sell-reference",
+      profitabilityRule: "selected-plan-full-material-replacement-plus-installation-and-automatic-or-explicit-trade-costs-vs-lowest-sell-reference",
+      blueprintProfitabilityApplied: false,
+      blueprintProfitabilityRule: "configured-production-goals-exact-plan-per-hub-net-profit",
       tradeCostsApplied: true,
       tradeCostRule: "ceil-gross-revenue-times-manual-or-npc-station-character-rate-at-1e10-scale-per-fee",
       installationCostsApplied: true,
@@ -1243,7 +1250,8 @@ describe("desktop runtime status", () => {
     const query = { search: "", ownerCharacterId: null, activity: null, state: null,
       offset: 0, limit: 50, sortBy: "priority", sortDirection: "desc", marketHubId: "jita",
       tradeCostMode: "manual", salesCharacterId: null,
-      brokerFeeBasisPoints: null, salesTaxBasisPoints: null } as const;
+      brokerFeeBasisPoints: null, salesTaxBasisPoints: null,
+      analysisPlanId: 1, includeBlueprintProfitability: false } as const;
     await expect(loadProductionPlans(query, { isAvailable: () => true, invoke })).resolves.toEqual(page);
     expect(invoke).toHaveBeenLastCalledWith("query_production_plans", expect.objectContaining({
       planState: null, sortBy: "priority", marketHubId: "jita",
@@ -1276,6 +1284,30 @@ describe("desktop runtime status", () => {
     await expect(loadProductionPlans({ ...query, tradeCostMode: "automatic",
       salesCharacterId: 7 }, { isAvailable: () => true, invoke }))
       .resolves.toEqual(automaticPage);
+    const blueprintProfitabilityPage = JSON.parse(JSON.stringify(page)) as ProductionPlanPage;
+    blueprintProfitabilityPage.blueprintProfitabilityApplied = true;
+    blueprintProfitabilityPage.blueprintProfitability = {
+      state: "ready", itemCount: 1, omittedItemCount: 0,
+      marketTypeIds: [101, 901], marketTypeCount: 2, omittedMarketTypeCount: 0,
+      marketPriceTypeLimit: 250,
+      rule: "configured-production-goals-exact-plan-per-hub-net-profit",
+      items: [{ ...blueprintProfitabilityPage.analysisPlans[0], blueprintItemId: null,
+        appliedMaterialEfficiency: 0, appliedTimeEfficiency: 0, bestHubId: "amarr",
+        comparisons: marketHubs.map((hub, index) => ({
+          hubId: hub.hubId, hubName: hub.name, pricingState: "ready" as const,
+          profitabilityState: "ready" as const, tradeCostState: "ready" as const,
+          grossRevenueCents: 40_000 + index * 1_000,
+          materialReplacementCostCents: 1_600, installationCostCents: 600,
+          totalProductionCostCents: 2_200, brokerFeeCents: 600,
+          salesTaxCents: 1_300, totalTradeCostCents: 1_900,
+          netProfitCents: index === 1 ? 37_000 : 30_000 - index * 1_000,
+          netMarginBasisPoints: index === 1 ? 8_000 : 7_000 - index * 100,
+          marketObservedAt: "2026-09-11T12:08:00Z",
+        })) }],
+    };
+    invoke.mockResolvedValueOnce(JSON.stringify(blueprintProfitabilityPage));
+    await expect(loadProductionPlans({ ...query, includeBlueprintProfitability: true },
+      { isAvailable: () => true, invoke })).resolves.toEqual(blueprintProfitabilityPage);
     const marketSync = { syncRunId: 22, hubId: "jita", typeCount: 1,
       orderCount: 2, pageCount: 1, observedAt: "2026-09-11T12:05:00Z" } as const;
     invoke.mockResolvedValueOnce(JSON.stringify(marketSync));

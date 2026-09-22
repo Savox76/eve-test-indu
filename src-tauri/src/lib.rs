@@ -1367,6 +1367,65 @@ struct ProductionPurchaseList {
 
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
+struct ProductionAnalysisPlan {
+    plan_id: u64,
+    owner_character_id: u64,
+    owner_name: String,
+    blueprint_type_id: u64,
+    blueprint_name: String,
+    product_type_id: u64,
+    product_name: String,
+    target_quantity: u64,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BlueprintProfitabilityComparison {
+    hub_id: String,
+    hub_name: String,
+    pricing_state: String,
+    profitability_state: String,
+    trade_cost_state: String,
+    gross_revenue_cents: Option<u64>,
+    material_replacement_cost_cents: Option<u64>,
+    installation_cost_cents: Option<u64>,
+    total_production_cost_cents: Option<u64>,
+    broker_fee_cents: Option<u64>,
+    sales_tax_cents: Option<u64>,
+    total_trade_cost_cents: Option<u64>,
+    net_profit_cents: Option<i64>,
+    net_margin_basis_points: Option<i64>,
+    market_observed_at: Option<String>,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BlueprintProfitabilityItem {
+    #[serde(flatten)]
+    plan: ProductionAnalysisPlan,
+    blueprint_item_id: Option<u64>,
+    applied_material_efficiency: u8,
+    applied_time_efficiency: u8,
+    comparisons: Vec<BlueprintProfitabilityComparison>,
+    best_hub_id: Option<String>,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BlueprintProfitability {
+    state: String,
+    items: Vec<BlueprintProfitabilityItem>,
+    item_count: u64,
+    omitted_item_count: u64,
+    market_type_ids: Vec<u64>,
+    market_type_count: u64,
+    omitted_market_type_count: u64,
+    market_price_type_limit: u64,
+    rule: String,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct ProductionPlanQueryResponse {
     items: Vec<ProductionPlanRecord>,
     total: u64,
@@ -1377,7 +1436,10 @@ struct ProductionPlanQueryResponse {
     activities: Vec<String>,
     states: Vec<String>,
     summary: ProductionPlanSummary,
+    analysis_plan_id: Option<u64>,
+    analysis_plans: Vec<ProductionAnalysisPlan>,
     purchase_list: ProductionPurchaseList,
+    blueprint_profitability: Option<BlueprintProfitability>,
     build_number: Option<String>,
     inventory_applied: bool,
     reservations_applied: bool,
@@ -1402,6 +1464,8 @@ struct ProductionPlanQueryResponse {
     market_price_rule: String,
     profitability_applied: bool,
     profitability_rule: String,
+    blueprint_profitability_applied: bool,
+    blueprint_profitability_rule: String,
     trade_costs_applied: bool,
     trade_cost_rule: String,
     installation_costs_applied: bool,
@@ -4874,7 +4938,7 @@ fn production_profitability_is_valid(
         && profitability.net_profit_cents == net_profit
         && profitability.net_margin_basis_points == net_margin
         && profitability.profitability_rule
-            == "filtered-plans-full-material-replacement-plus-installation-and-automatic-or-explicit-trade-costs-vs-lowest-sell-reference"
+            == "selected-plan-full-material-replacement-plus-installation-and-automatic-or-explicit-trade-costs-vs-lowest-sell-reference"
         && profitability.trade_cost_rule
             == "ceil-gross-revenue-times-manual-or-npc-station-character-rate-at-1e10-scale-per-fee"
         && profitability.trade_fees_included == (expected_trade_cost_state == "ready")
@@ -5049,6 +5113,114 @@ fn production_purchase_list_is_valid(list: &ProductionPurchaseList, plan_count: 
         })
 }
 
+fn production_analysis_plan_is_valid(plan: &ProductionAnalysisPlan) -> bool {
+    production_id_is_valid(plan.plan_id)
+        && production_id_is_valid(plan.owner_character_id)
+        && asset_text_is_valid(&plan.owner_name, 100)
+        && production_id_is_valid(plan.blueprint_type_id)
+        && asset_text_is_valid(&plan.blueprint_name, 200)
+        && production_id_is_valid(plan.product_type_id)
+        && asset_text_is_valid(&plan.product_name, 200)
+        && production_id_is_valid(plan.target_quantity)
+}
+
+fn blueprint_profitability_is_valid(value: &BlueprintProfitability) -> bool {
+    let plan_ids = value
+        .items
+        .iter()
+        .map(|item| item.plan.plan_id)
+        .collect::<HashSet<_>>();
+    let market_type_ids = value
+        .market_type_ids
+        .iter()
+        .copied()
+        .collect::<HashSet<_>>();
+    let mut sorted_market_type_ids = value.market_type_ids.clone();
+    sorted_market_type_ids.sort_unstable();
+    matches!(value.state.as_str(), "ready" | "partial" | "empty")
+        && value.items.len() <= 100
+        && value.items.len() as u64 + value.omitted_item_count == value.item_count
+        && value.item_count <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && value.omitted_item_count <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && value.market_type_ids.len() as u64 <= MARKET_PRICE_TYPE_LIMIT
+        && value.market_type_ids.len() as u64 + value.omitted_market_type_count
+            == value.market_type_count
+        && value.market_type_count <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && value.omitted_market_type_count <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && value.market_price_type_limit == MARKET_PRICE_TYPE_LIMIT
+        && value.rule == "configured-production-goals-exact-plan-per-hub-net-profit"
+        && plan_ids.len() == value.items.len()
+        && market_type_ids.len() == value.market_type_ids.len()
+        && value.market_type_ids == sorted_market_type_ids
+        && value
+            .market_type_ids
+            .iter()
+            .all(|type_id| production_id_is_valid(*type_id))
+        && (value.state == "empty") == value.items.is_empty()
+        && value.items.iter().all(|item| {
+            let comparison_hubs = item
+                .comparisons
+                .iter()
+                .map(|comparison| comparison.hub_id.as_str())
+                .collect::<Vec<_>>();
+            let maximum_profit = item
+                .comparisons
+                .iter()
+                .filter_map(|comparison| comparison.net_profit_cents)
+                .max();
+            let best_hub_is_valid = match (&item.best_hub_id, maximum_profit) {
+                (None, None) => true,
+                (Some(hub_id), Some(profit)) => item.comparisons.iter().any(|comparison| {
+                    comparison.hub_id == *hub_id && comparison.net_profit_cents == Some(profit)
+                }),
+                _ => false,
+            };
+            production_analysis_plan_is_valid(&item.plan)
+                && item.blueprint_item_id.is_none_or(production_id_is_valid)
+                && item.applied_material_efficiency <= 10
+                && item.applied_time_efficiency <= 20
+                && comparison_hubs == MARKET_HUB_IDS
+                && best_hub_is_valid
+                && item.comparisons.iter().all(|comparison| {
+                    MARKET_HUB_IDS.contains(&comparison.hub_id.as_str())
+                        && asset_text_is_valid(&comparison.hub_name, 80)
+                        && MARKET_PRICING_STATES.contains(&comparison.pricing_state.as_str())
+                        && MARKET_PRICING_STATES.contains(&comparison.profitability_state.as_str())
+                        && matches!(
+                            comparison.trade_cost_state.as_str(),
+                            "ready"
+                                | "unconfigured"
+                                | "unavailable"
+                                | "skill-snapshot-missing"
+                                | "standing-snapshot-missing"
+                        )
+                        && [
+                            comparison.gross_revenue_cents,
+                            comparison.material_replacement_cost_cents,
+                            comparison.installation_cost_cents,
+                            comparison.total_production_cost_cents,
+                            comparison.broker_fee_cents,
+                            comparison.sales_tax_cents,
+                            comparison.total_trade_cost_cents,
+                        ]
+                        .into_iter()
+                        .all(|field| {
+                            field.is_none_or(|number| number <= JAVASCRIPT_MAX_SAFE_INTEGER)
+                        })
+                        && comparison.net_profit_cents.is_none_or(|number| {
+                            number.unsigned_abs() <= JAVASCRIPT_MAX_SAFE_INTEGER
+                        })
+                        && comparison.net_margin_basis_points.is_none_or(|number| {
+                            number.unsigned_abs() <= JAVASCRIPT_MAX_SAFE_INTEGER
+                        })
+                        && comparison
+                            .market_observed_at
+                            .as_ref()
+                            .is_none_or(|timestamp| asset_text_is_valid(timestamp, 64))
+                })
+        })
+}
+
 fn production_plan_query_response_is_valid(response: &ProductionPlanQueryResponse) -> bool {
     let ids = response
         .items
@@ -5060,6 +5232,12 @@ fn production_plan_query_response_is_valid(response: &ProductionPlanQueryRespons
         .iter()
         .map(|owner| owner.character_id)
         .collect::<HashSet<_>>();
+    let analysis_plan_ids = response
+        .analysis_plans
+        .iter()
+        .map(|item| item.plan_id)
+        .collect::<HashSet<_>>();
+    let selected_plan_count = u64::from(response.analysis_plan_id.is_some());
     let location_keys = response
         .location_options
         .iter()
@@ -5090,6 +5268,14 @@ fn production_plan_query_response_is_valid(response: &ProductionPlanQueryRespons
         && response.items.len() as u64 <= response.limit
         && response.items.len() as u64 <= response.total
         && ids.len() == response.items.len()
+        && analysis_plan_ids.len() == response.analysis_plans.len()
+        && response
+            .analysis_plan_id
+            .is_none_or(|plan_id| analysis_plan_ids.contains(&plan_id))
+        && response
+            .analysis_plans
+            .iter()
+            .all(production_analysis_plan_is_valid)
         && assigned_blueprint_id_count == assigned_blueprint_ids.len()
         && owner_ids.len() == response.owners.len()
         && response.location_options.len() <= 200
@@ -5140,15 +5326,22 @@ fn production_plan_query_response_is_valid(response: &ProductionPlanQueryRespons
         && response.supply_mode_rule == "stock-first-before-recursive-build"
         && response.facility_modifiers_applied
         && response.facility_modifier_rule == "explicit-basis-points-combined-before-single-ceil"
-        && production_purchase_list_is_valid(&response.purchase_list, response.total)
+        && production_purchase_list_is_valid(&response.purchase_list, selected_plan_count)
         && response.purchase_list_applied
-        && response.purchase_list_rule == "filtered-plans-sum-missing-by-type"
+        && response.purchase_list_rule == "selected-plan-conflict-free-shortage-by-type"
         && response.market_prices_applied
         && response.market_price_rule
             == "selected-hub-lowest-sell-orders-volume-weighted-cents"
         && response.profitability_applied
         && response.profitability_rule
-            == "filtered-plans-full-material-replacement-plus-installation-and-automatic-or-explicit-trade-costs-vs-lowest-sell-reference"
+            == "selected-plan-full-material-replacement-plus-installation-and-automatic-or-explicit-trade-costs-vs-lowest-sell-reference"
+        && response.blueprint_profitability_applied == response.blueprint_profitability.is_some()
+        && response.blueprint_profitability_rule
+            == "configured-production-goals-exact-plan-per-hub-net-profit"
+        && response
+            .blueprint_profitability
+            .as_ref()
+            .is_none_or(blueprint_profitability_is_valid)
         && response.trade_costs_applied
         && response.trade_cost_rule
             == "ceil-gross-revenue-times-manual-or-npc-station-character-rate-at-1e10-scale-per-fee"
@@ -7130,6 +7323,8 @@ fn query_production_plans(
     sales_character_id: Option<u64>,
     broker_fee_basis_points: Option<u16>,
     sales_tax_basis_points: Option<u16>,
+    analysis_plan_id: Option<u64>,
+    include_blueprint_profitability: bool,
     state: State<'_, RuntimeState>,
 ) -> Result<String, String> {
     if search.chars().count() > MAX_ASSET_SEARCH_CHARACTERS
@@ -7153,6 +7348,8 @@ fn query_production_plans(
         || sales_character_id.is_some_and(|value| value > JAVASCRIPT_MAX_SAFE_INTEGER)
         || broker_fee_basis_points.is_some_and(|value| value > 10_000)
         || sales_tax_basis_points.is_some_and(|value| value > 10_000)
+        || analysis_plan_id == Some(0)
+        || analysis_plan_id.is_some_and(|value| value > JAVASCRIPT_MAX_SAFE_INTEGER)
         || (trade_cost_mode == "automatic"
             && (broker_fee_basis_points.is_some() || sales_tax_basis_points.is_some()))
     {
@@ -7173,6 +7370,8 @@ fn query_production_plans(
         "salesCharacterId": sales_character_id,
         "brokerFeeBasisPoints": broker_fee_basis_points,
         "salesTaxBasisPoints": sales_tax_basis_points,
+        "analysisPlanId": analysis_plan_id,
+        "includeBlueprintProfitability": include_blueprint_profitability,
     })
     .to_string();
     let response = {
@@ -7196,6 +7395,10 @@ fn query_production_plans(
         || page.purchase_list.profitability.sales_character_id != sales_character_id
         || page.purchase_list.profitability.broker_fee_basis_points != broker_fee_basis_points
         || page.purchase_list.profitability.sales_tax_basis_points != sales_tax_basis_points
+        || page
+            .analysis_plan_id
+            .is_some_and(|value| Some(value) != analysis_plan_id)
+        || page.blueprint_profitability_applied != include_blueprint_profitability
     {
         return Err("sidecar-response-invalid".to_owned());
     }

@@ -24,6 +24,34 @@ Alle bemerkenswerten Änderungen an New Eden Foundry werden hier festgehalten. D
 
 - Keine.
 
+## 0.2.0-alpha.21 – 22. September 2026
+
+### Neu hinzugefügt
+
+- Paket 48 ergänzt in der Blueprint-Ansicht einen Rentabilitätsvergleich konfigurierter Produktionsziele über Jita, Amarr, Dodixie, Hek und Rens.
+- Jede Stationsspalte verwendet dieselbe exakte Zielmenge, Blueprint-/ME-/TE-, Material-, Anlagen- und Verkäuferkonfiguration und zeigt Nettogewinn oder -verlust sowie Nettomarge; die beste vollständig berechenbare Station wird markiert.
+- Ein gemeinsamer Aktualisierungsschalter lädt die benötigten Material- und Produktpreise begrenzt und getrennt für alle fünf Handelsstationen.
+
+### Geändert
+
+- Einkaufsliste, Sofortkauf, Kapitalbedarf und Gewinnanalyse gelten nur noch für das ausdrücklich ausgewählte Produktionsziel, während die globale konfliktfreie Bestandsreservierung erhalten bleibt.
+- Die sichtbare Versionsnummer lautet `v0.2.0-alpha.21`.
+
+### Behobene Fehler
+
+- Materialien und Verkaufserlöse anderer gefilterter Produktionsziele werden nicht mehr unbeabsichtigt in die Einkaufsliste oder Preisanalyse des betrachteten Ziels gemischt.
+
+### Bekannte Einschränkungen
+
+- Der Blueprint-Vergleich setzt ein konfiguriertes Produktionsziel voraus; ohne Ziel werden keine pauschalen Ein-Lauf-Annahmen erfunden.
+- Der Vergleich verwendet niedrigste stationsexakte Sell-Angebote und berücksichtigt keine Buy Orders, Transportkosten, erneuten Einstellgebühren oder automatische Upwell-Gebühren.
+- Die Alpha ist noch nicht produktiv code-signiert; SmartScreen kann deshalb weiterhin vor einem unbekannten Herausgeber warnen.
+
+### Update und Datenbankmigration
+
+- Das Datenbankschema bleibt bei Version 14; die Zielauswahl und der Blueprint-Vergleich benötigen keine Migration.
+- Für ein Installer-Update die Anwendung vollständig schließen und die Option zum Löschen der Anwendungsdaten abgewählt lassen. Für ein portables Update die neue Alpha in einen neuen Ordner entpacken und den bisherigen `data`-Ordner bei geschlossener Anwendung übernehmen.
+
 ## 0.2.0-alpha.20 – 22. September 2026
 
 ### Neu hinzugefügt
