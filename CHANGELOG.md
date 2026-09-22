@@ -6,11 +6,34 @@ Alle bemerkenswerten Änderungen an New Eden Foundry werden hier festgehalten. D
 
 ### Neu hinzugefügt
 
+- Keine.
+
+### Geändert
+
+- Keine.
+
+### Behobene Fehler
+
+- Keine.
+
+### Bekannte Einschränkungen
+
+- Keine.
+
+### Update und Datenbankmigration
+
+- Keine.
+
+## 0.2.0-alpha.20 – 22. September 2026
+
+### Neu hinzugefügt
+
 - Paket 47 synchronisiert unmodifizierte Charakter-Standings vollständig und atomar und berechnet Brokergebühr sowie Verkaufssteuer für die fünf NPC-Handelsstationen automatisch aus Verkäufer-Charakter, Skills und stationsbezogenen Standings.
 - Die Produktionsansicht zeigt den effektiven Satz, Broker Relations, Accounting, Corporation-/Faction-Standing sowie die verwendeten Skill- und Standing-Snapshots; ein manueller Fallback bleibt verfügbar.
 
 ### Geändert
 
+- Die sichtbare Versionsnummer lautet `v0.2.0-alpha.20`.
 - Das Markt-Scopepaket enthält zusätzlich `esi-characters.read_standings.v1`; bereits verbundene Charaktere werden deshalb sichtbar zur erneuten Autorisierung aufgefordert.
 - Gebühren verwenden eine feste Rate-Skala von `10.000.000.000`, damit Accounting-Stufen und auf sechs Dezimalstellen normalisierte Standings exakt und ohne binäre Gleitkomma-Drift berechnet werden.
 
@@ -22,12 +45,14 @@ Alle bemerkenswerten Änderungen an New Eden Foundry werden hier festgehalten. D
 
 - Automatische Gebühren gelten für die konfigurierten NPC-Stationen. Upwell-spezifische Brokergebühren und erneute Einstellgebühren bleiben im manuellen Fallback beziehungsweise außerhalb des aktuellen Vertrags.
 - Automatischer Hubvergleich, Buy Orders, Transportkosten und automatisch erkannte Struktur-/Service-/Rigmodifikatoren sind nicht enthalten.
+- Die Alpha ist noch nicht produktiv code-signiert; SmartScreen kann deshalb weiterhin vor einem unbekannten Herausgeber warnen.
 
 ### Update und Datenbankmigration
 
 - Das Datenbankschema bleibt bei Version 14; Standing-Snapshots verwenden den bestehenden generischen Snapshot-Speicher.
 - Die bestehende EVE-SSO-Portalregistrierung muss vor Nutzung um `esi-characters.read_standings.v1` erweitert werden.
 - Bestehende Charaktere benötigen wegen des neuen Standing-Scopes einmalig eine erneute EVE-Autorisierung.
+- Für ein Installer-Update die Anwendung vollständig schließen und die Option zum Löschen der Anwendungsdaten abgewählt lassen. Für ein portables Update die neue Alpha in einen neuen Ordner entpacken und den bisherigen `data`-Ordner bei geschlossener Anwendung übernehmen.
 
 ## 0.2.0-alpha.19 – 21. September 2026
 
