@@ -2,9 +2,9 @@
 
 **Fassung:** 4.0 (lebendes Repository-Dokument)
 
-**Stand:** 21. September 2026
+**Stand:** 22. September 2026
 
-**Status:** Paket 46 – Explizite Handelskosten und Nettoergebnis technisch abgeschlossen
+**Status:** Paket 47 – Automatische NPC-Stationsgebühren technisch abgeschlossen
 
 **Geltungsbereich:** `Savox76/eve-test-indu`
 
@@ -212,6 +212,7 @@ Die Reihenfolge ist verbindlicher als eine Kalenderangabe.
 | 44 | Multi-Hub-Sofortkaufpreise und realer Einkaufsbedarf | Die Fehlmengen werden am ausdrücklich gewählten Hub Jita, Amarr, Dodixie, Hek oder Rens aus vollständig paginierten stationsexakten Sell Orders nach realer Markttiefe bepreist; Abdeckung, Quellenstand, Gesamtkaufpreis und zusätzlicher Kapitalbedarf bleiben nachvollziehbar |
 | 45 | Verkaufswert und belegbare Rohmarge | Die gefilterten Ziele bewerten sämtliche verbrauchten Materialien einschließlich vorhandenen Bestands zum vollständigen Wiederbeschaffungswert, addieren Installationskosten und vergleichen die Summe mit dem Bruttoverkaufswert zum niedrigsten stationsexakten Sell-Angebot; Handelsgebühren bleiben ausdrücklich ausgeschlossen |
 | 46 | Explizite Handelskosten und Nettoergebnis | Persönliche Brokergebühr und Verkaufssteuer werden als ausdrücklich eingegebene Basispunkte getrennt auf den belegten Bruttoverkaufswert angewendet; Nettoerlös, Nettogewinn und Nettomarge bleiben ohne vollständige Eingaben unbekannt statt mit geratenen Standardsätzen berechnet |
+| 47 | Automatische NPC-Stationsgebühren | Ein getrennter Verkäufer-Charakter liefert Broker Relations, Accounting sowie unmodifizierte stationsbezogene Corporation-/Faction-Standings; Brokergebühr und Verkaufssteuer werden mit offizieller Formel exakt berechnet, während fehlende Snapshots eigene Zustände bleiben und ein manueller Fallback erhalten bleibt |
 
 ### Aktueller Stand
 
@@ -260,7 +261,8 @@ Die Reihenfolge ist verbindlicher als eine Kalenderangabe.
 - **Abgeschlossen:** 44 – Jita, Amarr, Dodixie, Hek und Rens sind als getrennte, stationsexakte Marktprofile verfügbar; Jita bleibt der lokal persistierte Standard. Für höchstens 250 aktuell fehlende Typen lädt die Anwendung nur den gewählten Hub, paginiert dessen öffentliche Sell Orders vollständig und veröffentlicht den neuen Stand erst atomar nach strikter Validierung. Die Einkaufsliste verbraucht die günstigsten Orders bis zur benötigten Menge, weist Voll-, Teil- und Nichtdeckung, gewichteten Einheitspreis, Gesamtkaufpreis, Quelle und Alter aus und addiert den Kaufpreis nur bei vollständiger Deckung zu den belegten Installationskosten. Ein Fehler erhält den letzten vollständigen Hub-Snapshot; ein Hubwechsel fällt nie still auf Jita zurück. Das Schema bleibt bei Version 14.
 - **Abgeschlossen:** 45 – Für alle aktuell gefilterten und auflösbaren Ziele werden die vollständigen äußeren Materialmengen unabhängig vom vorhandenen Bestand nach realer Sell-Order-Tiefe als Wiederbeschaffungskosten bewertet. Der stationsexakte niedrigste Sell-Preis des Zielprodukts liefert einen ausdrücklich nicht garantierten Bruttoverkaufswert. Zusammen mit den vollständigen Installationskosten entstehen Produktionskosten, Rohgewinn oder -verlust und Rohmarge vor Brokergebühren und Verkaufssteuer. Die Preisaktualisierung lädt dafür die Vereinigung aus Material- und Produkttypen; unvollständige Preise erzeugen keine scheinbar vollständige Marge. Das Schema bleibt bei Version 14.
 - **Abgeschlossen:** 46 – Brokergebühr und Verkaufssteuer können in Hundertstelprozent ausdrücklich eingegeben werden und bleiben lokal erhalten. Beide Gebühren werden einzeln auf den belegten Bruttoverkaufswert auf Cent aufgerundet. Die Oberfläche zeigt Handelskosten, Nettoerlös, Nettogewinn oder -verlust sowie Nettomarge parallel zur unveränderten Rohmarge. Ein fehlender Satz bleibt `unconfigured`; persönliche Werte werden weder aus Skills und Standings geraten noch durch 0 Prozent ersetzt. Das Schema bleibt bei Version 14.
-- **Als Nächstes:** Das nächste Fachpaket wird separat festgelegt. Automatischer Hubvergleich, Buy Orders, automatische Gebührenableitung aus Skills und Standings, erneute Einstellgebühren, Transport, automatisch erkannte Struktur-/Service-/Rigmodifikatoren und belastbare Endtermine bleiben bis zu eigenen Fachverträgen ausgeschlossen.
+- **Abgeschlossen:** 47 – Für Jita, Amarr, Dodixie, Hek und Rens wird ein getrennt ausgewählter Verkäufer-Charakter verwendet. Seine aktiven Broker-Relations- und Accounting-Level sowie unmodifizierten Corporation-/Faction-Standings werden aus atomaren vollständigen ESI-Snapshots geladen und mit der offiziellen NPC-Stationsformel in einer festen Rate-Skala von `10.000.000.000` verrechnet. Fehlende Verkäufer-, Skill- oder Standing-Belege bleiben ausdrücklich unbekannt; der manuelle Fallback aus Paket 46 bleibt erhalten. Der neue Standing-Scope löst bei bestehenden Charakteren sichtbar eine erneute Autorisierung aus. Das Schema bleibt bei Version 14.
+- **Als Nächstes:** Das nächste Fachpaket wird separat festgelegt. Automatischer Hubvergleich, Buy Orders, automatische Upwell-Gebühren, erneute Einstellgebühren, Transport, automatisch erkannte Struktur-/Service-/Rigmodifikatoren und belastbare Endtermine bleiben bis zu eigenen Fachverträgen ausgeschlossen.
 - Architektur-Gate A0 ist vollständig erfüllt; `v0.2.0-alpha.1` bildet die erste freigegebene Alpha-Grundlage für die folgenden Produktionspakete.
 
 ## 13. Entscheidungs- und Quellenrang

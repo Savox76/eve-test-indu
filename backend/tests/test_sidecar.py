@@ -711,6 +711,7 @@ class SidecarIntegrationTests(unittest.TestCase):
                     "state": None, "offset": 0, "limit": 50,
                     "sortBy": "priority", "sortDirection": "desc",
                     "marketHubId": "jita",
+                    "tradeCostMode": "manual", "salesCharacterId": None,
                     "brokerFeeBasisPoints": None,
                     "salesTaxBasisPoints": None,
                 }).encode(),
@@ -831,6 +832,19 @@ class SidecarIntegrationTests(unittest.TestCase):
             self.assertEqual(character_skill_sync, {
                 "characters": [], "completed": 0, "failed": 0, "skills": 0,
                 "totalSp": 0, "unallocatedSp": 0,
+            })
+
+            character_standing_sync_request = urllib.request.Request(
+                f"{base_url}/standings/sync", data=b"{}", method="POST",
+                headers={
+                    "Authorization": f"Bearer {SYNTHETIC_SESSION_TOKEN}",
+                    "Content-Type": "application/json",
+                },
+            )
+            with opener.open(character_standing_sync_request, timeout=3) as response:
+                character_standing_sync = json.loads(response.read())
+            self.assertEqual(character_standing_sync, {
+                "characters": [], "completed": 0, "failed": 0, "standings": 0,
             })
 
             asset_export_request = urllib.request.Request(

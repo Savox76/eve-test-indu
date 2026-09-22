@@ -32,6 +32,7 @@ EXPECTED_SCOPE_PACKAGES: Final[dict[str, tuple[str, ...]]] = {
         "esi-skills.read_skills.v1",
     ),
     "market": (
+        "esi-characters.read_standings.v1",
         "esi-markets.read_character_orders.v1",
         "esi-wallet.read_character_wallet.v1",
     ),
@@ -163,7 +164,7 @@ def parse_sso_registration_profile(raw: bytes) -> SsoRegistrationProfile:
         scope_packages[package_name] = scopes
 
     reviewed_at = payload["sourceReviewedAt"]
-    if reviewed_at != "2026-09-09":
+    if reviewed_at != "2026-09-22":
         raise SsoRegistrationError("The SSO source review date is invalid.")
 
     return SsoRegistrationProfile(

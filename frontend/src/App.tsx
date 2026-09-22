@@ -88,6 +88,7 @@ import {
   syncAssets,
   syncBlueprints,
   syncCharacterSkills,
+  syncCharacterStandings,
   syncIndustryFacilities,
   syncIndustryJobs,
   syncMarketPrices,
@@ -127,6 +128,7 @@ import {
   type CharacterSkillQuery,
   type CharacterSkillSortField,
   type CharacterSkillSyncResult,
+  type CharacterStandingSyncResult,
   type IndustryActivityId,
   type IndustryCorrelationState,
   type IndustryCostActivity,
@@ -162,6 +164,7 @@ import {
   type ProductionPlanSortField,
   type ProductionPlanState,
   type ProductionSupplyMode,
+  type TradeCostMode,
   type PublicReleaseNotice,
   type CharacterUpdate,
   type DesktopRuntimeStatus,
@@ -972,10 +975,16 @@ const copy = {
       additionalCapital: "Zusätzlicher Kapitalbedarf",
       capitalUnavailable: "Der gesamte Kapitalbedarf wird erst bei vollständigen Markt- und Installationskosten angezeigt.",
       profitabilityTitle: "Verkaufswert und Nettoergebnis",
-      profitabilitySubtitle: "Bewertet den gesamten Materialverbrauch zum Wiederbeschaffungspreis und zieht deine ausdrücklich eingetragenen Handelskosten ab.",
+      profitabilitySubtitle: "Bewertet den gesamten Materialverbrauch zum Wiederbeschaffungspreis und zieht automatisch belegte oder manuell gesetzte Handelskosten ab.",
+      tradeCostMode: "Gebührenmodus",
+      tradeCostModes: { automatic: "Automatisch", manual: "Manuell" },
+      salesCharacter: "Verkäufer-Charakter",
       brokerFee: "Brokergebühr (%)",
       salesTax: "Verkaufssteuer (%)",
       tradeCostInputHelp: "Trage die persönlichen Sätze aus deinem EVE-Verkaufsfenster ein. Leere Felder werden nicht als 0 % ausgelegt.",
+      tradeCostAutomaticHelp: "Für NPC-Handelsstationen werden Brokergebühr und Verkaufssteuer aus aktivem Skill-Level und unmodifizierten Corporation-/Faction-Standings berechnet.",
+      tradeCostAutomaticEvidence: "Broker {broker} % · Steuer {tax} % · Broker Relations {brokerLevel} · Accounting {accountingLevel} · Corp-Standing {corporation} · Faction-Standing {faction}",
+      tradeCostAutomaticSource: "Skills #{skills} · Standings #{standings}",
       grossRevenue: "Bruttoverkaufswert",
       replacementCost: "Material-Wiederbeschaffung",
       fullProductionCost: "Volle Produktionskosten",
@@ -987,9 +996,11 @@ const copy = {
       netProfit: "Nettogewinn",
       netMargin: "Nettomarge {margin} %",
       profitabilityUnavailable: "Eine belastbare Marge erscheint erst mit vollständigen Material-, Produkt- und Installationspreisen.",
-      tradeFeesUnconfigured: "Für das Nettoergebnis müssen Brokergebühr und Verkaufssteuer ausdrücklich eingetragen werden; es werden keine persönlichen Werte geraten.",
+      tradeFeesUnconfigured: "Wähle einen Verkäufer-Charakter oder trage im manuellen Modus beide persönlichen Sätze ein; fehlende Werte werden nicht als 0 % ausgelegt.",
+      tradeFeesSkillsMissing: "Für den Verkäufer fehlt ein vollständiger Skill-Snapshot. Aktualisiere die lokalen Daten nach der erneuten EVE-Autorisierung.",
+      tradeFeesStandingsMissing: "Für den Verkäufer fehlt ein vollständiger Standing-Snapshot. Aktualisiere die lokalen Daten nach der erneuten EVE-Autorisierung.",
       tradeFeesPending: "Die persönlichen Sätze sind eingetragen. Die Handelskosten werden berechnet, sobald ein vollständiger Bruttoverkaufswert vorliegt.",
-      tradeFeesApplied: "Brokergebühr und Verkaufssteuer sind mit den eingetragenen Sätzen enthalten. Der niedrigste Sell-Preis bleibt ein Marktvergleich und keine Verkaufsgarantie.",
+      tradeFeesApplied: "Brokergebühr und Verkaufssteuer sind mit den belegten effektiven Sätzen enthalten. Der niedrigste Sell-Preis bleibt ein Marktvergleich und keine Verkaufsgarantie.",
       outputReference: "{quantity} hergestellt · Ziel {target} · Überschuss {surplus} · niedrigstes Sell-Angebot {price} ISK · {volume} Einheiten Konkurrenzvolumen",
       build: "SDE-Build {build}",
       searchRecipe: "Produkt oder Blueprint suchen",
@@ -1901,10 +1912,16 @@ const copy = {
       additionalCapital: "Additional capital required",
       capitalUnavailable: "Total capital required appears once market and installation costs are complete.",
       profitabilityTitle: "Sales value and net result",
-      profitabilitySubtitle: "Values all consumed materials at replacement cost and deducts your explicitly entered trade costs.",
+      profitabilitySubtitle: "Values all consumed materials at replacement cost and deducts evidenced automatic or manually configured trade costs.",
+      tradeCostMode: "Fee mode",
+      tradeCostModes: { automatic: "Automatic", manual: "Manual" },
+      salesCharacter: "Sales character",
       brokerFee: "Broker fee (%)",
       salesTax: "Sales tax (%)",
       tradeCostInputHelp: "Enter the personal rates shown in your EVE sell window. Empty fields are not treated as 0%.",
+      tradeCostAutomaticHelp: "At NPC trade stations, broker fee and sales tax are calculated from active skill levels and unmodified corporation/faction standings.",
+      tradeCostAutomaticEvidence: "Broker {broker}% · tax {tax}% · Broker Relations {brokerLevel} · Accounting {accountingLevel} · corp standing {corporation} · faction standing {faction}",
+      tradeCostAutomaticSource: "Skills #{skills} · standings #{standings}",
       grossRevenue: "Gross sales value",
       replacementCost: "Material replacement",
       fullProductionCost: "Full production cost",
@@ -1916,9 +1933,11 @@ const copy = {
       netProfit: "Net profit",
       netMargin: "Net margin {margin}%",
       profitabilityUnavailable: "A reliable margin appears once material, product and installation prices are complete.",
-      tradeFeesUnconfigured: "Broker fee and sales tax must be entered explicitly for a net result; personal rates are never guessed.",
+      tradeFeesUnconfigured: "Choose a sales character or enter both personal rates in manual mode; missing values are never treated as 0%.",
+      tradeFeesSkillsMissing: "The sales character has no complete skill snapshot. Refresh local data after reauthorizing EVE.",
+      tradeFeesStandingsMissing: "The sales character has no complete standing snapshot. Refresh local data after reauthorizing EVE.",
       tradeFeesPending: "The personal rates are configured. Trade costs will be calculated once a complete gross sales value is available.",
-      tradeFeesApplied: "Broker fee and sales tax are included at the entered rates. The lowest sell price remains a market reference, not a guaranteed sale.",
+      tradeFeesApplied: "Broker fee and sales tax are included at the evidenced effective rates. The lowest sell price remains a market reference, not a guaranteed sale.",
       outputReference: "{quantity} produced · target {target} · surplus {surplus} · lowest sell offer {price} ISK · {volume} units competing volume",
       build: "SDE build {build}",
       searchRecipe: "Search product or blueprint",
@@ -2291,6 +2310,7 @@ export function App({
   industryJobSyncer = syncIndustryJobs,
   characterSkillsLoader = loadCharacterSkills,
   characterSkillSyncer = syncCharacterSkills,
+  characterStandingSyncer = syncCharacterStandings,
   industryFacilitiesLoader = loadIndustryFacilities,
   industryFacilitySyncer = syncIndustryFacilities,
   industrySlotsLoader = loadIndustrySlots,
@@ -2332,6 +2352,7 @@ export function App({
   industryJobSyncer?: () => Promise<IndustryJobSyncResult>;
   characterSkillsLoader?: (query: CharacterSkillQuery) => Promise<CharacterSkillPage>;
   characterSkillSyncer?: () => Promise<CharacterSkillSyncResult>;
+  characterStandingSyncer?: () => Promise<CharacterStandingSyncResult>;
   industryFacilitiesLoader?: (query: IndustryFacilityQuery) => Promise<IndustryFacilityPage>;
   industryFacilitySyncer?: () => Promise<IndustryFacilitySyncResult>;
   industrySlotsLoader?: (query: IndustrySlotQuery) => Promise<IndustrySlotPage>;
@@ -2360,6 +2381,7 @@ export function App({
   const [blueprintRevision, setBlueprintRevision] = useState(0);
   const [industryJobRevision, setIndustryJobRevision] = useState(0);
   const [characterSkillRevision, setCharacterSkillRevision] = useState(0);
+  const [characterStandingRevision, setCharacterStandingRevision] = useState(0);
   const [industryFacilityRevision, setIndustryFacilityRevision] = useState(0);
   const [researchPlanRevision, setResearchPlanRevision] = useState(0);
   const initialAssetSyncStarted = useRef(false);
@@ -2454,6 +2476,12 @@ export function App({
     return result;
   }, [characterSkillSyncer]);
 
+  const runCharacterStandingSync = useCallback(async () => {
+    const result = await characterStandingSyncer();
+    setCharacterStandingRevision((revision) => revision + 1);
+    return result;
+  }, [characterStandingSyncer]);
+
   const runIndustryFacilitySync = useCallback(async () => {
     const result = await industryFacilitySyncer();
     setIndustryFacilityRevision((revision) => revision + 1);
@@ -2466,7 +2494,7 @@ export function App({
     setSyncing(true);
     try {
       const sources = await Promise.allSettled([
-        runAssetSync(), runBlueprintSync(), runCharacterSkillSync(),
+        runAssetSync(), runBlueprintSync(), runCharacterSkillSync(), runCharacterStandingSync(),
       ]);
       const jobs = await Promise.allSettled([runIndustryJobSync()]);
       const facilities = await Promise.allSettled([runIndustryFacilitySync()]);
@@ -2478,7 +2506,8 @@ export function App({
     } finally {
       setSyncing(false);
     }
-  }, [runAssetSync, runBlueprintSync, runCharacterSkillSync, runIndustryFacilitySync, runIndustryJobSync]);
+  }, [runAssetSync, runBlueprintSync, runCharacterSkillSync, runCharacterStandingSync,
+    runIndustryFacilitySync, runIndustryJobSync]);
 
   useEffect(() => {
     if (!nativeCoreReady) return;
@@ -3070,6 +3099,7 @@ export function App({
             syncMarketPrices={marketPriceSyncer}
             savePlan={productionPlanSaver}
             deletePlan={productionPlanDeleter}
+            refreshRevision={characterSkillRevision + characterStandingRevision}
           />
         ) : (
           <ModulePreview activeModule={activeModule} t={t} />
@@ -5592,7 +5622,7 @@ function ResearchPlanningPanel({
 
 function ProductionWorkspace({
   available, locale, t, characters, loadCatalog, loadPlans, syncMarketPrices: syncPrices,
-  savePlan, deletePlan,
+  savePlan, deletePlan, refreshRevision,
 }: {
   available: boolean;
   locale: Locale;
@@ -5606,6 +5636,7 @@ function ProductionWorkspace({
   ) => Promise<MarketPriceSyncResult>;
   savePlan: (input: ProductionPlanInput) => Promise<unknown>;
   deletePlan: (planId: number) => Promise<void>;
+  refreshRevision: number;
 }) {
   const [catalogSearch, setCatalogSearch] = useState("");
   const [appliedCatalogSearch, setAppliedCatalogSearch] = useState("");
@@ -5634,6 +5665,13 @@ function ProductionWorkspace({
   const [marketHubId, setMarketHubId] = useStoredState<MarketHubId>(
     "production.market-hub", "jita",
     (value): value is MarketHubId => marketHubIds.includes(value as MarketHubId),
+  );
+  const [tradeCostMode, setTradeCostMode] = useStoredState<TradeCostMode>(
+    "production.trade-cost-mode", "automatic",
+    (value): value is TradeCostMode => value === "automatic" || value === "manual",
+  );
+  const [salesCharacterId, setSalesCharacterId] = useStoredState<number | null>(
+    "production.sales-character", null, isNullablePositiveInteger,
   );
   const [brokerFeeBasisPoints, setBrokerFeeBasisPoints] = useStoredState<number | null>(
     "production.broker-fee", null, isNullableBasisPoints,
@@ -5677,6 +5715,12 @@ function ProductionWorkspace({
     });
     return [...owners.values()];
   }, [characters, plans]);
+  const salesCharacters = useMemo(() => characters
+    .filter((character) => character.enabled)
+    .map((character) => ({
+      characterId: character.characterId,
+      name: character.alias ?? character.name,
+    })), [characters]);
   const newFacilityOptions = useMemo(() =>
     (plans?.locationOptions ?? []).filter((option) => option.ownerCharacterId === newOwner),
   [newOwner, plans]);
@@ -5686,6 +5730,10 @@ function ProductionWorkspace({
     setNewOwner((current) => current !== null && productionOwners.some((owner) => owner.characterId === current)
       ? current : productionOwners[0]?.characterId ?? null);
   }, [productionOwners]);
+  useEffect(() => {
+    setSalesCharacterId((current) => current !== null && salesCharacters.some((owner) => owner.characterId === current)
+      ? current : salesCharacters[0]?.characterId ?? null);
+  }, [salesCharacters]);
   useEffect(() => {
     if (newFacilityId !== null && !newFacilityOptions.some((option) => option.facilityId === newFacilityId)) {
       setNewFacilityId(null);
@@ -5741,7 +5789,10 @@ function ProductionWorkspace({
     setPlansFailed(false);
     void loadPlans({ search: appliedPlanSearch, ownerCharacterId: planOwner, activity: planActivity,
       state: planState, offset: planOffset, limit: productionPlanPageSize, sortBy, sortDirection,
-      marketHubId, brokerFeeBasisPoints, salesTaxBasisPoints })
+      marketHubId, tradeCostMode,
+      salesCharacterId: tradeCostMode === "automatic" ? salesCharacterId : null,
+      brokerFeeBasisPoints: tradeCostMode === "manual" ? brokerFeeBasisPoints : null,
+      salesTaxBasisPoints: tradeCostMode === "manual" ? salesTaxBasisPoints : null })
       .then((page) => {
         if (!active) return;
         if (page.total > 0 && page.offset >= page.total) {
@@ -5771,7 +5822,8 @@ function ProductionWorkspace({
       .finally(() => { if (active) setPlansLoading(false); });
     return () => { active = false; };
   }, [appliedPlanSearch, available, brokerFeeBasisPoints, loadPlans, marketHubId, planActivity,
-    planOffset, planOwner, planState, revision, salesTaxBasisPoints, sortBy, sortDirection]);
+    planOffset, planOwner, planState, refreshRevision, revision, salesCharacterId,
+    salesTaxBasisPoints, sortBy, sortDirection, tradeCostMode]);
 
   const createGoal = async () => {
     if (!selected || newOwner === null || busyId !== null) return;
@@ -6000,10 +6052,23 @@ function ProductionWorkspace({
           </div>
           <div className="production-profitability-heading"><div><h3>{t.productionPlanning.profitabilityTitle}</h3><p>{t.productionPlanning.profitabilitySubtitle}</p></div><span className={`status-pill status-pill--${plans.purchaseList.profitability.state === "ready" ? "good" : plans.purchaseList.profitability.state === "partial" || plans.purchaseList.profitability.state === "stale" ? "info" : "warn"}`}>{t.productionPlanning.marketPricingStateLabels[plans.purchaseList.profitability.state]}</span></div>
           <div className="production-trade-cost-controls">
-            <label><span>{t.productionPlanning.brokerFee}</span><input type="number" min={0} max={100} step={0.01} value={brokerFeeBasisPoints === null ? "" : brokerFeeBasisPoints / 100} onChange={(event) => { setBrokerFeeBasisPoints(event.target.value === "" ? null : Math.min(10_000, Math.max(0, Math.round(Number(event.target.value) * 100)))); setPlanOffset(0); }} /></label>
-            <label><span>{t.productionPlanning.salesTax}</span><input type="number" min={0} max={100} step={0.01} value={salesTaxBasisPoints === null ? "" : salesTaxBasisPoints / 100} onChange={(event) => { setSalesTaxBasisPoints(event.target.value === "" ? null : Math.min(10_000, Math.max(0, Math.round(Number(event.target.value) * 100)))); setPlanOffset(0); }} /></label>
-            <p>{t.productionPlanning.tradeCostInputHelp}</p>
+            <label><span>{t.productionPlanning.tradeCostMode}</span><select value={tradeCostMode} onChange={(event) => { setTradeCostMode(event.target.value as TradeCostMode); setPlanOffset(0); }}><option value="automatic">{t.productionPlanning.tradeCostModes.automatic}</option><option value="manual">{t.productionPlanning.tradeCostModes.manual}</option></select></label>
+            {tradeCostMode === "automatic" ? <>
+              <label><span>{t.productionPlanning.salesCharacter}</span><select value={salesCharacterId ?? ""} onChange={(event) => { setSalesCharacterId(event.target.value ? Number(event.target.value) : null); setPlanOffset(0); }}><option value="">—</option>{salesCharacters.map((owner) => <option key={owner.characterId} value={owner.characterId}>{owner.name}</option>)}</select></label>
+              <p>{t.productionPlanning.tradeCostAutomaticHelp}</p>
+            </> : <>
+              <label><span>{t.productionPlanning.brokerFee}</span><input type="number" min={0} max={100} step={0.01} value={brokerFeeBasisPoints === null ? "" : brokerFeeBasisPoints / 100} onChange={(event) => { setBrokerFeeBasisPoints(event.target.value === "" ? null : Math.min(10_000, Math.max(0, Math.round(Number(event.target.value) * 100)))); setPlanOffset(0); }} /></label>
+              <label><span>{t.productionPlanning.salesTax}</span><input type="number" min={0} max={100} step={0.01} value={salesTaxBasisPoints === null ? "" : salesTaxBasisPoints / 100} onChange={(event) => { setSalesTaxBasisPoints(event.target.value === "" ? null : Math.min(10_000, Math.max(0, Math.round(Number(event.target.value) * 100)))); setPlanOffset(0); }} /></label>
+              <p>{t.productionPlanning.tradeCostInputHelp}</p>
+            </>}
           </div>
+          {plans.purchaseList.profitability.tradeCostMode === "automatic" && plans.purchaseList.profitability.effectiveBrokerFeeRate !== null && plans.purchaseList.profitability.effectiveSalesTaxRate !== null && <div className="production-market-evidence"><small>{t.productionPlanning.tradeCostAutomaticEvidence
+            .replace("{broker}", percentFormat.format(plans.purchaseList.profitability.effectiveBrokerFeeRate / plans.purchaseList.profitability.tradeRateScale).replace(/\s?%$/, ""))
+            .replace("{tax}", percentFormat.format(plans.purchaseList.profitability.effectiveSalesTaxRate / plans.purchaseList.profitability.tradeRateScale).replace(/\s?%$/, ""))
+            .replace("{brokerLevel}", String(plans.purchaseList.profitability.brokerRelationsLevel ?? 0))
+            .replace("{accountingLevel}", String(plans.purchaseList.profitability.accountingLevel ?? 0))
+            .replace("{corporation}", ((plans.purchaseList.profitability.corporationStandingMillionths ?? 0) / 1_000_000).toLocaleString(locale === "de" ? "de-DE" : "en-US", { minimumFractionDigits: 2, maximumFractionDigits: 6 }))
+            .replace("{faction}", ((plans.purchaseList.profitability.factionStandingMillionths ?? 0) / 1_000_000).toLocaleString(locale === "de" ? "de-DE" : "en-US", { minimumFractionDigits: 2, maximumFractionDigits: 6 }))}</small><small>{t.productionPlanning.tradeCostAutomaticSource.replace("{skills}", String(plans.purchaseList.profitability.tradeSkillSnapshotId)).replace("{standings}", String(plans.purchaseList.profitability.standingSnapshotId))}</small></div>}
           <div className="production-capital-summary production-profitability-summary">
             <span><small>{t.productionPlanning.grossRevenue}</small><strong>{plans.purchaseList.profitability.grossRevenueCents === null ? "—" : `${iskFormat.format(plans.purchaseList.profitability.grossRevenueCents / 100)} ISK`}</strong></span>
             <span><small>{t.productionPlanning.replacementCost}</small><strong>{plans.purchaseList.profitability.materialReplacementCostCents === null ? "—" : `${iskFormat.format(plans.purchaseList.profitability.materialReplacementCostCents / 100)} ISK`}</strong></span>
@@ -6014,7 +6079,7 @@ function ProductionWorkspace({
             <span className={plans.purchaseList.profitability.netProfitCents !== null && plans.purchaseList.profitability.netProfitCents < 0 ? "production-profitability-summary__negative" : "production-capital-summary__total"}><small>{t.productionPlanning.netProfit}</small><strong>{plans.purchaseList.profitability.netProfitCents === null ? "—" : `${iskFormat.format(plans.purchaseList.profitability.netProfitCents / 100)} ISK`}</strong>{plans.purchaseList.profitability.netMarginBasisPoints !== null && <small>{t.productionPlanning.netMargin.replace("{margin}", (plans.purchaseList.profitability.netMarginBasisPoints / 100).toLocaleString(locale === "de" ? "de-DE" : "en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }))}</small>}</span>
           </div>
           {plans.purchaseList.profitability.grossProfitCents === null && plans.purchaseList.profitability.state !== "empty" && <p className="production-purchase-list__empty">{t.productionPlanning.profitabilityUnavailable}</p>}
-          {plans.purchaseList.profitability.state !== "empty" && <p className="production-purchase-list__warning"><AlertTriangle size={14} />{plans.purchaseList.profitability.tradeCostState === "unconfigured" ? t.productionPlanning.tradeFeesUnconfigured : plans.purchaseList.profitability.tradeCostState === "unavailable" ? t.productionPlanning.tradeFeesPending : t.productionPlanning.tradeFeesApplied}</p>}
+          {plans.purchaseList.profitability.state !== "empty" && <p className="production-purchase-list__warning"><AlertTriangle size={14} />{plans.purchaseList.profitability.tradeCostState === "unconfigured" ? t.productionPlanning.tradeFeesUnconfigured : plans.purchaseList.profitability.tradeCostState === "skill-snapshot-missing" ? t.productionPlanning.tradeFeesSkillsMissing : plans.purchaseList.profitability.tradeCostState === "standing-snapshot-missing" ? t.productionPlanning.tradeFeesStandingsMissing : plans.purchaseList.profitability.tradeCostState === "unavailable" ? t.productionPlanning.tradeFeesPending : t.productionPlanning.tradeFeesApplied}</p>}
           {plans.purchaseList.profitability.items.length > 0 && <details><summary>{t.productionPlanning.profitabilityTitle} · {numberFormat.format(plans.purchaseList.profitability.items.length)}</summary><ul>{plans.purchaseList.profitability.items.map((item) => <li key={item.typeId}><span><strong>{item.typeName}</strong><small>Type #{item.typeId} · {numberFormat.format(item.planCount)} {t.productionPlanning.plans}</small></span><span><strong>{item.grossRevenueCents === null ? t.productionPlanning.marketPricingStateLabels[item.marketState] : `${iskFormat.format(item.grossRevenueCents / 100)} ISK`}</strong>{item.lowestSellUnitPriceCents !== null && item.competingVolume !== null && <small>{t.productionPlanning.outputReference.replace("{quantity}", numberFormat.format(item.quantity)).replace("{target}", numberFormat.format(item.targetQuantity)).replace("{surplus}", numberFormat.format(item.surplusQuantity)).replace("{price}", iskFormat.format(item.lowestSellUnitPriceCents / 100)).replace("{volume}", numberFormat.format(item.competingVolume))}</small>}</span></li>)}</ul></details>}
           {plans.purchaseList.additionalCapitalNeedCents === null && plans.purchaseList.items.length > 0 && <p className="production-purchase-list__empty">{t.productionPlanning.capitalUnavailable}</p>}
           {plans.purchaseList.unresolvedPlanCount > 0 && <p className="production-purchase-list__warning"><AlertTriangle size={14} />{t.productionPlanning.purchaseIncomplete.replace("{plans}", numberFormat.format(plans.purchaseList.unresolvedPlanCount))}</p>}

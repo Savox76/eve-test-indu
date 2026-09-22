@@ -74,6 +74,13 @@ class MarketPriceTests(unittest.TestCase):
         )
         self.assertEqual(market_hub("jita")["stationId"], 60_003_760)
         self.assertEqual(
+            (
+                market_hub("jita")["stationOwnerCorporationId"],
+                market_hub("jita")["stationOwnerFactionId"],
+            ),
+            (1_000_035, 500_001),
+        )
+        self.assertEqual(
             validate_market_price_sync_request(
                 {"hubId": "amarr", "typeIds": [901, 900]}
             )["typeIds"],

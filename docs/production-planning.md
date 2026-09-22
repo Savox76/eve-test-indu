@@ -212,20 +212,31 @@ Für die vollständig belegte Auswahl gilt:
 
 Der niedrigste Sell-Preis ist eine Vergleichsbasis für ein eigenes konkurrenzfähiges Verkaufsangebot, keine zugesagte Ausführung. Die tatsächlich durch ganzzahlige Blueprint-Läufe hergestellte Menge einschließlich Überschuss wird getrennt von der Zielmenge ausgewiesen und vollständig bewertet. Konkurrenzvolumen zum identischen niedrigsten Preis bleibt je Zielprodukt sichtbar. Diese Rohwerte enthalten keine Brokergebühr und Verkaufssteuer; Paket 46 weist sie getrennt aus. Fehlt auch nur ein Materialpreis, Produktpreis oder vollständiger Installationskostenstand, bleibt Rohgewinn und Rohmarge unbekannt. Suche sowie Besitzer-, Aktivitäts- und Statusfilter bestimmen weiterhin den vollständig aggregierten Ausschnitt; Seitenauswahl und Sortierung verändern ihn nicht.
 
-## Explizite Handelskosten und Nettoergebnis
+## Automatische oder explizite Handelskosten und Nettoergebnis
 
-Paket 46 erhält die Bruttowerte aus Paket 45 unverändert und ergänzt zwei bewusst eingetragene persönliche Sätze in Basispunkten: Brokergebühr und Verkaufssteuer. `100` entspricht `1,00 %`. Beide Felder bleiben lokal erhalten. Ein leeres Feld bedeutet ausdrücklich **unbekannt** und niemals automatisch `0 %`; Skills, Standings, Strukturbetreiber und mögliche erneute Einstellgebühren werden nicht geraten.
+Paket 47 erweitert den manuellen Vertrag aus Paket 46 um eine automatische Berechnung für die fünf konfigurierten NPC-Handelsstationen. Die Oberfläche speichert einen getrennten Verkäufer-Charakter. Dessen aktive Skill-Level stammen aus dem letzten vollständigen Skill-Snapshot; dessen unmodifizierte Corporation- und Faction-Standings stammen aus dem neuen vollständigen ESI-Standing-Snapshot. Die Stationsbesitzer und ihre Fraktionen sind aus dem festgeschriebenen offiziellen SDE-Build abgeleitet. Ein fehlender Verkäufer-, Skill- oder Standing-Beleg bleibt ein eigener Zustand und wird niemals als Stufe oder Standing `0` erfunden.
+
+Für eine NPC-Station gelten die offiziellen Sätze:
+
+1. `brokerRate = max(1 %, 3 % - 0,3 % × BrokerRelationsLevel - 0,03 % × FactionStanding - 0,02 % × CorporationStanding)`
+2. `salesTaxRate = 7,5 % × (1 - 0,11 × AccountingLevel)`
+
+`Connections` und `Diplomacy` verändern diese Eingabe nicht, da ausschließlich unmodifizierte ESI-Standings verwendet werden. Die Berechnung verwendet eine feste Rate-Skala von `10.000.000.000`; damit bleiben beispielsweise `3,375 %` und auf sechs Dezimalstellen normalisierte Standings ohne binäre Gleitkomma-Abweichung erhalten. Brokergebühr und Verkaufssteuer werden jeweils als `ceil(grossRevenueCents × effectiveRate / 10.000.000.000)` berechnet.
+
+Der manuelle Fallback bleibt für abweichende reale Situationen und künftige Upwell-Strukturen erhalten. Dort werden zwei bewusst eingetragene persönliche Sätze in Basispunkten verwendet: `100` entspricht `1,00 %`. Beide Felder bleiben lokal erhalten. Ein leeres Feld bedeutet ausdrücklich **unbekannt** und niemals automatisch `0 %`.
 
 Sobald beide Sätze und ein vollständiger Bruttoverkaufswert vorliegen, gilt:
 
-1. `brokerFeeCents = ceil(grossRevenueCents × brokerFeeBasisPoints / 10.000)`
-2. `salesTaxCents = ceil(grossRevenueCents × salesTaxBasisPoints / 10.000)`
-3. `totalTradeCostCents = brokerFeeCents + salesTaxCents`
-4. `netRevenueCents = grossRevenueCents - totalTradeCostCents`
-5. `netProfitCents = netRevenueCents - totalProductionCostCents`
-6. `netMarginBasisPoints = trunc(netProfitCents × 10.000 / grossRevenueCents)`
+1. `effectiveBrokerFeeRate = brokerFeeBasisPoints × 1.000.000`
+2. `effectiveSalesTaxRate = salesTaxBasisPoints × 1.000.000`
+3. `brokerFeeCents = ceil(grossRevenueCents × effectiveBrokerFeeRate / 10.000.000.000)`
+4. `salesTaxCents = ceil(grossRevenueCents × effectiveSalesTaxRate / 10.000.000.000)`
+5. `totalTradeCostCents = brokerFeeCents + salesTaxCents`
+6. `netRevenueCents = grossRevenueCents - totalTradeCostCents`
+7. `netProfitCents = netRevenueCents - totalProductionCostCents`
+8. `netMarginBasisPoints = trunc(netProfitCents × 10.000 / grossRevenueCents)`
 
-Brokergebühr und Verkaufssteuer werden getrennt auf Cent aufgerundet, damit keine Gebühr durch gemeinsame Rundung verloren geht. Die Nettomarge verwendet denselben Bruttoverkaufswert als Nenner wie die Rohmarge; dadurch bleiben beide Werte direkt vergleichbar. `tradeCostState` ist `unconfigured`, solange mindestens ein Satz fehlt, `unavailable` bei vollständigen Sätzen aber fehlendem Verkaufswert und `ready`, sobald beide Gebühren berechnet wurden. Das Nettoergebnis bleibt bei fehlenden Produktionskosten weiterhin unbekannt. Die Sätze sind eine explizite persönliche Annahme und gelten für die ausgewählte Auswertung, nicht als aus EVE abgeleitete Garantie.
+Brokergebühr und Verkaufssteuer werden getrennt auf Cent aufgerundet, damit keine Gebühr durch gemeinsame Rundung verloren geht. Die Nettomarge verwendet denselben Bruttoverkaufswert als Nenner wie die Rohmarge; dadurch bleiben beide Werte direkt vergleichbar. `tradeCostState` unterscheidet `unconfigured`, `skill-snapshot-missing`, `standing-snapshot-missing`, `unavailable` und `ready`. Das Nettoergebnis bleibt bei fehlenden Produktionskosten weiterhin unbekannt. Erneute Einstellgebühren sind nicht enthalten.
 
 ## Vollständige belegte Installationskosten
 
@@ -245,14 +256,14 @@ Blueprint-ME und Anlagen-Materialboni verändern die tatsächlich benötigten Ei
 
 ## Bewusste Berechnungsgrenze
 
-Paket 46 berechnet Bruttobedarf einschließlich des belegten Blueprint-ME und des expliziten Anlagen-Materialbonus jedes tatsächlich gebauten passenden Schritts, die mit dessen belegtem TE und Anlagen-Zeitbonus veränderte Zeit, die persönliche Skillzeit, gewählte Bestandsquellen und konfliktfreie zielbezogene Reservierungen. Die daraus belegten Fehlmengen werden für die aktuellen Filter zu einer Einkaufsliste aggregiert und am gewählten Markt-Hub nach realer Sell-Order-Tiefe bepreist. Vorhandene Vorprodukte können die Kette teilweise oder vollständig ersetzen. Zusätzlich werden passende persönliche Job- und Anlagenbelege samt aktivitätsspezifischem Systemkostenindex, vollständige Installationskosten, die Rohmarge aus vollem Material-Wiederbeschaffungswert und niedrigstem Sell-Angebot sowie das Nettoergebnis nach ausdrücklich eingetragenen Handelskosten dargestellt. Noch nicht einbezogen werden:
+Paket 47 berechnet Bruttobedarf einschließlich des belegten Blueprint-ME und des expliziten Anlagen-Materialbonus jedes tatsächlich gebauten passenden Schritts, die mit dessen belegtem TE und Anlagen-Zeitbonus veränderte Zeit, die persönliche Skillzeit, gewählte Bestandsquellen und konfliktfreie zielbezogene Reservierungen. Die daraus belegten Fehlmengen werden für die aktuellen Filter zu einer Einkaufsliste aggregiert und am gewählten Markt-Hub nach realer Sell-Order-Tiefe bepreist. Vorhandene Vorprodukte können die Kette teilweise oder vollständig ersetzen. Zusätzlich werden passende persönliche Job- und Anlagenbelege samt aktivitätsspezifischem Systemkostenindex, vollständige Installationskosten, die Rohmarge aus vollem Material-Wiederbeschaffungswert und niedrigstem Sell-Angebot sowie das Nettoergebnis nach automatisch belegten oder ausdrücklich eingetragenen Handelskosten dargestellt. Noch nicht einbezogen werden:
 
 - persönliche Blueprint-ME-/TE-Modifikatoren für Reaktionen,
 - automatisch erkannte Struktur-, Service- und Rigboni,
-- automatischer Hubvergleich, Buy Orders, automatisch aus Skills und Standings abgeleitete Gebühren sowie erneute Einstellgebühren,
+- automatischer Hubvergleich, Buy Orders, Upwell-spezifische automatische Gebühren sowie erneute Einstellgebühren,
 - Transportkosten und reale Kalenderbelegung.
 
-Die API bestätigt die aktiven Verträge mit `inventoryApplied: true`, `reservationsApplied: true`, `reservationRule: priority-desc-created-asc-plan-id-asc`, `blueprintMaterialEfficiencyApplied: true`, `materialEfficiencyRule: max-runs-ceil-base-runs-percent`, `blueprintTimeEfficiencyApplied: true`, `timeEfficiencyRule: max-one-ceil-base-runs-percent`, `blueprintChainAssignmentsApplied: true`, `blueprintChainAssignmentRule: explicit-per-recipe-unique-item`, `characterSkillTimeApplied: true`, `characterSkillTimeRule: job-wide-ceil-industry-4-advanced-industry-3-reactions-4-active-levels`, `facilityEvidenceApplied: true`, `facilityEvidenceRule: assigned-blueprint-before-active-before-latest-owner-job`, `supplyModesApplied: true`, `supplyModeRule: stock-first-before-recursive-build`, `facilityModifiersApplied: true`, `facilityModifierRule: explicit-basis-points-combined-before-single-ceil`, `purchaseListApplied: true`, `purchaseListRule: filtered-plans-sum-missing-by-type`, `marketPricesApplied: true`, `marketPriceRule: selected-hub-lowest-sell-orders-volume-weighted-cents`, `profitabilityApplied: true`, `profitabilityRule: filtered-plans-full-material-replacement-plus-installation-and-explicit-trade-costs-vs-lowest-sell-reference`, `tradeCostsApplied: true`, `tradeCostRule: ceil-gross-revenue-times-explicit-basis-points-per-fee`, `installationCostsApplied: true` und `installationCostRule: base-material-adjusted-price-times-runs-system-index-plus-explicit-tax-plus-scc-4-percent-ceil`. Die verbleibende Modifikatorgrenze bleibt `remainingModifiersApplied: false`. Damit ist die bekannte universelle Gebührenkomponente vollständig; unbekannte reale Struktur-/Service-/Rigmodifikatoren werden weiterhin nicht erfunden. Die Zeit bleibt ohne Kalenderbelegung und Transport kein realer Endtermin.
+Die API bestätigt die aktiven Verträge mit `inventoryApplied: true`, `reservationsApplied: true`, `reservationRule: priority-desc-created-asc-plan-id-asc`, `blueprintMaterialEfficiencyApplied: true`, `materialEfficiencyRule: max-runs-ceil-base-runs-percent`, `blueprintTimeEfficiencyApplied: true`, `timeEfficiencyRule: max-one-ceil-base-runs-percent`, `blueprintChainAssignmentsApplied: true`, `blueprintChainAssignmentRule: explicit-per-recipe-unique-item`, `characterSkillTimeApplied: true`, `characterSkillTimeRule: job-wide-ceil-industry-4-advanced-industry-3-reactions-4-active-levels`, `facilityEvidenceApplied: true`, `facilityEvidenceRule: assigned-blueprint-before-active-before-latest-owner-job`, `supplyModesApplied: true`, `supplyModeRule: stock-first-before-recursive-build`, `facilityModifiersApplied: true`, `facilityModifierRule: explicit-basis-points-combined-before-single-ceil`, `purchaseListApplied: true`, `purchaseListRule: filtered-plans-sum-missing-by-type`, `marketPricesApplied: true`, `marketPriceRule: selected-hub-lowest-sell-orders-volume-weighted-cents`, `profitabilityApplied: true`, `profitabilityRule: filtered-plans-full-material-replacement-plus-installation-and-automatic-or-explicit-trade-costs-vs-lowest-sell-reference`, `tradeCostsApplied: true`, `tradeCostRule: ceil-gross-revenue-times-manual-or-npc-station-character-rate-at-1e10-scale-per-fee`, `installationCostsApplied: true` und `installationCostRule: base-material-adjusted-price-times-runs-system-index-plus-explicit-tax-plus-scc-4-percent-ceil`. Die verbleibende Modifikatorgrenze bleibt `remainingModifiersApplied: false`. Unbekannte reale Struktur-/Service-/Rigmodifikatoren werden weiterhin nicht erfunden. Die Zeit bleibt ohne Kalenderbelegung und Transport kein realer Endtermin.
 
 ## Arbeitsvorrat und Bedienung
 
@@ -260,7 +271,7 @@ Die Produktionsplanung befindet sich unter **Produktion & Reaktionen**. Die Ausw
 
 Die Industrie-Slotübersicht zählt ein auflösbares Ziel als **laufend**, wenn derselbe Charakter einen aktiven, pausierten oder abholbereiten Job mit passender Aktivität und Blueprint-Typ-ID besitzt. Sonst ist es **geplant**. Nicht auflösbare Ziele sind **blockiert**. Ein Fertigzustand wird nicht aus Bestand oder Jobhistorie erfunden und bleibt daher null.
 
-Die authentifizierten internen Routen `/production-plans/catalog`, `/production-plans/query`, `/production-plans/save`, `/production-plans/delete` und `/market-prices/sync` besitzen strikte, begrenzte Verträge. Sidecar, Tauri und Frontend validieren ihre Antworten unabhängig voneinander.
+Die authentifizierten internen Routen `/production-plans/catalog`, `/production-plans/query`, `/production-plans/save`, `/production-plans/delete`, `/market-prices/sync` und `/standings/sync` besitzen strikte, begrenzte Verträge. Sidecar, Tauri und Frontend validieren ihre Antworten unabhängig voneinander.
 
 ## Quelle
 
@@ -269,5 +280,7 @@ Rezepte, Mengen und Basiszeiten stammen aus dem offiziellen [EVE Static Data Exp
 Der universelle SCC-Zuschlag von 4 Prozent folgt den offiziellen [Patch Notes – Version 21.06](https://www.eveonline.com/news/view/patch-notes-version-21-06). Der Satz ist als benannte Fachkonstante im Kostenvertrag enthalten und wird in jeder Kostenaufschlüsselung sichtbar ausgewiesen.
 
 Die Skill-IDs und ihre Zeitboni sind in `types.jsonl` desselben festgeschriebenen offiziellen SDE-Builds 3503375 beschrieben. Die persönlichen aktiven Level stammen aus dem vollständigen charakterbezogenen ESI-Skill-Snapshot.
+
+Die Handelsgebührenformeln folgen der offiziellen [EVE-Hilfe zu Broker Fee und Sales Tax](https://support.eveonline.com/hc/en-us/articles/203218962-Broker-Fee-and-Sales-Tax). Skill-IDs und Stationsbesitzer stammen aus demselben festgeschriebenen offiziellen SDE-Build; persönliche unmodifizierte Standings werden über den offiziellen ESI-Endpunkt synchronisiert.
 
 Die Windows-Ausgaben ab `v0.0.5-preview.14` liefern den geprüften Produktionsausschnitt des festgelegten offiziellen SDE-Builds mit. Er wird beim ersten Start automatisch installiert. Bei identischer Buildnummer wird er nur dann erneut verarbeitet, wenn eine neue abgeleitete Spalte – beispielsweise der Sicherheitsstatus ab `.18` – noch nicht befüllt ist. Die Produkt- und Blueprintsuche benötigt deshalb keinen manuellen Vorbereitungsschritt.
