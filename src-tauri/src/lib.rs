@@ -8729,7 +8729,7 @@ mod tests {
                     id: "market".to_owned(),
                     status: "missing".to_owned(),
                     granted_count: 0,
-                    required_count: 2,
+                    required_count: 3,
                 },
                 ScopePackageStatus {
                     id: "planetary-industry".to_owned(),
