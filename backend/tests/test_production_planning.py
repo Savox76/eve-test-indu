@@ -95,6 +95,8 @@ def query(**changes: object) -> dict:
         "sortBy": "priority",
         "sortDirection": "desc",
         "marketHubId": "jita",
+        "tradeCostMode": "manual",
+        "salesCharacterId": None,
         "brokerFeeBasisPoints": None,
         "salesTaxBasisPoints": None,
     }
@@ -260,6 +262,29 @@ class ProductionPlanningTests(unittest.TestCase):
                         "unallocated_sp": 0,
                     }
                 ),
+                observed_at,
+            ),
+        )
+        return int(snapshot.lastrowid), int(run.lastrowid)
+
+    def publish_standings(
+        self,
+        character_id: int,
+        standings: list[dict[str, object]],
+        observed_at: str,
+    ) -> tuple[int, int]:
+        run = self.db.execute(
+            "INSERT INTO sync_runs(source,status,started_at,completed_at,data_timestamp,"
+            "character_id) VALUES('character_standings','completed',?,?,?,?)",
+            (observed_at, observed_at, observed_at, character_id),
+        )
+        snapshot = self.db.execute(
+            "INSERT INTO cached_snapshots(sync_run_id,resource,payload_json,observed_at) "
+            "VALUES(?,?,?,?)",
+            (
+                int(run.lastrowid),
+                f"character_standings:{character_id}",
+                json.dumps({"characterId": character_id, "standings": standings}),
                 observed_at,
             ),
         )
@@ -873,6 +898,9 @@ class ProductionPlanningTests(unittest.TestCase):
         self.assertEqual(profitability["tradeCostState"], "ready")
         self.assertEqual(profitability["brokerFeeBasisPoints"], 300)
         self.assertEqual(profitability["salesTaxBasisPoints"], 360)
+        self.assertEqual(profitability["effectiveBrokerFeeRate"], 300_000_000)
+        self.assertEqual(profitability["effectiveSalesTaxRate"], 360_000_000)
+        self.assertEqual(profitability["tradeRateScale"], 10_000_000_000)
         self.assertEqual(profitability["brokerFeeCents"], 1_200)
         self.assertEqual(profitability["salesTaxCents"], 1_440)
         self.assertEqual(profitability["totalTradeCostCents"], 2_640)
@@ -895,6 +923,59 @@ class ProductionPlanningTests(unittest.TestCase):
                 "grossRevenueCents": 40_000,
             }],
         )
+
+        automatic_query = query(
+            tradeCostMode="automatic",
+            salesCharacterId=7,
+            brokerFeeBasisPoints=None,
+            salesTaxBasisPoints=None,
+        )
+        missing_skills = query_production_plans(self.db, automatic_query)[
+            "purchaseList"
+        ]["profitability"]
+        self.assertEqual(missing_skills["tradeCostState"], "skill-snapshot-missing")
+
+        skill_snapshot, skill_run = self.publish_skills(
+            7, {3446: 4, 16622: 5}, "2026-09-16T08:31:00Z"
+        )
+        missing_standings = query_production_plans(self.db, automatic_query)[
+            "purchaseList"
+        ]["profitability"]
+        self.assertEqual(
+            missing_standings["tradeCostState"], "standing-snapshot-missing"
+        )
+        standing_snapshot, standing_run = self.publish_standings(
+            7,
+            [
+                {
+                    "fromId": 500_001,
+                    "fromType": "faction",
+                    "standingMillionths": 5_000_000,
+                },
+                {
+                    "fromId": 1_000_035,
+                    "fromType": "npc_corp",
+                    "standingMillionths": 4_000_000,
+                },
+            ],
+            "2026-09-16T08:32:00Z",
+        )
+        automatic = query_production_plans(self.db, automatic_query)["purchaseList"][
+            "profitability"
+        ]
+        self.assertEqual(automatic["tradeCostState"], "ready")
+        self.assertEqual(automatic["tradeCostMode"], "automatic")
+        self.assertEqual(automatic["salesCharacterName"], "Synthetic Pilot")
+        self.assertEqual((automatic["brokerRelationsLevel"], automatic["accountingLevel"]), (4, 5))
+        self.assertEqual(automatic["corporationStandingMillionths"], 4_000_000)
+        self.assertEqual(automatic["factionStandingMillionths"], 5_000_000)
+        self.assertEqual(automatic["effectiveBrokerFeeRate"], 157_000_000)
+        self.assertEqual(automatic["effectiveSalesTaxRate"], 337_500_000)
+        self.assertEqual((automatic["brokerFeeCents"], automatic["salesTaxCents"]), (628, 1_350))
+        self.assertEqual((automatic["tradeSkillSnapshotId"], automatic["tradeSkillSyncRunId"]), (skill_snapshot, skill_run))
+        self.assertEqual((automatic["standingSnapshotId"], automatic["standingSyncRunId"]), (standing_snapshot, standing_run))
+        self.assertEqual(automatic["netRevenueCents"], 38_022)
+        self.assertEqual(automatic["netProfitCents"], 26_522)
         self.assertTrue(query_production_plans(self.db, query())["profitabilityApplied"])
 
     def test_selected_container_and_stock_only_intermediate_skip_blueprint_step(self) -> None:
@@ -2263,6 +2344,9 @@ class ProductionPlanningTests(unittest.TestCase):
             query(sortBy="quantity"),
             query(ownerCharacterId=True),
             query(marketHubId="unknown"),
+            query(tradeCostMode="invented"),
+            query(salesCharacterId=True),
+            query(tradeCostMode="automatic", brokerFeeBasisPoints=300),
             query(brokerFeeBasisPoints=-1),
             query(salesTaxBasisPoints=10_001),
         ]

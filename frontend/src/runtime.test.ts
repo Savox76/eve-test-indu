@@ -36,6 +36,7 @@ import {
   syncAssets,
   syncBlueprints,
   syncCharacterSkills,
+  syncCharacterStandings,
   syncIndustryJobs,
   syncIndustryFacilities,
   syncMarketPrices,
@@ -58,7 +59,7 @@ const emptyData = {
 
 const scopePackages = [
   { id: "industry-core", status: "partial", grantedCount: 1, requiredCount: 4 },
-  { id: "market", status: "missing", grantedCount: 0, requiredCount: 2 },
+  { id: "market", status: "missing", grantedCount: 0, requiredCount: 3 },
   { id: "planetary-industry", status: "missing", grantedCount: 0, requiredCount: 1 },
   { id: "projects", status: "missing", grantedCount: 0, requiredCount: 1 },
   { id: "private-structures", status: "missing", grantedCount: 0, requiredCount: 1 },
@@ -1132,18 +1133,28 @@ describe("desktop runtime status", () => {
     const marketHubs: ProductionPlanPage["purchaseList"]["marketHubs"] = [
       { hubId: "jita", name: "Jita", stationId: 60_003_760,
         stationName: "Jita IV - Moon 4 - Caldari Navy Assembly Plant",
+        stationOwnerCorporationId: 1_000_035, stationOwnerCorporationName: "Caldari Navy",
+        stationOwnerFactionId: 500_001, stationOwnerFactionName: "Caldari State",
         solarSystemId: 30_000_142, regionId: 10_000_002, priority: 0 },
       { hubId: "amarr", name: "Amarr", stationId: 60_008_494,
         stationName: "Amarr VIII (Oris) - Emperor Family Academy",
+        stationOwnerCorporationId: 1_000_086, stationOwnerCorporationName: "Emperor Family",
+        stationOwnerFactionId: 500_003, stationOwnerFactionName: "Amarr Empire",
         solarSystemId: 30_002_187, regionId: 10_000_043, priority: 1 },
       { hubId: "dodixie", name: "Dodixie", stationId: 60_011_866,
         stationName: "Dodixie IX - Moon 20 - Federation Navy Assembly Plant",
+        stationOwnerCorporationId: 1_000_120, stationOwnerCorporationName: "Federation Navy",
+        stationOwnerFactionId: 500_004, stationOwnerFactionName: "Gallente Federation",
         solarSystemId: 30_002_659, regionId: 10_000_032, priority: 2 },
       { hubId: "hek", name: "Hek", stationId: 60_005_686,
         stationName: "Hek VIII - Moon 12 - Boundless Creation Factory",
+        stationOwnerCorporationId: 1_000_057, stationOwnerCorporationName: "Boundless Creation",
+        stationOwnerFactionId: 500_002, stationOwnerFactionName: "Minmatar Republic",
         solarSystemId: 30_002_053, regionId: 10_000_042, priority: 3 },
       { hubId: "rens", name: "Rens", stationId: 60_004_588,
         stationName: "Rens VI - Moon 8 - Brutor Tribe Treasury",
+        stationOwnerCorporationId: 1_000_049, stationOwnerCorporationName: "Brutor Tribe",
+        stationOwnerFactionId: 500_002, stationOwnerFactionName: "Minmatar Republic",
         solarSystemId: 30_002_510, regionId: 10_000_030, priority: 4 },
     ];
     const page: ProductionPlanPage = { items: [plan], total: 1, offset: 0, limit: 50,
@@ -1186,12 +1197,20 @@ describe("desktop runtime status", () => {
           materialReplacementCostCents: 1_600, installationCostCents: null,
           totalProductionCostCents: null, grossProfitCents: null,
           grossMarginBasisPoints: null,
-          tradeCostState: "unconfigured", brokerFeeBasisPoints: null,
-          salesTaxBasisPoints: null, brokerFeeCents: null, salesTaxCents: null,
+          tradeCostState: "unconfigured", tradeCostMode: "manual",
+          salesCharacterId: null, salesCharacterName: null,
+          brokerFeeBasisPoints: null, salesTaxBasisPoints: null,
+          tradeRateScale: 10_000_000_000,
+          effectiveBrokerFeeRate: null, effectiveSalesTaxRate: null,
+          brokerRelationsLevel: null, accountingLevel: null,
+          corporationStandingMillionths: null, factionStandingMillionths: null,
+          tradeSkillSnapshotId: null, tradeSkillSyncRunId: null, tradeSkillObservedAt: null,
+          standingSnapshotId: null, standingSyncRunId: null, standingObservedAt: null,
+          brokerFeeCents: null, salesTaxCents: null,
           totalTradeCostCents: null, netRevenueCents: null, netProfitCents: null,
           netMarginBasisPoints: null,
-          profitabilityRule: "filtered-plans-full-material-replacement-plus-installation-and-explicit-trade-costs-vs-lowest-sell-reference",
-          tradeCostRule: "ceil-gross-revenue-times-explicit-basis-points-per-fee",
+          profitabilityRule: "filtered-plans-full-material-replacement-plus-installation-and-automatic-or-explicit-trade-costs-vs-lowest-sell-reference",
+          tradeCostRule: "ceil-gross-revenue-times-manual-or-npc-station-character-rate-at-1e10-scale-per-fee",
           tradeFeesIncluded: false } }, buildNumber: "synthetic-production-1",
       inventoryApplied: true, reservationsApplied: true,
       reservationRule: "priority-desc-created-asc-plan-id-asc",
@@ -1212,9 +1231,9 @@ describe("desktop runtime status", () => {
       marketPricesApplied: true,
       marketPriceRule: "selected-hub-lowest-sell-orders-volume-weighted-cents",
       profitabilityApplied: true,
-      profitabilityRule: "filtered-plans-full-material-replacement-plus-installation-and-explicit-trade-costs-vs-lowest-sell-reference",
+      profitabilityRule: "filtered-plans-full-material-replacement-plus-installation-and-automatic-or-explicit-trade-costs-vs-lowest-sell-reference",
       tradeCostsApplied: true,
-      tradeCostRule: "ceil-gross-revenue-times-explicit-basis-points-per-fee",
+      tradeCostRule: "ceil-gross-revenue-times-manual-or-npc-station-character-rate-at-1e10-scale-per-fee",
       installationCostsApplied: true,
       installationCostRule: "base-material-adjusted-price-times-runs-system-index-plus-explicit-tax-plus-scc-4-percent-ceil",
       supplyModesApplied: true,
@@ -1223,11 +1242,40 @@ describe("desktop runtime status", () => {
     invoke.mockResolvedValueOnce(JSON.stringify(page));
     const query = { search: "", ownerCharacterId: null, activity: null, state: null,
       offset: 0, limit: 50, sortBy: "priority", sortDirection: "desc", marketHubId: "jita",
+      tradeCostMode: "manual", salesCharacterId: null,
       brokerFeeBasisPoints: null, salesTaxBasisPoints: null } as const;
     await expect(loadProductionPlans(query, { isAvailable: () => true, invoke })).resolves.toEqual(page);
     expect(invoke).toHaveBeenLastCalledWith("query_production_plans", expect.objectContaining({
       planState: null, sortBy: "priority", marketHubId: "jita",
     }));
+    const automaticPage = JSON.parse(JSON.stringify(page)) as typeof page;
+    const automaticProfitability = automaticPage.purchaseList.profitability;
+    Object.assign(automaticProfitability.items[0], {
+      marketState: "ready", lowestSellUnitPriceCents: 10_000,
+      competingVolume: 20, grossRevenueCents: 40_000,
+    });
+    Object.assign(automaticProfitability, {
+      state: "partial", grossRevenueCents: 40_000,
+      tradeCostState: "ready", tradeCostMode: "automatic",
+      salesCharacterId: 7, salesCharacterName: "Pilot",
+      brokerFeeBasisPoints: null, salesTaxBasisPoints: null,
+      effectiveBrokerFeeRate: 157_000_000,
+      effectiveSalesTaxRate: 337_500_000,
+      brokerRelationsLevel: 4, accountingLevel: 5,
+      corporationStandingMillionths: 4_000_000,
+      factionStandingMillionths: 5_000_000,
+      tradeSkillSnapshotId: 30, tradeSkillSyncRunId: 31,
+      tradeSkillObservedAt: "2026-09-11T12:06:00Z",
+      standingSnapshotId: 32, standingSyncRunId: 33,
+      standingObservedAt: "2026-09-11T12:07:00Z",
+      brokerFeeCents: 628, salesTaxCents: 1_350,
+      totalTradeCostCents: 1_978, netRevenueCents: 38_022,
+      netProfitCents: null, netMarginBasisPoints: null, tradeFeesIncluded: true,
+    });
+    invoke.mockResolvedValueOnce(JSON.stringify(automaticPage));
+    await expect(loadProductionPlans({ ...query, tradeCostMode: "automatic",
+      salesCharacterId: 7 }, { isAvailable: () => true, invoke }))
+      .resolves.toEqual(automaticPage);
     const marketSync = { syncRunId: 22, hubId: "jita", typeCount: 1,
       orderCount: 2, pageCount: 1, observedAt: "2026-09-11T12:05:00Z" } as const;
     invoke.mockResolvedValueOnce(JSON.stringify(marketSync));
@@ -1530,5 +1578,12 @@ describe("desktop runtime status", () => {
     invoke.mockResolvedValueOnce(JSON.stringify(result));
     await expect(syncCharacterSkills({ isAvailable: () => true, invoke })).resolves.toEqual(result);
     expect(invoke).toHaveBeenLastCalledWith("sync_character_skills");
+
+    const standingResult = { characters: [{ characterId: 7, status: "completed",
+      standings: 14, errorCode: null }], completed: 1, failed: 0, standings: 14 };
+    invoke.mockResolvedValueOnce(JSON.stringify(standingResult));
+    await expect(syncCharacterStandings({ isAvailable: () => true, invoke }))
+      .resolves.toEqual(standingResult);
+    expect(invoke).toHaveBeenLastCalledWith("sync_character_standings");
   });
 });

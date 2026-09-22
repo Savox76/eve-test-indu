@@ -36,7 +36,7 @@ const connectedCharacter: EveCharacter = {
   credentialState: "stored", scopes: ["esi-assets.read_assets.v1"],
   scopePackages: [
     { id: "industry-core", status: "granted", grantedCount: 4, requiredCount: 4 },
-    { id: "market", status: "granted", grantedCount: 2, requiredCount: 2 },
+    { id: "market", status: "granted", grantedCount: 3, requiredCount: 3 },
     { id: "planetary-industry", status: "granted", grantedCount: 1, requiredCount: 1 },
     { id: "projects", status: "granted", grantedCount: 1, requiredCount: 1 },
     { id: "private-structures", status: "granted", grantedCount: 1, requiredCount: 1 },
@@ -385,18 +385,28 @@ const productionCatalogPage: ProductionCatalogPage = {
 const productionMarketHubs: ProductionPlanPage["purchaseList"]["marketHubs"] = [
   { hubId: "jita", name: "Jita", stationId: 60_003_760,
     stationName: "Jita IV - Moon 4 - Caldari Navy Assembly Plant",
+    stationOwnerCorporationId: 1_000_035, stationOwnerCorporationName: "Caldari Navy",
+    stationOwnerFactionId: 500_001, stationOwnerFactionName: "Caldari State",
     solarSystemId: 30_000_142, regionId: 10_000_002, priority: 0 },
   { hubId: "amarr", name: "Amarr", stationId: 60_008_494,
     stationName: "Amarr VIII (Oris) - Emperor Family Academy",
+    stationOwnerCorporationId: 1_000_086, stationOwnerCorporationName: "Emperor Family",
+    stationOwnerFactionId: 500_003, stationOwnerFactionName: "Amarr Empire",
     solarSystemId: 30_002_187, regionId: 10_000_043, priority: 1 },
   { hubId: "dodixie", name: "Dodixie", stationId: 60_011_866,
     stationName: "Dodixie IX - Moon 20 - Federation Navy Assembly Plant",
+    stationOwnerCorporationId: 1_000_120, stationOwnerCorporationName: "Federation Navy",
+    stationOwnerFactionId: 500_004, stationOwnerFactionName: "Gallente Federation",
     solarSystemId: 30_002_659, regionId: 10_000_032, priority: 2 },
   { hubId: "hek", name: "Hek", stationId: 60_005_686,
     stationName: "Hek VIII - Moon 12 - Boundless Creation Factory",
+    stationOwnerCorporationId: 1_000_057, stationOwnerCorporationName: "Boundless Creation",
+    stationOwnerFactionId: 500_002, stationOwnerFactionName: "Minmatar Republic",
     solarSystemId: 30_002_053, regionId: 10_000_042, priority: 3 },
   { hubId: "rens", name: "Rens", stationId: 60_004_588,
     stationName: "Rens VI - Moon 8 - Brutor Tribe Treasury",
+    stationOwnerCorporationId: 1_000_049, stationOwnerCorporationName: "Brutor Tribe",
+    stationOwnerFactionId: 500_002, stationOwnerFactionName: "Minmatar Republic",
     solarSystemId: 30_002_510, regionId: 10_000_030, priority: 4 },
 ];
 
@@ -538,12 +548,20 @@ const productionPlanPage: ProductionPlanPage = {
       materialReplacementCostCents: null, installationCostCents: null,
       totalProductionCostCents: null, grossProfitCents: null,
       grossMarginBasisPoints: null,
-      tradeCostState: "unconfigured", brokerFeeBasisPoints: null,
-      salesTaxBasisPoints: null, brokerFeeCents: null, salesTaxCents: null,
+      tradeCostState: "unconfigured", tradeCostMode: "automatic",
+      salesCharacterId: null, salesCharacterName: null,
+      brokerFeeBasisPoints: null, salesTaxBasisPoints: null,
+      tradeRateScale: 10_000_000_000,
+      effectiveBrokerFeeRate: null, effectiveSalesTaxRate: null,
+      brokerRelationsLevel: null, accountingLevel: null,
+      corporationStandingMillionths: null, factionStandingMillionths: null,
+      tradeSkillSnapshotId: null, tradeSkillSyncRunId: null, tradeSkillObservedAt: null,
+      standingSnapshotId: null, standingSyncRunId: null, standingObservedAt: null,
+      brokerFeeCents: null, salesTaxCents: null,
       totalTradeCostCents: null, netRevenueCents: null, netProfitCents: null,
       netMarginBasisPoints: null,
-      profitabilityRule: "filtered-plans-full-material-replacement-plus-installation-and-explicit-trade-costs-vs-lowest-sell-reference",
-      tradeCostRule: "ceil-gross-revenue-times-explicit-basis-points-per-fee",
+      profitabilityRule: "filtered-plans-full-material-replacement-plus-installation-and-automatic-or-explicit-trade-costs-vs-lowest-sell-reference",
+      tradeCostRule: "ceil-gross-revenue-times-manual-or-npc-station-character-rate-at-1e10-scale-per-fee",
       tradeFeesIncluded: false } },
   inventoryApplied: true, reservationsApplied: true,
   reservationRule: "priority-desc-created-asc-plan-id-asc",
@@ -564,9 +582,9 @@ const productionPlanPage: ProductionPlanPage = {
   marketPricesApplied: true,
   marketPriceRule: "selected-hub-lowest-sell-orders-volume-weighted-cents",
   profitabilityApplied: true,
-  profitabilityRule: "filtered-plans-full-material-replacement-plus-installation-and-explicit-trade-costs-vs-lowest-sell-reference",
+  profitabilityRule: "filtered-plans-full-material-replacement-plus-installation-and-automatic-or-explicit-trade-costs-vs-lowest-sell-reference",
   tradeCostsApplied: true,
-  tradeCostRule: "ceil-gross-revenue-times-explicit-basis-points-per-fee",
+  tradeCostRule: "ceil-gross-revenue-times-manual-or-npc-station-character-rate-at-1e10-scale-per-fee",
   installationCostsApplied: true,
   installationCostRule: "base-material-adjusted-price-times-runs-system-index-plus-explicit-tax-plus-scc-4-percent-ceil",
   supplyModesApplied: true,
@@ -1245,6 +1263,7 @@ describe("New Eden Foundry design preview", () => {
   });
 
   it("persists explicit trade costs and shows the net production result", async () => {
+    window.localStorage.setItem("new-eden-foundry.ui.production.trade-cost-mode", JSON.stringify("manual"));
     window.localStorage.setItem("new-eden-foundry.ui.production.broker-fee", JSON.stringify(300));
     window.localStorage.setItem("new-eden-foundry.ui.production.sales-tax", JSON.stringify(360));
     const page: ProductionPlanPage = {
@@ -1266,8 +1285,11 @@ describe("New Eden Foundry design preview", () => {
           grossProfitCents: 28_500,
           grossMarginBasisPoints: 7_125,
           tradeCostState: "ready",
+          tradeCostMode: "manual",
           brokerFeeBasisPoints: 300,
           salesTaxBasisPoints: 360,
+          effectiveBrokerFeeRate: 300_000_000,
+          effectiveSalesTaxRate: 360_000_000,
           brokerFeeCents: 1_200,
           salesTaxCents: 1_440,
           totalTradeCostCents: 2_640,
@@ -1292,8 +1314,9 @@ describe("New Eden Foundry design preview", () => {
     expect(screen.getByText("373,60 ISK")).toBeInTheDocument();
     expect(screen.getByText("258,60 ISK")).toBeInTheDocument();
     expect(screen.getByText("Nettomarge 64,65 %")).toBeInTheDocument();
-    expect(screen.getByText(/Brokergebühr und Verkaufssteuer sind mit den eingetragenen Sätzen enthalten/))
+    expect(screen.getByText(/Brokergebühr und Verkaufssteuer sind mit den belegten effektiven Sätzen enthalten/))
       .toBeInTheDocument();
+    window.localStorage.removeItem("new-eden-foundry.ui.production.trade-cost-mode");
     window.localStorage.removeItem("new-eden-foundry.ui.production.broker-fee");
     window.localStorage.removeItem("new-eden-foundry.ui.production.sales-tax");
   });
@@ -1642,7 +1665,7 @@ describe("New Eden Foundry design preview", () => {
       credentialState: "stored",
       scopePackages: [
         { id: "industry-core", status: "partial", grantedCount: 1, requiredCount: 4 },
-        { id: "market", status: "missing", grantedCount: 0, requiredCount: 2 },
+        { id: "market", status: "missing", grantedCount: 0, requiredCount: 3 },
         { id: "planetary-industry", status: "missing", grantedCount: 0, requiredCount: 1 },
         { id: "projects", status: "missing", grantedCount: 0, requiredCount: 1 },
         { id: "private-structures", status: "missing", grantedCount: 0, requiredCount: 1 },
@@ -1701,7 +1724,7 @@ describe("New Eden Foundry design preview", () => {
       scopes: ["esi-assets.read_assets.v1"],
       scopePackages: [
         { id: "industry-core", status: "partial", grantedCount: 1, requiredCount: 4 },
-        { id: "market", status: "missing", grantedCount: 0, requiredCount: 2 },
+        { id: "market", status: "missing", grantedCount: 0, requiredCount: 3 },
         { id: "planetary-industry", status: "missing", grantedCount: 0, requiredCount: 1 },
         { id: "projects", status: "missing", grantedCount: 0, requiredCount: 1 },
         { id: "private-structures", status: "missing", grantedCount: 0, requiredCount: 1 },

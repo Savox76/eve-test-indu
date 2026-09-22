@@ -1290,8 +1290,24 @@ struct ProductionProfitability {
     gross_profit_cents: Option<i64>,
     gross_margin_basis_points: Option<i64>,
     trade_cost_state: String,
+    trade_cost_mode: String,
+    sales_character_id: Option<u64>,
+    sales_character_name: Option<String>,
     broker_fee_basis_points: Option<u16>,
     sales_tax_basis_points: Option<u16>,
+    trade_rate_scale: u64,
+    effective_broker_fee_rate: Option<u64>,
+    effective_sales_tax_rate: Option<u64>,
+    broker_relations_level: Option<u8>,
+    accounting_level: Option<u8>,
+    corporation_standing_millionths: Option<i64>,
+    faction_standing_millionths: Option<i64>,
+    trade_skill_snapshot_id: Option<u64>,
+    trade_skill_sync_run_id: Option<u64>,
+    trade_skill_observed_at: Option<String>,
+    standing_snapshot_id: Option<u64>,
+    standing_sync_run_id: Option<u64>,
+    standing_observed_at: Option<String>,
     broker_fee_cents: Option<u64>,
     sales_tax_cents: Option<u64>,
     total_trade_cost_cents: Option<u64>,
@@ -1310,6 +1326,10 @@ struct ProductionMarketHub {
     name: String,
     station_id: u64,
     station_name: String,
+    station_owner_corporation_id: u64,
+    station_owner_corporation_name: String,
+    station_owner_faction_id: u64,
+    station_owner_faction_name: String,
     solar_system_id: u64,
     region_id: u64,
     priority: u8,
@@ -1484,6 +1504,24 @@ struct CharacterSkillSyncResponse {
     skills: u64,
     total_sp: u64,
     unallocated_sp: u64,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CharacterStandingSyncCharacterResponse {
+    character_id: u64,
+    status: String,
+    standings: u64,
+    error_code: Option<String>,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CharacterStandingSyncResponse {
+    characters: Vec<CharacterStandingSyncCharacterResponse>,
+    completed: u64,
+    failed: u64,
+    standings: u64,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -1881,7 +1919,7 @@ fn management_label_is_valid(label: &str) -> bool {
 fn scope_package_required_count(id: &str) -> Option<u8> {
     match id {
         "industry-core" => Some(4),
-        "market" => Some(2),
+        "market" => Some(3),
         "planetary-industry" | "projects" | "private-structures" => Some(1),
         _ => None,
     }
@@ -4374,6 +4412,10 @@ fn production_market_hub_is_valid(hub: &ProductionMarketHub) -> bool {
             "Jita",
             60_003_760,
             "Jita IV - Moon 4 - Caldari Navy Assembly Plant",
+            1_000_035,
+            "Caldari Navy",
+            500_001,
+            "Caldari State",
             30_000_142,
             10_000_002,
             0,
@@ -4382,6 +4424,10 @@ fn production_market_hub_is_valid(hub: &ProductionMarketHub) -> bool {
             "Amarr",
             60_008_494,
             "Amarr VIII (Oris) - Emperor Family Academy",
+            1_000_086,
+            "Emperor Family",
+            500_003,
+            "Amarr Empire",
             30_002_187,
             10_000_043,
             1,
@@ -4390,6 +4436,10 @@ fn production_market_hub_is_valid(hub: &ProductionMarketHub) -> bool {
             "Dodixie",
             60_011_866,
             "Dodixie IX - Moon 20 - Federation Navy Assembly Plant",
+            1_000_120,
+            "Federation Navy",
+            500_004,
+            "Gallente Federation",
             30_002_659,
             10_000_032,
             2,
@@ -4398,6 +4448,10 @@ fn production_market_hub_is_valid(hub: &ProductionMarketHub) -> bool {
             "Hek",
             60_005_686,
             "Hek VIII - Moon 12 - Boundless Creation Factory",
+            1_000_057,
+            "Boundless Creation",
+            500_002,
+            "Minmatar Republic",
             30_002_053,
             10_000_042,
             3,
@@ -4406,6 +4460,10 @@ fn production_market_hub_is_valid(hub: &ProductionMarketHub) -> bool {
             "Rens",
             60_004_588,
             "Rens VI - Moon 8 - Brutor Tribe Treasury",
+            1_000_049,
+            "Brutor Tribe",
+            500_002,
+            "Minmatar Republic",
             30_002_510,
             10_000_030,
             4,
@@ -4415,9 +4473,13 @@ fn production_market_hub_is_valid(hub: &ProductionMarketHub) -> bool {
     hub.name == expected.0
         && hub.station_id == expected.1
         && hub.station_name == expected.2
-        && hub.solar_system_id == expected.3
-        && hub.region_id == expected.4
-        && hub.priority == expected.5
+        && hub.station_owner_corporation_id == expected.3
+        && hub.station_owner_corporation_name == expected.4
+        && hub.station_owner_faction_id == expected.5
+        && hub.station_owner_faction_name == expected.6
+        && hub.solar_system_id == expected.7
+        && hub.region_id == expected.8
+        && hub.priority == expected.9
 }
 
 fn production_purchase_market_item_is_valid(item: &ProductionPurchaseListItem) -> bool {
@@ -4527,26 +4589,157 @@ fn production_profitability_is_valid(
                 && value <= JAVASCRIPT_MAX_SAFE_INTEGER as i128)
                 .then_some(value as i64)
         });
-    let trade_costs_configured = profitability.broker_fee_basis_points.is_some()
-        && profitability.sales_tax_basis_points.is_some();
-    let expected_trade_cost_state = if !trade_costs_configured {
-        "unconfigured"
+    let skill_evidence = match (
+        profitability.trade_skill_snapshot_id,
+        profitability.trade_skill_sync_run_id,
+        profitability.trade_skill_observed_at.as_ref(),
+        profitability.broker_relations_level,
+        profitability.accounting_level,
+    ) {
+        (None, None, None, None, None) => true,
+        (
+            Some(snapshot_id),
+            Some(sync_run_id),
+            Some(observed_at),
+            Some(broker),
+            Some(accounting),
+        ) => {
+            production_id_is_valid(snapshot_id)
+                && production_id_is_valid(sync_run_id)
+                && asset_text_is_valid(observed_at, 64)
+                && broker <= 5
+                && accounting <= 5
+        }
+        _ => false,
+    };
+    let standing_evidence = match (
+        profitability.standing_snapshot_id,
+        profitability.standing_sync_run_id,
+        profitability.standing_observed_at.as_ref(),
+        profitability.corporation_standing_millionths,
+        profitability.faction_standing_millionths,
+    ) {
+        (None, None, None, None, None) => true,
+        (
+            Some(snapshot_id),
+            Some(sync_run_id),
+            Some(observed_at),
+            Some(corporation),
+            Some(faction),
+        ) => {
+            production_id_is_valid(snapshot_id)
+                && production_id_is_valid(sync_run_id)
+                && asset_text_is_valid(observed_at, 64)
+                && (-10_000_000..=10_000_000).contains(&corporation)
+                && (-10_000_000..=10_000_000).contains(&faction)
+        }
+        _ => false,
+    };
+    let seller_shape = match (
+        profitability.sales_character_id,
+        profitability.sales_character_name.as_ref(),
+    ) {
+        (None, None) => true,
+        (Some(character_id), Some(name)) => {
+            production_id_is_valid(character_id) && asset_text_is_valid(name, 100)
+        }
+        (Some(character_id), None) => production_id_is_valid(character_id),
+        _ => false,
+    };
+    let expected_evidence_state = if profitability.trade_cost_mode == "manual" {
+        if profitability.broker_fee_basis_points.is_some()
+            && profitability.sales_tax_basis_points.is_some()
+        {
+            "ready"
+        } else {
+            "unconfigured"
+        }
+    } else if profitability.trade_cost_mode == "automatic" {
+        if profitability.sales_character_id.is_none()
+            || profitability.sales_character_name.is_none()
+        {
+            "unconfigured"
+        } else if profitability.trade_skill_snapshot_id.is_none() {
+            "skill-snapshot-missing"
+        } else if profitability.standing_snapshot_id.is_none() {
+            "standing-snapshot-missing"
+        } else {
+            "ready"
+        }
+    } else {
+        "invalid"
+    };
+    let trade_evidence_shape = match (
+        profitability.trade_cost_mode.as_str(),
+        expected_evidence_state,
+    ) {
+        ("manual", _) => {
+            profitability.trade_skill_snapshot_id.is_none()
+                && profitability.standing_snapshot_id.is_none()
+        }
+        ("automatic", "unconfigured" | "skill-snapshot-missing") => {
+            profitability.trade_skill_snapshot_id.is_none()
+                && profitability.standing_snapshot_id.is_none()
+        }
+        ("automatic", "standing-snapshot-missing") => {
+            profitability.trade_skill_snapshot_id.is_some()
+                && profitability.standing_snapshot_id.is_none()
+        }
+        ("automatic", "ready") => {
+            profitability.trade_skill_snapshot_id.is_some()
+                && profitability.standing_snapshot_id.is_some()
+        }
+        _ => false,
+    };
+    let expected_trade_cost_state = if expected_evidence_state != "ready" {
+        expected_evidence_state
     } else if gross_revenue.is_none() {
         "unavailable"
     } else {
         "ready"
     };
-    let basis_point_cost = |basis_points: Option<u16>| -> Option<u64> {
+    let expected_rates = if expected_evidence_state != "ready" {
+        None
+    } else if profitability.trade_cost_mode == "manual" {
+        profitability
+            .broker_fee_basis_points
+            .zip(profitability.sales_tax_basis_points)
+            .map(|(broker, tax)| (broker as u64 * 1_000_000, tax as u64 * 1_000_000))
+    } else {
+        match (
+            profitability.broker_relations_level,
+            profitability.accounting_level,
+            profitability.corporation_standing_millionths,
+            profitability.faction_standing_millionths,
+        ) {
+            (Some(broker_level), Some(accounting_level), Some(corporation), Some(faction))
+                if broker_level <= 5
+                    && accounting_level <= 5
+                    && (-10_000_000..=10_000_000).contains(&corporation)
+                    && (-10_000_000..=10_000_000).contains(&faction) =>
+            {
+                let broker_rate = (300_000_000_i64
+                    - 30_000_000_i64 * broker_level as i64
+                    - 3_i64 * faction
+                    - 2_i64 * corporation)
+                    .max(100_000_000_i64) as u64;
+                let sales_tax_rate = 750_000_000_u64 * (100 - 11 * accounting_level as u64) / 100;
+                Some((broker_rate, sales_tax_rate))
+            }
+            _ => None,
+        }
+    };
+    let rate_cost = |rate: Option<u64>| -> Option<u64> {
         let revenue = gross_revenue? as u128;
-        let rate = basis_points? as u128;
-        let value = (revenue.checked_mul(rate)?.checked_add(9_999)?) / 10_000;
+        let rate = rate? as u128;
+        let value = (revenue.checked_mul(rate)?.checked_add(9_999_999_999)?) / 10_000_000_000_u128;
         (value <= JAVASCRIPT_MAX_SAFE_INTEGER as u128).then_some(value as u64)
     };
     let broker_fee = (expected_trade_cost_state == "ready")
-        .then(|| basis_point_cost(profitability.broker_fee_basis_points))
+        .then(|| rate_cost(profitability.effective_broker_fee_rate))
         .flatten();
     let sales_tax = (expected_trade_cost_state == "ready")
-        .then(|| basis_point_cost(profitability.sales_tax_basis_points))
+        .then(|| rate_cost(profitability.effective_sales_tax_rate))
         .flatten();
     let total_trade_cost = broker_fee
         .zip(sales_tax)
@@ -4646,6 +4839,33 @@ fn production_profitability_is_valid(
         && profitability
             .sales_tax_basis_points
             .is_none_or(|value| value <= 10_000)
+        && profitability.trade_rate_scale == 10_000_000_000
+        && seller_shape
+        && skill_evidence
+        && standing_evidence
+        && trade_evidence_shape
+        && matches!(profitability.trade_cost_mode.as_str(), "automatic" | "manual")
+        && (profitability.trade_cost_mode != "automatic"
+            || (profitability.broker_fee_basis_points.is_none()
+                && profitability.sales_tax_basis_points.is_none()))
+        && (profitability.trade_cost_mode != "manual"
+            || (profitability.trade_skill_snapshot_id.is_none()
+                && profitability.standing_snapshot_id.is_none()
+                && profitability.broker_relations_level.is_none()
+                && profitability.accounting_level.is_none()
+                && profitability.corporation_standing_millionths.is_none()
+                && profitability.faction_standing_millionths.is_none()))
+        && profitability
+            .effective_broker_fee_rate
+            .zip(profitability.effective_sales_tax_rate)
+            == expected_rates
+        && matches!(
+            (
+                profitability.effective_broker_fee_rate,
+                profitability.effective_sales_tax_rate,
+            ),
+            (None, None) | (Some(_), Some(_))
+        )
         && profitability.trade_cost_state == expected_trade_cost_state
         && profitability.broker_fee_cents == broker_fee
         && profitability.sales_tax_cents == sales_tax
@@ -4654,9 +4874,9 @@ fn production_profitability_is_valid(
         && profitability.net_profit_cents == net_profit
         && profitability.net_margin_basis_points == net_margin
         && profitability.profitability_rule
-            == "filtered-plans-full-material-replacement-plus-installation-and-explicit-trade-costs-vs-lowest-sell-reference"
+            == "filtered-plans-full-material-replacement-plus-installation-and-automatic-or-explicit-trade-costs-vs-lowest-sell-reference"
         && profitability.trade_cost_rule
-            == "ceil-gross-revenue-times-explicit-basis-points-per-fee"
+            == "ceil-gross-revenue-times-manual-or-npc-station-character-rate-at-1e10-scale-per-fee"
         && profitability.trade_fees_included == (expected_trade_cost_state == "ready")
         && state_shape
         && profitability.items.iter().all(|item| {
@@ -4928,10 +5148,10 @@ fn production_plan_query_response_is_valid(response: &ProductionPlanQueryRespons
             == "selected-hub-lowest-sell-orders-volume-weighted-cents"
         && response.profitability_applied
         && response.profitability_rule
-            == "filtered-plans-full-material-replacement-plus-installation-and-explicit-trade-costs-vs-lowest-sell-reference"
+            == "filtered-plans-full-material-replacement-plus-installation-and-automatic-or-explicit-trade-costs-vs-lowest-sell-reference"
         && response.trade_costs_applied
         && response.trade_cost_rule
-            == "ceil-gross-revenue-times-explicit-basis-points-per-fee"
+            == "ceil-gross-revenue-times-manual-or-npc-station-character-rate-at-1e10-scale-per-fee"
         && response.installation_costs_applied
         && response.installation_cost_rule
             == "base-material-adjusted-price-times-runs-system-index-plus-explicit-tax-plus-scc-4-percent-ceil"
@@ -5176,6 +5396,28 @@ fn character_skill_sync_response_is_valid(response: &CharacterSkillSyncResponse)
                         && item.skills == 0
                         && item.total_sp == 0
                         && item.unallocated_sp == 0
+                        && item
+                            .error_code
+                            .as_ref()
+                            .is_some_and(|code| asset_text_is_valid(code, 120))))
+        })
+}
+
+fn character_standing_sync_response_is_valid(response: &CharacterStandingSyncResponse) -> bool {
+    let standings = response
+        .characters
+        .iter()
+        .try_fold(0_u64, |sum, item| sum.checked_add(item.standings));
+    response.completed.checked_add(response.failed) == Some(response.characters.len() as u64)
+        && standings == Some(response.standings)
+        && response.standings <= JAVASCRIPT_MAX_SAFE_INTEGER
+        && response.characters.iter().all(|item| {
+            production_id_is_valid(item.character_id)
+                && item.standings <= JAVASCRIPT_MAX_SAFE_INTEGER
+                && matches!(item.status.as_str(), "completed" | "failed")
+                && ((item.status == "completed" && item.error_code.is_none())
+                    || (item.status == "failed"
+                        && item.standings == 0
                         && item
                             .error_code
                             .as_ref()
@@ -6571,6 +6813,34 @@ fn sync_character_skills(state: State<'_, RuntimeState>) -> Result<String, Strin
 }
 
 #[tauri::command]
+fn sync_character_standings(state: State<'_, RuntimeState>) -> Result<String, String> {
+    refresh_sidecar_status(&state);
+    let response = {
+        let sidecar = state
+            .sidecar
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let process = sidecar
+            .as_ref()
+            .ok_or_else(|| "sidecar-unavailable".to_owned())?;
+        sidecar_json_request_with_timeout(
+            process,
+            "POST",
+            "/standings/sync",
+            "{}",
+            ASSET_SYNC_TIMEOUT,
+        )
+        .map_err(str::to_owned)?
+    };
+    let result: CharacterStandingSyncResponse =
+        serde_json::from_str(&response).map_err(|_| "sidecar-response-invalid".to_owned())?;
+    if !character_standing_sync_response_is_valid(&result) {
+        return Err("sidecar-response-invalid".to_owned());
+    }
+    serde_json::to_string(&result).map_err(|_| "status-serialization-failed".to_owned())
+}
+
+#[tauri::command]
 fn query_blueprints(
     search: String,
     owner_character_id: Option<u64>,
@@ -6856,6 +7126,8 @@ fn query_production_plans(
     sort_by: String,
     sort_direction: String,
     market_hub_id: String,
+    trade_cost_mode: String,
+    sales_character_id: Option<u64>,
     broker_fee_basis_points: Option<u16>,
     sales_tax_basis_points: Option<u16>,
     state: State<'_, RuntimeState>,
@@ -6876,8 +7148,13 @@ fn query_production_plans(
         || !PRODUCTION_PLAN_SORT_FIELDS.contains(&sort_by.as_str())
         || !SORT_DIRECTIONS.contains(&sort_direction.as_str())
         || !MARKET_HUB_IDS.contains(&market_hub_id.as_str())
+        || !matches!(trade_cost_mode.as_str(), "automatic" | "manual")
+        || sales_character_id == Some(0)
+        || sales_character_id.is_some_and(|value| value > JAVASCRIPT_MAX_SAFE_INTEGER)
         || broker_fee_basis_points.is_some_and(|value| value > 10_000)
         || sales_tax_basis_points.is_some_and(|value| value > 10_000)
+        || (trade_cost_mode == "automatic"
+            && (broker_fee_basis_points.is_some() || sales_tax_basis_points.is_some()))
     {
         return Err("production-plan-query-invalid".to_owned());
     }
@@ -6892,6 +7169,8 @@ fn query_production_plans(
         "sortBy": sort_by,
         "sortDirection": sort_direction,
         "marketHubId": market_hub_id,
+        "tradeCostMode": trade_cost_mode,
+        "salesCharacterId": sales_character_id,
         "brokerFeeBasisPoints": broker_fee_basis_points,
         "salesTaxBasisPoints": sales_tax_basis_points,
     })
@@ -6913,6 +7192,8 @@ fn query_production_plans(
         || page.offset != offset
         || page.limit != limit
         || page.purchase_list.market_hub.hub_id != market_hub_id
+        || page.purchase_list.profitability.trade_cost_mode != trade_cost_mode
+        || page.purchase_list.profitability.sales_character_id != sales_character_id
         || page.purchase_list.profitability.broker_fee_basis_points != broker_fee_basis_points
         || page.purchase_list.profitability.sales_tax_basis_points != sales_tax_basis_points
     {
@@ -8073,6 +8354,7 @@ pub fn run() {
             save_research_plan,
             delete_research_plan,
             sync_character_skills,
+            sync_character_standings,
             query_character_skills,
             export_assets_csv,
             query_asset_deltas,
@@ -8109,19 +8391,21 @@ mod tests {
         asset_delta_response_is_valid, asset_export_response_is_valid,
         asset_query_response_is_valid, asset_summary_query_response_is_valid,
         authorization_url_is_valid, character_skill_query_response_is_valid,
-        character_skill_sync_response_is_valid, eve_character_record_is_valid,
-        industry_facility_query_response_is_valid, industry_facility_sync_response_is_valid,
-        industry_job_query_response_is_valid, industry_job_sync_response_is_valid,
-        industry_slot_query_response_is_valid, migrate_to_program_directory_storage,
-        production_installation_cost_is_valid, production_plan_record_is_valid, read_window_size,
-        release_page_url, research_plan_query_response_is_valid, sidecar_startup_error_code,
+        character_skill_sync_response_is_valid, character_standing_sync_response_is_valid,
+        eve_character_record_is_valid, industry_facility_query_response_is_valid,
+        industry_facility_sync_response_is_valid, industry_job_query_response_is_valid,
+        industry_job_sync_response_is_valid, industry_slot_query_response_is_valid,
+        migrate_to_program_directory_storage, production_installation_cost_is_valid,
+        production_plan_record_is_valid, read_window_size, release_page_url,
+        research_plan_query_response_is_valid, sidecar_startup_error_code,
         sidecar_startup_error_is_retryable, sso_login_status_is_valid, write_window_size,
         AccountGroupRecord, AssetDeltaCorrelation, AssetDeltaCorrelationSummary,
         AssetDeltaGroupQueryResponse, AssetDeltaGroupRecord, AssetDeltaQueryResponse,
         AssetDeltaRecord, AssetDeltaSummary, AssetExportResponse, AssetLocationNode, AssetOwner,
         AssetQueryResponse, AssetRecord, AssetSummaryOwner, AssetSummaryQueryResponse,
         AssetSummaryRecord, CharacterSkillQueryResponse, CharacterSkillRecord,
-        CharacterSkillSyncCharacterResponse, CharacterSkillSyncResponse, EveCharacterRecord,
+        CharacterSkillSyncCharacterResponse, CharacterSkillSyncResponse,
+        CharacterStandingSyncCharacterResponse, CharacterStandingSyncResponse, EveCharacterRecord,
         IndustryAssetCorrelation, IndustryBlueprintCorrelation, IndustryFacilityQueryResponse,
         IndustryFacilityRecord, IndustryFacilitySyncResponse, IndustryJobQueryResponse,
         IndustryJobRecord, IndustryJobSyncCharacterResponse, IndustryJobSyncResponse,
@@ -8445,7 +8729,7 @@ mod tests {
                     id: "market".to_owned(),
                     status: "missing".to_owned(),
                     granted_count: 0,
-                    required_count: 2,
+                    required_count: 3,
                 },
                 ScopePackageStatus {
                     id: "planetary-industry".to_owned(),
@@ -9527,5 +9811,18 @@ mod tests {
             unallocated_sp: 12_500,
         };
         assert!(character_skill_sync_response_is_valid(&sync));
+
+        let standings = CharacterStandingSyncResponse {
+            characters: vec![CharacterStandingSyncCharacterResponse {
+                character_id: 90_888_001,
+                status: "completed".to_owned(),
+                standings: 14,
+                error_code: None,
+            }],
+            completed: 1,
+            failed: 0,
+            standings: 14,
+        };
+        assert!(character_standing_sync_response_is_valid(&standings));
     }
 }

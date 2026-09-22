@@ -12,6 +12,10 @@ from decimal import Decimal, InvalidOperation, ROUND_CEILING
 from typing import Any, Mapping
 
 from .character_skill_sync import CharacterSkillSyncError, validate_character_skills
+from .character_standing_sync import (
+    CharacterStandingSyncError,
+    validate_character_standings,
+)
 from .industry_facility_view import (
     IndustryFacilityViewError,
     industry_facility_index,
@@ -61,10 +65,20 @@ SUPPLY_MODE_RULE = "stock-first-before-recursive-build"
 FACILITY_MODIFIER_RULE = "explicit-basis-points-combined-before-single-ceil"
 PURCHASE_LIST_RULE = "filtered-plans-sum-missing-by-type"
 PROFITABILITY_RULE = (
-    "filtered-plans-full-material-replacement-plus-installation-and-explicit-"
+    "filtered-plans-full-material-replacement-plus-installation-and-automatic-or-explicit-"
     "trade-costs-vs-lowest-sell-reference"
 )
-TRADE_COST_RULE = "ceil-gross-revenue-times-explicit-basis-points-per-fee"
+TRADE_COST_RULE = "ceil-gross-revenue-times-manual-or-npc-station-character-rate-at-1e10-scale-per-fee"
+TRADE_RATE_SCALE = 10_000_000_000
+BROKER_BASE_RATE = 300_000_000
+BROKER_MINIMUM_RATE = 100_000_000
+BROKER_RELATIONS_RATE_REDUCTION = 30_000_000
+FACTION_STANDING_RATE_REDUCTION_PER_MILLIONTH = 3
+CORPORATION_STANDING_RATE_REDUCTION_PER_MILLIONTH = 2
+SALES_TAX_BASE_RATE = 750_000_000
+ACCOUNTING_REDUCTION_PERCENT_PER_LEVEL = 11
+BROKER_RELATIONS_SKILL_ID = 3446
+ACCOUNTING_SKILL_ID = 16622
 SCC_SURCHARGE_BASIS_POINTS = 400
 INSTALLATION_COST_RULE = (
     "base-material-adjusted-price-times-runs-system-index-plus-explicit-tax-"
@@ -199,6 +213,15 @@ class SkillSource:
     active_levels: dict[int, int]
 
 
+@dataclass(frozen=True, slots=True)
+class StandingSource:
+    character_id: int
+    snapshot_id: int
+    sync_run_id: int
+    observed_at: str
+    standings: dict[tuple[str, int], int]
+
+
 def _positive_int(value: Any) -> bool:
     return (
         not isinstance(value, bool)
@@ -235,6 +258,8 @@ def validate_production_plan_query(payload: Any) -> dict[str, Any]:
         "sortBy",
         "sortDirection",
         "marketHubId",
+        "tradeCostMode",
+        "salesCharacterId",
         "brokerFeeBasisPoints",
         "salesTaxBasisPoints",
     }
@@ -247,6 +272,8 @@ def validate_production_plan_query(payload: Any) -> dict[str, Any]:
     owner = payload["ownerCharacterId"]
     activity = payload["activity"]
     state = payload["state"]
+    trade_cost_mode = payload["tradeCostMode"]
+    sales_character_id = payload["salesCharacterId"]
     broker_fee = payload["brokerFeeBasisPoints"]
     sales_tax = payload["salesTaxBasisPoints"]
     try:
@@ -265,10 +292,15 @@ def validate_production_plan_query(payload: Any) -> dict[str, Any]:
         or payload["limit"] > MAX_PAGE_SIZE
         or payload["sortBy"] not in PLAN_SORT_FIELDS
         or payload["sortDirection"] not in SORT_DIRECTIONS
+        or trade_cost_mode not in ("automatic", "manual")
+        or sales_character_id is not None
+        and not _positive_int(sales_character_id)
         or broker_fee is not None
         and (not _non_negative_int(broker_fee) or broker_fee > 10_000)
         or sales_tax is not None
         and (not _non_negative_int(sales_tax) or sales_tax > 10_000)
+        or trade_cost_mode == "automatic"
+        and (broker_fee is not None or sales_tax is not None)
     ):
         raise ProductionPlanningError("production_plan_query_invalid")
     return {
@@ -893,6 +925,166 @@ def _skill_source(
             for skill in validated["skills"]
         },
     )
+
+
+def _standing_source(
+    connection: sqlite3.Connection, character_id: int
+) -> StandingSource | None:
+    row = connection.execute(
+        "SELECT cached_snapshots.id,cached_snapshots.sync_run_id,"
+        "cached_snapshots.payload_json,cached_snapshots.observed_at "
+        "FROM cached_snapshots JOIN sync_runs "
+        "ON sync_runs.id=cached_snapshots.sync_run_id "
+        "WHERE cached_snapshots.resource=? AND sync_runs.source='character_standings' "
+        "AND sync_runs.status='completed' "
+        "ORDER BY cached_snapshots.observed_at DESC,cached_snapshots.id DESC LIMIT 1",
+        (f"character_standings:{character_id}",),
+    ).fetchone()
+    if row is None:
+        return None
+    try:
+        payload = json.loads(str(row[2]))
+        if (
+            not isinstance(payload, Mapping)
+            or set(payload) != {"characterId", "standings"}
+            or payload["characterId"] != character_id
+            or not isinstance(payload["standings"], list)
+            or any(
+                not isinstance(item, Mapping)
+                or set(item) != {"fromId", "fromType", "standingMillionths"}
+                or isinstance(item["standingMillionths"], bool)
+                or not isinstance(item["standingMillionths"], int)
+                for item in payload["standings"]
+            )
+            or not isinstance(row[3], str)
+            or not str(row[3]).strip()
+            or len(str(row[3])) > 64
+        ):
+            raise ProductionPlanningError("production_standing_snapshot_invalid")
+        standings = validate_character_standings([
+            {
+                "from_id": item["fromId"],
+                "from_type": item["fromType"],
+                "standing": Decimal(item["standingMillionths"]) / 1_000_000,
+            }
+            for item in payload["standings"]
+        ])
+    except (
+        KeyError,
+        TypeError,
+        ValueError,
+        json.JSONDecodeError,
+        InvalidOperation,
+        CharacterStandingSyncError,
+    ) as error:
+        raise ProductionPlanningError("production_standing_snapshot_invalid") from error
+    return StandingSource(
+        character_id=character_id,
+        snapshot_id=int(row[0]),
+        sync_run_id=int(row[1]),
+        observed_at=str(row[3]),
+        standings={
+            (str(item["fromType"]), int(item["fromId"])): int(item["standingMillionths"])
+            for item in standings
+        },
+    )
+
+
+def _trade_cost_evidence(
+    connection: sqlite3.Connection,
+    *,
+    mode: str,
+    sales_character_id: int | None,
+    selected_hub: Mapping[str, Any],
+    broker_fee_basis_points: int | None,
+    sales_tax_basis_points: int | None,
+) -> dict[str, Any]:
+    character = (
+        None
+        if sales_character_id is None
+        else connection.execute(
+            "SELECT COALESCE(alias,name) FROM characters "
+            "WHERE character_id=? AND enabled=1",
+            (sales_character_id,),
+        ).fetchone()
+    )
+    character_name = None if character is None else str(character[0])
+    base = {
+        "tradeCostMode": mode,
+        "salesCharacterId": sales_character_id,
+        "salesCharacterName": character_name,
+        "brokerFeeBasisPoints": broker_fee_basis_points,
+        "salesTaxBasisPoints": sales_tax_basis_points,
+        "tradeRateScale": TRADE_RATE_SCALE,
+        "effectiveBrokerFeeRate": None,
+        "effectiveSalesTaxRate": None,
+        "brokerRelationsLevel": None,
+        "accountingLevel": None,
+        "corporationStandingMillionths": None,
+        "factionStandingMillionths": None,
+        "tradeSkillSnapshotId": None,
+        "tradeSkillSyncRunId": None,
+        "tradeSkillObservedAt": None,
+        "standingSnapshotId": None,
+        "standingSyncRunId": None,
+        "standingObservedAt": None,
+    }
+    if mode == "manual":
+        if broker_fee_basis_points is None or sales_tax_basis_points is None:
+            return {**base, "evidenceState": "unconfigured"}
+        return {
+            **base,
+            "evidenceState": "ready",
+            "effectiveBrokerFeeRate": broker_fee_basis_points * 1_000_000,
+            "effectiveSalesTaxRate": sales_tax_basis_points * 1_000_000,
+        }
+    if sales_character_id is None or character_name is None:
+        return {**base, "evidenceState": "unconfigured"}
+    skill_source = _skill_source(connection, sales_character_id)
+    if skill_source is None:
+        return {**base, "evidenceState": "skill-snapshot-missing"}
+    broker_relations_level = skill_source.active_levels.get(BROKER_RELATIONS_SKILL_ID, 0)
+    accounting_level = skill_source.active_levels.get(ACCOUNTING_SKILL_ID, 0)
+    skill_evidence = {
+        **base,
+        "brokerRelationsLevel": broker_relations_level,
+        "accountingLevel": accounting_level,
+        "tradeSkillSnapshotId": skill_source.snapshot_id,
+        "tradeSkillSyncRunId": skill_source.sync_run_id,
+        "tradeSkillObservedAt": skill_source.observed_at,
+    }
+    standing_source = _standing_source(connection, sales_character_id)
+    if standing_source is None:
+        return {**skill_evidence, "evidenceState": "standing-snapshot-missing"}
+    corporation_standing = standing_source.standings.get(
+        ("npc_corp", int(selected_hub["stationOwnerCorporationId"])), 0
+    )
+    faction_standing = standing_source.standings.get(
+        ("faction", int(selected_hub["stationOwnerFactionId"])), 0
+    )
+    broker_rate = max(
+        BROKER_MINIMUM_RATE,
+        BROKER_BASE_RATE
+        - BROKER_RELATIONS_RATE_REDUCTION * broker_relations_level
+        - FACTION_STANDING_RATE_REDUCTION_PER_MILLIONTH * faction_standing
+        - CORPORATION_STANDING_RATE_REDUCTION_PER_MILLIONTH * corporation_standing,
+    )
+    sales_tax_rate = (
+        SALES_TAX_BASE_RATE
+        * (100 - ACCOUNTING_REDUCTION_PERCENT_PER_LEVEL * accounting_level)
+        // 100
+    )
+    return {
+        **skill_evidence,
+        "evidenceState": "ready",
+        "effectiveBrokerFeeRate": broker_rate,
+        "effectiveSalesTaxRate": sales_tax_rate,
+        "corporationStandingMillionths": corporation_standing,
+        "factionStandingMillionths": faction_standing,
+        "standingSnapshotId": standing_source.snapshot_id,
+        "standingSyncRunId": standing_source.sync_run_id,
+        "standingObservedAt": standing_source.observed_at,
+    }
 
 
 def _load_skill_sources(
@@ -2955,8 +3147,7 @@ def _profitability(
     installation_state: str,
     installation_cost: int,
     unresolved_plan_count: int,
-    broker_fee_basis_points: int | None,
-    sales_tax_basis_points: int | None,
+    trade_cost_evidence: Mapping[str, Any],
 ) -> dict[str, Any]:
     """Compare full replacement cost with a lowest-sell market reference."""
 
@@ -3114,12 +3305,10 @@ def _profitability(
             -unsigned_margin if gross_profit_cents < 0 else unsigned_margin
         )
 
-    trade_costs_configured = (
-        broker_fee_basis_points is not None and sales_tax_basis_points is not None
-    )
+    evidence_state = str(trade_cost_evidence["evidenceState"])
     trade_cost_state = (
-        "unconfigured"
-        if not trade_costs_configured
+        evidence_state
+        if evidence_state != "ready"
         else "unavailable"
         if gross_revenue_cents is None
         else "ready"
@@ -3132,14 +3321,14 @@ def _profitability(
     net_margin_basis_points = None
     if trade_cost_state == "ready":
         assert gross_revenue_cents is not None
-        assert broker_fee_basis_points is not None
-        assert sales_tax_basis_points is not None
+        broker_rate = int(trade_cost_evidence["effectiveBrokerFeeRate"])
+        sales_tax_rate = int(trade_cost_evidence["effectiveSalesTaxRate"])
         broker_fee_cents = (
-            gross_revenue_cents * broker_fee_basis_points + 9_999
-        ) // 10_000
+            gross_revenue_cents * broker_rate + TRADE_RATE_SCALE - 1
+        ) // TRADE_RATE_SCALE
         sales_tax_cents = (
-            gross_revenue_cents * sales_tax_basis_points + 9_999
-        ) // 10_000
+            gross_revenue_cents * sales_tax_rate + TRADE_RATE_SCALE - 1
+        ) // TRADE_RATE_SCALE
         if broker_fee_cents > MAX_SAFE_INTEGER or sales_tax_cents > MAX_SAFE_INTEGER:
             raise ProductionPlanningError("production_profitability_overflow")
         total_trade_cost_cents = _checked_add(broker_fee_cents, sales_tax_cents)
@@ -3208,8 +3397,11 @@ def _profitability(
         "grossProfitCents": gross_profit_cents,
         "grossMarginBasisPoints": gross_margin_basis_points,
         "tradeCostState": trade_cost_state,
-        "brokerFeeBasisPoints": broker_fee_basis_points,
-        "salesTaxBasisPoints": sales_tax_basis_points,
+        **{
+            key: value
+            for key, value in trade_cost_evidence.items()
+            if key != "evidenceState"
+        },
         "brokerFeeCents": broker_fee_cents,
         "salesTaxCents": sales_tax_cents,
         "totalTradeCostCents": total_trade_cost_cents,
@@ -3227,8 +3419,7 @@ def _purchase_list(
     market_snapshot: Mapping[str, Any] | None,
     selected_hub: Mapping[str, Any],
     *,
-    broker_fee_basis_points: int | None,
-    sales_tax_basis_points: int | None,
+    trade_cost_evidence: Mapping[str, Any],
 ) -> dict[str, Any]:
     """Aggregate shortages and price their immediate purchase at one selected hub."""
 
@@ -3373,8 +3564,7 @@ def _purchase_list(
         installation_state=installation_state,
         installation_cost=installation_cost,
         unresolved_plan_count=unresolved_plan_count,
-        broker_fee_basis_points=broker_fee_basis_points,
-        sales_tax_basis_points=sales_tax_basis_points,
+        trade_cost_evidence=trade_cost_evidence,
     )
     return {
         "state": state,
@@ -3493,12 +3683,19 @@ def query_production_plans(connection: sqlite3.Connection, raw_query: Any) -> di
         )
     except MarketPriceError as error:
         raise ProductionPlanningError("production_purchase_market_invalid") from error
+    trade_cost_evidence = _trade_cost_evidence(
+        connection,
+        mode=str(query["tradeCostMode"]),
+        sales_character_id=query["salesCharacterId"],
+        selected_hub=selected_market_hub,
+        broker_fee_basis_points=query["brokerFeeBasisPoints"],
+        sales_tax_basis_points=query["salesTaxBasisPoints"],
+    )
     purchase_list = _purchase_list(
         records,
         market_snapshot,
         selected_market_hub,
-        broker_fee_basis_points=query["brokerFeeBasisPoints"],
-        sales_tax_basis_points=query["salesTaxBasisPoints"],
+        trade_cost_evidence=trade_cost_evidence,
     )
     sort_keys = {
         "product": lambda item: (str(item["productName"]).casefold(), item["productTypeId"], item["planId"]),

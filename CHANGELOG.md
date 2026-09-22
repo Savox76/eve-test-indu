@@ -6,11 +6,13 @@ Alle bemerkenswerten Änderungen an New Eden Foundry werden hier festgehalten. D
 
 ### Neu hinzugefügt
 
-- Keine.
+- Paket 47 synchronisiert unmodifizierte Charakter-Standings vollständig und atomar und berechnet Brokergebühr sowie Verkaufssteuer für die fünf NPC-Handelsstationen automatisch aus Verkäufer-Charakter, Skills und stationsbezogenen Standings.
+- Die Produktionsansicht zeigt den effektiven Satz, Broker Relations, Accounting, Corporation-/Faction-Standing sowie die verwendeten Skill- und Standing-Snapshots; ein manueller Fallback bleibt verfügbar.
 
 ### Geändert
 
-- Keine.
+- Das Markt-Scopepaket enthält zusätzlich `esi-characters.read_standings.v1`; bereits verbundene Charaktere werden deshalb sichtbar zur erneuten Autorisierung aufgefordert.
+- Gebühren verwenden eine feste Rate-Skala von `10.000.000.000`, damit Accounting-Stufen und auf sechs Dezimalstellen normalisierte Standings exakt und ohne binäre Gleitkomma-Drift berechnet werden.
 
 ### Behobene Fehler
 
@@ -18,11 +20,14 @@ Alle bemerkenswerten Änderungen an New Eden Foundry werden hier festgehalten. D
 
 ### Bekannte Einschränkungen
 
-- Keine.
+- Automatische Gebühren gelten für die konfigurierten NPC-Stationen. Upwell-spezifische Brokergebühren und erneute Einstellgebühren bleiben im manuellen Fallback beziehungsweise außerhalb des aktuellen Vertrags.
+- Automatischer Hubvergleich, Buy Orders, Transportkosten und automatisch erkannte Struktur-/Service-/Rigmodifikatoren sind nicht enthalten.
 
 ### Update und Datenbankmigration
 
-- Keine.
+- Das Datenbankschema bleibt bei Version 14; Standing-Snapshots verwenden den bestehenden generischen Snapshot-Speicher.
+- Die bestehende EVE-SSO-Portalregistrierung muss vor Nutzung um `esi-characters.read_standings.v1` erweitert werden.
+- Bestehende Charaktere benötigen wegen des neuen Standing-Scopes einmalig eine erneute EVE-Autorisierung.
 
 ## 0.2.0-alpha.19 – 21. September 2026
 

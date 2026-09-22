@@ -36,6 +36,10 @@ from .asset_sync import AssetSyncError, sync_character_assets
 from .blueprint_sync import BlueprintSyncError, sync_character_blueprints
 from .blueprint_view import BlueprintViewError, query_blueprints, validate_blueprint_query
 from .character_skill_sync import CharacterSkillSyncError, sync_character_skills
+from .character_standing_sync import (
+    CharacterStandingSyncError,
+    sync_character_standings,
+)
 from .character_skill_view import (
     CharacterSkillViewError,
     query_character_skills,
@@ -857,6 +861,48 @@ def create_application(
                 "skills": sum(int(result["skills"]) for result in results),
                 "totalSp": sum(int(result["totalSp"]) for result in results),
                 "unallocatedSp": sum(int(result["unallocatedSp"]) for result in results),
+            }
+        )
+
+    @app.post("/standings/sync")
+    async def post_character_standing_sync() -> JSONResponse:
+        if esi_client is None:
+            return JSONResponse(status_code=503, content={"detail": "esi_client_unavailable"})
+        with closing(connect_database(storage.database_path)) as connection:
+            character_ids = [
+                int(row[0])
+                for row in connection.execute(
+                    "SELECT character_id FROM characters WHERE enabled=1 ORDER BY character_id"
+                ).fetchall()
+            ]
+            results: list[dict[str, object]] = []
+            for character_id in character_ids:
+                try:
+                    synced = sync_character_standings(connection, esi_client, character_id)
+                    results.append(
+                        {
+                            "characterId": character_id,
+                            "status": "completed",
+                            "standings": synced.standings,
+                            "errorCode": None,
+                        }
+                    )
+                except (CharacterStandingSyncError, EsiClientError) as error:
+                    results.append(
+                        {
+                            "characterId": character_id,
+                            "status": "failed",
+                            "standings": 0,
+                            "errorCode": public_sync_error_code(error),
+                        }
+                    )
+        completed = sum(result["status"] == "completed" for result in results)
+        return JSONResponse(
+            content={
+                "characters": results,
+                "completed": completed,
+                "failed": len(results) - completed,
+                "standings": sum(int(result["standings"]) for result in results),
             }
         )
 

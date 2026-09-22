@@ -665,6 +665,8 @@ export type ProductionPlanInstallationCostState = "ready" | "partial" | "unconfi
 export type MarketHubId = "jita" | "amarr" | "dodixie" | "hek" | "rens";
 export type ProductionMarketItemState = "ready" | "partial" | "unavailable" | "snapshot-missing";
 export type ProductionMarketPricingState = "ready" | "partial" | "unavailable" | "snapshot-missing" | "stale" | "empty";
+export type TradeCostMode = "automatic" | "manual";
+export type TradeCostState = "ready" | "unconfigured" | "unavailable" | "skill-snapshot-missing" | "standing-snapshot-missing";
 export type ProductionPlanSortField = "priority" | "product" | "owner" | "activity" | "state" | "updated";
 export const productionActivities: readonly ProductionActivity[] = ["manufacturing", "reaction"];
 export const productionPlanStates: readonly ProductionPlanState[] = [
@@ -681,18 +683,28 @@ export const marketPriceTypeLimit = 250;
 const expectedMarketHubs: readonly ProductionMarketHub[] = [
   { hubId: "jita", name: "Jita", stationId: 60_003_760,
     stationName: "Jita IV - Moon 4 - Caldari Navy Assembly Plant",
+    stationOwnerCorporationId: 1_000_035, stationOwnerCorporationName: "Caldari Navy",
+    stationOwnerFactionId: 500_001, stationOwnerFactionName: "Caldari State",
     solarSystemId: 30_000_142, regionId: 10_000_002, priority: 0 },
   { hubId: "amarr", name: "Amarr", stationId: 60_008_494,
     stationName: "Amarr VIII (Oris) - Emperor Family Academy",
+    stationOwnerCorporationId: 1_000_086, stationOwnerCorporationName: "Emperor Family",
+    stationOwnerFactionId: 500_003, stationOwnerFactionName: "Amarr Empire",
     solarSystemId: 30_002_187, regionId: 10_000_043, priority: 1 },
   { hubId: "dodixie", name: "Dodixie", stationId: 60_011_866,
     stationName: "Dodixie IX - Moon 20 - Federation Navy Assembly Plant",
+    stationOwnerCorporationId: 1_000_120, stationOwnerCorporationName: "Federation Navy",
+    stationOwnerFactionId: 500_004, stationOwnerFactionName: "Gallente Federation",
     solarSystemId: 30_002_659, regionId: 10_000_032, priority: 2 },
   { hubId: "hek", name: "Hek", stationId: 60_005_686,
     stationName: "Hek VIII - Moon 12 - Boundless Creation Factory",
+    stationOwnerCorporationId: 1_000_057, stationOwnerCorporationName: "Boundless Creation",
+    stationOwnerFactionId: 500_002, stationOwnerFactionName: "Minmatar Republic",
     solarSystemId: 30_002_053, regionId: 10_000_042, priority: 3 },
   { hubId: "rens", name: "Rens", stationId: 60_004_588,
     stationName: "Rens VI - Moon 8 - Brutor Tribe Treasury",
+    stationOwnerCorporationId: 1_000_049, stationOwnerCorporationName: "Brutor Tribe",
+    stationOwnerFactionId: 500_002, stationOwnerFactionName: "Minmatar Republic",
     solarSystemId: 30_002_510, regionId: 10_000_030, priority: 4 },
 ];
 export const productionPlanPageSize = 50;
@@ -925,17 +937,33 @@ export interface ProductionProfitability {
   totalProductionCostCents: number | null;
   grossProfitCents: number | null;
   grossMarginBasisPoints: number | null;
-  tradeCostState: "ready" | "unconfigured" | "unavailable";
+  tradeCostState: TradeCostState;
+  tradeCostMode: TradeCostMode;
+  salesCharacterId: number | null;
+  salesCharacterName: string | null;
   brokerFeeBasisPoints: number | null;
   salesTaxBasisPoints: number | null;
+  tradeRateScale: 10_000_000_000;
+  effectiveBrokerFeeRate: number | null;
+  effectiveSalesTaxRate: number | null;
+  brokerRelationsLevel: number | null;
+  accountingLevel: number | null;
+  corporationStandingMillionths: number | null;
+  factionStandingMillionths: number | null;
+  tradeSkillSnapshotId: number | null;
+  tradeSkillSyncRunId: number | null;
+  tradeSkillObservedAt: string | null;
+  standingSnapshotId: number | null;
+  standingSyncRunId: number | null;
+  standingObservedAt: string | null;
   brokerFeeCents: number | null;
   salesTaxCents: number | null;
   totalTradeCostCents: number | null;
   netRevenueCents: number | null;
   netProfitCents: number | null;
   netMarginBasisPoints: number | null;
-  profitabilityRule: "filtered-plans-full-material-replacement-plus-installation-and-explicit-trade-costs-vs-lowest-sell-reference";
-  tradeCostRule: "ceil-gross-revenue-times-explicit-basis-points-per-fee";
+  profitabilityRule: "filtered-plans-full-material-replacement-plus-installation-and-automatic-or-explicit-trade-costs-vs-lowest-sell-reference";
+  tradeCostRule: "ceil-gross-revenue-times-manual-or-npc-station-character-rate-at-1e10-scale-per-fee";
   tradeFeesIncluded: boolean;
 }
 
@@ -944,6 +972,10 @@ export interface ProductionMarketHub {
   name: string;
   stationId: number;
   stationName: string;
+  stationOwnerCorporationId: number;
+  stationOwnerCorporationName: string;
+  stationOwnerFactionId: number;
+  stationOwnerFactionName: string;
   solarSystemId: number;
   regionId: number;
   priority: number;
@@ -1132,6 +1164,8 @@ export interface ProductionPlanQuery {
   sortBy: ProductionPlanSortField;
   sortDirection: SortDirection;
   marketHubId: MarketHubId;
+  tradeCostMode: TradeCostMode;
+  salesCharacterId: number | null;
   brokerFeeBasisPoints: number | null;
   salesTaxBasisPoints: number | null;
 }
@@ -1170,9 +1204,9 @@ export interface ProductionPlanPage {
   marketPricesApplied: true;
   marketPriceRule: "selected-hub-lowest-sell-orders-volume-weighted-cents";
   profitabilityApplied: true;
-  profitabilityRule: "filtered-plans-full-material-replacement-plus-installation-and-explicit-trade-costs-vs-lowest-sell-reference";
+  profitabilityRule: "filtered-plans-full-material-replacement-plus-installation-and-automatic-or-explicit-trade-costs-vs-lowest-sell-reference";
   tradeCostsApplied: true;
-  tradeCostRule: "ceil-gross-revenue-times-explicit-basis-points-per-fee";
+  tradeCostRule: "ceil-gross-revenue-times-manual-or-npc-station-character-rate-at-1e10-scale-per-fee";
   installationCostsApplied: true;
   installationCostRule: "base-material-adjusted-price-times-runs-system-index-plus-explicit-tax-plus-scc-4-percent-ceil";
   remainingModifiersApplied: false;
@@ -1388,6 +1422,18 @@ export interface CharacterSkillSyncResult {
   unallocatedSp: number;
 }
 
+export interface CharacterStandingSyncResult {
+  characters: Array<{
+    characterId: number;
+    status: "completed" | "failed";
+    standings: number;
+    errorCode: string | null;
+  }>;
+  completed: number;
+  failed: number;
+  standings: number;
+}
+
 export interface SsoLoginStatus {
   state: SsoLoginState;
   attemptId: string | null;
@@ -1476,7 +1522,7 @@ export const ssoScopePackages: readonly SsoScopePackage[] = [
 
 const scopePackageRequirements: Readonly<Record<SsoScopePackage, number>> = {
   "industry-core": 4,
-  market: 2,
+  market: 3,
   "planetary-industry": 1,
   projects: 1,
   "private-structures": 1,
@@ -4223,10 +4269,14 @@ function validateProductionPlanQuery(query: ProductionPlanQuery): ProductionPlan
     !isNonNegativeSafeInteger(query.offset) || !Number.isSafeInteger(query.limit) ||
     query.limit < 1 || query.limit > 100 || !productionPlanSortFields.includes(query.sortBy) ||
     !["asc", "desc"].includes(query.sortDirection) || !marketHubIds.includes(query.marketHubId) ||
+    !["automatic", "manual"].includes(query.tradeCostMode) ||
+    !(query.salesCharacterId === null || isPositiveSafeInteger(query.salesCharacterId)) ||
     !(query.brokerFeeBasisPoints === null ||
       isNonNegativeSafeInteger(query.brokerFeeBasisPoints) && query.brokerFeeBasisPoints <= 10_000) ||
     !(query.salesTaxBasisPoints === null ||
-      isNonNegativeSafeInteger(query.salesTaxBasisPoints) && query.salesTaxBasisPoints <= 10_000)
+      isNonNegativeSafeInteger(query.salesTaxBasisPoints) && query.salesTaxBasisPoints <= 10_000) ||
+    (query.tradeCostMode === "automatic" &&
+      (query.brokerFeeBasisPoints !== null || query.salesTaxBasisPoints !== null))
   ) throw new Error("The production-plan query is invalid.");
   return { ...query, search };
 }
@@ -4239,7 +4289,12 @@ function parseProductionMarketHub(candidate: unknown): ProductionMarketHub {
   if (
     !isRecord(candidate) || !marketHubIds.includes(candidate.hubId as MarketHubId) ||
     !isBoundedText(candidate.name, 80) || !isPositiveSafeInteger(candidate.stationId) ||
-    !isBoundedText(candidate.stationName, 200) || !isPositiveSafeInteger(candidate.solarSystemId) ||
+    !isBoundedText(candidate.stationName, 200) ||
+    !isPositiveSafeInteger(candidate.stationOwnerCorporationId) ||
+    !isBoundedText(candidate.stationOwnerCorporationName, 200) ||
+    !isPositiveSafeInteger(candidate.stationOwnerFactionId) ||
+    !isBoundedText(candidate.stationOwnerFactionName, 200) ||
+    !isPositiveSafeInteger(candidate.solarSystemId) ||
     !isPositiveSafeInteger(candidate.regionId) || !isNonNegativeSafeInteger(candidate.priority) ||
     Number(candidate.priority) >= expectedMarketHubs.length
   ) throw new Error("The native runtime returned an invalid market hub.");
@@ -4274,11 +4329,34 @@ function parseProductionProfitability(candidate: unknown, planCount: number): Pr
       isNonNegativeSafeInteger(candidate.totalProductionCostCents)) ||
     !(candidate.grossProfitCents === null || isSignedSafeInteger(candidate.grossProfitCents)) ||
     !(candidate.grossMarginBasisPoints === null || isSignedSafeInteger(candidate.grossMarginBasisPoints)) ||
-    !["ready", "unconfigured", "unavailable"].includes(String(candidate.tradeCostState)) ||
+    !["ready", "unconfigured", "unavailable", "skill-snapshot-missing", "standing-snapshot-missing"]
+      .includes(String(candidate.tradeCostState)) ||
+    !["automatic", "manual"].includes(String(candidate.tradeCostMode)) ||
+    !(candidate.salesCharacterId === null || isPositiveSafeInteger(candidate.salesCharacterId)) ||
+    !(candidate.salesCharacterName === null || isBoundedText(candidate.salesCharacterName, 100)) ||
     !(candidate.brokerFeeBasisPoints === null ||
       isNonNegativeSafeInteger(candidate.brokerFeeBasisPoints) && Number(candidate.brokerFeeBasisPoints) <= 10_000) ||
     !(candidate.salesTaxBasisPoints === null ||
       isNonNegativeSafeInteger(candidate.salesTaxBasisPoints) && Number(candidate.salesTaxBasisPoints) <= 10_000) ||
+    candidate.tradeRateScale !== 10_000_000_000 ||
+    !(candidate.effectiveBrokerFeeRate === null || isNonNegativeSafeInteger(candidate.effectiveBrokerFeeRate)) ||
+    !(candidate.effectiveSalesTaxRate === null || isNonNegativeSafeInteger(candidate.effectiveSalesTaxRate)) ||
+    !(candidate.brokerRelationsLevel === null ||
+      isNonNegativeSafeInteger(candidate.brokerRelationsLevel) && Number(candidate.brokerRelationsLevel) <= 5) ||
+    !(candidate.accountingLevel === null ||
+      isNonNegativeSafeInteger(candidate.accountingLevel) && Number(candidate.accountingLevel) <= 5) ||
+    !(candidate.corporationStandingMillionths === null ||
+      isSignedSafeInteger(candidate.corporationStandingMillionths) &&
+      Math.abs(Number(candidate.corporationStandingMillionths)) <= 10_000_000) ||
+    !(candidate.factionStandingMillionths === null ||
+      isSignedSafeInteger(candidate.factionStandingMillionths) &&
+      Math.abs(Number(candidate.factionStandingMillionths)) <= 10_000_000) ||
+    !(candidate.tradeSkillSnapshotId === null || isPositiveSafeInteger(candidate.tradeSkillSnapshotId)) ||
+    !(candidate.tradeSkillSyncRunId === null || isPositiveSafeInteger(candidate.tradeSkillSyncRunId)) ||
+    !(candidate.tradeSkillObservedAt === null || isBoundedText(candidate.tradeSkillObservedAt, 64)) ||
+    !(candidate.standingSnapshotId === null || isPositiveSafeInteger(candidate.standingSnapshotId)) ||
+    !(candidate.standingSyncRunId === null || isPositiveSafeInteger(candidate.standingSyncRunId)) ||
+    !(candidate.standingObservedAt === null || isBoundedText(candidate.standingObservedAt, 64)) ||
     !(candidate.brokerFeeCents === null || isNonNegativeSafeInteger(candidate.brokerFeeCents)) ||
     !(candidate.salesTaxCents === null || isNonNegativeSafeInteger(candidate.salesTaxCents)) ||
     !(candidate.totalTradeCostCents === null || isNonNegativeSafeInteger(candidate.totalTradeCostCents)) ||
@@ -4286,8 +4364,9 @@ function parseProductionProfitability(candidate: unknown, planCount: number): Pr
     !(candidate.netProfitCents === null || isSignedSafeInteger(candidate.netProfitCents)) ||
     !(candidate.netMarginBasisPoints === null || isSignedSafeInteger(candidate.netMarginBasisPoints)) ||
     candidate.profitabilityRule !==
-      "filtered-plans-full-material-replacement-plus-installation-and-explicit-trade-costs-vs-lowest-sell-reference" ||
-    candidate.tradeCostRule !== "ceil-gross-revenue-times-explicit-basis-points-per-fee" ||
+      "filtered-plans-full-material-replacement-plus-installation-and-automatic-or-explicit-trade-costs-vs-lowest-sell-reference" ||
+    candidate.tradeCostRule !==
+      "ceil-gross-revenue-times-manual-or-npc-station-character-rate-at-1e10-scale-per-fee" ||
     typeof candidate.tradeFeesIncluded !== "boolean"
   ) throw new Error("The native runtime returned invalid production profitability.");
   const items = candidate.items.map((item): ProductionProfitabilityItem => {
@@ -4332,15 +4411,43 @@ function parseProductionProfitability(candidate: unknown, planCount: number): Pr
     ? readyRevenue - expectedCost : null;
   const expectedMargin = expectedProfit !== null && readyRevenue !== null && readyRevenue > 0
     ? Number(BigInt(expectedProfit) * 10_000n / BigInt(readyRevenue)) : null;
-  const tradeCostsConfigured = candidate.brokerFeeBasisPoints !== null &&
-    candidate.salesTaxBasisPoints !== null;
-  const expectedTradeCostState = !tradeCostsConfigured ? "unconfigured"
+  const skillEvidenceAbsent = candidate.tradeSkillSnapshotId === null &&
+    candidate.tradeSkillSyncRunId === null && candidate.tradeSkillObservedAt === null &&
+    candidate.brokerRelationsLevel === null && candidate.accountingLevel === null;
+  const skillEvidenceReady = candidate.tradeSkillSnapshotId !== null &&
+    candidate.tradeSkillSyncRunId !== null && candidate.tradeSkillObservedAt !== null &&
+    candidate.brokerRelationsLevel !== null && candidate.accountingLevel !== null;
+  const standingEvidenceAbsent = candidate.standingSnapshotId === null &&
+    candidate.standingSyncRunId === null && candidate.standingObservedAt === null &&
+    candidate.corporationStandingMillionths === null && candidate.factionStandingMillionths === null;
+  const standingEvidenceReady = candidate.standingSnapshotId !== null &&
+    candidate.standingSyncRunId !== null && candidate.standingObservedAt !== null &&
+    candidate.corporationStandingMillionths !== null && candidate.factionStandingMillionths !== null;
+  const expectedEvidenceState = candidate.tradeCostMode === "manual"
+    ? candidate.brokerFeeBasisPoints !== null && candidate.salesTaxBasisPoints !== null
+      ? "ready" : "unconfigured"
+    : candidate.salesCharacterId === null || candidate.salesCharacterName === null
+      ? "unconfigured"
+      : skillEvidenceAbsent ? "skill-snapshot-missing"
+        : standingEvidenceAbsent ? "standing-snapshot-missing" : "ready";
+  const expectedTradeCostState = expectedEvidenceState !== "ready" ? expectedEvidenceState
     : readyRevenue === null ? "unavailable" : "ready";
+  const expectedRates: [number, number] | null = expectedEvidenceState !== "ready" ? null
+    : candidate.tradeCostMode === "manual"
+      ? [Number(candidate.brokerFeeBasisPoints) * 1_000_000,
+        Number(candidate.salesTaxBasisPoints) * 1_000_000]
+      : [Math.max(100_000_000,
+        300_000_000 - 30_000_000 * Number(candidate.brokerRelationsLevel) -
+        3 * Number(candidate.factionStandingMillionths) -
+        2 * Number(candidate.corporationStandingMillionths)),
+      750_000_000 * (100 - 11 * Number(candidate.accountingLevel)) / 100];
   const expectedBrokerFee = expectedTradeCostState === "ready" && readyRevenue !== null
-    ? Number((BigInt(readyRevenue) * BigInt(Number(candidate.brokerFeeBasisPoints)) + 9_999n) / 10_000n)
+    ? Number((BigInt(readyRevenue) * BigInt(Number(candidate.effectiveBrokerFeeRate)) +
+      9_999_999_999n) / 10_000_000_000n)
     : null;
   const expectedSalesTax = expectedTradeCostState === "ready" && readyRevenue !== null
-    ? Number((BigInt(readyRevenue) * BigInt(Number(candidate.salesTaxBasisPoints)) + 9_999n) / 10_000n)
+    ? Number((BigInt(readyRevenue) * BigInt(Number(candidate.effectiveSalesTaxRate)) +
+      9_999_999_999n) / 10_000_000_000n)
     : null;
   const expectedTradeCost = expectedBrokerFee !== null && expectedSalesTax !== null
     ? expectedBrokerFee + expectedSalesTax : null;
@@ -4363,6 +4470,18 @@ function parseProductionProfitability(candidate: unknown, planCount: number): Pr
     candidate.totalProductionCostCents !== expectedCost ||
     candidate.grossProfitCents !== expectedProfit ||
     candidate.grossMarginBasisPoints !== expectedMargin ||
+    (candidate.tradeCostMode === "automatic" &&
+      (candidate.brokerFeeBasisPoints !== null || candidate.salesTaxBasisPoints !== null)) ||
+    (candidate.tradeCostMode === "manual" && (!skillEvidenceAbsent || !standingEvidenceAbsent)) ||
+    (expectedEvidenceState === "unconfigured" && (!skillEvidenceAbsent || !standingEvidenceAbsent)) ||
+    (expectedEvidenceState === "skill-snapshot-missing" && (!skillEvidenceAbsent || !standingEvidenceAbsent)) ||
+    (expectedEvidenceState === "standing-snapshot-missing" && (!skillEvidenceReady || !standingEvidenceAbsent)) ||
+    (expectedEvidenceState === "ready" && candidate.tradeCostMode === "automatic" &&
+      (!skillEvidenceReady || !standingEvidenceReady)) ||
+    (expectedRates === null
+      ? candidate.effectiveBrokerFeeRate !== null || candidate.effectiveSalesTaxRate !== null
+      : candidate.effectiveBrokerFeeRate !== expectedRates[0] ||
+        candidate.effectiveSalesTaxRate !== expectedRates[1]) ||
     candidate.tradeCostState !== expectedTradeCostState ||
     candidate.brokerFeeCents !== expectedBrokerFee ||
     candidate.salesTaxCents !== expectedSalesTax ||
@@ -4536,9 +4655,10 @@ function parseProductionPlanPage(candidate: unknown): ProductionPlanPage {
     candidate.marketPriceRule !== "selected-hub-lowest-sell-orders-volume-weighted-cents" ||
     candidate.profitabilityApplied !== true ||
     candidate.profitabilityRule !==
-      "filtered-plans-full-material-replacement-plus-installation-and-explicit-trade-costs-vs-lowest-sell-reference" ||
+      "filtered-plans-full-material-replacement-plus-installation-and-automatic-or-explicit-trade-costs-vs-lowest-sell-reference" ||
     candidate.tradeCostsApplied !== true ||
-    candidate.tradeCostRule !== "ceil-gross-revenue-times-explicit-basis-points-per-fee" ||
+    candidate.tradeCostRule !==
+      "ceil-gross-revenue-times-manual-or-npc-station-character-rate-at-1e10-scale-per-fee" ||
     candidate.installationCostsApplied !== true ||
     candidate.installationCostRule !==
       "base-material-adjusted-price-times-runs-system-index-plus-explicit-tax-" +
@@ -4599,15 +4719,31 @@ export async function loadProductionPlans(
         materialReplacementCostCents: 0, installationCostCents: null,
         totalProductionCostCents: null, grossProfitCents: null,
         grossMarginBasisPoints: null,
-        tradeCostState: validated.brokerFeeBasisPoints === null || validated.salesTaxBasisPoints === null
-          ? "unconfigured" : "unavailable",
+        tradeCostState: validated.tradeCostMode === "manual" &&
+          validated.brokerFeeBasisPoints !== null && validated.salesTaxBasisPoints !== null
+          ? "unavailable" : "unconfigured",
+        tradeCostMode: validated.tradeCostMode,
+        salesCharacterId: validated.salesCharacterId,
+        salesCharacterName: null,
         brokerFeeBasisPoints: validated.brokerFeeBasisPoints,
         salesTaxBasisPoints: validated.salesTaxBasisPoints,
+        tradeRateScale: 10_000_000_000,
+        effectiveBrokerFeeRate: validated.tradeCostMode === "manual" &&
+          validated.brokerFeeBasisPoints !== null && validated.salesTaxBasisPoints !== null
+          ? validated.brokerFeeBasisPoints * 1_000_000 : null,
+        effectiveSalesTaxRate: validated.tradeCostMode === "manual" &&
+          validated.brokerFeeBasisPoints !== null && validated.salesTaxBasisPoints !== null
+          ? validated.salesTaxBasisPoints * 1_000_000 : null,
+        brokerRelationsLevel: null, accountingLevel: null,
+        corporationStandingMillionths: null, factionStandingMillionths: null,
+        tradeSkillSnapshotId: null, tradeSkillSyncRunId: null, tradeSkillObservedAt: null,
+        standingSnapshotId: null, standingSyncRunId: null, standingObservedAt: null,
         brokerFeeCents: null, salesTaxCents: null, totalTradeCostCents: null,
         netRevenueCents: null, netProfitCents: null, netMarginBasisPoints: null,
         profitabilityRule:
-          "filtered-plans-full-material-replacement-plus-installation-and-explicit-trade-costs-vs-lowest-sell-reference",
-        tradeCostRule: "ceil-gross-revenue-times-explicit-basis-points-per-fee",
+          "filtered-plans-full-material-replacement-plus-installation-and-automatic-or-explicit-trade-costs-vs-lowest-sell-reference",
+        tradeCostRule:
+          "ceil-gross-revenue-times-manual-or-npc-station-character-rate-at-1e10-scale-per-fee",
         tradeFeesIncluded: false,
       },
     }, buildNumber: null, inventoryApplied: true,
@@ -4633,9 +4769,10 @@ export async function loadProductionPlans(
     marketPriceRule: "selected-hub-lowest-sell-orders-volume-weighted-cents",
     profitabilityApplied: true,
     profitabilityRule:
-      "filtered-plans-full-material-replacement-plus-installation-and-explicit-trade-costs-vs-lowest-sell-reference",
+      "filtered-plans-full-material-replacement-plus-installation-and-automatic-or-explicit-trade-costs-vs-lowest-sell-reference",
     tradeCostsApplied: true,
-    tradeCostRule: "ceil-gross-revenue-times-explicit-basis-points-per-fee",
+    tradeCostRule:
+      "ceil-gross-revenue-times-manual-or-npc-station-character-rate-at-1e10-scale-per-fee",
     installationCostsApplied: true,
     installationCostRule: "base-material-adjusted-price-times-runs-system-index-plus-explicit-tax-plus-scc-4-percent-ceil",
     remainingModifiersApplied: false,
@@ -4645,11 +4782,15 @@ export async function loadProductionPlans(
     activity: validated.activity, planState: validated.state, offset: validated.offset,
     limit: validated.limit, sortBy: validated.sortBy, sortDirection: validated.sortDirection,
     marketHubId: validated.marketHubId,
+    tradeCostMode: validated.tradeCostMode,
+    salesCharacterId: validated.salesCharacterId,
     brokerFeeBasisPoints: validated.brokerFeeBasisPoints,
     salesTaxBasisPoints: validated.salesTaxBasisPoints,
   })));
   if (page.offset !== validated.offset || page.limit !== validated.limit ||
       page.purchaseList.marketHub.hubId !== validated.marketHubId ||
+      page.purchaseList.profitability.tradeCostMode !== validated.tradeCostMode ||
+      page.purchaseList.profitability.salesCharacterId !== validated.salesCharacterId ||
       page.purchaseList.profitability.brokerFeeBasisPoints !== validated.brokerFeeBasisPoints ||
       page.purchaseList.profitability.salesTaxBasisPoints !== validated.salesTaxBasisPoints) {
     throw new Error("The native runtime returned a different production-plan window.");
@@ -5185,6 +5326,41 @@ export async function syncCharacterSkills(
     throw new Error("The native runtime returned an inconsistent character-skill sync result.");
   }
   return { ...candidate, characters } as unknown as CharacterSkillSyncResult;
+}
+
+export async function syncCharacterStandings(
+  adapter: RuntimeAdapter = tauriAdapter,
+): Promise<CharacterStandingSyncResult> {
+  if (!adapter.isAvailable()) {
+    throw new Error("Character-standing sync is available only in the desktop application.");
+  }
+  const candidate: unknown = JSON.parse(await adapter.invoke("sync_character_standings"));
+  if (
+    !isRecord(candidate) || !Array.isArray(candidate.characters) ||
+    ![candidate.completed, candidate.failed, candidate.standings].every(isNonNegativeSafeInteger)
+  ) {
+    throw new Error("The native runtime returned an invalid character-standing sync result.");
+  }
+  const characters = candidate.characters.map((value) => {
+    if (
+      !isRecord(value) || !isPositiveSafeInteger(value.characterId) ||
+      !["completed", "failed"].includes(String(value.status)) ||
+      !isNonNegativeSafeInteger(value.standings) ||
+      !((value.status === "completed" && value.errorCode === null) ||
+        (value.status === "failed" && value.standings === 0 &&
+          isBoundedText(value.errorCode, 120)))
+    ) {
+      throw new Error("The native runtime returned an invalid character-standing sync result.");
+    }
+    return value as unknown as CharacterStandingSyncResult["characters"][number];
+  });
+  if (
+    Number(candidate.completed) + Number(candidate.failed) !== characters.length ||
+    candidate.standings !== characters.reduce((sum, value) => sum + value.standings, 0)
+  ) {
+    throw new Error("The native runtime returned an inconsistent character-standing sync result.");
+  }
+  return { ...candidate, characters } as unknown as CharacterStandingSyncResult;
 }
 
 export async function exportAssetsCsv(

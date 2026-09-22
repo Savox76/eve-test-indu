@@ -337,6 +337,7 @@ def main() -> int:
                     "search": "", "ownerCharacterId": None, "activity": None,
                     "state": None, "offset": 0, "limit": 50,
                     "marketHubId": "jita",
+                    "tradeCostMode": "manual", "salesCharacterId": None,
                     "brokerFeeBasisPoints": None,
                     "salesTaxBasisPoints": None,
                     "sortBy": "priority", "sortDirection": "desc",
@@ -368,7 +369,7 @@ def main() -> int:
                 or production_plans.get("remainingModifiersApplied") is not False
                 or production_plans.get("tradeCostsApplied") is not True
                 or production_plans.get("tradeCostRule")
-                != "ceil-gross-revenue-times-explicit-basis-points-per-fee"
+                != "ceil-gross-revenue-times-manual-or-npc-station-character-rate-at-1e10-scale-per-fee"
             ):
                 raise RuntimeError("The packaged production-plan query is invalid.")
 

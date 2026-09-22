@@ -1,7 +1,8 @@
 # EVE-SSO-App-Registrierung
 
-**Stand:** 9. September 2026  
-**Status:** Im EVE Developers Portal registriert
+**Stand:** 22. September 2026
+
+**Status:** Codeprofil aktualisiert; der neue Standing-Scope muss vor Nutzung von Paket 47 zusätzlich im EVE Developers Portal freigeschaltet werden.
 
 Dieses Dokument ist die verbindliche Vorlage für die öffentliche EVE-SSO-App von New Eden Foundry. Die identischen Werte stehen maschinenlesbar in `backend/new_eden_foundry_backend/resources/eve-sso-registration.json` und werden automatisiert geprüft.
 
@@ -27,7 +28,7 @@ Die Portalregistrierung erhält alle unten aufgeführten Scopes. Beim Verbinden 
 |---|---|---|
 | `industry-core` | `esi-assets.read_assets.v1`<br>`esi-characters.read_blueprints.v1`<br>`esi-industry.read_character_jobs.v1`<br>`esi-skills.read_skills.v1` | Bestand, Blueprints, persönliche Industrieaufträge und relevante Charakterfähigkeiten |
 | `private-structures` | `esi-universe.read_structures.v1` | Namen und Daten zugänglicher Spielerstrukturen auflösen |
-| `market` | `esi-markets.read_character_orders.v1`<br>`esi-wallet.read_character_wallet.v1` | Persönliche Marktaufträge und Walletdaten |
+| `market` | `esi-characters.read_standings.v1`<br>`esi-markets.read_character_orders.v1`<br>`esi-wallet.read_character_wallet.v1` | Unmodifizierte persönliche Standings für NPC-Stationsgebühren, persönliche Marktaufträge und Walletdaten |
 | `projects` | `esi-fittings.read_fittings.v1` | Eigene Fittings als Projekt- oder Doktrinquelle |
 | `planetary-industry` | `esi-planets.manage_planets.v1` | Eigene Kolonien und Planetary-Industry-Daten lesen |
 
@@ -41,7 +42,7 @@ Der technisch schreibend klingende PI-Scope wird nur für die ESI-Lesewege zu ei
 4. Repository- und Backendtests ausführen. Sie blockieren eine abweichende Callback-URI, unbekannte Scopepakete und ungültige Profilfelder.
 5. Vor dem Merge die gespeicherte Portalansicht noch einmal Zeichen für Zeichen mit dieser Tabelle vergleichen.
 
-Die echte Client-ID ist eingetragen und das Registrierungsprofil damit vollständig. Paket 12 hat Listener, Systembrowser, `state`, PKCE, Timeout und Abbruch umgesetzt. Der Ablauf und seine bewusste Grenze vor dem Tokenaustausch stehen in [sso-pkce-login.md](sso-pkce-login.md).
+Die echte Client-ID ist eingetragen und das Registrierungsprofil damit vollständig. Vor der Veröffentlichung von Paket 47 muss `esi-characters.read_standings.v1` der bestehenden Portalregistrierung hinzugefügt und der Abgleich aus Schritt 5 ausgeführt werden. Paket 12 hat Listener, Systembrowser, `state`, PKCE, Timeout und Abbruch umgesetzt. Der Ablauf und seine bewusste Grenze vor dem Tokenaustausch stehen in [sso-pkce-login.md](sso-pkce-login.md).
 
 ## Quellen
 
