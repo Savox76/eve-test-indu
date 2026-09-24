@@ -1314,6 +1314,8 @@ describe("desktop runtime status", () => {
     inventory.inventory = { offset: 0, total: 1, nextOffset: null, missingOwners: 0, runs: 10 };
     Object.assign(inventory.items[0], { planId: 8001, blueprintItemId: 8001,
       inventory: { kind: "copy", runs: 3, availableRuns: 3, status: "ready",
+        positionCount: 2, variantCount: 1, omittedVariantCount: 0,
+        variants: [{ ownerCharacterId: 7, ownerName: "Pilot", kind: "copy", materialEfficiency: 0, timeEfficiency: 0, usable: true, positionCount: 2, observedAt: "2026-09-24T12:00:00Z" }],
         installationState: "ready", observedAt: "2026-09-24T12:00:00Z" } });
     const inventoryQuery = { ...query, includeBlueprintProfitability: true,
       inventoryAnalysis: { runs: 10, offset: 0, facilityId: null,
@@ -1321,6 +1323,11 @@ describe("desktop runtime status", () => {
     invoke.mockResolvedValueOnce(JSON.stringify(inventoryPage));
     await expect(loadProductionPlans(inventoryQuery, { isAvailable: () => true, invoke }))
       .resolves.toEqual(inventoryPage);
+    inventory.items[0].inventory!.positionCount = 3;
+    invoke.mockResolvedValueOnce(JSON.stringify(inventoryPage));
+    await expect(loadProductionPlans(inventoryQuery, { isAvailable: () => true, invoke }))
+      .rejects.toThrow("invalid owned blueprint data");
+    inventory.items[0].inventory!.positionCount = 2;
     inventory.items[0].inventory!.runs = 4;
     invoke.mockResolvedValueOnce(JSON.stringify(inventoryPage));
     await expect(loadProductionPlans(inventoryQuery, { isAvailable: () => true, invoke }))

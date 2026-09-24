@@ -293,6 +293,6 @@ Die Handelsgebührenformeln folgen der offiziellen [EVE-Hilfe zu Broker Fee und 
 
 Die Windows-Ausgaben ab `v0.0.5-preview.14` liefern den geprüften Produktionsausschnitt des festgelegten offiziellen SDE-Builds mit. Er wird beim ersten Start automatisch installiert. Bei identischer Buildnummer wird er nur dann erneut verarbeitet, wenn eine neue abgeleitete Spalte – beispielsweise der Sicherheitsstatus ab `.18` – noch nicht befüllt ist. Die Produkt- und Blueprintsuche benötigt deshalb keinen manuellen Vorbereitungsschritt.
 
-## Abgrenzung zum Bestandsvergleich (Paket 49)
+## Abgrenzung zum Bestandsvergleich (Pakete 49–50)
 
-Die zielbezogene Einkaufsliste und Gewinnanalyse bleiben auf das ausgewählte Produktionsziel begrenzt. Die Rentabilitätsübersicht im Blueprint-Reiter liest dagegen direkt den Blueprint-Bestand und nimmt den Kauf der unmittelbaren Rezeptmaterialien an. Sie erzeugt keine Ziele und beeinflusst keine Reservierungen. Beide Rechnungen können bei Eigenfertigung von Vorprodukten oder unterschiedlichen Mengen/Anlagen voneinander abweichen.
+Die zielbezogene Einkaufsliste und Gewinnanalyse bleiben auf das ausgewählte Produktionsziel begrenzt. Die Rentabilitätsübersicht im Blueprint-Reiter liest dagegen direkt den Blueprint-Bestand und nimmt den Kauf der unmittelbaren Rezeptmaterialien an. Sie fasst Blueprint-Typen zusammen und zeigt den Stückgewinn eines automatischen Laufs mit der ausgewiesenen besten nutzbaren ME-/TE-Variante. Sie erzeugt keine Ziele und beeinflusst keine Reservierungen. Beide Rechnungen können bei Eigenfertigung von Vorprodukten oder unterschiedlichen Mengen/Anlagen voneinander abweichen.

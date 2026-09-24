@@ -24,6 +24,38 @@ Alle bemerkenswerten Änderungen an New Eden Foundry werden hier festgehalten. D
 
 - Keine.
 
+## 0.2.0-alpha.23 – 24. September 2026
+
+### Neu hinzugefügt
+
+- Eine Zeile je Blueprint-Typ, auch bei mehreren Besitzern, Originalen und Kopien.
+- Aufklappbare Details fassen Besitzer, BPO/BPC, ME/TE und Laufverfügbarkeit zusammen und zeigen die Anzahl der Bestandspositionen.
+
+### Geändert
+
+- Nettogewinn pro Stück und Marge ersetzen den Gewinn für eine manuell gewählte Laufzahl. Ein Produktionslauf ist die automatische Basis; das Feld „Vergleichsläufe“ entfällt.
+- Die nutzbare Variante mit höchstem ME, danach TE wird verwendet. Bei Gleichstand haben Originale Vorrang. Die gewählte Grundlage steht direkt in der Zeile.
+- Seitennavigation und Gesamtzahl beziehen sich auf Blueprint-Typen. Details sind auf 100 zusammengefasste Varianten je Typ begrenzt; Restanzahl und vollständige Summen bleiben sichtbar.
+- Die sichtbare Versionsnummer lautet `v0.2.0-alpha.23`.
+
+### Behobene Fehler
+
+- Doppelte Blueprint-Positionen füllen nicht mehr die Rentabilitätsübersicht mit gleichartigen Zeilen.
+- Erschöpfte Kopien verdrängen bei der automatischen Auswahl keine nutzbaren Varianten.
+
+### Bekannte Einschränkungen
+
+- Stückkosten größerer Aufträge können wegen Material-/Gebührenrundungen und Ordertiefe abweichen. Die Produktionsplanung bleibt für konkrete Mengen maßgeblich.
+- Der Vergleich berücksichtigt direkte Materialkäufe; Blueprint-/BPC-Anschaffung, Transport, erneute Einstellgebühren und Buy Orders sind nicht enthalten. Verkaufspreise sind keine Absatzgarantie.
+- Fehlende Markt-, Anlagen- oder Gebührenquellen und Rezepte mit mehreren unterschiedlichen Ausgabeprodukten bleiben nicht berechenbar.
+- Die Alpha ist nicht produktiv code-signiert; Windows SmartScreen kann einen unbekannten Herausgeber melden.
+
+### Update und Datenbankmigration
+
+- Das Datenbankschema bleibt Version 14. Produktionsziele und Materialreservierungen bleiben erhalten. Eine alte gespeicherte Vergleichslaufzahl wird ignoriert.
+- Installer: Anwendung schließen, Setup ausführen und die Löschung der Anwendungsdaten nicht auswählen.
+- Portable: in einen neuen Ordner entpacken und bei geschlossener Anwendung den bisherigen `data`-Ordner übernehmen.
+
 ## 0.2.0-alpha.22 – 24. September 2026
 
 ### Neu hinzugefügt
