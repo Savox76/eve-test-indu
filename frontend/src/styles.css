@@ -3519,6 +3519,9 @@ select:focus-visible {
 }
 
 .blueprint-profitability__positive strong { color: var(--teal); }
+.blueprint-profitability__table summary { cursor: pointer; margin-top: 8px; }
+.blueprint-profitability__variant { margin-top: 8px; }
+.blueprint-profitability__variant small { display: block; }
 .blueprint-profitability__negative strong { color: var(--coral); }
 .blueprint-profitability__missing strong { color: var(--text-muted); }
 

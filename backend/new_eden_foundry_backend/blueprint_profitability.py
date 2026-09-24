@@ -1,4 +1,4 @@
-"""Read-only, paginated profitability of owned blueprint items without goals."""
+"""Read-only profitability grouped by owned blueprint type, without goals."""
 
 from __future__ import annotations
 
@@ -7,6 +7,31 @@ from typing import Any, Mapping
 from . import production_planning as p
 
 RULE = "owned-blueprints-direct-material-purchase-per-hub-net-profit"
+
+
+def _basis_key(row):
+    item = row[3]
+    return (item.kind == "copy" and item.runs == 0,
+            -item.material_efficiency, -item.time_efficiency,
+            item.kind != "original", row[1], row[2])
+
+
+def _group_details(rows):
+    variants = {}
+    for _, owner_id, _, item, _, owner_name, observed_at in rows:
+        usable = item.kind == "original" or item.runs > 0
+        key = (owner_id, item.kind, item.material_efficiency, item.time_efficiency, usable)
+        if key not in variants:
+            variants[key] = {"ownerCharacterId": owner_id, "ownerName": owner_name,
+                             "kind": item.kind, "materialEfficiency": item.material_efficiency,
+                             "timeEfficiency": item.time_efficiency, "usable": usable,
+                             "positionCount": 0, "observedAt": observed_at}
+        variants[key]["positionCount"] += 1
+    ordered = sorted(variants.values(), key=lambda v: (
+        v["ownerName"].casefold(), v["ownerCharacterId"], v["kind"],
+        -v["materialEfficiency"], -v["timeEfficiency"], not v["usable"]))
+    return {"positionCount": len(rows), "variantCount": len(ordered),
+            "omittedVariantCount": max(0, len(ordered) - 100), "variants": ordered[:100]}
 
 
 def validate_settings(value: Any) -> dict[str, Any] | None:
@@ -58,12 +83,17 @@ def query_inventory(connection, query, loaded_recipes, facility_context, price_s
             if search and not any(search in str(v).casefold() for v in (name, product, owner["name"], item.type_id, item.item_id)):
                 continue
             candidates.append((name, owner_id, item.item_id, item, recipe, str(owner["name"]), source.observed_at))
-    candidates.sort(key=lambda row: (row[0].casefold(), row[1], row[2]))
-    offset = min(settings["offset"], len(candidates))
+    groups = {}
+    for row in candidates:
+        groups.setdefault(row[3].type_id, []).append(row)
+    grouped = [(min(rows, key=_basis_key), rows) for rows in groups.values()]
+    grouped.sort(key=lambda group: (group[0][0].casefold(), group[0][3].type_id))
+    offset = min(settings["offset"], len(grouped))
     records = []
     details = {}
     type_ids = set()
-    for name, owner_id, item_id, item, recipe, owner_name, observed_at in candidates[offset:offset + 25]:
+    for basis, rows in grouped[offset:offset + 25]:
+        name, owner_id, item_id, item, recipe, owner_name, observed_at = basis
         needed = set() if recipe is None else {recipe.product_type_id, *(m[0] for m in recipe.materials)}
         # Bound each page by the actual market API limit, without losing later items.
         if records and len(type_ids | needed) > p.MAX_MARKET_TYPE_IDS:
@@ -108,7 +138,7 @@ def query_inventory(connection, query, loaded_recipes, facility_context, price_s
         details[item_id] = {"kind": item.kind, "runs": runs,
                             "availableRuns": None if item.kind == "original" else item.runs,
                             "status": status, "installationState": installation["state"],
-                            "observedAt": observed_at}
+                            "observedAt": observed_at, **_group_details(rows)}
     result = p._blueprint_profitability(
         connection, records, trade_cost_mode=query["tradeCostMode"],
         sales_character_id=query["salesCharacterId"], broker_fee_basis_points=query["brokerFeeBasisPoints"],
@@ -117,8 +147,8 @@ def query_inventory(connection, query, loaded_recipes, facility_context, price_s
     for item in result["items"]:
         item["inventory"] = details[item["planId"]]
     result["rule"] = RULE
-    result["inventory"] = {"offset": offset, "total": len(candidates),
-                           "nextOffset": offset + len(records) if offset + len(records) < len(candidates) else None,
+    result["inventory"] = {"offset": offset, "total": len(grouped),
+                           "nextOffset": offset + len(records) if offset + len(records) < len(grouped) else None,
                            "missingOwners": missing_owners, "runs": settings["runs"]}
     if missing_owners and result["state"] == "ready":
         result["state"] = "partial"

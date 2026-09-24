@@ -882,23 +882,24 @@ class ProductionPlanningTests(unittest.TestCase):
         import_industry_sde(self.db, **bundle())
         self.publish_blueprints(7, [
             self.owned_blueprint(8001, quantity=-2, runs=3),
-            self.owned_blueprint(8002, quantity=-2, runs=0),
+            self.owned_blueprint(8002, type_id=110, quantity=-2, runs=0),
             self.owned_blueprint(8003, type_id=999),
             self.owned_blueprint(8004, material_efficiency=0),
         ], "2026-09-24T12:00:00Z")
         result = query_production_plans(self.db, self.inventory_query())["blueprintProfitability"]
         rows = {r["blueprintItemId"]: r for r in result["items"]}
-        self.assertEqual(len(rows), 4)
+        self.assertEqual(len(rows), 3)
         self.assertEqual(rows[8001]["inventory"]["runs"], 3)
         self.assertEqual(rows[8001]["targetQuantity"], 6)
         self.assertEqual(rows[8002]["inventory"]["status"], "runs-exhausted")
         self.assertEqual(rows[8003]["inventory"]["status"], "recipe-missing")
-        self.assertEqual(rows[8004]["appliedMaterialEfficiency"], 0)
+        self.assertEqual(rows[8001]["inventory"]["positionCount"], 2)
+        self.assertEqual(rows[8001]["inventory"]["variantCount"], 2)
         self.assertTrue(all(r["bestHubId"] is None for r in rows.values()))
 
     def test_inventory_pagination_covers_more_than_one_hundred_owned_blueprints(self):
         import_industry_sde(self.db, **bundle())
-        self.publish_blueprints(7, [self.owned_blueprint(8000 + i) for i in range(131)], "2026-09-24T12:00:00Z")
+        self.publish_blueprints(7, [self.owned_blueprint(8000 + i, type_id=90000 + i) for i in range(131)], "2026-09-24T12:00:00Z")
         ids = []
         offset = 0
         while offset is not None:
@@ -910,6 +911,45 @@ class ProductionPlanningTests(unittest.TestCase):
             offset = result["inventory"]["nextOffset"]
         self.assertEqual(len(ids), 131)
         self.assertEqual(len(set(ids)), 131)
+
+    def test_inventory_groups_owners_and_chooses_usable_best_me_with_original_tie_break(self):
+        import_industry_sde(self.db, **bundle())
+        self.db.execute("INSERT INTO characters(character_id,name) VALUES (8,'Other Synthetic Pilot')")
+        self.publish_blueprints(7, [
+            self.owned_blueprint(8001, material_efficiency=4),
+            self.owned_blueprint(8002, material_efficiency=4),
+            self.owned_blueprint(8003, quantity=-2, runs=0),
+            self.owned_blueprint(8004, quantity=-2, runs=3, material_efficiency=8),
+        ], "2026-09-24T12:00:00Z")
+        self.publish_blueprints(8, [self.owned_blueprint(9001, material_efficiency=8)], "2026-09-24T12:01:00Z")
+        raw = self.inventory_query(runs=1)
+        result = query_production_plans(self.db, raw)["blueprintProfitability"]
+        self.assertEqual(result["inventory"]["total"], 1)
+        item = result["items"][0]
+        self.assertEqual(item["blueprintItemId"], 9001)
+        self.assertEqual(item["targetQuantity"], 2)
+        self.assertEqual(item["inventory"]["positionCount"], 5)
+        self.assertEqual(item["inventory"]["variantCount"], 4)
+        self.assertEqual(sorted(v["positionCount"] for v in item["inventory"]["variants"]), [1, 1, 1, 2])
+        raw["ownerCharacterId"] = 7
+        filtered = query_production_plans(self.db, raw)["blueprintProfitability"]["items"][0]
+        self.assertEqual(filtered["blueprintItemId"], 8004)
+        self.assertEqual(filtered["inventory"]["positionCount"], 4)
+        raw["search"] = "8003"
+        exhausted = query_production_plans(self.db, raw)["blueprintProfitability"]["items"][0]
+        self.assertEqual(exhausted["inventory"]["status"], "runs-exhausted")
+
+    def test_inventory_bounds_variant_details_without_losing_group_totals(self):
+        import_industry_sde(self.db, **bundle())
+        self.publish_blueprints(7, [self.owned_blueprint(8000 + i,
+            material_efficiency=i // 21, time_efficiency=i % 21) for i in range(131)], "2026-09-24T12:00:00Z")
+        result = query_production_plans(self.db, self.inventory_query(runs=1))["blueprintProfitability"]
+        self.assertEqual(result["inventory"]["total"], 1)
+        detail = result["items"][0]["inventory"]
+        self.assertEqual(detail["positionCount"], 131)
+        self.assertEqual(detail["variantCount"], 131)
+        self.assertEqual(len(detail["variants"]), 100)
+        self.assertEqual(detail["omittedVariantCount"], 31)
 
     def test_inventory_query_filters_owners_and_reports_missing_snapshots(self):
         import_industry_sde(self.db, **bundle())

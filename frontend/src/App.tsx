@@ -696,7 +696,7 @@ const copy = {
       profitability: {
         kicker: "BLUEPRINT-RENTABILITÄT",
         title: "Lohnt sich dieser Blueprint?",
-        subtitle: "Vergleicht alle Blueprints deines Bestands an fünf Handelsstationen – ohne Produktionsziele anzulegen.",
+        subtitle: "Eine Zeile je Blueprint-Typ: Nettogewinn pro Stück und Marge an fünf Handelsstationen.",
         seller: "Verkaufscharakter",
         refresh: "Alle Handelsstationen aktualisieren",
         refreshing: "Marktpreise werden aktualisiert …",
@@ -705,7 +705,7 @@ const copy = {
         loading: "Blueprint-Rentabilität wird berechnet …",
         queryError: "Die Blueprint-Rentabilität konnte nicht berechnet werden.",
         empty: "Keine Blueprints im Bestand für diese Auswahl. Aktualisiere bei Bedarf die Blueprint-Snapshots.",
-        exactHint: "Vergleich für die eingestellten Läufe; Kopien werden auf verfügbare Läufe begrenzt. Alle direkten Materialien werden an der jeweiligen Handelsstation gekauft. Vorhandene Materialien zählen zum Wiederbeschaffungswert. Blueprint-Kauf, Transport und erneute Einstellgebühren sind nicht enthalten.",
+        exactHint: "Basis ist ein Produktionslauf mit dem nutzbaren Blueprint mit höchstem ME, danach TE; bei Gleichstand hat ein Original Vorrang. Der Nettogewinn wird durch die produzierte Stückzahl geteilt. Größere Aufträge können durch Rundungen andere Stückkosten haben. Alle direkten Materialien werden an der jeweiligen Handelsstation gekauft. Vorhandene Materialien zählen zum Wiederbeschaffungswert. Blueprint-/BPC-Kauf, Transport und erneute Einstellgebühren sind nicht enthalten.",
         goal: "Blueprint im Bestand / Produkt",
         best: "Beste Station",
         noPrice: "Nicht berechenbar",
@@ -1204,7 +1204,7 @@ const copy = {
     },
     planned: "Geplant",
     previewOnly: "Noch ohne Live-Funktion",
-    footerVersion: "v0.2.0-alpha.22",
+    footerVersion: "v0.2.0-alpha.23",
   },
   en: {
     nav: {
@@ -1654,7 +1654,7 @@ const copy = {
       profitability: {
         kicker: "BLUEPRINT PROFITABILITY",
         title: "Is this blueprint worth producing?",
-        subtitle: "Compares all owned blueprints at five trade hubs without creating production goals.",
+        subtitle: "One row per blueprint type: net profit per unit and margin at five trade hubs.",
         seller: "Sales character",
         refresh: "Refresh all trade hubs",
         refreshing: "Refreshing market prices …",
@@ -1663,7 +1663,7 @@ const copy = {
         loading: "Calculating blueprint profitability …",
         queryError: "Blueprint profitability could not be calculated.",
         empty: "No owned blueprints match this selection. Refresh the blueprint snapshots if needed.",
-        exactHint: "Uses the configured runs, capped to remaining copy runs. All direct inputs are purchased at each hub; existing stock is valued at replacement cost. Blueprint acquisition, transport and relisting fees are excluded.",
+        exactHint: "Based on one production run using the usable blueprint with highest ME, then TE; originals win ties. Net profit is divided by the output quantity. Larger jobs may have different unit costs due to rounding. All direct inputs are purchased at each hub; existing stock is valued at replacement cost. Blueprint acquisition, transport and relisting fees are excluded.",
         goal: "Owned blueprint / product",
         best: "Best hub",
         noPrice: "Not calculable",
@@ -2162,7 +2162,7 @@ const copy = {
     },
     planned: "Planned",
     previewOnly: "No live function yet",
-    footerVersion: "v0.2.0-alpha.22",
+    footerVersion: "v0.2.0-alpha.23",
   },
 } as const;
 
@@ -4931,8 +4931,6 @@ function BlueprintProfitabilityPanel({
   const [salesCharacterId, setSalesCharacterId] = useStoredState<number | null>(
     "production.sales-character", null, isNullablePositiveInteger,
   );
-  const [runs, setRuns] = useStoredState<number>("blueprint-profitability.runs", 1,
-    (v): v is number => Number.isSafeInteger(v) && Number(v) >= 1 && Number(v) <= 10_000);
   const [facilityId, setFacilityId] = useStoredState<number | null>("blueprint-profitability.facility", null, isNullablePositiveInteger);
   const [tax, setTax] = useStoredState<number | null>("blueprint-profitability.tax", null, isNullableBasisPoints);
   const [bonus, setBonus] = useStoredState<number>("blueprint-profitability.bonus", 0,
@@ -4940,19 +4938,19 @@ function BlueprintProfitabilityPanel({
   const [offset, setOffset] = useState(0);
   const [previousOffsets, setPreviousOffsets] = useState<number[]>([]);
   const labels = locale === "de" ? {
-    runs: "Vergleichsläufe", facility: "Produktionsanlage", tax: "Anlagensteuer (%)", bonus: "Materialbonus der Anlage (%)",
+    facility: "Produktionsanlage", tax: "Anlagensteuer (%)", bonus: "Materialbonus der Anlage (%)",
     missing: "Charaktere ohne Blueprint-Snapshot", more: "Weitere Bestandsblueprints", back: "Vorherige Bestandsblueprints",
     unknown: "Rezept nicht verfügbar", exhausted: "Keine Läufe verfügbar", multiple: "Mehrere Produkte – noch nicht bewertbar",
-    capped: "Kopie: Läufe begrenzt", pagePrices: "Preise der angezeigten Blueprints · alle fünf Handelsstationen",
+    basis: "Berechnungsbasis", variants: "Besitzer und Varianten", positions: "Positionen", omitted: "weitere Varianten im Blueprint-Bestand", unit: "ISK / Stück", output: "Stück je Lauf", pagePrices: "Preise der angezeigten Blueprints · alle fünf Handelsstationen",
     fees: "Verkaufsgebühren fehlen: Skills und Standings synchronisieren", snapshot: "Blueprint-Stand",
   } : {
-    runs: "Comparison runs", facility: "Production facility", tax: "Facility tax (%)", bonus: "Facility material bonus (%)",
+    facility: "Production facility", tax: "Facility tax (%)", bonus: "Facility material bonus (%)",
     missing: "Characters without a blueprint snapshot", more: "More owned blueprints", back: "Previous owned blueprints",
     unknown: "Recipe unavailable", exhausted: "No runs remaining", multiple: "Multiple products – not yet supported",
-    capped: "Copy: runs capped", pagePrices: "Prices for displayed blueprints · all five trade hubs",
+    basis: "Calculation basis", variants: "Owners and variants", positions: "positions", omitted: "more variants in blueprint inventory", unit: "ISK / unit", output: "units per run", pagePrices: "Prices for displayed blueprints · all five trade hubs",
     fees: "Sales fees missing: synchronize skills and standings", snapshot: "Blueprint snapshot",
   };
-  useEffect(() => { setOffset(0); setPreviousOffsets([]); }, [ownerCharacterId, search, runs, facilityId, tax, bonus]);
+  useEffect(() => { setOffset(0); setPreviousOffsets([]); }, [ownerCharacterId, search, facilityId, tax, bonus]);
   const [page, setPage] = useState<ProductionPlanPage | null>(null);
   const [loading, setLoading] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -4977,7 +4975,7 @@ function BlueprintProfitabilityPanel({
       tradeCostMode: "automatic", salesCharacterId,
       brokerFeeBasisPoints: null, salesTaxBasisPoints: null,
       analysisPlanId: null, includeBlueprintProfitability: true,
-      inventoryAnalysis: { runs, offset, facilityId, facilityTaxBasisPoints: tax, materialBonusBasisPoints: bonus },
+      inventoryAnalysis: { runs: 1, offset, facilityId, facilityTaxBasisPoints: tax, materialBonusBasisPoints: bonus },
     }).then((result) => {
       if (!active) return;
       setPage(result);
@@ -4987,7 +4985,7 @@ function BlueprintProfitabilityPanel({
     }).catch(() => { if (active) setFailed(true); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [available, loadPlans, marketRevision, ownerCharacterId, refreshRevision, salesCharacterId, search, runs, offset, facilityId, tax, bonus]);
+  }, [available, loadPlans, marketRevision, ownerCharacterId, refreshRevision, salesCharacterId, search, offset, facilityId, tax, bonus]);
 
   const profitability = page?.blueprintProfitability ?? null;
   const refresh = async () => {
@@ -5011,11 +5009,10 @@ function BlueprintProfitabilityPanel({
     <section className="asset-browser blueprint-profitability" aria-busy={loading}>
       <header className="asset-deltas__header industry-jobs__header">
         <div><span className="eyebrow">{t.blueprints.profitability.kicker}</span><h2>{t.blueprints.profitability.title}</h2><p>{t.blueprints.profitability.subtitle}</p></div>
-        <div className="asset-hero__metrics"><span><strong>{numberFormat.format(profitability?.inventory?.total ?? 0)}</strong><small>{t.blueprints.positions}</small></span></div>
+        <div className="asset-hero__metrics"><span><strong>{numberFormat.format(profitability?.inventory?.total ?? 0)}</strong><small>{t.blueprints.groups}</small></span></div>
       </header>
       <div className="asset-toolbar blueprint-profitability__controls">
         <label><span>{t.blueprints.profitability.seller}</span><select value={salesCharacterId ?? ""} onChange={(event) => setSalesCharacterId(event.target.value ? Number(event.target.value) : null)}><option value="">—</option>{(page?.owners ?? []).map((owner) => <option key={owner.characterId} value={owner.characterId}>{owner.name}</option>)}</select></label>
-        <label><span>{labels.runs}</span><input type="number" min={1} max={10_000} step={1} value={runs} onChange={(event) => { const value = Number(event.target.value); if (Number.isSafeInteger(value) && value >= 1 && value <= 10_000) setRuns(value); }} /></label>
         <label><span>{labels.facility}</span><select value={facilityId ?? ""} onChange={(event) => setFacilityId(event.target.value ? Number(event.target.value) : null)}><option value="">—</option>{[...new Map((page?.locationOptions ?? []).map((facility) => [facility.facilityId, facility])).values()].map((facility) => <option key={facility.facilityId} value={facility.facilityId}>{facility.facilityName}</option>)}{facilityId !== null && !page?.locationOptions.some((facility) => facility.facilityId === facilityId) && <option value={facilityId}>#{facilityId}</option>}</select></label>
         <label><span>{labels.tax}</span><input type="number" min={0} max={100} step={0.01} value={tax === null ? "" : tax / 100} onChange={(event) => { const value = Math.round(Number(event.target.value) * 100); if (event.target.value === "") setTax(null); else if (value >= 0 && value <= 10_000) setTax(value); }} /></label>
         <label><span>{labels.bonus}</span><input type="number" min={0} max={50} step={0.01} value={bonus / 100} onChange={(event) => { const value = Math.round(Number(event.target.value) * 100); if (value >= 0 && value <= 5_000) setBonus(value); }} /></label>
@@ -5031,10 +5028,36 @@ function BlueprintProfitabilityPanel({
         : failed ? <div className="asset-empty asset-empty--error"><AlertTriangle size={22} />{t.blueprints.profitability.queryError}</div>
         : loading && page === null ? <div className="asset-empty"><RefreshCw className="spin" size={22} />{t.blueprints.profitability.loading}</div>
         : profitability && profitability.items.length === 0 ? <div className="asset-empty"><Factory size={22} />{t.blueprints.profitability.empty}</div>
-        : profitability ? <div className="asset-table-wrap"><table className="asset-table blueprint-profitability__table"><thead><tr><th>{t.blueprints.profitability.goal}</th>{marketHubIds.map((hubId) => <th key={hubId}>{hubId === "jita" ? "Jita" : hubId === "amarr" ? "Amarr" : hubId === "dodixie" ? "Dodixie" : hubId === "hek" ? "Hek" : "Rens"}</th>)}<th>{t.blueprints.profitability.best}</th></tr></thead><tbody>{profitability.items.map((item) => <tr key={item.planId}><td><strong>{item.productName}{item.inventory && item.inventory.status !== "ready" ? "" : ` × ${numberFormat.format(item.targetQuantity)}`}</strong><small>{item.blueprintName} · ME {item.appliedMaterialEfficiency} / TE {item.appliedTimeEfficiency}</small><small>{item.ownerName} · {item.inventory?.kind === "copy" ? "BPC" : "BPO"} · #{item.blueprintItemId}</small>
-          {item.inventory && <><small>{item.inventory.runs} {labels.runs}{item.inventory.runs < runs ? ` · ${labels.capped}` : ""}</small><small>{labels.snapshot}: {new Date(item.inventory.observedAt).toLocaleString(locale === "de" ? "de-DE" : "en-US")}</small>
-          {item.inventory.status !== "ready" && <small>{item.inventory.status === "runs-exhausted" ? labels.exhausted : item.inventory.status === "multiple-products" ? labels.multiple : labels.unknown}</small>}
-          {item.inventory.status === "ready" && item.inventory.installationState !== "ready" && <small>{t.productionPlanning.installationCostStateLabels[item.inventory.installationState as keyof typeof t.productionPlanning.installationCostStateLabels]}</small>}</>}</td>{item.comparisons.map((comparison) => <td key={comparison.hubId} className={`blueprint-profitability__${tone(comparison.netProfitCents)}`}><strong>{comparison.netProfitCents === null ? t.blueprints.profitability.noPrice : `${comparison.netProfitCents > 0 ? "+" : ""}${iskFormat.format(comparison.netProfitCents / 100)} ISK`}</strong>{comparison.profitabilityState === "stale" && <small>{t.productionPlanning.marketPricingStateLabels.stale}</small>}{comparison.marketObservedAt && <small>{new Date(comparison.marketObservedAt).toLocaleString(locale === "de" ? "de-DE" : "en-US")}</small>}{comparison.netProfitCents === null && comparison.tradeCostState !== "ready" && <small>{labels.fees}</small>}{comparison.netProfitCents === null && comparison.profitabilityState !== "empty" && <small>{t.productionPlanning.marketPricingStateLabels[comparison.profitabilityState]}</small>}{comparison.netMarginBasisPoints !== null && <small>{t.blueprints.profitability.margin.replace("{margin}", (comparison.netMarginBasisPoints / 100).toLocaleString(locale === "de" ? "de-DE" : "en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }))}</small>}{item.bestHubId === comparison.hubId && <span className="status-pill status-pill--info">{t.blueprints.profitability.best}</span>}</td>)}<td><strong>{item.bestHubId === null ? "—" : item.comparisons.find((comparison) => comparison.hubId === item.bestHubId)?.hubName ?? item.bestHubId}</strong></td></tr>)}</tbody></table></div> : null}
+        : profitability ? <div className="asset-table-wrap"><table className="asset-table blueprint-profitability__table"><thead><tr><th>{t.blueprints.profitability.goal}</th>{marketHubIds.map((hubId) => <th key={hubId}>{hubId === "jita" ? "Jita" : hubId === "amarr" ? "Amarr" : hubId === "dodixie" ? "Dodixie" : hubId === "hek" ? "Hek" : "Rens"}</th>)}<th>{t.blueprints.profitability.best}</th></tr></thead><tbody>{profitability.items.map((item) => <tr key={item.blueprintTypeId}>
+          <td>
+            <strong>{item.productName}</strong>
+            <small>{item.blueprintName}</small>
+            <small>{labels.basis}: ME {item.appliedMaterialEfficiency} / TE {item.appliedTimeEfficiency} · {item.inventory?.kind === "copy" ? "BPC" : "BPO"} · {item.ownerName}</small>
+            {item.inventory && <>
+              {item.inventory.status === "ready" && <small>{numberFormat.format(item.targetQuantity)} {labels.output}</small>}
+              <details>
+                <summary>{labels.variants} · {numberFormat.format(item.inventory.positionCount)} {labels.positions}</summary>
+                {item.inventory.variants.map((variant, index) => <div key={index} className="blueprint-profitability__variant">
+                  <small>{variant.ownerName} · {variant.kind === "copy" ? "BPC" : "BPO"} · ME {variant.materialEfficiency} / TE {variant.timeEfficiency} · {numberFormat.format(variant.positionCount)} {labels.positions}{variant.usable ? "" : ` · ${labels.exhausted}`}</small>
+                  <small>{labels.snapshot}: {new Date(variant.observedAt).toLocaleString(locale === "de" ? "de-DE" : "en-US")}</small>
+                </div>)}
+                {item.inventory.omittedVariantCount > 0 && <small>{numberFormat.format(item.inventory.omittedVariantCount)} {labels.omitted}</small>}
+              </details>
+              {item.inventory.status !== "ready" && <small>{item.inventory.status === "runs-exhausted" ? labels.exhausted : item.inventory.status === "multiple-products" ? labels.multiple : labels.unknown}</small>}
+              {item.inventory.status === "ready" && item.inventory.installationState !== "ready" && <small>{t.productionPlanning.installationCostStateLabels[item.inventory.installationState as keyof typeof t.productionPlanning.installationCostStateLabels]}</small>}
+            </>}
+          </td>
+          {item.comparisons.map((comparison) => <td key={comparison.hubId} className={`blueprint-profitability__${tone(comparison.netProfitCents)}`}>
+            <strong>{comparison.netProfitCents === null ? t.blueprints.profitability.noPrice : `${comparison.netProfitCents > 0 ? "+" : ""}${iskFormat.format(comparison.netProfitCents / (100 * item.targetQuantity))} ${labels.unit}`}</strong>
+            {comparison.netMarginBasisPoints !== null && <small>{t.blueprints.profitability.margin.replace("{margin}", (comparison.netMarginBasisPoints / 100).toLocaleString(locale === "de" ? "de-DE" : "en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }))}</small>}
+            {comparison.profitabilityState === "stale" && <small>{t.productionPlanning.marketPricingStateLabels.stale}</small>}
+            {comparison.marketObservedAt && <small>{new Date(comparison.marketObservedAt).toLocaleString(locale === "de" ? "de-DE" : "en-US")}</small>}
+            {comparison.netProfitCents === null && comparison.tradeCostState !== "ready" && <small>{labels.fees}</small>}
+            {comparison.netProfitCents === null && comparison.profitabilityState !== "empty" && <small>{t.productionPlanning.marketPricingStateLabels[comparison.profitabilityState]}</small>}
+            {item.bestHubId === comparison.hubId && <span className="status-pill status-pill--info">{t.blueprints.profitability.best}</span>}
+          </td>)}
+          <td><strong>{item.bestHubId === null ? "—" : item.comparisons.find((comparison) => comparison.hubId === item.bestHubId)?.hubName ?? item.bestHubId}</strong></td>
+        </tr>)}</tbody></table></div> : null}
       {profitability?.inventory && <div className="asset-pagination">
         <button type="button" className="secondary-button" disabled={loading || previousOffsets.length === 0} onClick={() => { setOffset(previousOffsets.at(-1) ?? 0); setPreviousOffsets((values) => values.slice(0, -1)); }}>{labels.back}</button>
         <span>{profitability.items.length ? profitability.inventory.offset + 1 : 0}–{profitability.inventory.offset + profitability.items.length} / {profitability.inventory.total}</span>

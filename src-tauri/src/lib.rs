@@ -1411,12 +1411,56 @@ struct BlueprintInventoryPage {
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct BlueprintInventoryItem {
+    position_count: u64,
+    variant_count: u64,
+    omitted_variant_count: u64,
+    variants: Vec<BlueprintInventoryVariant>,
     kind: String,
     runs: u64,
     available_runs: Option<u64>,
     status: String,
     installation_state: String,
     observed_at: String,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BlueprintInventoryVariant {
+    owner_character_id: u64,
+    owner_name: String,
+    kind: String,
+    material_efficiency: u16,
+    time_efficiency: u16,
+    usable: bool,
+    position_count: u64,
+    observed_at: String,
+}
+
+impl BlueprintInventoryItem {
+    fn group_is_valid(&self) -> bool {
+        if !production_id_is_valid(self.position_count)
+            || self.variant_count == 0
+            || self.variant_count > self.position_count
+            || self.omitted_variant_count > self.variant_count
+            || self.variants.len() as u64 != self.variant_count.min(100)
+            || self.variants.len() as u64 + self.omitted_variant_count != self.variant_count
+            || !self.variants.iter().all(|v| {
+                production_id_is_valid(v.owner_character_id)
+                    && asset_text_is_valid(&v.owner_name, 160)
+                    && matches!(v.kind.as_str(), "original" | "copy")
+                    && v.material_efficiency <= 10
+                    && v.time_efficiency <= 20
+                    && (v.kind != "original" || v.usable)
+                    && production_id_is_valid(v.position_count)
+                    && asset_text_is_valid(&v.observed_at, 64)
+            })
+        {
+            return false;
+        }
+        let positions: u64 = self.variants.iter().map(|v| v.position_count).sum();
+        positions + self.omitted_variant_count <= self.position_count
+            && (self.omitted_variant_count != 0 || positions == self.position_count)
+    }
 }
 
 #[derive(Deserialize, Serialize)]
@@ -5210,9 +5254,17 @@ fn blueprint_profitability_is_valid(value: &BlueprintProfitability) -> bool {
                     && page.missing_owners <= JAVASCRIPT_MAX_SAFE_INTEGER
                     && (1..=10_000).contains(&page.runs)
                     && value.items.len() <= 25
+                    && value
+                        .items
+                        .iter()
+                        .map(|item| item.plan.blueprint_type_id)
+                        .collect::<std::collections::HashSet<_>>()
+                        .len()
+                        == value.items.len()
                     && value.items.iter().all(|item| {
                         item.inventory.as_ref().is_some_and(|detail| {
-                            matches!(detail.kind.as_str(), "original" | "copy")
+                            detail.group_is_valid()
+                                && matches!(detail.kind.as_str(), "original" | "copy")
                                 && detail.runs <= page.runs
                                 && detail
                                     .available_runs
@@ -8693,6 +8745,25 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn blueprint_group_rejects_inconsistent_position_counts() {
+        let mut detail: super::BlueprintInventoryItem = serde_json::from_value(serde_json::json!({
+            "kind": "copy", "runs": 1, "availableRuns": 3, "status": "ready",
+            "installationState": "ready", "observedAt": "2026-09-24T12:00:00Z",
+            "positionCount": 2, "variantCount": 1, "omittedVariantCount": 0,
+            "variants": [{"ownerCharacterId": 7, "ownerName": "Pilot", "kind": "copy",
+                "materialEfficiency": 10, "timeEfficiency": 20, "usable": true,
+                "positionCount": 2, "observedAt": "2026-09-24T12:00:00Z"}]
+        }))
+        .unwrap();
+        assert!(detail.group_is_valid());
+        detail.position_count = 3;
+        assert!(!detail.group_is_valid());
+        detail.position_count = 2;
+        detail.variants[0].material_efficiency = 11;
+        assert!(!detail.group_is_valid());
+    }
+
     use super::{
         account_group_record_is_valid, asset_delta_group_response_is_valid,
         asset_delta_response_is_valid, asset_export_response_is_valid,

@@ -1054,7 +1054,22 @@ export interface BlueprintInventoryPage {
   runs: number;
 }
 
+export interface BlueprintInventoryVariant {
+  ownerCharacterId: number;
+  ownerName: string;
+  kind: "original" | "copy";
+  materialEfficiency: number;
+  timeEfficiency: number;
+  usable: boolean;
+  positionCount: number;
+  observedAt: string;
+}
+
 export interface BlueprintInventoryItem {
+  positionCount: number;
+  variantCount: number;
+  omittedVariantCount: number;
+  variants: BlueprintInventoryVariant[];
   kind: "original" | "copy";
   runs: number;
   availableRuns: number | null;
@@ -4793,13 +4808,28 @@ function parseBlueprintProfitability(candidate: unknown): BlueprintProfitability
     if (!isRecord(inventory) || !isNonNegativeSafeInteger(inventory.total) ||
         !isNonNegativeSafeInteger(inventory.offset) || !isNonNegativeSafeInteger(inventory.missingOwners) ||
         !isPositiveSafeInteger(inventory.runs) || Number(inventory.runs) > 10_000 || items.length > 25 ||
+        new Set(items.map((item) => item.blueprintTypeId)).size !== items.length ||
         Number(inventory.offset) + items.length > Number(inventory.total) ||
         inventory.nextOffset !== (Number(inventory.offset) + items.length < Number(inventory.total) ? Number(inventory.offset) + items.length : null)) {
       throw new Error("The native runtime returned invalid inventory pagination.");
     }
     for (const item of items) {
       const detail = item.inventory;
-      if (!detail || !["original", "copy"].includes(detail.kind) ||
+      if (!detail || !isPositiveSafeInteger(detail.positionCount) ||
+          !isPositiveSafeInteger(detail.variantCount) || detail.variantCount > detail.positionCount ||
+          !isNonNegativeSafeInteger(detail.omittedVariantCount) || !Array.isArray(detail.variants) ||
+          detail.variants.length !== Math.min(detail.variantCount, 100) ||
+          detail.variantCount !== detail.variants.length + detail.omittedVariantCount ||
+          detail.variants.some((variant) => !isRecord(variant) ||
+            !isPositiveSafeInteger(variant.ownerCharacterId) || !isBoundedText(variant.ownerName, 160) ||
+            !["original", "copy"].includes(variant.kind) ||
+            !isNonNegativeSafeInteger(variant.materialEfficiency) || variant.materialEfficiency > 10 ||
+            !isNonNegativeSafeInteger(variant.timeEfficiency) || variant.timeEfficiency > 20 ||
+            typeof variant.usable !== "boolean" || (variant.kind === "original" && !variant.usable) ||
+            !isPositiveSafeInteger(variant.positionCount) || !isBoundedText(variant.observedAt, 64)) ||
+          detail.variants.reduce((sum, variant) => sum + variant.positionCount, 0) + detail.omittedVariantCount > detail.positionCount ||
+          (detail.omittedVariantCount === 0 && detail.variants.reduce((sum, variant) => sum + variant.positionCount, 0) !== detail.positionCount) ||
+          !["original", "copy"].includes(detail.kind) ||
           !isNonNegativeSafeInteger(detail.runs) || detail.runs > Number(inventory.runs) ||
           !(detail.availableRuns === null || isNonNegativeSafeInteger(detail.availableRuns)) ||
           (detail.kind === "original" ? detail.availableRuns !== null || detail.runs !== inventory.runs :
