@@ -3492,7 +3492,7 @@ select:focus-visible {
 .blueprint-table th:nth-child(8) { width: 12%; }
 
 .blueprint-profitability__controls {
-  grid-template-columns: minmax(220px, 340px) auto;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
 }
 
 .blueprint-profitability__table {

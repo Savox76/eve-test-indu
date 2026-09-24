@@ -4,7 +4,7 @@
 
 **Stand:** 22. September 2026
 
-**Status:** Paket 48 – Zielgenaue Kostenanalyse und Blueprint-Hubvergleich technisch abgeschlossen
+**Status:** Paket 49 – Bestandsweiter Blueprint-Rentabilitätsvergleich technisch abgeschlossen
 
 **Geltungsbereich:** `Savox76/eve-test-indu`
 
@@ -214,6 +214,7 @@ Die Reihenfolge ist verbindlicher als eine Kalenderangabe.
 | 46 | Explizite Handelskosten und Nettoergebnis | Persönliche Brokergebühr und Verkaufssteuer werden als ausdrücklich eingegebene Basispunkte getrennt auf den belegten Bruttoverkaufswert angewendet; Nettoerlös, Nettogewinn und Nettomarge bleiben ohne vollständige Eingaben unbekannt statt mit geratenen Standardsätzen berechnet |
 | 47 | Automatische NPC-Stationsgebühren | Ein getrennter Verkäufer-Charakter liefert Broker Relations, Accounting sowie unmodifizierte stationsbezogene Corporation-/Faction-Standings; Brokergebühr und Verkaufssteuer werden mit offizieller Formel exakt berechnet, während fehlende Snapshots eigene Zustände bleiben und ein manueller Fallback erhalten bleibt |
 | 48 | Zielgenaue Kostenanalyse und Blueprint-Hubvergleich | Einkaufsliste, Kapitalbedarf und Gewinnanalyse gelten ausschließlich für ein ausdrücklich ausgewähltes Produktionsziel; konfigurierte Blueprint-Ziele werden mit identischen Ziel-, ME-, Anlagen-, Material- und Verkäuferannahmen über Jita, Amarr, Dodixie, Hek und Rens verglichen |
+| 49 | Rentabilität aller Bestandsblueprints | Bestandsbasierter Vergleich ohne Produktionsziele, einstellbare Läufe/Anlage/Steuer/Materialbonus, Kopienbegrenzung, direkte Materialkäufe, fünf Hubs und vollständige Seitennavigation |
 
 ### Aktueller Stand
 
@@ -264,6 +265,7 @@ Die Reihenfolge ist verbindlicher als eine Kalenderangabe.
 - **Abgeschlossen:** 46 – Brokergebühr und Verkaufssteuer können in Hundertstelprozent ausdrücklich eingegeben werden und bleiben lokal erhalten. Beide Gebühren werden einzeln auf den belegten Bruttoverkaufswert auf Cent aufgerundet. Die Oberfläche zeigt Handelskosten, Nettoerlös, Nettogewinn oder -verlust sowie Nettomarge parallel zur unveränderten Rohmarge. Ein fehlender Satz bleibt `unconfigured`; persönliche Werte werden weder aus Skills und Standings geraten noch durch 0 Prozent ersetzt. Das Schema bleibt bei Version 14.
 - **Abgeschlossen:** 47 – Für Jita, Amarr, Dodixie, Hek und Rens wird ein getrennt ausgewählter Verkäufer-Charakter verwendet. Seine aktiven Broker-Relations- und Accounting-Level sowie unmodifizierten Corporation-/Faction-Standings werden aus atomaren vollständigen ESI-Snapshots geladen und mit der offiziellen NPC-Stationsformel in einer festen Rate-Skala von `10.000.000.000` verrechnet. Fehlende Verkäufer-, Skill- oder Standing-Belege bleiben ausdrücklich unbekannt; der manuelle Fallback aus Paket 46 bleibt erhalten. Der neue Standing-Scope löst bei bestehenden Charakteren sichtbar eine erneute Autorisierung aus. Das Schema bleibt bei Version 14.
 - **Abgeschlossen:** 48 – Einkaufsliste, Sofortkauf, vollständiger Material-Wiederbeschaffungswert, Installationskosten und Nettoergebnis beziehen sich auf genau ein ausgewähltes Produktionsziel; die globale Prioritätsreservierung bleibt dabei unverändert wirksam. Die Blueprint-Ansicht vergleicht bis zu 100 konfigurierte Zielvarianten über alle fünf NPC-Hubs und markiert den höchsten vollständig berechenbaren Nettogewinn. Jede Station verwendet dieselbe exakte Zielmenge, Blueprint-/ME-/TE-, Versorgungs-, Anlagen- und Verkäuferkonfiguration. Fehlende Markt- oder Kostenbelege bleiben unbekannt; ein bewusster Sammelabruf aktualisiert höchstens 250 benötigte Typen je Hub. Das Schema bleibt bei Version 14.
+- **Abgeschlossen:** 49 – Alle persönlichen Blueprint-Positionen aktivierter Charaktere werden unabhängig von Produktionszielen bewertet. Kopien begrenzen die Vergleichsläufe auf ihren Restbestand. Direkte Materialkäufe berücksichtigen Blueprint-ME und den ausdrücklich gewählten Anlagenbonus; Kosten und Verkäufergebühren bleiben quellengebunden. Seitennavigation deckt auch mehr als 100 Positionen ab und respektiert das Marktlimit je Abruf. Preise bleiben je Typ über Seiten hinweg nutzbar, leere neuere Orderbücher ersetzen alte Preise. Fehlende Daten und nicht unterstützte Rezepte bleiben sichtbar. Schema 14 bleibt unverändert.
 - **Als Nächstes:** Das nächste Fachpaket wird separat festgelegt. Buy Orders, automatische Upwell-Gebühren, erneute Einstellgebühren, Transport, automatisch erkannte Struktur-/Service-/Rigmodifikatoren und belastbare Endtermine bleiben bis zu eigenen Fachverträgen ausgeschlossen.
 - Architektur-Gate A0 ist vollständig erfüllt; `v0.2.0-alpha.1` bildet die erste freigegebene Alpha-Grundlage für die folgenden Produktionspakete.
 

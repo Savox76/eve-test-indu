@@ -1007,7 +1007,7 @@ describe("New Eden Foundry design preview", () => {
   it("credits Savoxmedia as the app creator next to the version", () => {
     render(<App />);
 
-    expect(screen.getByText("v0.2.0-alpha.21")).toBeInTheDocument();
+    expect(screen.getByText("v0.2.0-alpha.22")).toBeInTheDocument();
     expect(screen.getByText("Savoxmedia")).toBeInTheDocument();
     expect(screen.getByText("Erstellt von", { exact: false })).toBeInTheDocument();
     expect(screen.queryByText("Lokaler Betreiber")).not.toBeInTheDocument();
@@ -1814,20 +1814,22 @@ describe("New Eden Foundry design preview", () => {
     await waitFor(() => expect(blueprintsLoader).toHaveBeenLastCalledWith(expect.objectContaining({ sortBy: "me", sortDirection: "asc" })));
   });
 
-  it("compares configured blueprint goals at all five trade hubs", async () => {
+  it("compares owned blueprints without production goals and sends independent run settings", async () => {
     window.localStorage.setItem(
       "new-eden-foundry.ui.production.sales-character", JSON.stringify(90_888_001),
     );
     const profitabilityPage: ProductionPlanPage = {
       ...productionPlanPage,
-      analysisPlanId: null,
+      analysisPlanId: null, items: [], analysisPlans: [], total: 0,
       blueprintProfitabilityApplied: true,
       blueprintProfitability: {
         state: "ready", itemCount: 1, omittedItemCount: 0,
         marketTypeIds: [101, 900], marketTypeCount: 2, omittedMarketTypeCount: 0,
         marketPriceTypeLimit: 250,
-        rule: "configured-production-goals-exact-plan-per-hub-net-profit",
-        items: [{ ...productionPlanPage.analysisPlans[0], blueprintItemId: 7_020,
+        rule: "owned-blueprints-direct-material-purchase-per-hub-net-profit",
+        inventory: { offset: 0, total: 26, nextOffset: 1, missingOwners: 0, runs: 1 },
+        items: [{ ...productionPlanPage.analysisPlans[0], planId: 7_020, blueprintItemId: 7_020,
+          inventory: { kind: "copy", runs: 1, availableRuns: 3, status: "ready", installationState: "ready", observedAt: "2026-09-24T12:00:00Z" },
           appliedMaterialEfficiency: 10, appliedTimeEfficiency: 20,
           bestHubId: "amarr",
           comparisons: productionMarketHubs.map((hub, index) => ({
@@ -1858,11 +1860,22 @@ describe("New Eden Foundry design preview", () => {
     expect(screen.getAllByText("Beste Station").length).toBeGreaterThan(1);
     expect(productionPlansLoader).toHaveBeenLastCalledWith(expect.objectContaining({
       includeBlueprintProfitability: true, salesCharacterId: 90_888_001,
+      inventoryAnalysis: { runs: 1, offset: 0, facilityId: null, facilityTaxBasisPoints: null, materialBonusBasisPoints: 0 },
     }));
     fireEvent.click(screen.getByRole("button", { name: "Alle Handelsstationen aktualisieren" }));
     await waitFor(() => expect(marketPriceSyncer).toHaveBeenCalledTimes(5));
     expect(marketPriceSyncer).toHaveBeenCalledWith("jita", [101, 900]);
     expect(marketPriceSyncer).toHaveBeenCalledWith("rens", [101, 900]);
+    fireEvent.change(screen.getByLabelText("Vergleichsläufe"), { target: { value: "10" } });
+    await waitFor(() => expect(productionPlansLoader).toHaveBeenLastCalledWith(expect.objectContaining({
+      inventoryAnalysis: expect.objectContaining({ runs: 10, offset: 0 }),
+    })));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Weitere Bestandsblueprints" })).not.toBeDisabled());
+    fireEvent.click(screen.getByRole("button", { name: "Weitere Bestandsblueprints" }));
+    await waitFor(() => expect(productionPlansLoader).toHaveBeenLastCalledWith(expect.objectContaining({
+      inventoryAnalysis: expect.objectContaining({ runs: 10, offset: 1 }),
+    })));
+
   });
 
   it("shows, filters, sorts, and refreshes traceable personal industry jobs", async () => {

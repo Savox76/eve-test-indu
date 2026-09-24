@@ -1379,6 +1379,47 @@ struct ProductionAnalysisPlan {
 }
 
 #[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct BlueprintInventoryAnalysis {
+    runs: u64,
+    offset: u64,
+    facility_id: Option<u64>,
+    facility_tax_basis_points: Option<u16>,
+    material_bonus_basis_points: u16,
+}
+
+impl BlueprintInventoryAnalysis {
+    fn is_valid(&self) -> bool {
+        (1..=10_000).contains(&self.runs)
+            && self.offset <= JAVASCRIPT_MAX_SAFE_INTEGER
+            && self.facility_id.is_none_or(production_id_is_valid)
+            && self.facility_tax_basis_points.is_none_or(|v| v <= 10_000)
+            && self.material_bonus_basis_points <= 5_000
+    }
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BlueprintInventoryPage {
+    offset: u64,
+    total: u64,
+    next_offset: Option<u64>,
+    missing_owners: u64,
+    runs: u64,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BlueprintInventoryItem {
+    kind: String,
+    runs: u64,
+    available_runs: Option<u64>,
+    status: String,
+    installation_state: String,
+    observed_at: String,
+}
+
+#[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct BlueprintProfitabilityComparison {
     hub_id: String,
@@ -1401,6 +1442,7 @@ struct BlueprintProfitabilityComparison {
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct BlueprintProfitabilityItem {
+    inventory: Option<BlueprintInventoryItem>,
     #[serde(flatten)]
     plan: ProductionAnalysisPlan,
     blueprint_item_id: Option<u64>,
@@ -1413,6 +1455,7 @@ struct BlueprintProfitabilityItem {
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct BlueprintProfitability {
+    inventory: Option<BlueprintInventoryPage>,
     state: String,
     items: Vec<BlueprintProfitabilityItem>,
     item_count: u64,
@@ -5148,7 +5191,54 @@ fn blueprint_profitability_is_valid(value: &BlueprintProfitability) -> bool {
         && value.market_type_count <= JAVASCRIPT_MAX_SAFE_INTEGER
         && value.omitted_market_type_count <= JAVASCRIPT_MAX_SAFE_INTEGER
         && value.market_price_type_limit == MARKET_PRICE_TYPE_LIMIT
-        && value.rule == "configured-production-goals-exact-plan-per-hub-net-profit"
+        && match &value.inventory {
+            None => {
+                value.rule == "configured-production-goals-exact-plan-per-hub-net-profit"
+                    && value.items.iter().all(|item| item.inventory.is_none())
+            }
+            Some(page) => {
+                value.rule == "owned-blueprints-direct-material-purchase-per-hub-net-profit"
+                    && page.total <= JAVASCRIPT_MAX_SAFE_INTEGER
+                    && page.offset <= page.total
+                    && page.offset + value.items.len() as u64 <= page.total
+                    && page.next_offset
+                        == if page.offset + (value.items.len() as u64) < page.total {
+                            Some(page.offset + value.items.len() as u64)
+                        } else {
+                            None
+                        }
+                    && page.missing_owners <= JAVASCRIPT_MAX_SAFE_INTEGER
+                    && (1..=10_000).contains(&page.runs)
+                    && value.items.len() <= 25
+                    && value.items.iter().all(|item| {
+                        item.inventory.as_ref().is_some_and(|detail| {
+                            matches!(detail.kind.as_str(), "original" | "copy")
+                                && detail.runs <= page.runs
+                                && detail
+                                    .available_runs
+                                    .is_none_or(|v| v <= JAVASCRIPT_MAX_SAFE_INTEGER)
+                                && (if detail.kind == "original" {
+                                    detail.available_runs.is_none() && detail.runs == page.runs
+                                } else {
+                                    detail
+                                        .available_runs
+                                        .is_some_and(|v| detail.runs == v.min(page.runs))
+                                })
+                                && matches!(
+                                    detail.status.as_str(),
+                                    "ready"
+                                        | "recipe-missing"
+                                        | "multiple-products"
+                                        | "runs-exhausted"
+                                        | "market-limit"
+                                )
+                                && asset_text_is_valid(&detail.installation_state, 64)
+                                && asset_text_is_valid(&detail.observed_at, 64)
+                                && item.blueprint_item_id == Some(item.plan.plan_id)
+                        })
+                    })
+            }
+        }
         && plan_ids.len() == value.items.len()
         && market_type_ids.len() == value.market_type_ids.len()
         && value.market_type_ids == sorted_market_type_ids
@@ -7325,6 +7415,7 @@ fn query_production_plans(
     sales_tax_basis_points: Option<u16>,
     analysis_plan_id: Option<u64>,
     include_blueprint_profitability: bool,
+    inventory_analysis: Option<BlueprintInventoryAnalysis>,
     state: State<'_, RuntimeState>,
 ) -> Result<String, String> {
     if search.chars().count() > MAX_ASSET_SEARCH_CHARACTERS
@@ -7355,6 +7446,12 @@ fn query_production_plans(
     {
         return Err("production-plan-query-invalid".to_owned());
     }
+    if inventory_analysis
+        .as_ref()
+        .is_some_and(|v| !v.is_valid() || !include_blueprint_profitability)
+    {
+        return Err("production-plan-query-invalid".to_owned());
+    }
     refresh_sidecar_status(&state);
     let body = serde_json::json!({
         "search": search,
@@ -7372,6 +7469,7 @@ fn query_production_plans(
         "salesTaxBasisPoints": sales_tax_basis_points,
         "analysisPlanId": analysis_plan_id,
         "includeBlueprintProfitability": include_blueprint_profitability,
+        "inventoryAnalysis": inventory_analysis,
     })
     .to_string();
     let response = {
@@ -7399,6 +7497,12 @@ fn query_production_plans(
             .analysis_plan_id
             .is_some_and(|value| Some(value) != analysis_plan_id)
         || page.blueprint_profitability_applied != include_blueprint_profitability
+        || page
+            .blueprint_profitability
+            .as_ref()
+            .and_then(|v| v.inventory.as_ref())
+            .is_some()
+            != inventory_analysis.is_some()
     {
         return Err("sidecar-response-invalid".to_owned());
     }

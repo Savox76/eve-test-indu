@@ -292,3 +292,7 @@ Die Skill-IDs und ihre Zeitboni sind in `types.jsonl` desselben festgeschriebene
 Die Handelsgebührenformeln folgen der offiziellen [EVE-Hilfe zu Broker Fee und Sales Tax](https://support.eveonline.com/hc/en-us/articles/203218962-Broker-Fee-and-Sales-Tax). Skill-IDs und Stationsbesitzer stammen aus demselben festgeschriebenen offiziellen SDE-Build; persönliche unmodifizierte Standings werden über den offiziellen ESI-Endpunkt synchronisiert.
 
 Die Windows-Ausgaben ab `v0.0.5-preview.14` liefern den geprüften Produktionsausschnitt des festgelegten offiziellen SDE-Builds mit. Er wird beim ersten Start automatisch installiert. Bei identischer Buildnummer wird er nur dann erneut verarbeitet, wenn eine neue abgeleitete Spalte – beispielsweise der Sicherheitsstatus ab `.18` – noch nicht befüllt ist. Die Produkt- und Blueprintsuche benötigt deshalb keinen manuellen Vorbereitungsschritt.
+
+## Abgrenzung zum Bestandsvergleich (Paket 49)
+
+Die zielbezogene Einkaufsliste und Gewinnanalyse bleiben auf das ausgewählte Produktionsziel begrenzt. Die Rentabilitätsübersicht im Blueprint-Reiter liest dagegen direkt den Blueprint-Bestand und nimmt den Kauf der unmittelbaren Rezeptmaterialien an. Sie erzeugt keine Ziele und beeinflusst keine Reservierungen. Beide Rechnungen können bei Eigenfertigung von Vorprodukten oder unterschiedlichen Mengen/Anlagen voneinander abweichen.
