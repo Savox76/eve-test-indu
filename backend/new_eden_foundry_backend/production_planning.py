@@ -32,6 +32,7 @@ from .market_prices import (
     MAX_MARKET_TYPE_IDS,
     MarketPriceError,
     latest_market_price_snapshot,
+    market_price_snapshot_for_types,
     market_hub,
 )
 from .sde import (
@@ -269,7 +270,11 @@ def validate_production_plan_query(payload: Any) -> dict[str, Any]:
         "analysisPlanId",
         "includeBlueprintProfitability",
     }
-    if not isinstance(payload, Mapping) or set(payload) != expected:
+    if not isinstance(payload, Mapping) or set(payload) - {"inventoryAnalysis"} != expected:
+        raise ProductionPlanningError("production_plan_query_invalid")
+    from .blueprint_profitability import validate_settings
+    inventory_analysis = validate_settings(payload.get("inventoryAnalysis"))
+    if inventory_analysis is not None and not payload["includeBlueprintProfitability"]:
         raise ProductionPlanningError("production_plan_query_invalid")
     try:
         search = _normalized_text(payload["search"], 120)
@@ -317,6 +322,7 @@ def validate_production_plan_query(payload: Any) -> dict[str, Any]:
         **payload,
         "search": search,
         "marketHubId": selected_market_hub["hubId"],
+        "inventoryAnalysis": inventory_analysis,
     }
 
 
@@ -3626,6 +3632,7 @@ def _blueprint_profitability(
     sales_character_id: int | None,
     broker_fee_basis_points: int | None,
     sales_tax_basis_points: int | None,
+    inventory_market_cache: bool = False,
 ) -> dict[str, Any]:
     """Compare configured production goals at every supported NPC trade hub."""
 
@@ -3655,7 +3662,8 @@ def _blueprint_profitability(
         hub = dict(hub_value)
         hub_id = str(hub["hubId"])
         try:
-            snapshot = latest_market_price_snapshot(connection, hub_id)
+            snapshot = (market_price_snapshot_for_types(connection, hub_id, all_market_type_ids)
+                        if inventory_market_cache else latest_market_price_snapshot(connection, hub_id))
         except MarketPriceError as error:
             raise ProductionPlanningError("production_purchase_market_invalid") from error
         evidence = _trade_cost_evidence(
@@ -3770,7 +3778,7 @@ def query_production_plans(connection: sqlite3.Connection, raw_query: Any) -> di
         if build_number is not None and _sde_tables_available(connection)
         else None
     )
-    plan_rows = _plan_rows(connection)
+    plan_rows = [] if query.get("inventoryAnalysis") is not None else _plan_rows(connection)
     blueprint_sources = _load_blueprint_sources(connection, plan_rows)
     step_blueprint_assignments = _load_step_blueprint_assignments(connection)
     step_supply_modes = _load_step_supply_modes(connection)
@@ -3778,7 +3786,10 @@ def query_production_plans(connection: sqlite3.Connection, raw_query: Any) -> di
     job_sources = _load_production_job_sources(connection)
     facility_context = _load_production_facilities(connection)
     price_source = industry_price_index(connection)
-    inventory_sources = _load_inventory_sources(connection, plan_rows)
+    inventory_owners = list(plan_rows)
+    if query.get("inventoryAnalysis") is not None:
+        inventory_owners += list(connection.execute("SELECT character_id AS owner_character_id FROM characters WHERE enabled=1"))
+    inventory_sources = _load_inventory_sources(connection, inventory_owners)
     reservations: dict[
         tuple[int, int, int, str, str, str], list[dict[str, Any]]
     ] = {}
@@ -3897,9 +3908,12 @@ def query_production_plans(connection: sqlite3.Connection, raw_query: Any) -> di
             broker_fee_basis_points=query["brokerFeeBasisPoints"],
             sales_tax_basis_points=query["salesTaxBasisPoints"],
         )
-        if query["includeBlueprintProfitability"]
+        if query["includeBlueprintProfitability"] and query.get("inventoryAnalysis") is None
         else None
     )
+    if query.get("inventoryAnalysis") is not None:
+        from .blueprint_profitability import query_inventory
+        blueprint_profitability = query_inventory(connection, query, loaded_recipes, facility_context, price_source)
     sort_keys = {
         "product": lambda item: (str(item["productName"]).casefold(), item["productTypeId"], item["planId"]),
         "owner": lambda item: (str(item["ownerName"]).casefold(), item["ownerCharacterId"], item["planId"]),
@@ -3930,13 +3944,17 @@ def query_production_plans(connection: sqlite3.Connection, raw_query: Any) -> di
             "WHERE enabled=1 ORDER BY COALESCE(alias,name) COLLATE NOCASE,character_id"
         )
     ]
+    location_options = _production_location_options(inventory_sources)
+    if query.get("inventoryAnalysis") is not None:
+        from .blueprint_profitability import inventory_location_options
+        location_options = inventory_location_options(connection, owners, location_options, facility_context[1])
     return {
         "items": page,
         "total": total,
         "offset": query["offset"],
         "limit": query["limit"],
         "owners": owners,
-        "locationOptions": _production_location_options(inventory_sources),
+        "locationOptions": location_options,
         "activities": list(SUPPORTED_BLUEPRINT_ACTIVITIES),
         "states": list(PLAN_STATES),
         "summary": summary,

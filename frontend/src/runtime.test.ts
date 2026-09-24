@@ -1308,6 +1308,26 @@ describe("desktop runtime status", () => {
     invoke.mockResolvedValueOnce(JSON.stringify(blueprintProfitabilityPage));
     await expect(loadProductionPlans({ ...query, includeBlueprintProfitability: true },
       { isAvailable: () => true, invoke })).resolves.toEqual(blueprintProfitabilityPage);
+    const inventoryPage = structuredClone(blueprintProfitabilityPage);
+    const inventory = inventoryPage.blueprintProfitability!;
+    inventory.rule = "owned-blueprints-direct-material-purchase-per-hub-net-profit";
+    inventory.inventory = { offset: 0, total: 1, nextOffset: null, missingOwners: 0, runs: 10 };
+    Object.assign(inventory.items[0], { planId: 8001, blueprintItemId: 8001,
+      inventory: { kind: "copy", runs: 3, availableRuns: 3, status: "ready",
+        installationState: "ready", observedAt: "2026-09-24T12:00:00Z" } });
+    const inventoryQuery = { ...query, includeBlueprintProfitability: true,
+      inventoryAnalysis: { runs: 10, offset: 0, facilityId: null,
+        facilityTaxBasisPoints: null, materialBonusBasisPoints: 0 } };
+    invoke.mockResolvedValueOnce(JSON.stringify(inventoryPage));
+    await expect(loadProductionPlans(inventoryQuery, { isAvailable: () => true, invoke }))
+      .resolves.toEqual(inventoryPage);
+    inventory.items[0].inventory!.runs = 4;
+    invoke.mockResolvedValueOnce(JSON.stringify(inventoryPage));
+    await expect(loadProductionPlans(inventoryQuery, { isAvailable: () => true, invoke }))
+      .rejects.toThrow("invalid owned blueprint data");
+    await expect(loadProductionPlans({ ...inventoryQuery, inventoryAnalysis: {
+      ...inventoryQuery.inventoryAnalysis, runs: 0 } }, { isAvailable: () => true, invoke }))
+      .rejects.toThrow("inventory settings");
     const marketSync = { syncRunId: 22, hubId: "jita", typeCount: 1,
       orderCount: 2, pageCount: 1, observedAt: "2026-09-11T12:05:00Z" } as const;
     invoke.mockResolvedValueOnce(JSON.stringify(marketSync));

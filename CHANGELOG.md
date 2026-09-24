@@ -24,6 +24,41 @@ Alle bemerkenswerten Änderungen an New Eden Foundry werden hier festgehalten. D
 
 - Keine.
 
+## 0.2.0-alpha.22 – 24. September 2026
+
+### Neu hinzugefügt
+
+- Alle vorhandenen Blueprint-Positionen aktivierter Charaktere werden ohne Produktionsziele verglichen, einschließlich unterschiedlicher Originale und Kopien.
+- Vergleichsläufe, Produktionsanlage, Anlagensteuer und Materialbonus sind direkt in der Blueprint-Ansicht einstellbar und bleiben gespeichert.
+- Kopien werden auf verbleibende Läufe begrenzt; erschöpfte Kopien und fehlende oder nicht unterstützte Rezepte bleiben sichtbar.
+- Vollständige Seitennavigation für große Bestände; pro Seite höchstens 25 Positionen und 250 benötigte Marktartikel.
+
+### Geändert
+
+- Der Vergleich kauft alle direkten Rezeptmaterialien am jeweiligen Hub und berücksichtigt reale Ordertiefe, Blueprint-ME, den eingetragenen Anlagenbonus, Installationskosten und Verkäufergebühren.
+- Verkaufserlöse basieren auf dem niedrigsten Sell-Angebot in Jita, Amarr, Dodixie, Hek beziehungsweise Rens.
+- Bereits geladene Preise anderer Bestandsseiten bleiben verfügbar. Der älteste beitragende Preisstand und veraltete Daten werden angezeigt.
+- Die sichtbare Versionsnummer lautet `v0.2.0-alpha.22`.
+
+### Behobene Fehler
+
+- Vorhandene Blueprints fehlen nicht mehr im Vergleich, wenn kein Produktionsziel angelegt ist.
+- Die bisherige Grenze von 100 Zielvarianten schließt keine weiteren Bestandsblueprints mehr aus.
+
+### Bekannte Einschränkungen
+
+- Der Bestandsvergleich betrachtet direkte Materialkäufe; eigene mehrstufige Fertigung wird weiterhin in den Produktionszielen konfiguriert.
+- Blueprint-Anschaffung beziehungsweise BPC-Verbrauchskosten, Transport, erneute Einstellgebühren und Buy Orders sind nicht enthalten. Verkaufspreise sind Marktvergleiche, keine Absatzgarantie.
+- Rezepte mit mehreren unterschiedlichen Ausgabeprodukten bleiben ausdrücklich nicht berechenbar.
+- Nettoergebnisse benötigen aktuelle Markt-, Anlagen- und Gebührenquellen. Die automatische Gebührenberechnung braucht Skill- und Standing-Snapshots des Verkaufscharakters.
+- Die Alpha ist nicht produktiv code-signiert; Windows SmartScreen kann vor einem unbekannten Herausgeber warnen.
+
+### Update und Datenbankmigration
+
+- Das Datenbankschema bleibt Version 14. Es werden keine Produktionsziele oder Materialreservierungen angelegt oder verändert.
+- Installer: Anwendung schließen, Setup ausführen und die Löschung der Anwendungsdaten nicht auswählen.
+- Portable: in einen neuen Ordner entpacken und bei geschlossener Anwendung den bisherigen `data`-Ordner übernehmen.
+
 ## 0.2.0-alpha.21 – 22. September 2026
 
 ### Neu hinzugefügt

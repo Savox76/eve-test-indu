@@ -837,6 +837,120 @@ class ProductionPlanningTests(unittest.TestCase):
         self.assertEqual(priced["pricingState"], "ready")
         self.assertEqual(priced["items"][0]["lowestUnitPriceCents"], 200)
 
+    def inventory_query(self, **settings):
+        return query(includeBlueprintProfitability=True, analysisPlanId=None,
+                     brokerFeeBasisPoints=0, salesTaxBasisPoints=0,
+                     inventoryAnalysis={"runs": 10, "offset": 0, "facilityId": 60_003_760,
+                                        "facilityTaxBasisPoints": 0, "materialBonusBasisPoints": 0, **settings})
+
+    def owned_blueprint(self, item_id=8001, **changes):
+        return {"item_id": item_id, "type_id": 100, "quantity": -1,
+                "material_efficiency": 10, "time_efficiency": 20, "runs": -1,
+                "location_id": 60_003_760, "location_flag": "Hangar", **changes}
+
+    def test_inventory_profitability_needs_no_goals_or_assets_and_buys_direct_inputs(self):
+        import_industry_sde(self.db, **bundle())
+        self.publish_facilities("2026-09-24T12:00:00Z")
+        self.publish_blueprints(7, [self.owned_blueprint()], "2026-09-24T12:00:00Z")
+        self.publish_market_prices([
+            {"orderId": i + 1, "typeId": type_id, "locationId": 60_003_760,
+             "systemId": 30_000_142, "priceCents": price, "volumeRemain": 10_000}
+            for i, (type_id, price) in enumerate([(101, 100_000), (111, 1_000), (121, 500)])
+        ], [101, 111, 121])
+        before = self.db.total_changes
+        result = query_production_plans(self.db, self.inventory_query())
+        self.assertEqual(self.db.total_changes, before)
+        self.assertEqual(result["total"], 0)
+        self.assertEqual(result["locationOptions"][0]["facilityId"], 60_003_760)
+        comparison = result["blueprintProfitability"]
+        self.assertEqual(comparison["inventory"]["total"], 1)
+        self.assertEqual(comparison["marketTypeIds"], [101, 111, 121])
+        item = comparison["items"][0]
+        self.assertEqual(item["targetQuantity"], 20)
+        self.assertEqual(item["appliedMaterialEfficiency"], 10)
+        self.assertEqual(item["inventory"]["runs"], 10)
+        jita = item["comparisons"][0]
+        # Direct input purchase: ceil(3*10*.9)=27 frames, 36 plates.
+        self.assertEqual(jita["materialReplacementCostCents"], 45_000)
+        # EIV 3800 ISK; ceil(47.5) system + 152 SCC, no tax.
+        self.assertEqual(jita["installationCostCents"], 20_000)
+        self.assertEqual(jita["netProfitCents"], 1_935_000)
+        self.assertEqual(item["bestHubId"], "jita")
+        self.assertIsNone(item["comparisons"][1]["netProfitCents"])
+
+    def test_inventory_copies_cap_runs_and_keep_exhausted_and_missing_recipes_visible(self):
+        import_industry_sde(self.db, **bundle())
+        self.publish_blueprints(7, [
+            self.owned_blueprint(8001, quantity=-2, runs=3),
+            self.owned_blueprint(8002, quantity=-2, runs=0),
+            self.owned_blueprint(8003, type_id=999),
+            self.owned_blueprint(8004, material_efficiency=0),
+        ], "2026-09-24T12:00:00Z")
+        result = query_production_plans(self.db, self.inventory_query())["blueprintProfitability"]
+        rows = {r["blueprintItemId"]: r for r in result["items"]}
+        self.assertEqual(len(rows), 4)
+        self.assertEqual(rows[8001]["inventory"]["runs"], 3)
+        self.assertEqual(rows[8001]["targetQuantity"], 6)
+        self.assertEqual(rows[8002]["inventory"]["status"], "runs-exhausted")
+        self.assertEqual(rows[8003]["inventory"]["status"], "recipe-missing")
+        self.assertEqual(rows[8004]["appliedMaterialEfficiency"], 0)
+        self.assertTrue(all(r["bestHubId"] is None for r in rows.values()))
+
+    def test_inventory_pagination_covers_more_than_one_hundred_owned_blueprints(self):
+        import_industry_sde(self.db, **bundle())
+        self.publish_blueprints(7, [self.owned_blueprint(8000 + i) for i in range(131)], "2026-09-24T12:00:00Z")
+        ids = []
+        offset = 0
+        while offset is not None:
+            result = query_production_plans(self.db, self.inventory_query(offset=offset))["blueprintProfitability"]
+            self.assertEqual(result["inventory"]["total"], 131)
+            self.assertLessEqual(len(result["items"]), 25)
+            self.assertEqual(result["omittedMarketTypeCount"], 0)
+            ids.extend(item["blueprintItemId"] for item in result["items"])
+            offset = result["inventory"]["nextOffset"]
+        self.assertEqual(len(ids), 131)
+        self.assertEqual(len(set(ids)), 131)
+
+    def test_inventory_query_filters_owners_and_reports_missing_snapshots(self):
+        import_industry_sde(self.db, **bundle())
+        self.publish_blueprints(7, [self.owned_blueprint()], "2026-09-24T12:00:00Z")
+        raw = self.inventory_query()
+        self.db.execute("INSERT INTO characters(character_id,name) VALUES (8,'Other Synthetic Pilot')")
+        raw["ownerCharacterId"] = 8
+        result = query_production_plans(self.db, raw)["blueprintProfitability"]
+        self.assertEqual(result["inventory"]["total"], 0)
+        self.assertEqual(result["inventory"]["missingOwners"], 1)
+        raw["ownerCharacterId"] = 7
+        raw["search"] = "absent blueprint"
+        self.assertEqual(query_production_plans(self.db, raw)["blueprintProfitability"]["inventory"]["total"], 0)
+
+    def test_inventory_market_cache_keeps_other_pages_and_respects_empty_latest_orders(self):
+        from new_eden_foundry_backend.market_prices import market_price_snapshot_for_types
+        def order(order_id, type_id, price):
+            return {"orderId": order_id, "typeId": type_id, "locationId": 60_003_760,
+                    "systemId": 30_000_142, "priceCents": price, "volumeRemain": 100}
+        old, _ = self.publish_market_prices([order(1, 101, 1000)], [101])
+        self.db.execute("UPDATE cached_snapshots SET observed_at='2020-01-01T00:00:00Z' WHERE id=?", (old,))
+        self.publish_market_prices([order(2, 111, 500)], [111])
+        cached = market_price_snapshot_for_types(self.db, "jita", [101, 111])
+        self.assertEqual(cached["requestedTypeIds"], {101, 111})
+        self.assertEqual(cached["ordersByType"][101][0]["priceCents"], 1000)
+        self.assertTrue(cached["stale"])
+        self.assertEqual(cached["observedAt"], '2020-01-01T00:00:00Z')
+        self.publish_market_prices([], [101])
+        cached = market_price_snapshot_for_types(self.db, "jita", [101, 111])
+        self.assertEqual(cached["ordersByType"][101], [])
+        self.assertEqual(cached["ordersByType"][111][0]["priceCents"], 500)
+        self.assertFalse(cached["stale"])
+        self.assertIsNone(market_price_snapshot_for_types(self.db, "amarr", [101, 111]))
+
+    def test_inventory_settings_reject_invalid_rates_runs_and_offsets(self):
+        for changes in ({"runs": 0}, {"runs": True}, {"runs": 10_001}, {"offset": -1},
+                        {"facilityId": 0}, {"facilityTaxBasisPoints": -1},
+                        {"materialBonusBasisPoints": 5_001}):
+            with self.subTest(changes=changes), self.assertRaises(ProductionPlanningError):
+                validate_production_plan_query(self.inventory_query(**changes))
+
     def test_blueprint_profitability_compares_configured_goal_at_all_hubs(self) -> None:
         import_industry_sde(self.db, **bundle())
         asset_snapshot, _ = self.publish_assets(

@@ -472,3 +472,59 @@ def latest_market_price_snapshot(
         "requestedTypeIds": set(int(value) for value in payload["requestedTypeIds"]),
         "ordersByType": orders_by_type,
     }
+
+
+def market_price_snapshot_for_types(
+    connection: sqlite3.Connection,
+    hub_id: str,
+    type_ids: list[int],
+    *,
+    now: datetime | None = None,
+) -> dict[str, Any] | None:
+    """Use the newest complete observation per type across inventory pages.
+
+    The oldest contributing observation dates the combined quote. An empty
+    newest order book is authoritative; never resurrect older sell orders.
+    """
+    hub = market_hub(hub_id)
+    remaining = set(type_ids)
+    if not remaining:
+        return None
+    source = f"market_prices:{hub_id}"
+    rows = connection.execute(
+        "SELECT cached_snapshots.id,cached_snapshots.sync_run_id,"
+        "cached_snapshots.payload_json,cached_snapshots.observed_at "
+        "FROM cached_snapshots JOIN sync_runs ON sync_runs.id=cached_snapshots.sync_run_id "
+        "WHERE cached_snapshots.resource=? AND sync_runs.source=? AND sync_runs.status='completed' "
+        "ORDER BY cached_snapshots.observed_at DESC,cached_snapshots.id DESC",
+        (source, source),
+    )
+    current = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    result = None
+    for row in rows:
+        try:
+            payload = validate_market_price_snapshot(json.loads(str(row["payload_json"])))
+            observed = datetime.fromisoformat(str(row["observed_at"]).replace("Z", "+00:00"))
+        except (ValueError, TypeError, MarketPriceError) as error:
+            raise MarketPriceError("market_price_snapshot_invalid") from error
+        if observed.tzinfo is None or payload["hubId"] != hub_id:
+            raise MarketPriceError("market_price_snapshot_invalid")
+        matched = remaining.intersection(payload["requestedTypeIds"])
+        if not matched:
+            continue
+        if result is None:
+            result = {"hub": hub, "requestedTypeIds": set(), "ordersByType": {}}
+        age = max(0, int((current - observed).total_seconds()))
+        result.update({"snapshotId": int(row["id"]), "syncRunId": int(row["sync_run_id"]),
+                       "observedAt": str(row["observed_at"]), "ageSeconds": age,
+                       "stale": age > MARKET_PRICE_MAX_AGE_SECONDS})
+        result["requestedTypeIds"].update(matched)
+        for type_id in matched:
+            result["ordersByType"][type_id] = []
+        for order in payload["orders"]:
+            if order["typeId"] in matched:
+                result["ordersByType"][order["typeId"]].append(order)
+        remaining.difference_update(matched)
+        if not remaining:
+            break
+    return result
