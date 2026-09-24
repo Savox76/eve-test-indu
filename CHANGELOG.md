@@ -24,6 +24,40 @@ Alle bemerkenswerten Änderungen an New Eden Foundry werden hier festgehalten. D
 
 - Keine.
 
+## 0.2.0-alpha.24 – 24. September 2026
+
+### Neu hinzugefügt
+
+- Konkrete Hinweise zu fehlenden Produkt-/Materialpreisen, Skills, Standings sowie zur notwendigen Anlagen- und Steuerwahl.
+- Vorläufiger Überschuss pro Stück bei noch fehlenden Anlagenkosten oder Handelsgebühren. Die ausgelassenen Kostenarten stehen ausdrücklich am Ergebnis.
+
+### Geändert
+
+- „Rentabilitätsdaten aktualisieren“ lädt Marktpreise aller fünf Handelsstationen, Skills, Standings und Anlagendaten gemeinsam.
+- Vorläufige Ergebnisse erscheinen neutral und ohne Nettomarge oder Beste-Station-Markierung. Vollständiger Nettogewinn bleibt an sämtliche Kostenbelege gebunden.
+- Die sichtbare Versionsnummer lautet `v0.2.0-alpha.24`.
+
+### Behobene Fehler
+
+- Ohne neu gewählte Anlage und Anlagensteuer wurden trotz vorhandener Marktpreise ausschließlich nicht berechenbare Ergebnisse angezeigt. Bekannte Erlöse und Kosten bleiben jetzt nutzbar, ohne unbekannte Kosten als kostenlos auszugeben.
+- Die Aktualisierung berücksichtigt alle für die Rentabilität nötigen abrufbaren Quellen und wertet erfolgreiche Teilaktualisierungen auch nach Fehlern anderer Quellen neu aus.
+- Ein einzelner fehlgeschlagener Abruf beendet den Aktualisierungsstatus nicht mehr vorzeitig; Teilfehler werden nicht als vollständiger Erfolg gemeldet.
+- Geänderte Standing-Daten aktualisieren die Blueprint-Rentabilität. Nicht mehr aktive gespeicherte Verkaufscharaktere blockieren die Gebührenrechnung nicht dauerhaft.
+
+### Bekannte Einschränkungen
+
+- Produktionsanlage und deren tatsächliche Steuer müssen weiterhin bewusst angegeben werden. Unbekannte Steuern oder Gebühren werden nicht geschätzt.
+- Vorläufige Überschüsse sind kein vollständiger Nettogewinn. Fehlende Produktpreise oder ausreichende Materialangebote verhindern weiterhin eine belastbare Berechnung.
+- Direkte Materialkäufe bleiben die Basis; Blueprint-/BPC-Anschaffung, Transport und erneute Einstellgebühren sind nicht enthalten. Verkaufspreise sind keine Absatzgarantie.
+- Die Alpha ist nicht produktiv code-signiert.
+
+### Update und Datenbankmigration
+
+- Schema 14 bleibt unverändert. Bestehende Charaktere, Produktionsziele und Einstellungen bleiben erhalten.
+- Nach dem Update im Blueprint-Bereich „Rentabilitätsdaten aktualisieren“ ausführen. Für Nettogewinn die Produktionsanlage und deren tatsächliche Steuer eintragen.
+- Installer: Anwendung schließen und Setup ausführen, ohne Anwendungsdaten zu löschen.
+- Portable: in einen neuen Ordner entpacken und bei geschlossener Anwendung den bisherigen `data`-Ordner übernehmen.
+
 ## 0.2.0-alpha.23 – 24. September 2026
 
 ### Neu hinzugefügt

@@ -38,6 +38,7 @@ import {
   X,
   Zap,
 } from "lucide-react";
+import { blueprintResult } from "./blueprintProfitability";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 
 import {
@@ -696,12 +697,12 @@ const copy = {
       profitability: {
         kicker: "BLUEPRINT-RENTABILITÄT",
         title: "Lohnt sich dieser Blueprint?",
-        subtitle: "Eine Zeile je Blueprint-Typ: Nettogewinn pro Stück und Marge an fünf Handelsstationen.",
+        subtitle: "Eine Zeile je Blueprint-Typ: Ergebnis pro Stück an fünf Handelsstationen. Nettogewinn und Marge bei vollständiger Kostenbasis.",
         seller: "Verkaufscharakter",
-        refresh: "Alle Handelsstationen aktualisieren",
-        refreshing: "Marktpreise werden aktualisiert …",
-        refreshSuccess: "Marktpreise aller fünf Handelsstationen wurden aktualisiert.",
-        refreshError: "Die Marktpreise konnten nicht vollständig aktualisiert werden.",
+        refresh: "Rentabilitätsdaten aktualisieren",
+        refreshing: "Rentabilitätsdaten werden aktualisiert …",
+        refreshSuccess: "Marktpreise, Skills, Standings und Anlagendaten wurden aktualisiert. Noch fehlende Angaben stehen direkt am Ergebnis.",
+        refreshError: "Erfolgreich geladene Quellen werden bereits berücksichtigt. Fehlende Berechtigungen bitte im Setup prüfen.",
         loading: "Blueprint-Rentabilität wird berechnet …",
         queryError: "Die Blueprint-Rentabilität konnte nicht berechnet werden.",
         empty: "Keine Blueprints im Bestand für diese Auswahl. Aktualisiere bei Bedarf die Blueprint-Snapshots.",
@@ -1204,7 +1205,7 @@ const copy = {
     },
     planned: "Geplant",
     previewOnly: "Noch ohne Live-Funktion",
-    footerVersion: "v0.2.0-alpha.23",
+    footerVersion: "v0.2.0-alpha.24",
   },
   en: {
     nav: {
@@ -1654,12 +1655,12 @@ const copy = {
       profitability: {
         kicker: "BLUEPRINT PROFITABILITY",
         title: "Is this blueprint worth producing?",
-        subtitle: "One row per blueprint type: net profit per unit and margin at five trade hubs.",
+        subtitle: "One row per blueprint type: result per unit at five trade hubs. Net profit and margin require complete costs.",
         seller: "Sales character",
-        refresh: "Refresh all trade hubs",
-        refreshing: "Refreshing market prices …",
-        refreshSuccess: "Market prices were refreshed for all five trade hubs.",
-        refreshError: "Market prices could not be refreshed completely.",
+        refresh: "Refresh profitability data",
+        refreshing: "Refreshing profitability data …",
+        refreshSuccess: "Market prices, skills, standings and facility data were refreshed. Any remaining missing inputs are shown beside the result.",
+        refreshError: "Successfully refreshed sources are already included. Check missing permissions in Setup.",
         loading: "Calculating blueprint profitability …",
         queryError: "Blueprint profitability could not be calculated.",
         empty: "No owned blueprints match this selection. Refresh the blueprint snapshots if needed.",
@@ -2162,7 +2163,7 @@ const copy = {
     },
     planned: "Planned",
     previewOnly: "No live function yet",
-    footerVersion: "v0.2.0-alpha.23",
+    footerVersion: "v0.2.0-alpha.24",
   },
 } as const;
 
@@ -3120,6 +3121,8 @@ export function App({
             loadCharacterSkills={characterSkillsLoader}
             syncCharacterSkills={runCharacterSkillSync}
             characterSkillRevision={characterSkillRevision}
+            syncCharacterStandings={runCharacterStandingSync}
+            characterStandingRevision={characterStandingRevision}
             loadIndustryFacilities={industryFacilitiesLoader}
             syncIndustryFacilities={runIndustryFacilitySync}
             industryFacilityRevision={industryFacilityRevision}
@@ -4681,7 +4684,7 @@ function BlueprintWorkspace({
   loadIndustryJobs: loadJobs, syncIndustryJobs: runJobSync, industryJobRevision,
   loadCharacterSkills: loadSkills, syncCharacterSkills: runSkillSync, characterSkillRevision,
   loadIndustryFacilities: loadFacilities, syncIndustryFacilities: runFacilitySync,
-  industryFacilityRevision,
+  industryFacilityRevision, syncCharacterStandings: runStandingSync, characterStandingRevision,
   loadIndustrySlots: loadSlots, industrySlotRevision,
   loadResearchPlans: loadPlans, saveResearchPlan: savePlan,
   deleteResearchPlan: deletePlan, researchPlanRevision,
@@ -4700,6 +4703,8 @@ function BlueprintWorkspace({
   loadCharacterSkills: (query: CharacterSkillQuery) => Promise<CharacterSkillPage>;
   syncCharacterSkills: () => Promise<CharacterSkillSyncResult>;
   characterSkillRevision: number;
+  syncCharacterStandings: () => Promise<CharacterStandingSyncResult>;
+  characterStandingRevision: number;
   loadIndustryFacilities: (query: IndustryFacilityQuery) => Promise<IndustryFacilityPage>;
   syncIndustryFacilities: () => Promise<IndustryFacilitySyncResult>;
   industryFacilityRevision: number;
@@ -4868,9 +4873,12 @@ function BlueprintWorkspace({
         t={t}
         loadPlans={loadProductionProfitability}
         syncPrices={syncProfitabilityPrices}
+        syncSkills={runSkillSync}
+        syncStandings={runStandingSync}
+        syncFacilities={runFacilitySync}
         ownerCharacterId={ownerCharacterId}
         search={appliedSearch}
-        refreshRevision={refreshRevision + industryJobRevision + characterSkillRevision + industryFacilityRevision}
+        refreshRevision={refreshRevision + industryJobRevision + characterSkillRevision + characterStandingRevision + industryFacilityRevision}
       />
       <IndustrySlotPanel
         available={available}
@@ -4917,13 +4925,16 @@ function BlueprintWorkspace({
 }
 
 function BlueprintProfitabilityPanel({
-  available, locale, t, loadPlans, syncPrices, ownerCharacterId, search, refreshRevision,
+  available, locale, t, loadPlans, syncPrices, syncSkills, syncStandings, syncFacilities, ownerCharacterId, search, refreshRevision,
 }: {
   available: boolean;
   locale: Locale;
   t: Translation;
   loadPlans: (query: ProductionPlanQuery) => Promise<ProductionPlanPage>;
   syncPrices: (marketHubId: MarketHubId, typeIds: readonly number[]) => Promise<MarketPriceSyncResult>;
+  syncSkills: () => Promise<CharacterSkillSyncResult>;
+  syncStandings: () => Promise<CharacterStandingSyncResult>;
+  syncFacilities: () => Promise<IndustryFacilitySyncResult>;
   ownerCharacterId: number | null;
   search: string;
   refreshRevision: number;
@@ -4942,13 +4953,25 @@ function BlueprintProfitabilityPanel({
     missing: "Charaktere ohne Blueprint-Snapshot", more: "Weitere Bestandsblueprints", back: "Vorherige Bestandsblueprints",
     unknown: "Rezept nicht verfügbar", exhausted: "Keine Läufe verfügbar", multiple: "Mehrere Produkte – noch nicht bewertbar",
     basis: "Berechnungsbasis", variants: "Besitzer und Varianten", positions: "Positionen", omitted: "weitere Varianten im Blueprint-Bestand", unit: "ISK / Stück", output: "Stück je Lauf", pagePrices: "Preise der angezeigten Blueprints · alle fünf Handelsstationen",
-    fees: "Verkaufsgebühren fehlen: Skills und Standings synchronisieren", snapshot: "Blueprint-Stand",
+    snapshot: "Blueprint-Stand", skills: "Skills", standings: "Standings", facilities: "Anlagendaten",
+    setup: "Für vollständigen Nettogewinn: Produktionsanlage wählen und Anlagensteuer eintragen. 0 % nur verwenden, wenn die Anlage tatsächlich keine Steuer erhebt.",
+    sellerMissing: "Verkaufscharakter wählen", skillsMissing: "Skills des Verkaufscharakters fehlen – Rentabilitätsdaten aktualisieren",
+    standingsMissing: "Standings des Verkaufscharakters fehlen – Rentabilitätsdaten aktualisieren; bei fehlender Berechtigung im Setup neu anmelden",
+    productMissing: "Verkaufspreis fehlt an dieser Handelsstation", materialsMissing: "Materialpreise oder ausreichende Verkaufsmengen fehlen",
+    refreshPartial: "Nicht vollständig aktualisiert", costPending: "Kostenbasis unvollständig",
+    resultLabels: { net: "Nettogewinn pro Stück", "before-installation": "Vorläufig: vor Anlagenkosten", "before-trade": "Vorläufig: vor Handelsgebühren", "before-installation-and-trade": "Vorläufig: vor Anlagenkosten und Handelsgebühren", unavailable: "Nicht berechenbar" },
   } : {
     facility: "Production facility", tax: "Facility tax (%)", bonus: "Facility material bonus (%)",
     missing: "Characters without a blueprint snapshot", more: "More owned blueprints", back: "Previous owned blueprints",
     unknown: "Recipe unavailable", exhausted: "No runs remaining", multiple: "Multiple products – not yet supported",
     basis: "Calculation basis", variants: "Owners and variants", positions: "positions", omitted: "more variants in blueprint inventory", unit: "ISK / unit", output: "units per run", pagePrices: "Prices for displayed blueprints · all five trade hubs",
-    fees: "Sales fees missing: synchronize skills and standings", snapshot: "Blueprint snapshot",
+    snapshot: "Blueprint snapshot", skills: "Skills", standings: "Standings", facilities: "Facility data",
+    setup: "For complete net profit, select a production facility and enter its tax. Use 0% only if the facility actually charges no tax.",
+    sellerMissing: "Select a sales character", skillsMissing: "Sales character skills missing – refresh profitability data",
+    standingsMissing: "Sales character standings missing – refresh profitability data; reconnect in Setup if permissions are missing",
+    productMissing: "No product sell price at this trade hub", materialsMissing: "Material prices or sufficient sell volume missing",
+    refreshPartial: "Not fully refreshed", costPending: "Cost evidence incomplete",
+    resultLabels: { net: "Net profit per unit", "before-installation": "Preliminary: before installation costs", "before-trade": "Preliminary: before trading fees", "before-installation-and-trade": "Preliminary: before installation costs and trading fees", unavailable: "Not calculable" },
   };
   useEffect(() => { setOffset(0); setPreviousOffsets([]); }, [ownerCharacterId, search, facilityId, tax, bonus]);
   const [page, setPage] = useState<ProductionPlanPage | null>(null);
@@ -4956,6 +4979,7 @@ function BlueprintProfitabilityPanel({
   const [failed, setFailed] = useState(false);
   const [syncState, setSyncState] = useState<"idle" | "busy" | "success" | "error">("idle");
   const [marketRevision, setMarketRevision] = useState(0);
+  const [syncIssues, setSyncIssues] = useState<string[]>([]);
   const numberFormat = useMemo(
     () => new Intl.NumberFormat(locale === "de" ? "de-DE" : "en-US"),
     [locale],
@@ -4979,7 +5003,7 @@ function BlueprintProfitabilityPanel({
     }).then((result) => {
       if (!active) return;
       setPage(result);
-      if (salesCharacterId === null && result.owners.length > 0) {
+      if (!result.owners.some((owner) => owner.characterId === salesCharacterId) && result.owners.length > 0) {
         setSalesCharacterId(result.owners[0].characterId);
       }
     }).catch(() => { if (active) setFailed(true); })
@@ -4989,18 +5013,25 @@ function BlueprintProfitabilityPanel({
 
   const profitability = page?.blueprintProfitability ?? null;
   const refresh = async () => {
-    if (loading || !profitability || profitability.marketTypeIds.length === 0 ||
-        profitability.marketTypeIds.length > profitability.marketPriceTypeLimit ||
-        syncState === "busy") return;
+    if (!available || loading || !profitability || profitability.marketTypeIds.length > profitability.marketPriceTypeLimit || syncState === "busy") return;
     setSyncState("busy");
-    try {
-      await Promise.all(marketHubIds.map((hubId) =>
-        syncPrices(hubId, profitability.marketTypeIds)));
-      setSyncState("success");
-      setMarketRevision((value) => value + 1);
-    } catch {
-      setSyncState("error");
-    }
+    setSyncIssues([]);
+    const requests: { label: string; run: () => Promise<unknown> }[] = [
+      ...(profitability.marketTypeIds.length === 0 ? [] : marketHubIds.map((hubId) => ({
+        label: hubId, run: () => syncPrices(hubId, profitability.marketTypeIds),
+      }))),
+      { label: labels.skills, run: syncSkills },
+      { label: labels.standings, run: syncStandings },
+      { label: labels.facilities, run: syncFacilities },
+    ];
+    const results = await Promise.allSettled(requests.map((request) => Promise.resolve().then(request.run)));
+    const issues = results.flatMap((result, index) => result.status === "rejected" ||
+      (typeof result.value === "object" && result.value !== null && "failed" in result.value &&
+        typeof result.value.failed === "number" && result.value.failed > 0) ? [requests[index].label] : []);
+    setSyncIssues(issues);
+    setSyncState(issues.length ? "error" : "success");
+    // A successful source remains useful even if another source failed.
+    setMarketRevision((value) => value + 1);
   };
   const tone = (profit: number | null) => profit === null
     ? "missing" : profit > 0 ? "positive" : profit < 0 ? "negative" : "neutral";
@@ -5016,14 +5047,15 @@ function BlueprintProfitabilityPanel({
         <label><span>{labels.facility}</span><select value={facilityId ?? ""} onChange={(event) => setFacilityId(event.target.value ? Number(event.target.value) : null)}><option value="">—</option>{[...new Map((page?.locationOptions ?? []).map((facility) => [facility.facilityId, facility])).values()].map((facility) => <option key={facility.facilityId} value={facility.facilityId}>{facility.facilityName}</option>)}{facilityId !== null && !page?.locationOptions.some((facility) => facility.facilityId === facilityId) && <option value={facilityId}>#{facilityId}</option>}</select></label>
         <label><span>{labels.tax}</span><input type="number" min={0} max={100} step={0.01} value={tax === null ? "" : tax / 100} onChange={(event) => { const value = Math.round(Number(event.target.value) * 100); if (event.target.value === "") setTax(null); else if (value >= 0 && value <= 10_000) setTax(value); }} /></label>
         <label><span>{labels.bonus}</span><input type="number" min={0} max={50} step={0.01} value={bonus / 100} onChange={(event) => { const value = Math.round(Number(event.target.value) * 100); if (value >= 0 && value <= 5_000) setBonus(value); }} /></label>
-        <button className="secondary-button" type="button" onClick={() => void refresh()} disabled={loading || !profitability || profitability.marketTypeIds.length === 0 || profitability.marketTypeIds.length > profitability.marketPriceTypeLimit || syncState === "busy"}>{syncState === "busy" ? <RefreshCw className="spin" size={15} /> : <Download size={15} />}{syncState === "busy" ? t.blueprints.profitability.refreshing : t.blueprints.profitability.refresh}</button>
+        <button className="secondary-button" type="button" onClick={() => void refresh()} disabled={!available || loading || !profitability || profitability.marketTypeIds.length > profitability.marketPriceTypeLimit || syncState === "busy"}>{syncState === "busy" ? <RefreshCw className="spin" size={15} /> : <Download size={15} />}{syncState === "busy" ? t.blueprints.profitability.refreshing : t.blueprints.profitability.refresh}</button>
       </div>
       <p className="production-sequence-hint">{t.blueprints.profitability.exactHint}</p>
       <p className="production-sequence-hint">{labels.pagePrices}</p>
+      {(facilityId === null || tax === null) && <p className="production-purchase-list__warning">{labels.setup}</p>}
       {(profitability?.inventory?.missingOwners ?? 0) > 0 && <p className="production-purchase-list__warning">{labels.missing}: {profitability?.inventory?.missingOwners}</p>}
       {loading && page !== null && <p role="status">{t.blueprints.profitability.loading}</p>}
       {syncState === "success" && <div className="asset-export-status" role="status">{t.blueprints.profitability.refreshSuccess}</div>}
-      {syncState === "error" && <div className="asset-export-status asset-export-status--error" role="status">{t.blueprints.profitability.refreshError}</div>}
+      {syncState === "error" && <div className="asset-export-status asset-export-status--error" role="status">{labels.refreshPartial}: {syncIssues.join(", ")}. {t.blueprints.profitability.refreshError}</div>}
       {!available ? <div className="asset-empty"><Database size={22} />{t.blueprints.unavailable}</div>
         : failed ? <div className="asset-empty asset-empty--error"><AlertTriangle size={22} />{t.blueprints.profitability.queryError}</div>
         : loading && page === null ? <div className="asset-empty"><RefreshCw className="spin" size={22} />{t.blueprints.profitability.loading}</div>
@@ -5047,21 +5079,30 @@ function BlueprintProfitabilityPanel({
               {item.inventory.status === "ready" && item.inventory.installationState !== "ready" && <small>{t.productionPlanning.installationCostStateLabels[item.inventory.installationState as keyof typeof t.productionPlanning.installationCostStateLabels]}</small>}
             </>}
           </td>
-          {item.comparisons.map((comparison) => <td key={comparison.hubId} className={`blueprint-profitability__${tone(comparison.netProfitCents)}`}>
-            <strong>{comparison.netProfitCents === null ? t.blueprints.profitability.noPrice : `${comparison.netProfitCents > 0 ? "+" : ""}${iskFormat.format(comparison.netProfitCents / (100 * item.targetQuantity))} ${labels.unit}`}</strong>
-            {comparison.netMarginBasisPoints !== null && <small>{t.blueprints.profitability.margin.replace("{margin}", (comparison.netMarginBasisPoints / 100).toLocaleString(locale === "de" ? "de-DE" : "en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }))}</small>}
-            {comparison.profitabilityState === "stale" && <small>{t.productionPlanning.marketPricingStateLabels.stale}</small>}
-            {comparison.marketObservedAt && <small>{new Date(comparison.marketObservedAt).toLocaleString(locale === "de" ? "de-DE" : "en-US")}</small>}
-            {comparison.netProfitCents === null && comparison.tradeCostState !== "ready" && <small>{labels.fees}</small>}
-            {comparison.netProfitCents === null && comparison.profitabilityState !== "empty" && <small>{t.productionPlanning.marketPricingStateLabels[comparison.profitabilityState]}</small>}
-            {item.bestHubId === comparison.hubId && <span className="status-pill status-pill--info">{t.blueprints.profitability.best}</span>}
-          </td>)}
+          {item.comparisons.map((comparison) => {
+            const result = blueprintResult(comparison);
+            const feesReason = comparison.tradeCostState === "unconfigured" ? labels.sellerMissing
+              : comparison.tradeCostState === "skill-snapshot-missing" ? labels.skillsMissing
+              : comparison.tradeCostState === "standing-snapshot-missing" ? labels.standingsMissing : null;
+            const missingMarket = comparison.grossRevenueCents === null ? labels.productMissing
+              : comparison.materialReplacementCostCents === null ? labels.materialsMissing : null;
+            return <td key={comparison.hubId} className={`blueprint-profitability__${result.basis === "net" ? tone(result.cents) : "missing"}`}>
+              <small>{labels.resultLabels[result.basis]}</small>
+              {result.cents !== null && <strong>{`${result.cents > 0 ? "+" : ""}${iskFormat.format(result.cents / (100 * item.targetQuantity))} ${labels.unit}`}</strong>}
+              {result.marginBasisPoints !== null && <small>{t.blueprints.profitability.margin.replace("{margin}", (result.marginBasisPoints / 100).toLocaleString(locale === "de" ? "de-DE" : "en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }))}</small>}
+              {comparison.profitabilityState === "stale" && <small>{t.productionPlanning.marketPricingStateLabels.stale}</small>}
+              {comparison.marketObservedAt && <small>{new Date(comparison.marketObservedAt).toLocaleString(locale === "de" ? "de-DE" : "en-US")}</small>}
+              {comparison.netProfitCents === null && feesReason && <small>{feesReason}</small>}
+              {result.basis === "unavailable" && item.inventory?.status === "ready" && <small>{missingMarket ?? labels.costPending}</small>}
+              {item.bestHubId === comparison.hubId && result.basis === "net" && <span className="status-pill status-pill--info">{t.blueprints.profitability.best}</span>}
+            </td>;
+          })}
           <td><strong>{item.bestHubId === null ? "—" : item.comparisons.find((comparison) => comparison.hubId === item.bestHubId)?.hubName ?? item.bestHubId}</strong></td>
         </tr>)}</tbody></table></div> : null}
       {profitability?.inventory && <div className="asset-pagination">
-        <button type="button" className="secondary-button" disabled={loading || previousOffsets.length === 0} onClick={() => { setOffset(previousOffsets.at(-1) ?? 0); setPreviousOffsets((values) => values.slice(0, -1)); }}>{labels.back}</button>
+        <button type="button" className="secondary-button" disabled={loading || syncState === "busy" || previousOffsets.length === 0} onClick={() => { setOffset(previousOffsets.at(-1) ?? 0); setPreviousOffsets((values) => values.slice(0, -1)); }}>{labels.back}</button>
         <span>{profitability.items.length ? profitability.inventory.offset + 1 : 0}–{profitability.inventory.offset + profitability.items.length} / {profitability.inventory.total}</span>
-        <button type="button" className="secondary-button" disabled={loading || profitability.inventory.nextOffset === null} onClick={() => { if (profitability.inventory?.nextOffset != null) { setPreviousOffsets((values) => [...values, offset]); setOffset(profitability.inventory.nextOffset); } }}>{labels.more}</button>
+        <button type="button" className="secondary-button" disabled={loading || syncState === "busy" || profitability.inventory.nextOffset === null} onClick={() => { if (profitability.inventory?.nextOffset != null) { setPreviousOffsets((values) => [...values, offset]); setOffset(profitability.inventory.nextOffset); } }}>{labels.more}</button>
       </div>}
       {profitability && profitability.omittedItemCount > 0 && <p className="production-purchase-list__warning"><AlertTriangle size={14} />{t.blueprints.profitability.omitted.replace("{count}", numberFormat.format(profitability.omittedItemCount))}</p>}
     </section>

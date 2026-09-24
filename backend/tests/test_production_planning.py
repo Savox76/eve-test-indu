@@ -878,6 +878,45 @@ class ProductionPlanningTests(unittest.TestCase):
         self.assertEqual(item["bestHubId"], "jita")
         self.assertIsNone(item["comparisons"][1]["netProfitCents"])
 
+    def test_inventory_default_settings_keep_market_values_but_require_evidence_for_net(self):
+        import_industry_sde(self.db, **bundle())
+        self.publish_blueprints(7, [self.owned_blueprint()], "2026-09-24T12:00:00Z")
+        self.publish_market_prices([
+            {"orderId": i + 1, "typeId": type_id, "locationId": 60_003_760,
+             "systemId": 30_000_142, "priceCents": price, "volumeRemain": 10_000}
+            for i, (type_id, price) in enumerate([(101, 100_000), (111, 1_000), (121, 500)])
+        ], [101, 111, 121])
+        raw = self.inventory_query(runs=1, facilityId=None, facilityTaxBasisPoints=None)
+        raw.update(tradeCostMode="automatic", salesCharacterId=7,
+                   brokerFeeBasisPoints=None, salesTaxBasisPoints=None)
+        def first():
+            item = query_production_plans(self.db, raw)["blueprintProfitability"]["items"][0]
+            return item["inventory"]["installationState"], item["comparisons"][0]
+        state, market_only = first()
+        self.assertEqual(state, "not-selected")
+        self.assertEqual(market_only["grossRevenueCents"], 200_000)
+        self.assertEqual(market_only["materialReplacementCostCents"], 5_000)
+        self.assertEqual(market_only["tradeCostState"], "skill-snapshot-missing")
+        self.assertIsNone(market_only["netProfitCents"])
+        self.publish_skills(7, {3446: 4, 16622: 5}, "2026-09-24T12:00:00Z")
+        self.assertEqual(first()[1]["tradeCostState"], "standing-snapshot-missing")
+        self.publish_standings(7, [], "2026-09-24T12:00:00Z")
+        state, priced_fees = first()
+        self.assertEqual(priced_fees["tradeCostState"], "ready")
+        self.assertGreater(priced_fees["totalTradeCostCents"], 0)
+        self.assertIsNone(priced_fees["installationCostCents"])
+        self.assertIsNone(priced_fees["netProfitCents"])
+        raw["inventoryAnalysis"]["facilityId"] = 60_003_760
+        self.assertEqual(first()[0], "unconfigured")
+        raw["inventoryAnalysis"]["facilityTaxBasisPoints"] = 0
+        self.assertEqual(first()[0], "facility-snapshot-missing")
+        self.publish_facilities("2026-09-24T12:00:00Z")
+        state, complete = first()
+        self.assertEqual(state, "ready")
+        self.assertEqual(complete["netProfitCents"], complete["grossRevenueCents"]
+                         - complete["materialReplacementCostCents"] - complete["installationCostCents"]
+                         - complete["totalTradeCostCents"])
+
     def test_inventory_copies_cap_runs_and_keep_exhausted_and_missing_recipes_visible(self):
         import_industry_sde(self.db, **bundle())
         self.publish_blueprints(7, [
