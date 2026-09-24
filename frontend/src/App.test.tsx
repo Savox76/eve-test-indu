@@ -1007,7 +1007,7 @@ describe("New Eden Foundry design preview", () => {
   it("credits Savoxmedia as the app creator next to the version", () => {
     render(<App />);
 
-    expect(screen.getByText("v0.2.0-alpha.23")).toBeInTheDocument();
+    expect(screen.getByText("v0.2.0-alpha.24")).toBeInTheDocument();
     expect(screen.getByText("Savoxmedia")).toBeInTheDocument();
     expect(screen.getByText("Erstellt von", { exact: false })).toBeInTheDocument();
     expect(screen.queryByText("Lokaler Betreiber")).not.toBeInTheDocument();
@@ -1856,8 +1856,13 @@ describe("New Eden Foundry design preview", () => {
       syncRunId: 40, hubId, typeCount: 2, orderCount: 2, pageCount: 2,
       observedAt: "2026-09-22T12:00:00Z",
     }));
+    const characterSkillSyncer = vi.fn().mockResolvedValue({ characters: [], completed: 1, failed: 0, skills: 1, totalSp: 0, unallocatedSp: 0 });
+    const characterStandingSyncer = vi.fn().mockResolvedValue({ characters: [], completed: 1, failed: 0, standings: 1 });
+    const industryFacilitySyncer = vi.fn().mockResolvedValue({ syncRunId: 1, facilities: 1, npcFacilities: 1, observedFacilities: 0, restrictedStructures: 0, systems: 1, prices: 3, resolvedNames: 1 });
     render(<App runtimeLoader={() => nativeRuntime()} blueprintsLoader={() => Promise.resolve(blueprintPage)}
-      productionPlansLoader={productionPlansLoader} marketPriceSyncer={marketPriceSyncer} />);
+      productionPlansLoader={productionPlansLoader} marketPriceSyncer={marketPriceSyncer}
+      characterSkillSyncer={characterSkillSyncer} characterStandingSyncer={characterStandingSyncer}
+      industryFacilitySyncer={industryFacilitySyncer} />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Blueprints & Jobs" }));
     expect(await screen.findByText("Lohnt sich dieser Blueprint?")).toBeInTheDocument();
@@ -1874,10 +1879,38 @@ describe("New Eden Foundry design preview", () => {
       includeBlueprintProfitability: true, salesCharacterId: 90_888_001,
       inventoryAnalysis: { runs: 1, offset: 0, facilityId: null, facilityTaxBasisPoints: null, materialBonusBasisPoints: 0 },
     }));
-    fireEvent.click(screen.getByRole("button", { name: "Alle Handelsstationen aktualisieren" }));
+    fireEvent.click(screen.getByRole("button", { name: "Rentabilitätsdaten aktualisieren" }));
     await waitFor(() => expect(marketPriceSyncer).toHaveBeenCalledTimes(5));
     expect(marketPriceSyncer).toHaveBeenCalledWith("jita", [101, 900]);
     expect(marketPriceSyncer).toHaveBeenCalledWith("rens", [101, 900]);
+    await waitFor(() => expect(characterSkillSyncer).toHaveBeenCalledTimes(1));
+    expect(characterStandingSyncer).toHaveBeenCalledTimes(1);
+    expect(industryFacilitySyncer).toHaveBeenCalledTimes(1);
+    expect(await screen.findByText(/Marktpreise, Skills, Standings und Anlagendaten wurden aktualisiert/)).toBeInTheDocument();
+    expect(screen.getByText(/Für vollständigen Nettogewinn: Produktionsanlage wählen/)).toBeInTheDocument();
+
+    const partialPage = structuredClone(profitabilityPage);
+    const partialItem = partialPage.blueprintProfitability!.items[0];
+    partialItem.bestHubId = null;
+    partialItem.inventory!.installationState = "not-selected";
+    partialItem.comparisons.forEach((comparison) => Object.assign(comparison, {
+      installationCostCents: null, totalProductionCostCents: null, netProfitCents: null, netMarginBasisPoints: null,
+    }));
+    productionPlansLoader.mockResolvedValue(partialPage);
+    let finishRens!: (value: unknown) => void;
+    marketPriceSyncer.mockImplementation((hubId: MarketHubId) => hubId === "jita"
+      ? Promise.reject(new Error("hub unavailable"))
+      : hubId === "rens" ? new Promise((resolve) => { finishRens = resolve; }) : Promise.resolve({}));
+    characterStandingSyncer.mockResolvedValue({ characters: [], completed: 0, failed: 1, standings: 0 });
+    fireEvent.click(screen.getByRole("button", { name: "Rentabilitätsdaten aktualisieren" }));
+    await waitFor(() => expect(marketPriceSyncer).toHaveBeenCalledTimes(10));
+    expect(screen.getByRole("button", { name: "Rentabilitätsdaten werden aktualisiert …" })).toBeDisabled();
+    finishRens({});
+    expect(await screen.findByText(/Nicht vollständig aktualisiert: jita, Standings/)).toBeInTheDocument();
+    expect(screen.getAllByText("Vorläufig: vor Anlagenkosten")).toHaveLength(5);
+    expect(screen.getAllByText("+90,50 ISK / Stück")).toHaveLength(5);
+    expect(screen.queryByText("42,75 % Marge")).not.toBeInTheDocument();
+    expect(screen.queryByText("Nicht berechenbar")).not.toBeInTheDocument();
     await waitFor(() => expect(screen.getByRole("button", { name: "Weitere Bestandsblueprints" })).not.toBeDisabled());
     fireEvent.click(screen.getByRole("button", { name: "Weitere Bestandsblueprints" }));
     await waitFor(() => expect(productionPlansLoader).toHaveBeenLastCalledWith(expect.objectContaining({
