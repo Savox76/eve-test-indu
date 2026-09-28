@@ -21,6 +21,7 @@ from .industry_facility_view import (
     industry_facility_index,
     industry_price_index,
 )
+from .industry_facility_sync import NPC_STATION_FACILITY_TAX_BASIS_POINTS
 from .industry_job_evidence import (
     IndustryJobEvidenceError,
     load_latest_job_snapshots,
@@ -86,7 +87,7 @@ BROKER_RELATIONS_SKILL_ID = 3446
 ACCOUNTING_SKILL_ID = 16622
 SCC_SURCHARGE_BASIS_POINTS = 400
 INSTALLATION_COST_RULE = (
-    "base-material-adjusted-price-times-runs-system-index-plus-explicit-tax-"
+    "base-material-adjusted-price-times-runs-system-index-plus-automatic-npc-or-explicit-structure-tax-"
     "plus-scc-4-percent-ceil"
 )
 INDUSTRY_SKILL_ID = 3380
@@ -782,6 +783,25 @@ def _empty_installation_cost(
     }
 
 
+def _effective_facility_tax_basis_points(
+    facility_id: int | None,
+    configured_tax_basis_points: int | None,
+    facilities: Mapping[int, Mapping[str, Any]],
+) -> int | None:
+    """Use CCP's fixed NPC-station tax while preserving manual structure taxes."""
+
+    if facility_id is None:
+        return None
+    facility = facilities.get(int(facility_id))
+    if (
+        facility is not None
+        and facility["kind"] == "station"
+        and facility["access"] == "public"
+    ):
+        return NPC_STATION_FACILITY_TAX_BASIS_POINTS
+    return configured_tax_basis_points
+
+
 def _installation_cost_for_step(
     plan: Mapping[str, Any],
     recipe: Recipe,
@@ -798,13 +818,18 @@ def _installation_cost_for_step(
         if "facility_tax_basis_points" in plan.keys()
         else None
     )
-    tax = None if tax_value is None else int(tax_value)
+    configured_tax = None if tax_value is None else int(tax_value)
     if facility_id is None:
         return _empty_installation_cost("not-selected", None, price_source)
+    if configured_tax is not None and (
+        not _non_negative_int(configured_tax) or configured_tax > 10_000
+    ):
+        raise ProductionPlanningError("production_installation_cost_invalid")
+    tax = _effective_facility_tax_basis_points(
+        int(facility_id), configured_tax, facilities
+    )
     if tax is None:
         return _empty_installation_cost("unconfigured", None, price_source)
-    if not _non_negative_int(tax) or tax > 10_000:
-        raise ProductionPlanningError("production_installation_cost_invalid")
     if not facility_snapshot_available:
         return _empty_installation_cost("facility-snapshot-missing", tax, price_source)
     facility = facilities.get(int(facility_id))
@@ -2973,6 +2998,17 @@ def _plan_rows(connection: sqlite3.Connection) -> list[sqlite3.Row]:
 
 
 def _serialize_plan(row: sqlite3.Row, resolution: Mapping[str, Any]) -> dict[str, Any]:
+    configured_tax = (
+        None
+        if row["facility_tax_basis_points"] is None
+        else int(row["facility_tax_basis_points"])
+    )
+    step_taxes = {
+        step["installationCost"]["facilityTaxBasisPoints"]
+        for step in resolution["steps"]
+        if step["installationCost"]["facilityTaxBasisPoints"] is not None
+    }
+    effective_tax = next(iter(step_taxes)) if len(step_taxes) == 1 else configured_tax
     return {
         "planId": int(row["id"]),
         "ownerCharacterId": int(row["owner_character_id"]),
@@ -2989,11 +3025,7 @@ def _serialize_plan(row: sqlite3.Row, resolution: Mapping[str, Any]) -> dict[str
             "facilityMaterialBonusBasisPoints"
         ],
         "facilityTimeBonusBasisPoints": resolution["facilityTimeBonusBasisPoints"],
-        "facilityTaxBasisPoints": (
-            None
-            if row["facility_tax_basis_points"] is None
-            else int(row["facility_tax_basis_points"])
-        ),
+        "facilityTaxBasisPoints": effective_tax,
         "facilityModifierState": resolution["facilityModifierState"],
         "blueprintItemId": resolution["blueprintItemId"],
         "blueprintAssignmentState": resolution["blueprintAssignmentState"],
@@ -4051,6 +4083,13 @@ def save_production_plan(connection: sqlite3.Connection, raw_input: Any) -> dict
         (value["ownerCharacterId"],),
     ).fetchone() is None:
         raise ProductionPlanningError("production_owner_missing")
+    if value["facilityId"] is not None:
+        _snapshot_available, facilities = _load_production_facilities(connection)
+        value["facilityTaxBasisPoints"] = _effective_facility_tax_basis_points(
+            int(value["facilityId"]),
+            value["facilityTaxBasisPoints"],
+            facilities,
+        )
     candidate = {
         "owner_character_id": value["ownerCharacterId"],
         "blueprint_type_id": value["blueprintTypeId"],

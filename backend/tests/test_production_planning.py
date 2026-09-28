@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from new_eden_foundry_backend.database import connect_database, initialize_database
 from new_eden_foundry_backend.production_planning import (
     ProductionPlanningError,
+    _effective_facility_tax_basis_points,
     delete_production_plan,
     query_production_catalog,
     query_production_plans,
@@ -872,9 +873,9 @@ class ProductionPlanningTests(unittest.TestCase):
         jita = item["comparisons"][0]
         # Direct input purchase: ceil(3*10*.9)=27 frames, 36 plates.
         self.assertEqual(jita["materialReplacementCostCents"], 45_000)
-        # EIV 3800 ISK; ceil(47.5) system + 152 SCC, no tax.
-        self.assertEqual(jita["installationCostCents"], 20_000)
-        self.assertEqual(jita["netProfitCents"], 1_935_000)
+        # EIV 3800 ISK; ceil(47.5) system + ceil(9.5) NPC tax + 152 SCC.
+        self.assertEqual(jita["installationCostCents"], 21_000)
+        self.assertEqual(jita["netProfitCents"], 1_934_000)
         self.assertEqual(item["bestHubId"], "jita")
         self.assertIsNone(item["comparisons"][1]["netProfitCents"])
 
@@ -1173,7 +1174,7 @@ class ProductionPlanningTests(unittest.TestCase):
         )["purchaseList"]
         profitability = purchase["profitability"]
         self.assertEqual(purchase["totalPurchaseCostCents"], 1_700)
-        self.assertEqual(purchase["additionalCapitalNeedCents"], 10_500)
+        self.assertEqual(purchase["additionalCapitalNeedCents"], 9_500)
         self.assertEqual(profitability["state"], "ready")
         self.assertEqual(profitability["marketTypeIds"], [101, 900])
         self.assertEqual(profitability["marketTypeCount"], 2)
@@ -1181,10 +1182,10 @@ class ProductionPlanningTests(unittest.TestCase):
         self.assertEqual(profitability["fullyPricedMaterialCount"], 1)
         self.assertEqual(profitability["grossRevenueCents"], 40_000)
         self.assertEqual(profitability["materialReplacementCostCents"], 2_700)
-        self.assertEqual(profitability["installationCostCents"], 8_800)
-        self.assertEqual(profitability["totalProductionCostCents"], 11_500)
-        self.assertEqual(profitability["grossProfitCents"], 28_500)
-        self.assertEqual(profitability["grossMarginBasisPoints"], 7_125)
+        self.assertEqual(profitability["installationCostCents"], 7_800)
+        self.assertEqual(profitability["totalProductionCostCents"], 10_500)
+        self.assertEqual(profitability["grossProfitCents"], 29_500)
+        self.assertEqual(profitability["grossMarginBasisPoints"], 7_375)
         self.assertEqual(profitability["tradeCostState"], "ready")
         self.assertEqual(profitability["brokerFeeBasisPoints"], 300)
         self.assertEqual(profitability["salesTaxBasisPoints"], 360)
@@ -1195,8 +1196,8 @@ class ProductionPlanningTests(unittest.TestCase):
         self.assertEqual(profitability["salesTaxCents"], 1_440)
         self.assertEqual(profitability["totalTradeCostCents"], 2_640)
         self.assertEqual(profitability["netRevenueCents"], 37_360)
-        self.assertEqual(profitability["netProfitCents"], 25_860)
-        self.assertEqual(profitability["netMarginBasisPoints"], 6_465)
+        self.assertEqual(profitability["netProfitCents"], 26_860)
+        self.assertEqual(profitability["netMarginBasisPoints"], 6_715)
         self.assertTrue(profitability["tradeFeesIncluded"])
         self.assertEqual(
             profitability["items"],
@@ -1265,7 +1266,7 @@ class ProductionPlanningTests(unittest.TestCase):
         self.assertEqual((automatic["tradeSkillSnapshotId"], automatic["tradeSkillSyncRunId"]), (skill_snapshot, skill_run))
         self.assertEqual((automatic["standingSnapshotId"], automatic["standingSyncRunId"]), (standing_snapshot, standing_run))
         self.assertEqual(automatic["netRevenueCents"], 38_022)
-        self.assertEqual(automatic["netProfitCents"], 26_522)
+        self.assertEqual(automatic["netProfitCents"], 27_522)
         self.assertTrue(query_production_plans(self.db, query())["profitabilityApplied"])
 
     def test_selected_container_and_stock_only_intermediate_skip_blueprint_step(self) -> None:
@@ -2024,25 +2025,25 @@ class ProductionPlanningTests(unittest.TestCase):
         page = query_production_plans(self.db, query())
         record = page["items"][0]
 
-        self.assertEqual(saved["facilityTaxBasisPoints"], 100)
+        self.assertEqual(saved["facilityTaxBasisPoints"], 25)
         self.assertEqual(record["installationCostState"], "ready")
         self.assertEqual(record["estimatedItemValue"], 1_330)
         self.assertEqual(record["systemCost"], 18)
-        self.assertEqual(record["facilityTax"], 15)
+        self.assertEqual(record["facilityTax"], 5)
         self.assertEqual(record["sccSurcharge"], 55)
-        self.assertEqual(record["estimatedInstallationCost"], 88)
+        self.assertEqual(record["estimatedInstallationCost"], 78)
         self.assertEqual(page["purchaseList"]["pricingState"], "empty")
-        self.assertEqual(page["purchaseList"]["estimatedInstallationCost"], 88)
-        self.assertEqual(page["purchaseList"]["additionalCapitalNeedCents"], 8_800)
+        self.assertEqual(page["purchaseList"]["estimatedInstallationCost"], 78)
+        self.assertEqual(page["purchaseList"]["additionalCapitalNeedCents"], 7_800)
         self.assertEqual(record["costedStepCount"], 3)
         self.assertEqual(record["uncostedStepCount"], 0)
         self.assertEqual(
             [step["installationCost"]["estimatedInstallationCost"] for step in record["steps"]],
-            [5, 34, 49],
+            [5, 30, 43],
         )
         self.assertTrue(all(
             step["installationCost"]["state"] == "ready"
-            and step["installationCost"]["facilityTaxBasisPoints"] == 100
+            and step["installationCost"]["facilityTaxBasisPoints"] == 25
             and step["installationCost"]["sccSurchargeBasisPoints"] == 400
             and step["installationCost"]["systemCostIndex"] == 0.0125
             and step["installationCost"]["priceSnapshotId"] == price_snapshot
@@ -2052,7 +2053,7 @@ class ProductionPlanningTests(unittest.TestCase):
         self.assertTrue(page["installationCostsApplied"])
         self.assertEqual(
             page["installationCostRule"],
-            "base-material-adjusted-price-times-runs-system-index-plus-explicit-tax-"
+            "base-material-adjusted-price-times-runs-system-index-plus-automatic-npc-or-explicit-structure-tax-"
             "plus-scc-4-percent-ceil",
         )
 
@@ -2064,13 +2065,26 @@ class ProductionPlanningTests(unittest.TestCase):
                 facilityTaxBasisPoints=None,
             ),
         )
-        unconfigured = query_production_plans(self.db, query())["items"][0]
-        self.assertEqual(unconfigured["installationCostState"], "unconfigured")
-        self.assertIsNone(unconfigured["estimatedInstallationCost"])
+        automatic = query_production_plans(self.db, query())["items"][0]
+        self.assertEqual(automatic["facilityTaxBasisPoints"], 25)
+        self.assertEqual(automatic["installationCostState"], "ready")
+        self.assertEqual(automatic["estimatedInstallationCost"], 78)
         self.assertTrue(all(
-            step["installationCost"]["state"] == "unconfigured"
-            for step in unconfigured["steps"]
+            step["installationCost"]["state"] == "ready"
+            and step["installationCost"]["facilityTaxBasisPoints"] == 25
+            for step in automatic["steps"]
         ))
+
+    def test_player_structure_tax_remains_explicit(self) -> None:
+        facilities = {
+            1_000_000_000_001: {"kind": "structure", "access": "available"},
+        }
+        self.assertIsNone(_effective_facility_tax_basis_points(
+            1_000_000_000_001, None, facilities
+        ))
+        self.assertEqual(_effective_facility_tax_basis_points(
+            1_000_000_000_001, 175, facilities
+        ), 175)
 
     def test_facility_profile_does_not_cross_activity_boundaries(self) -> None:
         mixed_bundle = bundle()

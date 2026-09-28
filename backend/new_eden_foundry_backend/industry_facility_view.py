@@ -10,6 +10,7 @@ from typing import Any, Mapping
 from .industry_facility_sync import (
     IndustryFacilitySyncError,
     MAX_SAFE_INTEGER,
+    NPC_STATION_FACILITY_TAX_BASIS_POINTS,
     validate_industry_reference,
 )
 from .industry_job_evidence import (
@@ -195,7 +196,11 @@ def _facility_index(
             "solarSystemName": names[system_id],
             "securityStatus": security_status,
             "securityClass": security_class,
-            "tax": facility["tax"],
+            # CCP defines one fixed ownership tax for NPC industry stations.
+            # The current public facility response omits that value, so expose
+            # the official rate instead of presenting every NPC station as
+            # unknown. Player-structure taxes remain deliberately unknown.
+            "tax": NPC_STATION_FACILITY_TAX_BASIS_POINTS / 10_000,
             "costIndices": systems.get(system_id, {}),
             "errorCode": None,
             "snapshotId": int(row["id"]),

@@ -900,7 +900,7 @@ describe("desktop runtime status", () => {
         facilityId: 60_003_760, facilityName: "Jita IV - Moon 4", kind: "station",
         access: "public", typeId: 1_928, typeName: "Amarr Station", ownerId: 1_000_001,
         ownerName: "Caldari Navy", regionId: 10_000_002, regionName: "The Forge",
-        solarSystemId: 30_000_142, solarSystemName: "Jita", tax: null,
+        solarSystemId: 30_000_142, solarSystemName: "Jita", tax: 0.0025 as number | null,
         securityStatus: 0.9, securityClass: "highsec",
         activityCostIndex: 0.0125, usedByCharacterIds: [7], observedActivityIds: [1],
         jobCount: 1, activeJobs: 0, errorCode: null, snapshotId: 10, syncRunId: 11,
@@ -923,6 +923,12 @@ describe("desktop runtime status", () => {
     expect(invoke).toHaveBeenCalledWith("query_industry_facilities", expect.objectContaining({
       activity: "manufacturing", usedOnly: true,
     }));
+
+    const missingNpcTax = structuredClone(page);
+    missingNpcTax.items[0].tax = null;
+    invoke.mockResolvedValueOnce(JSON.stringify(missingNpcTax));
+    await expect(loadIndustryFacilities(query, { isAvailable: () => true, invoke }))
+      .rejects.toThrow("inconsistent industry-facility records");
 
     const result = { syncRunId: 12, facilities: 2, npcFacilities: 1,
       observedFacilities: 1, restrictedStructures: 1, systems: 1, resolvedNames: 7,
@@ -1242,7 +1248,7 @@ describe("desktop runtime status", () => {
       tradeCostsApplied: true,
       tradeCostRule: "ceil-gross-revenue-times-manual-or-npc-station-character-rate-at-1e10-scale-per-fee",
       installationCostsApplied: true,
-      installationCostRule: "base-material-adjusted-price-times-runs-system-index-plus-explicit-tax-plus-scc-4-percent-ceil",
+      installationCostRule: "base-material-adjusted-price-times-runs-system-index-plus-automatic-npc-or-explicit-structure-tax-plus-scc-4-percent-ceil",
       supplyModesApplied: true,
       supplyModeRule: "stock-first-before-recursive-build",
       remainingModifiersApplied: false };

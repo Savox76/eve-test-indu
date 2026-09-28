@@ -159,6 +159,7 @@ import {
   type ProductionCatalogItem,
   type ProductionCatalogPage,
   type ProductionCatalogQuery,
+  type ProductionFacilityOption,
   type ProductionPlanInput,
   type ProductionPlanPage,
   type ProductionPlanQuery,
@@ -198,6 +199,12 @@ const initialSsoStatus: SsoLoginStatus = {
   errorCode: null,
   character: null,
 };
+
+const NPC_STATION_FACILITY_TAX_BASIS_POINTS = 25;
+
+function automaticFacilityTax(facility: ProductionFacilityOption | null | undefined): number | null {
+  return facility?.facilityKind === "station" ? NPC_STATION_FACILITY_TAX_BASIS_POINTS : null;
+}
 
 const navigation: ReadonlyArray<{ id: ModuleId; icon: LucideIcon }> = [
   { id: "overview", icon: LayoutDashboard },
@@ -810,7 +817,7 @@ const copy = {
         kicker: "ANLAGEN & SYSTEMKOSTEN",
         title: "Industrieanlagen",
         subtitle: "Offizieller ESI-Anlagenkatalog mit Systemkostenindizes und den aus persönlichen Jobs beobachteten Spielerstrukturen.",
-        boundary: "ESI liefert keine Struktur- oder Rigboni; unbekannte Werte werden nicht geschätzt.",
+        boundary: "NPC-Stationen verwenden automatisch die offizielle Anlagensteuer von 0,25 %. ESI liefert keine Steuern oder Rigboni von Spielerstrukturen; diese Werte werden nicht geschätzt.",
         search: "Anlage, System, Region, Besitzer, Typ oder ID suchen",
         kind: "Anlagenart",
         allKinds: "Alle Anlagenarten",
@@ -844,7 +851,7 @@ const copy = {
         restricted: "eingeschränkt",
         active: "aktiv",
         noJobs: "noch nicht in Jobs beobachtet",
-        taxUnknown: "Anlagensteuer unbekannt",
+        taxUnknown: "Steuer der Spielerstruktur unbekannt",
         age: "Datenalter",
         sync: "Anlagen aktualisieren",
         syncing: "Anlagen werden aktualisiert …",
@@ -960,7 +967,7 @@ const copy = {
       kicker: "PRODUKTIONSPLANUNG",
       title: "Fertigungs- und Reaktionsziele",
       subtitle: "Persistente Ziele werden in Schritte aufgelöst und konfliktfrei aus dem letzten vollständigen Asset-Snapshot reserviert.",
-      boundary: "Der Bestand des ausführenden Charakters wird lokal und zielübergreifend reserviert. Persönliche Blueprints, ME/TE und aktive Charakter-Skills werden schrittgenau angewendet. Anlagenboni und Steuern stammen nur aus ausdrücklich gespeicherten Planwerten; die Installationskostenbasis nutzt offizielle angepasste Preise und Systemkostenindizes. Sofortkaufpreise stammen ausschließlich aus Sell Orders der ausgewählten Handelsstation.",
+      boundary: "Der Bestand des ausführenden Charakters wird lokal und zielübergreifend reserviert. Persönliche Blueprints, ME/TE und aktive Charakter-Skills werden schrittgenau angewendet. NPC-Stationen verwenden automatisch 0,25 % Anlagensteuer; bei Spielerstrukturen bleibt der Eigentümersatz ausdrücklich konfiguriert. Die Installationskostenbasis nutzt offizielle angepasste Preise und Systemkostenindizes. Sofortkaufpreise stammen ausschließlich aus Sell Orders der ausgewählten Handelsstation.",
       purchaseTitle: "Einkaufsliste / EVE Multibuy",
       purchaseSubtitle: "Zeigt Fehlmengen, Preise und Gewinn ausschließlich für das ausgewählte Produktionsziel.",
       analysisGoal: "Ausgewertetes Produktionsziel",
@@ -1043,6 +1050,8 @@ const copy = {
       facilityMaterialBonus: "Anlagen-Materialbonus (%)",
       facilityTimeBonus: "Anlagen-Zeitbonus (%)",
       facilityTax: "Anlagensteuer (%)",
+      facilityTaxAutomatic: "NPC-Station: 0,25 % werden automatisch angewendet.",
+      facilityTaxManual: "Spielerstruktur: den vom Eigentümer festgelegten Satz eintragen.",
       facilityProfile: "Explizites Anlagenprofil",
       facilityProfileSummary: "Material {material} % · Zeit {time} %",
       facilityTimeSummary: "Anlagenzeit {time} · zusätzlich {saved} gespart",
@@ -1205,7 +1214,7 @@ const copy = {
     },
     planned: "Geplant",
     previewOnly: "Noch ohne Live-Funktion",
-    footerVersion: "v0.2.0-alpha.24",
+    footerVersion: "v0.2.0-alpha.25",
   },
   en: {
     nav: {
@@ -1768,7 +1777,7 @@ const copy = {
         kicker: "FACILITIES & SYSTEM COSTS",
         title: "Industry facilities",
         subtitle: "Official ESI facility catalog with system cost indices and player structures observed in personal jobs.",
-        boundary: "ESI does not provide structure or rig bonuses; unknown values are never estimated.",
+        boundary: "NPC stations automatically use the official 0.25% facility tax. ESI does not provide player-structure taxes or rig bonuses; unknown values are never estimated.",
         search: "Search facility, system, region, owner, type, or ID",
         kind: "Facility kind",
         allKinds: "All facility kinds",
@@ -1802,7 +1811,7 @@ const copy = {
         restricted: "restricted",
         active: "active",
         noJobs: "not observed in jobs yet",
-        taxUnknown: "facility tax unknown",
+        taxUnknown: "player-structure tax unknown",
         age: "Data age",
         sync: "Refresh facilities",
         syncing: "Refreshing facilities …",
@@ -1918,7 +1927,7 @@ const copy = {
       kicker: "PRODUCTION PLANNING",
       title: "Manufacturing and reaction goals",
       subtitle: "Persistent goals are expanded into steps and reserved conflict-free from the latest complete asset snapshot.",
-      boundary: "Stock owned by the executing character is reserved locally across all goals. Personal blueprints, ME/TE and active character skills are applied per step. Facility bonuses and taxes come only from explicitly saved plan values; the installation-cost basis uses official adjusted prices and system cost indices. Immediate-buy prices come exclusively from sell orders at the selected trade station.",
+      boundary: "Stock owned by the executing character is reserved locally across all goals. Personal blueprints, ME/TE and active character skills are applied per step. NPC stations automatically use a 0.25% facility tax; player structures retain their explicitly configured owner rate. The installation-cost basis uses official adjusted prices and system cost indices. Immediate-buy prices come exclusively from sell orders at the selected trade station.",
       purchaseTitle: "Purchase list / EVE Multibuy",
       purchaseSubtitle: "Shows shortages, prices, and profit for the selected production goal only.",
       analysisGoal: "Production goal to analyse",
@@ -2001,6 +2010,8 @@ const copy = {
       facilityMaterialBonus: "Facility material bonus (%)",
       facilityTimeBonus: "Facility time bonus (%)",
       facilityTax: "Facility tax (%)",
+      facilityTaxAutomatic: "NPC station: 0.25% is applied automatically.",
+      facilityTaxManual: "Player structure: enter the rate set by its owner.",
       facilityProfile: "Explicit facility profile",
       facilityProfileSummary: "Material {material}% · time {time}%",
       facilityTimeSummary: "Facility time {time} · another {saved} saved",
@@ -2163,7 +2174,7 @@ const copy = {
     },
     planned: "Planned",
     previewOnly: "No live function yet",
-    footerVersion: "v0.2.0-alpha.24",
+    footerVersion: "v0.2.0-alpha.25",
   },
 } as const;
 
@@ -4954,7 +4965,9 @@ function BlueprintProfitabilityPanel({
     unknown: "Rezept nicht verfügbar", exhausted: "Keine Läufe verfügbar", multiple: "Mehrere Produkte – noch nicht bewertbar",
     basis: "Berechnungsbasis", variants: "Besitzer und Varianten", positions: "Positionen", omitted: "weitere Varianten im Blueprint-Bestand", unit: "ISK / Stück", output: "Stück je Lauf", pagePrices: "Preise der angezeigten Blueprints · alle fünf Handelsstationen",
     snapshot: "Blueprint-Stand", skills: "Skills", standings: "Standings", facilities: "Anlagendaten",
-    setup: "Für vollständigen Nettogewinn: Produktionsanlage wählen und Anlagensteuer eintragen. 0 % nur verwenden, wenn die Anlage tatsächlich keine Steuer erhebt.",
+    setup: "Für vollständigen Nettogewinn eine Produktionsanlage wählen. Bei NPC-Stationen gelten automatisch 0,25 %; nur bei Spielerstrukturen muss die Anlagensteuer eingetragen werden.",
+    automaticTax: "NPC-Anlagensteuer automatisch: 0,25 %",
+    manualTax: "Steuersatz der Spielerstruktur manuell eintragen",
     sellerMissing: "Verkaufscharakter wählen", skillsMissing: "Skills des Verkaufscharakters fehlen – Rentabilitätsdaten aktualisieren",
     standingsMissing: "Standings des Verkaufscharakters fehlen – Rentabilitätsdaten aktualisieren; bei fehlender Berechtigung im Setup neu anmelden",
     productMissing: "Verkaufspreis fehlt an dieser Handelsstation", materialsMissing: "Materialpreise oder ausreichende Verkaufsmengen fehlen",
@@ -4966,7 +4979,9 @@ function BlueprintProfitabilityPanel({
     unknown: "Recipe unavailable", exhausted: "No runs remaining", multiple: "Multiple products – not yet supported",
     basis: "Calculation basis", variants: "Owners and variants", positions: "positions", omitted: "more variants in blueprint inventory", unit: "ISK / unit", output: "units per run", pagePrices: "Prices for displayed blueprints · all five trade hubs",
     snapshot: "Blueprint snapshot", skills: "Skills", standings: "Standings", facilities: "Facility data",
-    setup: "For complete net profit, select a production facility and enter its tax. Use 0% only if the facility actually charges no tax.",
+    setup: "For complete net profit, select a production facility. NPC stations automatically use 0.25%; only player structures require a manually entered facility tax.",
+    automaticTax: "Automatic NPC facility tax: 0.25%",
+    manualTax: "Enter the player structure's tax rate manually",
     sellerMissing: "Select a sales character", skillsMissing: "Sales character skills missing – refresh profitability data",
     standingsMissing: "Sales character standings missing – refresh profitability data; reconnect in Setup if permissions are missing",
     productMissing: "No product sell price at this trade hub", materialsMissing: "Material prices or sufficient sell volume missing",
@@ -4980,6 +4995,10 @@ function BlueprintProfitabilityPanel({
   const [syncState, setSyncState] = useState<"idle" | "busy" | "success" | "error">("idle");
   const [marketRevision, setMarketRevision] = useState(0);
   const [syncIssues, setSyncIssues] = useState<string[]>([]);
+  const facilityOptions = useMemo(() => [...new Map(
+    (page?.locationOptions ?? []).map((facility) => [facility.facilityId, facility]),
+  ).values()], [page]);
+  const selectedFacility = facilityOptions.find((facility) => facility.facilityId === facilityId) ?? null;
   const numberFormat = useMemo(
     () => new Intl.NumberFormat(locale === "de" ? "de-DE" : "en-US"),
     [locale],
@@ -4987,6 +5006,11 @@ function BlueprintProfitabilityPanel({
   const iskFormat = useMemo(() => new Intl.NumberFormat(locale === "de" ? "de-DE" : "en-US", {
     minimumFractionDigits: 2, maximumFractionDigits: 2,
   }), [locale]);
+
+  useEffect(() => {
+    const automaticTax = automaticFacilityTax(selectedFacility);
+    if (automaticTax !== null && tax !== automaticTax) setTax(automaticTax);
+  }, [selectedFacility, setTax, tax]);
 
   useEffect(() => {
     if (!available) return;
@@ -5044,14 +5068,14 @@ function BlueprintProfitabilityPanel({
       </header>
       <div className="asset-toolbar blueprint-profitability__controls">
         <label><span>{t.blueprints.profitability.seller}</span><select value={salesCharacterId ?? ""} onChange={(event) => setSalesCharacterId(event.target.value ? Number(event.target.value) : null)}><option value="">—</option>{(page?.owners ?? []).map((owner) => <option key={owner.characterId} value={owner.characterId}>{owner.name}</option>)}</select></label>
-        <label><span>{labels.facility}</span><select value={facilityId ?? ""} onChange={(event) => setFacilityId(event.target.value ? Number(event.target.value) : null)}><option value="">—</option>{[...new Map((page?.locationOptions ?? []).map((facility) => [facility.facilityId, facility])).values()].map((facility) => <option key={facility.facilityId} value={facility.facilityId}>{facility.facilityName}</option>)}{facilityId !== null && !page?.locationOptions.some((facility) => facility.facilityId === facilityId) && <option value={facilityId}>#{facilityId}</option>}</select></label>
-        <label><span>{labels.tax}</span><input type="number" min={0} max={100} step={0.01} value={tax === null ? "" : tax / 100} onChange={(event) => { const value = Math.round(Number(event.target.value) * 100); if (event.target.value === "") setTax(null); else if (value >= 0 && value <= 10_000) setTax(value); }} /></label>
+        <label><span>{labels.facility}</span><select value={facilityId ?? ""} onChange={(event) => { const nextId = event.target.value ? Number(event.target.value) : null; const facility = facilityOptions.find((option) => option.facilityId === nextId); setFacilityId(nextId); setTax(automaticFacilityTax(facility)); }}><option value="">—</option>{facilityOptions.map((facility) => <option key={facility.facilityId} value={facility.facilityId}>{facility.facilityName}</option>)}{facilityId !== null && !page?.locationOptions.some((facility) => facility.facilityId === facilityId) && <option value={facilityId}>#{facilityId}</option>}</select></label>
+        <label><span>{labels.tax}</span><input type="number" min={0} max={100} step={0.01} disabled={facilityId === null || selectedFacility?.facilityKind === "station"} value={tax === null ? "" : tax / 100} onChange={(event) => { const value = Math.round(Number(event.target.value) * 100); if (event.target.value === "") setTax(null); else if (value >= 0 && value <= 10_000) setTax(value); }} /><small>{selectedFacility?.facilityKind === "station" ? labels.automaticTax : facilityId === null ? "" : labels.manualTax}</small></label>
         <label><span>{labels.bonus}</span><input type="number" min={0} max={50} step={0.01} value={bonus / 100} onChange={(event) => { const value = Math.round(Number(event.target.value) * 100); if (value >= 0 && value <= 5_000) setBonus(value); }} /></label>
         <button className="secondary-button" type="button" onClick={() => void refresh()} disabled={!available || loading || !profitability || profitability.marketTypeIds.length > profitability.marketPriceTypeLimit || syncState === "busy"}>{syncState === "busy" ? <RefreshCw className="spin" size={15} /> : <Download size={15} />}{syncState === "busy" ? t.blueprints.profitability.refreshing : t.blueprints.profitability.refresh}</button>
       </div>
       <p className="production-sequence-hint">{t.blueprints.profitability.exactHint}</p>
       <p className="production-sequence-hint">{labels.pagePrices}</p>
-      {(facilityId === null || tax === null) && <p className="production-purchase-list__warning">{labels.setup}</p>}
+      {(facilityId === null || selectedFacility?.facilityKind !== "station" && tax === null) && <p className="production-purchase-list__warning">{labels.setup}</p>}
       {(profitability?.inventory?.missingOwners ?? 0) > 0 && <p className="production-purchase-list__warning">{labels.missing}: {profitability?.inventory?.missingOwners}</p>}
       {loading && page !== null && <p role="status">{t.blueprints.profitability.loading}</p>}
       {syncState === "success" && <div className="asset-export-status" role="status">{t.blueprints.profitability.refreshSuccess}</div>}
@@ -6003,6 +6027,12 @@ function ProductionWorkspace({
       setNewMaterialLocationId(null);
     }
   }, [newFacility, newFacilityId, newFacilityOptions, newMaterialLocationId]);
+  useEffect(() => {
+    const automaticTax = automaticFacilityTax(newFacility);
+    if (automaticTax !== null && newFacilityTax !== automaticTax) {
+      setNewFacilityTax(automaticTax);
+    }
+  }, [newFacility, newFacilityTax]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -6116,7 +6146,7 @@ function ProductionWorkspace({
       setNewNote("");
       setNewFacilityMaterialBonus(newFacilityId === null ? null : 0);
       setNewFacilityTimeBonus(newFacilityId === null ? null : 0);
-      setNewFacilityTax(newFacilityId === null ? null : 0);
+      setNewFacilityTax(automaticFacilityTax(newFacility));
       setRevision((value) => value + 1);
     } catch {
       setMutationState("error");
@@ -6267,11 +6297,11 @@ function ProductionWorkspace({
         <div className="production-create">
           <div className="production-create__selection"><Factory size={18} /><span><strong>{selected?.productName ?? t.productionPlanning.catalog}</strong><small>{selected ? `${selected.blueprintName} · ${t.productionPlanning.activityLabels[selected.activity]}` : t.productionPlanning.searchRecipe}</small></span></div>
           <label><span>{t.productionPlanning.owner}</span><select value={newOwner ?? ""} onChange={(event) => setNewOwner(event.target.value ? Number(event.target.value) : null)}><option value="">—</option>{productionOwners.map((owner) => <option key={owner.characterId} value={owner.characterId}>{owner.name}</option>)}</select></label>
-          <label><span>{t.productionPlanning.facilityChoice}</span><select value={newFacilityId ?? ""} onChange={(event) => { const facilityId = event.target.value ? Number(event.target.value) : null; setNewFacilityId(facilityId); setNewMaterialLocationId(null); setNewFacilityMaterialBonus(facilityId === null ? null : 0); setNewFacilityTimeBonus(facilityId === null ? null : 0); setNewFacilityTax(facilityId === null ? null : 0); }}><option value="">{t.productionPlanning.noFacilityChoice}</option>{newFacilityOptions.map((option) => <option key={option.facilityId} value={option.facilityId}>{option.facilityName}</option>)}</select></label>
+          <label><span>{t.productionPlanning.facilityChoice}</span><select value={newFacilityId ?? ""} onChange={(event) => { const facilityId = event.target.value ? Number(event.target.value) : null; const facility = newFacilityOptions.find((option) => option.facilityId === facilityId); setNewFacilityId(facilityId); setNewMaterialLocationId(null); setNewFacilityMaterialBonus(facilityId === null ? null : 0); setNewFacilityTimeBonus(facilityId === null ? null : 0); setNewFacilityTax(automaticFacilityTax(facility)); }}><option value="">{t.productionPlanning.noFacilityChoice}</option>{newFacilityOptions.map((option) => <option key={option.facilityId} value={option.facilityId}>{option.facilityName}</option>)}</select></label>
           <label><span>{t.productionPlanning.materialSource}</span><select value={newMaterialLocationId ?? ""} disabled={newFacility === null} onChange={(event) => setNewMaterialLocationId(event.target.value ? Number(event.target.value) : null)}><option value="">{t.productionPlanning.allFacilityLocations}</option>{newFacility?.materialLocations.map((option) => <option key={option.locationId} value={option.locationId}>{option.locationKind === "facility" ? `${option.locationName} · Hangar` : t.productionPlanning.containerOption.replace("{name}", option.locationName).replace("{id}", String(option.locationId))}</option>)}</select></label>
           <label><span>{t.productionPlanning.facilityMaterialBonus}</span><input type="number" min={0} max={50} step={0.01} disabled={newFacility === null} value={newFacilityMaterialBonus === null ? "" : newFacilityMaterialBonus / 100} onChange={(event) => { if (event.target.value === "") { setNewFacilityMaterialBonus(null); setNewFacilityTimeBonus(null); } else { setNewFacilityMaterialBonus(Math.min(5_000, Math.max(0, Math.round(Number(event.target.value) * 100)))); setNewFacilityTimeBonus((value) => value ?? 0); } }} /></label>
           <label><span>{t.productionPlanning.facilityTimeBonus}</span><input type="number" min={0} max={50} step={0.01} disabled={newFacility === null} value={newFacilityTimeBonus === null ? "" : newFacilityTimeBonus / 100} onChange={(event) => { if (event.target.value === "") { setNewFacilityMaterialBonus(null); setNewFacilityTimeBonus(null); } else { setNewFacilityTimeBonus(Math.min(5_000, Math.max(0, Math.round(Number(event.target.value) * 100)))); setNewFacilityMaterialBonus((value) => value ?? 0); } }} /></label>
-          <label><span>{t.productionPlanning.facilityTax}</span><input type="number" min={0} max={100} step={0.01} disabled={newFacility === null} value={newFacilityTax === null ? "" : newFacilityTax / 100} onChange={(event) => setNewFacilityTax(event.target.value === "" ? null : Math.min(10_000, Math.max(0, Math.round(Number(event.target.value) * 100))))} /></label>
+          <label><span>{t.productionPlanning.facilityTax}</span><input type="number" min={0} max={100} step={0.01} disabled={newFacility === null || newFacility.facilityKind === "station"} value={newFacilityTax === null ? "" : newFacilityTax / 100} onChange={(event) => setNewFacilityTax(event.target.value === "" ? null : Math.min(10_000, Math.max(0, Math.round(Number(event.target.value) * 100))))} /><small>{newFacility?.facilityKind === "station" ? t.productionPlanning.facilityTaxAutomatic : newFacility === null ? "" : t.productionPlanning.facilityTaxManual}</small></label>
           <label><span>{t.productionPlanning.target}</span><input type="number" min={1} max={Number.MAX_SAFE_INTEGER} value={newQuantity} onChange={(event) => setNewQuantity(Math.max(1, Number(event.target.value) || 1))} /></label>
           <label><span>{t.productionPlanning.priority}</span><input type="number" min={0} max={999} value={newPriority} onChange={(event) => setNewPriority(Math.min(999, Math.max(0, Number(event.target.value) || 0)))} /></label>
           <label className="production-create__note"><span>{t.productionPlanning.note}</span><input value={newNote} maxLength={240} placeholder={t.productionPlanning.notePlaceholder} onChange={(event) => setNewNote(event.target.value)} /></label>
@@ -6363,11 +6393,11 @@ function ProductionWorkspace({
                 <header><div><div className="production-plan-statuses"><span className={`status-pill status-pill--${item.state === "ready" ? "good" : "warn"}`}>{t.productionPlanning.stateLabels[item.state]}</span><span className={`status-pill status-pill--${item.inventoryState === "covered" ? "good" : "warn"}`}>{t.productionPlanning.inventoryLabels[item.inventoryState]}</span><span className={`status-pill status-pill--${item.locationSelectionState === "ready" ? "good" : item.locationSelectionState === "unselected" ? "info" : "warn"}`}>{t.productionPlanning.locationStateLabels[item.locationSelectionState]}</span><span className={`status-pill status-pill--${item.facilityModifierState === "ready" ? "good" : item.facilityModifierState === "not-selected" ? "info" : "warn"}`}>{t.productionPlanning.facilityModifierStateLabels[item.facilityModifierState]}</span><span className={`status-pill status-pill--${item.blueprintAssignmentState === "ready" ? "good" : "warn"}`}>{t.productionPlanning.blueprintStateLabels[item.blueprintAssignmentState]}</span><span className={`status-pill status-pill--${item.characterSkillState === "ready" ? "good" : "warn"}`}>{t.productionPlanning.skillStateLabels[item.characterSkillState]}</span><span className={`status-pill status-pill--${item.facilityState === "ready" ? "good" : item.facilityState === "partial" ? "info" : "warn"}`}>{t.productionPlanning.facilityStateLabels[item.facilityState]}</span></div><h2>{item.productName}</h2><p>{item.blueprintName} · {t.productionPlanning.activityLabels[item.activity]} · #{item.blueprintTypeId}</p>{item.facilityName !== null && <p>{t.productionPlanning.facilityChoice}: {item.facilityName} · {t.productionPlanning.materialSource}: {item.materialLocationPath ?? t.productionPlanning.allFacilityLocations}</p>}</div><strong>{t.productionPlanning.goalQuantity.replace("{quantity}", numberFormat.format(item.targetQuantity))}</strong></header>
                 <div className="production-plan-editor">
                   <label><span>{t.productionPlanning.owner}</span><select value={draft.owner} onChange={(event) => setDrafts((current) => ({ ...current, [item.planId]: { ...draft, owner: Number(event.target.value), blueprintItemId: null, stepBlueprintItemIds: {}, facilityId: null, materialLocationId: null, facilityMaterialBonus: null, facilityTimeBonus: null, facilityTax: null } }))}>{!productionOwners.some((owner) => owner.characterId === draft.owner) && <option value={draft.owner}>{item.ownerName}</option>}{productionOwners.map((owner) => <option key={owner.characterId} value={owner.characterId}>{owner.name}</option>)}</select></label>
-                  <label><span>{t.productionPlanning.facilityChoice}</span><select value={draft.facilityId ?? ""} onChange={(event) => { const facilityId = event.target.value ? Number(event.target.value) : null; setDrafts((current) => ({ ...current, [item.planId]: { ...draft, facilityId, materialLocationId: null, facilityMaterialBonus: facilityId === null ? null : 0, facilityTimeBonus: facilityId === null ? null : 0, facilityTax: facilityId === null ? null : 0 } })); }}><option value="">{t.productionPlanning.noFacilityChoice}</option>{draftFacilityOptions.map((option) => <option key={option.facilityId} value={option.facilityId}>{option.facilityName}</option>)}</select></label>
+                  <label><span>{t.productionPlanning.facilityChoice}</span><select value={draft.facilityId ?? ""} onChange={(event) => { const facilityId = event.target.value ? Number(event.target.value) : null; const facility = draftFacilityOptions.find((option) => option.facilityId === facilityId); setDrafts((current) => ({ ...current, [item.planId]: { ...draft, facilityId, materialLocationId: null, facilityMaterialBonus: facilityId === null ? null : 0, facilityTimeBonus: facilityId === null ? null : 0, facilityTax: automaticFacilityTax(facility) } })); }}><option value="">{t.productionPlanning.noFacilityChoice}</option>{draftFacilityOptions.map((option) => <option key={option.facilityId} value={option.facilityId}>{option.facilityName}</option>)}</select></label>
                   <label><span>{t.productionPlanning.materialSource}</span><select value={draft.materialLocationId ?? ""} disabled={draftFacility === null} onChange={(event) => setDrafts((current) => ({ ...current, [item.planId]: { ...draft, materialLocationId: event.target.value ? Number(event.target.value) : null } }))}><option value="">{t.productionPlanning.allFacilityLocations}</option>{draftFacility?.materialLocations.map((option) => <option key={option.locationId} value={option.locationId}>{option.locationKind === "facility" ? `${option.locationName} · Hangar` : t.productionPlanning.containerOption.replace("{name}", option.locationName).replace("{id}", String(option.locationId))}</option>)}</select></label>
                   <label><span>{t.productionPlanning.facilityMaterialBonus}</span><input type="number" min={0} max={50} step={0.01} disabled={draftFacility === null} value={draft.facilityMaterialBonus === null ? "" : draft.facilityMaterialBonus / 100} onChange={(event) => setDrafts((current) => ({ ...current, [item.planId]: event.target.value === "" ? { ...draft, facilityMaterialBonus: null, facilityTimeBonus: null } : { ...draft, facilityMaterialBonus: Math.min(5_000, Math.max(0, Math.round(Number(event.target.value) * 100))), facilityTimeBonus: draft.facilityTimeBonus ?? 0 } }))} /></label>
                   <label><span>{t.productionPlanning.facilityTimeBonus}</span><input type="number" min={0} max={50} step={0.01} disabled={draftFacility === null} value={draft.facilityTimeBonus === null ? "" : draft.facilityTimeBonus / 100} onChange={(event) => setDrafts((current) => ({ ...current, [item.planId]: event.target.value === "" ? { ...draft, facilityMaterialBonus: null, facilityTimeBonus: null } : { ...draft, facilityMaterialBonus: draft.facilityMaterialBonus ?? 0, facilityTimeBonus: Math.min(5_000, Math.max(0, Math.round(Number(event.target.value) * 100))) } }))} /></label>
-                  <label><span>{t.productionPlanning.facilityTax}</span><input type="number" min={0} max={100} step={0.01} disabled={draftFacility === null} value={draft.facilityTax === null ? "" : draft.facilityTax / 100} onChange={(event) => setDrafts((current) => ({ ...current, [item.planId]: { ...draft, facilityTax: event.target.value === "" ? null : Math.min(10_000, Math.max(0, Math.round(Number(event.target.value) * 100))) } }))} /></label>
+                  <label><span>{t.productionPlanning.facilityTax}</span><input type="number" min={0} max={100} step={0.01} disabled={draftFacility === null || draftFacility.facilityKind === "station"} value={draft.facilityTax === null ? "" : draft.facilityTax / 100} onChange={(event) => setDrafts((current) => ({ ...current, [item.planId]: { ...draft, facilityTax: event.target.value === "" ? null : Math.min(10_000, Math.max(0, Math.round(Number(event.target.value) * 100))) } }))} /><small>{draftFacility?.facilityKind === "station" ? t.productionPlanning.facilityTaxAutomatic : draftFacility === null ? "" : t.productionPlanning.facilityTaxManual}</small></label>
                   <label><span>{t.productionPlanning.blueprintAssignment}</span><select value={draft.blueprintItemId ?? ""} onChange={(event) => setDrafts((current) => ({ ...current, [item.planId]: { ...draft, blueprintItemId: event.target.value ? Number(event.target.value) : null } }))}><option value="">{t.productionPlanning.noBlueprint}</option>{blueprintCandidates.map((candidate) => <option key={candidate.itemId} value={candidate.itemId} disabled={!candidate.suitable}>{t.productionPlanning.blueprintOption.replace("{kind}", candidate.kind === "original" ? "BPO" : "BPC").replace("{item}", String(candidate.itemId)).replace("{me}", String(candidate.materialEfficiency)).replace("{te}", String(candidate.timeEfficiency)).replace("{runs}", candidate.runs === -1 ? "∞" : numberFormat.format(candidate.runs))}{candidate.suitable ? "" : ` · ${t.productionPlanning.blueprintRunsInsufficient}`}</option>)}</select></label>
                   <label><span>{t.productionPlanning.quantity}</span><input type="number" min={1} value={draft.quantity} onChange={(event) => setDrafts((current) => ({ ...current, [item.planId]: { ...draft, quantity: Math.max(1, Number(event.target.value) || 1) } }))} /></label>
                   <label><span>{t.productionPlanning.priority}</span><input type="number" min={0} max={999} value={draft.priority} onChange={(event) => setDrafts((current) => ({ ...current, [item.planId]: { ...draft, priority: Math.min(999, Math.max(0, Number(event.target.value) || 0)) } }))} /></label>

@@ -294,7 +294,7 @@ const industryFacilityPage: IndustryFacilityPage = {
     ownerId: 1_000_001, ownerName: "Caldari Navy", regionId: 10_000_002,
     regionName: "The Forge", solarSystemId: 30_000_142, solarSystemName: "Jita",
     securityStatus: 0.9, securityClass: "highsec",
-    tax: null, activityCostIndex: 0.0125, usedByCharacterIds: [90_888_001],
+    tax: 0.0025, activityCostIndex: 0.0125, usedByCharacterIds: [90_888_001],
     observedActivityIds: [1], jobCount: 1, activeJobs: 0, errorCode: null,
     snapshotId: 10, syncRunId: 11, observedAt: "2026-09-11T00:00:00Z", ageSeconds: 60,
   }],
@@ -595,7 +595,7 @@ const productionPlanPage: ProductionPlanPage = {
   tradeCostsApplied: true,
   tradeCostRule: "ceil-gross-revenue-times-manual-or-npc-station-character-rate-at-1e10-scale-per-fee",
   installationCostsApplied: true,
-  installationCostRule: "base-material-adjusted-price-times-runs-system-index-plus-explicit-tax-plus-scc-4-percent-ceil",
+  installationCostRule: "base-material-adjusted-price-times-runs-system-index-plus-automatic-npc-or-explicit-structure-tax-plus-scc-4-percent-ceil",
   supplyModesApplied: true,
   supplyModeRule: "stock-first-before-recursive-build",
   remainingModifiersApplied: false,
@@ -1007,7 +1007,7 @@ describe("New Eden Foundry design preview", () => {
   it("credits Savoxmedia as the app creator next to the version", () => {
     render(<App />);
 
-    expect(screen.getByText("v0.2.0-alpha.24")).toBeInTheDocument();
+    expect(screen.getByText("v0.2.0-alpha.25")).toBeInTheDocument();
     expect(screen.getByText("Savoxmedia")).toBeInTheDocument();
     expect(screen.getByText("Erstellt von", { exact: false })).toBeInTheDocument();
     expect(screen.queryByText("Lokaler Betreiber")).not.toBeInTheDocument();
@@ -1562,12 +1562,12 @@ describe("New Eden Foundry design preview", () => {
     })));
   });
 
-  it("stores a production station, material container, and stock-only component source", async () => {
+  it("stores a production station with automatic tax, material container, and stock-only source", async () => {
     const basePlan = productionPlanPage.items[0];
     const page: ProductionPlanPage = {
       ...productionPlanPage,
       locationOptions: [{ ownerCharacterId: 90_888_001, facilityId: 60_003_760,
-        facilityName: "Jita IV - Moon 4", facilityKind: "station", facilityAccess: "available",
+        facilityName: "Jita IV - Moon 4", facilityKind: "station", facilityAccess: "public",
         locationStatus: "resolved", materialLocations: [
           { locationId: 60_003_760, locationName: "Jita IV - Moon 4",
             locationPath: "Jita IV - Moon 4", locationKind: "facility" },
@@ -1602,7 +1602,10 @@ describe("New Eden Foundry design preview", () => {
       .find((item) => item.textContent?.includes(label))?.querySelector("input");
     fireEvent.change(numberInput("Anlagen-Materialbonus")!, { target: { value: "1.25" } });
     fireEvent.change(numberInput("Anlagen-Zeitbonus")!, { target: { value: "2.5" } });
-    fireEvent.change(numberInput("Anlagensteuer")!, { target: { value: "1.75" } });
+    expect(numberInput("Anlagensteuer")).toBeDisabled();
+    expect(numberInput("Anlagensteuer")).toHaveValue(0.25);
+    expect(within(card!).getByText("NPC-Station: 0,25 % werden automatisch angewendet."))
+      .toBeInTheDocument();
     expect(screen.getByText(/Kein Blueprint für diesen Vorproduktschritt erforderlich/))
       .toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Änderungen speichern" }));
@@ -1610,7 +1613,7 @@ describe("New Eden Foundry design preview", () => {
     await waitFor(() => expect(productionPlanSaver).toHaveBeenCalledWith(expect.objectContaining({
       planId: 1, facilityId: 60_003_760, materialLocationId: 7_000,
       facilityMaterialBonusBasisPoints: 125, facilityTimeBonusBasisPoints: 250,
-      facilityTaxBasisPoints: 175,
+      facilityTaxBasisPoints: 25,
       stepBlueprintAssignments: [],
       stepSupplyModes: [{ blueprintTypeId: 110, activity: "manufacturing",
         productTypeId: 111, supplyMode: "stock-only" }],
@@ -1887,7 +1890,7 @@ describe("New Eden Foundry design preview", () => {
     expect(characterStandingSyncer).toHaveBeenCalledTimes(1);
     expect(industryFacilitySyncer).toHaveBeenCalledTimes(1);
     expect(await screen.findByText(/Marktpreise, Skills, Standings und Anlagendaten wurden aktualisiert/)).toBeInTheDocument();
-    expect(screen.getByText(/Für vollständigen Nettogewinn: Produktionsanlage wählen/)).toBeInTheDocument();
+    expect(screen.getByText(/Für vollständigen Nettogewinn eine Produktionsanlage wählen/)).toBeInTheDocument();
 
     const partialPage = structuredClone(profitabilityPage);
     const partialItem = partialPage.blueprintProfitability!.items[0];
@@ -2033,8 +2036,10 @@ describe("New Eden Foundry design preview", () => {
       industryFacilitySyncer={industryFacilitySyncer} />);
     fireEvent.click(await screen.findByRole("button", { name: "Blueprints & Jobs" }));
     expect(await screen.findByText("Jita IV - Moon 4")).toBeInTheDocument();
-    expect(screen.getByText(/keine Struktur- oder Rigboni/)).toBeInTheDocument();
+    expect(screen.getByText(/NPC-Stationen verwenden automatisch die offizielle Anlagensteuer/))
+      .toBeInTheDocument();
     expect(screen.getByText(/1,25.*%/)).toBeInTheDocument();
+    expect(screen.getByText(/^0,25.*%$/)).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Anlagenart"), { target: { value: "station" } });
     await waitFor(() => expect(industryFacilitiesLoader).toHaveBeenLastCalledWith(
       expect.objectContaining({ kind: "station" }),

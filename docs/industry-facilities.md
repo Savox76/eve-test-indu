@@ -26,6 +26,7 @@ Die zweisprachige Ansicht unter **Blueprints & Jobs** zeigt:
 - den ausgewählten Systemkostenindex für Produktion, Reaktion, Kopieren, Erfindung sowie ME-/TE-Forschung,
 - öffentliche, verfügbare, ACL-eingeschränkte, scope-bedingt eingeschränkte und unbekannte Zustände,
 - Anzahl der persönlichen Jobs und der darunter aktiven Jobs,
+- bei öffentlichen NPC-Stationen die offizielle feste Anlagensteuer von 0,25 Prozent; bei Spielerstrukturen bleibt der vom Eigentümer gesetzte Satz unbekannt,
 - Snapshot-ID, Sync-Run-ID und Datenalter.
 
 Suche, Anlagenart, Zugriffszustand, Sicherheitsraum, Kostenaktivität, der Filter **Nur in Jobs verwendet** und die Sortierung werden vor der Seitenteilung im lokalen Sidecar angewendet. Der Sicherheitsraum kann auf Highsec, Lowsec, Nullsec oder unbekannt begrenzt werden. Pro Anfrage werden höchstens 200 und in der Oberfläche standardmäßig 100 Anlagen übertragen. Die persönlichen Jobzeilen verwenden denselben Snapshot für Anlagenname, System und passenden Kostenindex.
@@ -36,9 +37,9 @@ Seit Paket 37 verwendet die Produktionsplanung denselben letzten vollständigen 
 
 ## Bewusste Kostengrenze
 
-Der Systemkostenindex ist nur eine einzelne belegte Eingabe für spätere Jobkosten und kein fertiger Baupreis. Der öffentliche Anlagenendpunkt liefert derzeit keine verlässliche Anlagensteuer für die zurückgegebenen Stationen; die Strukturroute liefert weder Service-Modul- noch Rigboni. Paket 26 speichert und zeigt solche Werte deshalb als unbekannt, statt sie zu erraten oder aus Community-Diensten zu übernehmen.
+Der Systemkostenindex ist nur eine einzelne belegte Eingabe für spätere Jobkosten und kein fertiger Baupreis. Der öffentliche Anlagenendpunkt liefert derzeit kein Steuerfeld. Paket 51 ergänzt deshalb ausschließlich für eindeutig öffentliche NPC-Stationen den von CCP offiziell festgelegten Satz von 0,25 Prozent. Die Strukturroute liefert weder die vom Eigentümer gesetzte Steuer noch Service-Modul- oder Rigboni; diese Werte werden weiterhin nicht geschätzt oder aus Community-Diensten übernommen.
 
-Manuell gepflegte Strukturprofile, aktivitätsspezifische Zuschläge und die eigentliche Decimal-basierte Kostenformel werden erst dann ergänzt, wenn ihr Eingabemodell und ihre Golden-Fälle gemeinsam feststehen. Dadurch bleiben Systemkostenindex, Anlagensteuer, Strukturbonus und Rigbonus später getrennt nachvollziehbar.
+Die Eigentümersteuer einer Spielerstruktur und deren Material-/Zeitprofil bleiben ausdrückliche Eingaben. Dadurch bleiben Systemkostenindex, NPC-Anlagensteuer, Struktursteuer, Strukturbonus und Rigbonus getrennt nachvollziehbar.
 
 ## Aktualisierungsreihenfolge
 

@@ -226,6 +226,7 @@ class IndustryFacilityTests(unittest.TestCase):
         self.assertEqual(record["solarSystemName"], f"Name {SYSTEM_ID}")
         self.assertEqual(record["activityCostIndex"], 0.0125)
         self.assertEqual((record["securityClass"], record["securityStatus"]), ("highsec", 0.9))
+        self.assertIsNone(record["tax"])
         self.assertEqual(record["usedByCharacterIds"], [CHARACTER_ID])
         self.assertEqual((record["jobCount"], record["activeJobs"]), (1, 1))
         jobs = query_industry_jobs(
@@ -244,6 +245,24 @@ class IndustryFacilityTests(unittest.TestCase):
         )
         self.assertEqual(jobs["items"][0]["facilityName"], "Example Engineering Complex")
         self.assertEqual(jobs["items"][0]["systemCostIndex"], 0.0125)
+
+        npc_page = query_industry_facilities(
+            self.db,
+            {
+                "search": "",
+                "kind": "station",
+                "access": "public",
+                "securityClass": None,
+                "activity": "manufacturing",
+                "usedOnly": False,
+                "offset": 0,
+                "limit": 100,
+                "sortBy": "facility",
+                "sortDirection": "asc",
+            },
+            now=datetime(2026, 9, 11, tzinfo=timezone.utc),
+        )
+        self.assertEqual(npc_page["items"][0]["tax"], 0.0025)
 
     def test_scope_missing_and_forbidden_are_visible_states(self):
         sync_character_industry_jobs(self.db, JobClient(), CHARACTER_ID)
