@@ -2676,6 +2676,7 @@ fn industry_facility_record_is_valid(item: &IndustryFacilityRecord) -> bool {
                 && item.owner_id.is_some()
                 && item.region_id.is_some()
                 && item.solar_system_id.is_some()
+                && item.tax == Some(0.0025)
                 && item.error_code.is_none()
         }
         "available" => {
@@ -5489,7 +5490,7 @@ fn production_plan_query_response_is_valid(response: &ProductionPlanQueryRespons
             == "ceil-gross-revenue-times-manual-or-npc-station-character-rate-at-1e10-scale-per-fee"
         && response.installation_costs_applied
         && response.installation_cost_rule
-            == "base-material-adjusted-price-times-runs-system-index-plus-explicit-tax-plus-scc-4-percent-ceil"
+            == "base-material-adjusted-price-times-runs-system-index-plus-automatic-npc-or-explicit-structure-tax-plus-scc-4-percent-ceil"
         && !response.remaining_modifiers_applied
 }
 
@@ -9491,7 +9492,7 @@ mod tests {
 
     #[test]
     fn validates_industry_facility_pages_and_sync_totals() {
-        let page = IndustryFacilityQueryResponse {
+        let mut page = IndustryFacilityQueryResponse {
             items: vec![IndustryFacilityRecord {
                 facility_id: 60_000_001,
                 facility_name: Some("Synthetic Station".to_owned()),
@@ -9507,7 +9508,7 @@ mod tests {
                 solar_system_name: Some("Synthetic System".to_owned()),
                 security_status: Some(0.9),
                 security_class: "highsec".to_owned(),
-                tax: None,
+                tax: Some(0.0025),
                 activity_cost_index: Some(0.0125),
                 used_by_character_ids: vec![90_888_001],
                 observed_activity_ids: vec![1],
@@ -9535,6 +9536,8 @@ mod tests {
             age_seconds: Some(60),
         };
         assert!(industry_facility_query_response_is_valid(&page));
+        page.items[0].tax = None;
+        assert!(!industry_facility_query_response_is_valid(&page));
 
         let sync = IndustryFacilitySyncResponse {
             sync_run_id: 12,

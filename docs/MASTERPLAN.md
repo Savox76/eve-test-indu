@@ -2,9 +2,9 @@
 
 **Fassung:** 4.0 (lebendes Repository-Dokument)
 
-**Stand:** 22. September 2026
+**Stand:** 28. September 2026
 
-**Status:** Paket 50 abgeschlossen; Korrektur der Rentabilitätsanzeige und Quellenaktualisierung in `v0.2.0-alpha.24`
+**Status:** Paket 51 abgeschlossen; automatische NPC-Anlagensteuer in `v0.2.0-alpha.25`
 
 **Geltungsbereich:** `Savox76/eve-test-indu`
 
@@ -216,6 +216,7 @@ Die Reihenfolge ist verbindlicher als eine Kalenderangabe.
 | 48 | Zielgenaue Kostenanalyse und Blueprint-Hubvergleich | Einkaufsliste, Kapitalbedarf und Gewinnanalyse gelten ausschließlich für ein ausdrücklich ausgewähltes Produktionsziel; konfigurierte Blueprint-Ziele werden mit identischen Ziel-, ME-, Anlagen-, Material- und Verkäuferannahmen über Jita, Amarr, Dodixie, Hek und Rens verglichen |
 | 49 | Rentabilität aller Bestandsblueprints | Bestandsbasierter Vergleich ohne Produktionsziele, einstellbare Läufe/Anlage/Steuer/Materialbonus, Kopienbegrenzung, direkte Materialkäufe, fünf Hubs und vollständige Seitennavigation |
 | 50 | Gruppierte Blueprint-Rentabilität | Eine Zeile je Blueprint-Typ, aufklappbare Besitzer-/ME-/TE-Varianten, transparente automatische Auswahl und Gewinn pro Stück aus einem Lauf |
+| 51 | Automatische NPC-Anlagensteuer | Öffentliche NPC-Stationen verwenden den offiziellen festen Satz von 0,25 Prozent; Eigentümersteuern von Spielerstrukturen bleiben explizite Eingaben |
 
 ### Aktueller Stand
 
@@ -269,6 +270,7 @@ Die Reihenfolge ist verbindlicher als eine Kalenderangabe.
 - **Abgeschlossen:** 49 – Alle persönlichen Blueprint-Positionen aktivierter Charaktere werden unabhängig von Produktionszielen bewertet. Kopien begrenzen die Vergleichsläufe auf ihren Restbestand. Direkte Materialkäufe berücksichtigen Blueprint-ME und den ausdrücklich gewählten Anlagenbonus; Kosten und Verkäufergebühren bleiben quellengebunden. Seitennavigation deckt auch mehr als 100 Positionen ab und respektiert das Marktlimit je Abruf. Preise bleiben je Typ über Seiten hinweg nutzbar, leere neuere Orderbücher ersetzen alte Preise. Fehlende Daten und nicht unterstützte Rezepte bleiben sichtbar. Schema 14 bleibt unverändert.
 - **Abgeschlossen:** 50 – Die Bestandsrentabilität gruppiert vor der Seitenteilung nach Blueprint-Typ. Die nutzbare Variante mit höchstem ME, danach TE und Originalvorrang bei Gleichstand bildet die ausgewiesene Grundlage. Besitzer, BPO/BPC und ME-/TE-Varianten erscheinen zusammengefasst in aufklappbaren Details (höchstens 100 Varianten mit vollständigen Summen und sichtbarer Restanzahl). Ein automatischer Lauf ersetzt die Vergleichslauf-Eingabe; Nettoergebnis geteilt durch Ausgabezahl ergibt den angezeigten Stückgewinn. Schema 14 bleibt unverändert.
 - **Korrektur nach Paket 50:** Fehlende Anlagen- oder Handelskosten verbergen bekannte Erlöse und Materialkosten nicht mehr vollständig: ein vorläufiger Überschuss benennt ausdrücklich die ausgelassenen Kostenarten, ohne Nettomarge oder Beste-Station-Markierung. Die gemeinsame Aktualisierung lädt fünf Marktstationen, Skills, Standings und Anlagendaten, wartet auf alle Antworten und weist Teilfehler aus. Vollständiger Nettogewinn benötigt weiter sämtliche Belege sowie ausdrückliche Anlagen-/Steuerwahl. Schema 14 bleibt unverändert.
+- **Abgeschlossen:** 51 – Jede öffentliche NPC-Station erhält aus der offiziell festgelegten Ownership Tax automatisch 25 Basispunkte. Produktionsziele und die Bestandsblueprint-Rentabilität überschreiben alte oder eingegebene NPC-Steuersätze deterministisch; die Oberfläche zeigt 0,25 Prozent schreibgeschützt. Eigentümersteuern von Spielerstrukturen bleiben manuell, weil die verwendeten ESI-Anlagen- und Strukturrouten sie nicht liefern. Skills und Standings werden weiterhin aus ihren vollständigen Charaktersnapshots angewendet. Schema 14 bleibt unverändert.
 - **Als Nächstes:** Das nächste Fachpaket wird separat festgelegt. Buy Orders, automatische Upwell-Gebühren, erneute Einstellgebühren, Transport, automatisch erkannte Struktur-/Service-/Rigmodifikatoren und belastbare Endtermine bleiben bis zu eigenen Fachverträgen ausgeschlossen.
 - Architektur-Gate A0 ist vollständig erfüllt; `v0.2.0-alpha.1` bildet die erste freigegebene Alpha-Grundlage für die folgenden Produktionspakete.
 

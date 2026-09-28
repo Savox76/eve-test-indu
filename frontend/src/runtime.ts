@@ -1307,7 +1307,7 @@ export interface ProductionPlanPage {
   tradeCostsApplied: true;
   tradeCostRule: "ceil-gross-revenue-times-manual-or-npc-station-character-rate-at-1e10-scale-per-fee";
   installationCostsApplied: true;
-  installationCostRule: "base-material-adjusted-price-times-runs-system-index-plus-explicit-tax-plus-scc-4-percent-ceil";
+  installationCostRule: "base-material-adjusted-price-times-runs-system-index-plus-automatic-npc-or-explicit-structure-tax-plus-scc-4-percent-ceil";
   remainingModifiersApplied: false;
 }
 
@@ -3197,7 +3197,7 @@ function parseIndustryFacilityRecord(candidate: unknown): IndustryFacilityRecord
     (candidate.access === "public" &&
       (candidate.kind !== "station" || candidate.facilityName === null || candidate.typeId === null ||
         candidate.ownerId === null || candidate.regionId === null || candidate.solarSystemId === null ||
-        candidate.errorCode !== null)) ||
+        candidate.tax !== 0.0025 || candidate.errorCode !== null)) ||
     (candidate.access === "available" &&
       (candidate.kind !== "structure" || candidate.facilityName === null || candidate.ownerId === null ||
         candidate.solarSystemId === null || candidate.regionId !== null || candidate.tax !== null ||
@@ -4894,7 +4894,7 @@ function parseProductionPlanPage(candidate: unknown): ProductionPlanPage {
       "ceil-gross-revenue-times-manual-or-npc-station-character-rate-at-1e10-scale-per-fee" ||
     candidate.installationCostsApplied !== true ||
     candidate.installationCostRule !==
-      "base-material-adjusted-price-times-runs-system-index-plus-explicit-tax-" +
+      "base-material-adjusted-price-times-runs-system-index-plus-automatic-npc-or-explicit-structure-tax-" +
         "plus-scc-4-percent-ceil" ||
     candidate.remainingModifiersApplied !== false
   ) throw new Error("The native runtime returned invalid production-plan data.");
@@ -5019,7 +5019,7 @@ export async function loadProductionPlans(
     tradeCostRule:
       "ceil-gross-revenue-times-manual-or-npc-station-character-rate-at-1e10-scale-per-fee",
     installationCostsApplied: true,
-    installationCostRule: "base-material-adjusted-price-times-runs-system-index-plus-explicit-tax-plus-scc-4-percent-ceil",
+    installationCostRule: "base-material-adjusted-price-times-runs-system-index-plus-automatic-npc-or-explicit-structure-tax-plus-scc-4-percent-ceil",
     remainingModifiersApplied: false,
   };
   const page = parseProductionPlanPage(JSON.parse(await adapter.invoke("query_production_plans", {
